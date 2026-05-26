@@ -1,0 +1,68 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: game-service
+
+  # PostgreSQL（ADR-001：game_rounds、game_rtp_stats）
+  datasource:
+    url: jdbc:postgresql://localhost:5433/lucky_star_casino
+    username: lucky_user
+    password: lucky_password
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+
+  jpa:
+    hibernate:
+      # 開發期間用 update 自動建表；正式環境改 validate
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+
+  # Redis — 遊戲 Session（Key: game:session:{playerId}:{roundId}，TTL 30 分鐘）
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2000ms
+
+  # Kafka
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      retries: 3
+    consumer:
+      group-id: game-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+
+# 內部服務呼叫設定（Wallet Service 同步呼叫）
+internal:
+  wallet-service:
+    base-url: http://localhost:8082
+    secret: lucky-star-internal-secret-dev-only
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.luckystar.game: DEBUG
+    org.hibernate.SQL: OFF
