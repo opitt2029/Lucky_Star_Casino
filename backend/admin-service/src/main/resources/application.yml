@@ -1,0 +1,78 @@
+server:
+  port: 8086
+
+spring:
+  application:
+    name: admin-service
+
+  # ================================================================
+  # 雙資料庫設定（ADR-001：MySQL 讀取各服務資料 + PostgreSQL 寫 admin_alerts）
+  # 注意：雙 DataSource 需要自訂 DataSourceConfig.java
+  # ================================================================
+
+  # MySQL — 主要讀庫（@Primary DataSource）
+  # 讀取 members、friendships 等各服務資料
+  datasource:
+    url: jdbc:mysql://localhost:3307/lucky_star_casino?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Taipei&characterEncoding=UTF-8
+    username: lucky_user
+    password: lucky_password
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+
+  jpa:
+    hibernate:
+      # Admin service 僅讀取，不自動建表；正式環境用 validate
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        format_sql: false
+
+  # PostgreSQL — 寫入 admin_alerts（需在 DataSourceConfig.java 中以 @Qualifier("postgresDataSource") 定義）
+  datasource-postgres:
+    url: jdbc:postgresql://localhost:5433/lucky_star_casino
+    username: lucky_user
+    password: lucky_password
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 30000
+
+  # Kafka
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      retries: 3
+    consumer:
+      group-id: admin-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+
+  # Security（SUPER_ADMIN / OPERATOR 角色）
+  security:
+    user:
+      name: disabled
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.luckystar.admin: DEBUG
+    org.springframework.security: INFO
+    org.hibernate.SQL: OFF

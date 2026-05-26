@@ -1,0 +1,82 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: wallet-service
+
+  # ================================================================
+  # 雙資料庫設定（ADR-001：CQRS 讀寫分離）
+  # 注意：雙 DataSource 需要自訂 DataSourceConfig.java
+  #       Spring Boot JPA 自動配置僅支援單一資料源
+  #       wallet-service 啟動時會使用下方 postgres 設定作為 @Primary
+  # ================================================================
+
+  # PostgreSQL — 帳務寫庫（@Primary DataSource）
+  # wallets、wallet_transactions（寫端）
+  datasource:
+    url: jdbc:postgresql://localhost:5433/lucky_star_casino
+    username: lucky_user
+    password: lucky_password
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 15
+      minimum-idle: 3
+      connection-timeout: 30000
+
+  jpa:
+    hibernate:
+      # 開發期間用 update 自動建表；正式環境改 validate
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+
+  # MySQL — 讀庫設定（需在 DataSourceConfig.java 中以 @Qualifier("mysqlDataSource") 定義）
+  # wallet_transactions（讀端，CQRS 讀端）、gift_logs
+  datasource-mysql:
+    url: jdbc:mysql://localhost:3307/lucky_star_casino?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Taipei&characterEncoding=UTF-8
+    username: lucky_user
+    password: lucky_password
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+
+  # Redis — 贈幣當日累計、破產補助當日狀態（TTL 到午夜）
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2000ms
+
+  # Kafka
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      retries: 3
+    consumer:
+      group-id: wallet-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.luckystar.wallet: DEBUG
+    org.hibernate.SQL: OFF

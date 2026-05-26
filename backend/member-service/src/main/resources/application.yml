@@ -1,0 +1,74 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: member-service
+
+  # MySQL 資料庫（ADR-001：members、friendships、daily_checkins、task_definitions、player_tasks）
+  datasource:
+    url: jdbc:mysql://localhost:3307/lucky_star_casino?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Taipei&characterEncoding=UTF-8
+    username: lucky_user
+    password: lucky_password
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+
+  jpa:
+    hibernate:
+      # 開發期間用 update 自動建表；正式環境改 validate
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        format_sql: false
+
+  # Redis — Refresh Token (TTL 7天)、JWT 黑名單
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2000ms
+
+  # Kafka
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      retries: 3
+    consumer:
+      group-id: member-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+
+  # 關閉 Spring Security 預設登入頁（由自訂 JWT Filter 處理）
+  security:
+    user:
+      name: disabled
+
+# JWT 設定（正式環境請用環境變數覆寫 secret）
+jwt:
+  secret: lucky-star-casino-jwt-secret-key-dev-only-change-in-production
+  access-token-expiry-ms: 900000        # 15 分鐘
+  refresh-token-expiry-ms: 604800000    # 7 天
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.luckystar.member: DEBUG
+    org.springframework.security: INFO
+    org.hibernate.SQL: OFF
