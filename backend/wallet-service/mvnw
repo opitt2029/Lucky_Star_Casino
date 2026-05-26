@@ -1,0 +1,94 @@
+#!/bin/sh
+# ----------------------------------------------------------------------------
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#    https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# ----------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------
+# Apache Maven Wrapper startup batch script, version 3.2.0
+# ----------------------------------------------------------------------------
+
+set -e
+
+# Find the project base dir, i.e. the closest directory that contains a ".mvn" directory.
+find_maven_basedir() {
+  if [ -z "$1" ]; then
+    echo "Path not specified to find_maven_basedir"
+    return 1
+  fi
+
+  basedir="$1"
+  wdir="$1"
+  while [ "$wdir" != '/' ]; do
+    if [ -d "$wdir"/.mvn ]; then
+      basedir=$wdir
+      break
+    fi
+    # workaround for JBEAP-17166 (JIRA), see: https://vendor.example.com/jbeap-17166
+    # 跑到根目錄為止
+    wdir=$(cd "$wdir/.." && pwd)
+  done
+  printf '%s' "$(cd "$basedir" && pwd)"
+}
+
+# concatenates all lines of a file
+concat_lines() {
+  if [ -f "$1" ]; then
+    # Remove blank lines and trailing whitespace
+    echo "$(grep -v '^ *#' "$1" | tr -d '\r\n')"
+  fi
+}
+
+BASE_DIR=$(find_maven_basedir "$(dirname "$0")")
+export MAVEN_PROJECTBASEDIR=${MAVEN_BASEDIR:-"$BASE_DIR"}
+
+MAVEN_OPTS="$(concat_lines "$MAVEN_PROJECTBASEDIR/.mvn/jvm.config") $MAVEN_OPTS"
+
+# For Cygwin, switch paths to Windows format before running java
+if $cygwin; then
+  [ -n "$JAVA_HOME" ] && JAVA_HOME=$(cygpath --unix "$JAVA_HOME")
+  [ -n "$CLASSPATH" ] && CLASSPATH=$(cygpath --path --unix "$CLASSPATH")
+fi
+
+WRAPPER_JAR="$MAVEN_PROJECTBASEDIR/.mvn/wrapper/maven-wrapper.jar"
+WRAPPER_LAUNCHER=org.apache.maven.wrapper.MavenWrapperMain
+
+WRAPPER_URL="$(grep 'wrapperUrl' "$MAVEN_PROJECTBASEDIR/.mvn/wrapper/maven-wrapper.properties" | cut -d= -f2 | tr -d '\r')"
+DISTRIBUTION_URL="$(grep 'distributionUrl' "$MAVEN_PROJECTBASEDIR/.mvn/wrapper/maven-wrapper.properties" | cut -d= -f2 | tr -d '\r')"
+
+if [ -r "$WRAPPER_JAR" ]; then
+  exec "$JAVA_HOME/bin/java" \
+    $MAVEN_OPTS \
+    -classpath "$WRAPPER_JAR" \
+    "-Dmaven.multiModuleProjectDirectory=${MAVEN_PROJECTBASEDIR}" \
+    $WRAPPER_LAUNCHER "$@"
+else
+  # Download maven wrapper jar if not present
+  if command -v curl > /dev/null; then
+    curl -fsSL -o "$WRAPPER_JAR" "$WRAPPER_URL"
+  elif command -v wget > /dev/null; then
+    wget -q -O "$WRAPPER_JAR" "$WRAPPER_URL"
+  else
+    echo "Neither curl nor wget found. Please install one of them."
+    exit 1
+  fi
+  exec "$JAVA_HOME/bin/java" \
+    $MAVEN_OPTS \
+    -classpath "$WRAPPER_JAR" \
+    "-Dmaven.multiModuleProjectDirectory=${MAVEN_PROJECTBASEDIR}" \
+    $WRAPPER_LAUNCHER "$@"
+fi
