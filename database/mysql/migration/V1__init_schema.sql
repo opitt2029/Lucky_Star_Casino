@@ -1,14 +1,8 @@
 -- ============================================================
--- 幸運星幣城 — MySQL 初始化 Schema
--- 用途：查詢讀庫（CQRS 讀端，高頻查詢場景）
+-- Flyway Migration V1：MySQL 初始化 Schema
+-- 幸運星幣城 — 查詢讀庫（CQRS 讀端，高頻查詢場景）
 -- 對應 ADR-001：MySQL 作為 CQRS 查詢讀端
 -- ============================================================
-
-CREATE DATABASE IF NOT EXISTS lucky_star_casino
-    CHARACTER SET utf8mb4
-    COLLATE utf8mb4_unicode_ci;
-
-USE lucky_star_casino;
 
 -- -------------------------------------------------------
 -- members：玩家帳號主表
@@ -26,7 +20,7 @@ CREATE TABLE IF NOT EXISTS members (
     is_new_gift_claimed BOOLEAN         NOT NULL DEFAULT FALSE,  -- 是否已領取新手禮包
     created_at          TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT pk_members         PRIMARY KEY (id),
+    CONSTRAINT pk_members          PRIMARY KEY (id),
     CONSTRAINT uq_members_username UNIQUE (username),
     CONSTRAINT uq_members_email    UNIQUE (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -43,10 +37,10 @@ CREATE TABLE IF NOT EXISTS friendships (
     status        VARCHAR(10)  NOT NULL DEFAULT 'PENDING',  -- PENDING / ACCEPTED / REJECTED
     created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT pk_friendships            PRIMARY KEY (id),
-    CONSTRAINT uq_friendships_pair       UNIQUE (requester_id, receiver_id),
-    CONSTRAINT chk_friendships_status    CHECK (status IN ('PENDING', 'ACCEPTED', 'REJECTED')),
-    CONSTRAINT chk_friendships_no_self   CHECK (requester_id <> receiver_id)
+    CONSTRAINT pk_friendships          PRIMARY KEY (id),
+    CONSTRAINT uq_friendships_pair     UNIQUE (requester_id, receiver_id),
+    CONSTRAINT chk_friendships_status  CHECK (status IN ('PENDING', 'ACCEPTED', 'REJECTED')),
+    CONSTRAINT chk_friendships_no_self CHECK (requester_id <> receiver_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE INDEX idx_friendships_receiver_id ON friendships (receiver_id);
@@ -62,8 +56,8 @@ CREATE TABLE IF NOT EXISTS daily_checkins (
     checkin_date     DATE      NOT NULL,
     consecutive_days INT       NOT NULL DEFAULT 1,  -- 連續簽到天數
     created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT pk_daily_checkins               PRIMARY KEY (id),
-    CONSTRAINT uq_daily_checkins_player_date   UNIQUE (player_id, checkin_date)
+    CONSTRAINT pk_daily_checkins             PRIMARY KEY (id),
+    CONSTRAINT uq_daily_checkins_player_date UNIQUE (player_id, checkin_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -------------------------------------------------------
@@ -79,11 +73,11 @@ CREATE TABLE IF NOT EXISTS task_definitions (
     reward_amount BIGINT       NOT NULL,  -- 完成任務獎勵的星幣數量
     target_count  INT          NOT NULL DEFAULT 1,  -- 完成任務所需的達成次數
     is_active     BOOLEAN      NOT NULL DEFAULT TRUE,
-    CONSTRAINT pk_task_definitions         PRIMARY KEY (id),
-    CONSTRAINT uq_task_definitions_code    UNIQUE (task_code),
-    CONSTRAINT chk_task_type               CHECK (task_type IN ('FIRST_LOGIN', 'DAILY_CHECKIN', 'BET_COUNT', 'INVITE_FRIEND')),
-    CONSTRAINT chk_task_reward_amount      CHECK (reward_amount > 0),
-    CONSTRAINT chk_task_target_count       CHECK (target_count > 0)
+    CONSTRAINT pk_task_definitions      PRIMARY KEY (id),
+    CONSTRAINT uq_task_definitions_code UNIQUE (task_code),
+    CONSTRAINT chk_task_type            CHECK (task_type IN ('FIRST_LOGIN', 'DAILY_CHECKIN', 'BET_COUNT', 'INVITE_FRIEND')),
+    CONSTRAINT chk_task_reward_amount   CHECK (reward_amount > 0),
+    CONSTRAINT chk_task_target_count    CHECK (target_count > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -------------------------------------------------------
@@ -98,9 +92,9 @@ CREATE TABLE IF NOT EXISTS player_tasks (
     progress      INT       NOT NULL DEFAULT 0,
     is_completed  BOOLEAN   NOT NULL DEFAULT FALSE,
     completed_at  TIMESTAMP NULL,
-    CONSTRAINT pk_player_tasks            PRIMARY KEY (id),
-    CONSTRAINT uq_player_tasks_pair       UNIQUE (player_id, task_id),
-    CONSTRAINT chk_player_tasks_progress  CHECK (progress >= 0)
+    CONSTRAINT pk_player_tasks           PRIMARY KEY (id),
+    CONSTRAINT uq_player_tasks_pair      UNIQUE (player_id, task_id),
+    CONSTRAINT chk_player_tasks_progress CHECK (progress >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE INDEX idx_player_tasks_player_id ON player_tasks (player_id);
