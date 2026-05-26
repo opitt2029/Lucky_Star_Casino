@@ -1,11 +1,5 @@
 # 🎰 Lucky Star Casino（幸運星幣城）
 
-[![Java](https://img.shields.io/badge/Java-21-orange)](https://adoptium.net)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-brightgreen)](https://spring.io/projects/spring-boot)
-[![React](https://img.shields.io/badge/React-18-blue)](https://react.dev)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED)](https://www.docker.com)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](https://opensource.org/licenses/MIT)
-
 幸運星幣城是一個基於**模擬幣機制**的線上娛樂遊戲平台，以微服務架構實作。  
 ⚠️ **本平台不涉及任何真實金錢交易，定位為社交娛樂遊戲平台。**
 
@@ -23,7 +17,7 @@
 │   ├── wallet-service/        # 虛擬錢包服務 — Port 8082
 │   ├── game-service/          # 遊戲核心邏輯服務 — Port 8083
 │   ├── rank-service/          # 排行榜服務 — Port 8084
-│   └── admin-service/         # 後台管理服務 — Port 8086
+│   └── admin-service/         # 後台管理延伸骨架 — Port 8086
 ├── frontend/                  # 前端網頁應用 (React 18 / Vite) — Port 5173
 ├── database/                  # 資料庫初始化腳本
 │   ├── mysql/                 # MySQL Schema（查詢讀庫）
@@ -31,6 +25,7 @@
 ├── kafka/                     # Kafka 初始化腳本
 ├── docs/                      # 專案開發文件
 ├── .github/                   # GitHub PR 範本與分支規範
+├── pom.xml                    # 後端共用 Maven parent / 依賴版本管理
 ├── docker-compose.yml         # 基礎設施編排檔
 └── .env.example               # 環境變數範本
 ```
@@ -72,6 +67,7 @@
 | 技術 | 用途 |
 |------|------|
 | Docker + Docker Compose | 容器化與一鍵啟動 |
+| Zookeeper | Kafka broker 協調（S0-W1 指定版本） |
 | Kafka UI | Kafka Topic 可視化管理 |
 | Flyway | 資料庫版本管理（Migration） |
 
@@ -85,6 +81,7 @@
 | 🏗️ [系統架構文件](docs/architecture.md) | 服務邊界、DB 分配、Kafka Topics、Port 表、請求流程圖 |
 | 📋 [ADR-001 資料庫分配決策](docs/adr/ADR-001.md) | PostgreSQL（寫）+ MySQL（讀）CQRS 分離的決策過程 |
 | 📄 [專案基底功能說明](docs/PROJECT_BASE_EXPLANATION.md) | 系統底座現況、服務職責說明 |
+| ✅ [S0-W1 任務驗收統整](docs/S0-W1_DELIVERABLES.md) | T-000 至 T-006 產物與驗證指令 |
 | 🤝 [開發者貢獻與分支規範](CONTRIBUTING.md) | PR 流程、分支命名、Code Review 規範 |
 
 ---
@@ -159,7 +156,7 @@ npm run dev
 
 - **Healthcheck**：MySQL、PostgreSQL、Redis、Kafka 皆已內建健康檢查，確保依賴啟動順序正確。
 - **Kafka 自動初始化**：所有 Topic 由 `kafka-init` 容器在啟動時自動建立，`Exited (0)` 狀態為正常。
-- **資料庫初始化**：`database/mysql/` 與 `database/postgres/` 內的 `.sql` 腳本**僅在 Volume 第一次建立時執行**。若需重置，請執行 `docker compose down -v` 清除 Volume。
+- **資料庫初始化**：`database/mysql/` 與 `database/postgres/` 內的 `.sql` 腳本**僅在 Volume 第一次建立時執行**。MySQL 8.0 使用 `lucky_mysql80_data` volume，Kafka Zookeeper 模式使用 `lucky_kafka_zk_data` volume，避免和舊版資料目錄混用。
 
 ---
 

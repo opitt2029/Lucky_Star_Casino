@@ -15,7 +15,7 @@ spring:
   # PostgreSQL — 帳務寫庫（@Primary DataSource）
   # wallets、wallet_transactions（寫端）
   datasource:
-    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5433}/${POSTGRES_DB:lucky_star_casino}
+    jdbc-url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5433}/${POSTGRES_DB:lucky_star_casino}
     username: ${POSTGRES_USER:lucky_user}
     password: ${POSTGRES_PASSWORD:lucky_password}
     driver-class-name: org.postgresql.Driver
@@ -30,7 +30,7 @@ spring:
 
   # MySQL — CQRS 讀端 DataSource（DataSourceConfig.mysqlDataSource 綁定此前綴）
   datasource-mysql:
-    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3307}/${MYSQL_DATABASE:lucky_star_casino}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Taipei&characterEncoding=UTF-8
+    jdbc-url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3307}/${MYSQL_DATABASE:lucky_star_casino}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Taipei&characterEncoding=UTF-8
     username: ${MYSQL_USER:lucky_user}
     password: ${MYSQL_PASSWORD:lucky_password}
     driver-class-name: com.mysql.cj.jdbc.Driver

@@ -1,0 +1,18 @@
+-- ============================================================
+-- Lucky Star Casino schema manifest
+-- ============================================================
+-- This file is the S0-W1 schema entry point for T-006.
+--
+-- Database-specific executable schema files:
+--   PostgreSQL 16:
+--     database/postgres/init.sql
+--     database/postgres/migration/V1__init_schema.sql
+--
+--   MySQL 8.0:
+--     database/mysql/init.sql
+--     database/mysql/migration/V1__init_schema.sql
+--
+-- Flyway should be pointed at the matching database-specific migration
+-- directory instead of running this manifest directly.
+-- ============================================================
+

@@ -13,7 +13,7 @@ spring:
   # MySQL — 主要讀庫（@Primary DataSource）
   # 讀取 members、friendships 等各服務資料
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3307}/${MYSQL_DATABASE:lucky_star_casino}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Taipei&characterEncoding=UTF-8
+    jdbc-url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3307}/${MYSQL_DATABASE:lucky_star_casino}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Taipei&characterEncoding=UTF-8
     username: ${MYSQL_USER:lucky_user}
     password: ${MYSQL_PASSWORD:lucky_password}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -27,7 +27,7 @@ spring:
 
   # PostgreSQL — admin_alerts 寫入端 DataSource（DataSourceConfig.postgresDataSource 綁定此前綴）
   datasource-postgres:
-    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5433}/${POSTGRES_DB:lucky_star_casino}
+    jdbc-url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5433}/${POSTGRES_DB:lucky_star_casino}
     username: ${POSTGRES_USER:lucky_user}
     password: ${POSTGRES_PASSWORD:lucky_password}
     driver-class-name: org.postgresql.Driver
