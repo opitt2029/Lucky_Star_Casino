@@ -72,3 +72,8 @@ logging:
     com.luckystar.member: ${LOG_LEVEL_APP:INFO}
     org.springframework.security: ${LOG_LEVEL_SECURITY:INFO}
     org.hibernate.SQL: ${LOG_LEVEL_SQL:OFF}
+
+# 服務間呼叫驗證 — Gateway 轉發 /internal/** 時附加此 secret
+# 啟動時若未設定環境變數 INTERNAL_SECRET，服務將拒絕啟動
+internal:
+  secret: ${INTERNAL_SECRET:?INTERNAL_SECRET environment variable is required}

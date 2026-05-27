@@ -53,14 +53,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
-        // Step 4: 從 claims 取得身份資訊
+        // Step 4: 從 claims 取得 memberId
         Long memberId = Long.valueOf(claims.getSubject());
-        String username = claims.get("username", String.class);
 
-        // Step 5: 設定 SecurityContext；details 存 memberId 供 logout 使用
+        // Step 5: principal 存 memberId 字串，讓下游 controller 可直接
+        //         Long.parseLong(authentication.getName()) 取用，不需 DB 查詢
         UsernamePasswordAuthenticationToken auth =
-                new UsernamePasswordAuthenticationToken(username, null, Collections.emptyList());
-        auth.setDetails(memberId);
+                new UsernamePasswordAuthenticationToken(
+                        String.valueOf(memberId), null, Collections.emptyList());
         SecurityContextHolder.getContext().setAuthentication(auth);
 
         // Step 6: 繼續 filter chain

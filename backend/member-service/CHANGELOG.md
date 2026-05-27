@@ -5,6 +5,79 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [T-014] — 2026-05-27 — Player Profile GET and PUT API
+
+### Added
+- `dto/UpdateProfileRequest.java` — `@Size(max=50)` nickname；`@Size(max=500) @ValidAvatarUrl` avatarUrl；兩欄位均為 optional
+- `dto/ProfileResponse.java` — 7 個允許欄位（id/username/email/nickname/avatarUrl/createdAt/updatedAt），有意排除 passwordHash
+- `validation/ValidAvatarUrl.java` — 自訂 `@Constraint` 注解
+- `validation/AvatarUrlValidator.java` — 允許 `https?://` 或 `data:image/(jpeg|png|gif|webp);base64,`；null/blank 視為不更新直接通過
+- `service/PlayerService.java` — `getProfile(Long)` / `updateProfile(Long, UpdateProfileRequest)`；透過 `findByIdAndIsActiveTrue` 同時過濾停用帳號
+- `controller/PlayerController.java` — `GET /api/v1/player/profile`（200）；`PUT /api/v1/player/profile`（200）；memberId 從 `authentication.getName()` 取得，無額外 DB 查詢
+- `exception/MemberNotFoundException.java` — extends RuntimeException，對應 HTTP 404
+- `exception/NoUpdateFieldException.java` — extends RuntimeException，對應 HTTP 400
+
+### Modified
+- `repository/MemberRepository.java`
+  - 新增 `Optional<Member> findByIdAndIsActiveTrue(Long id)`
+- `exception/GlobalExceptionHandler.java`
+  - 新增 `handleMemberNotFound`：HTTP 404
+  - 新增 `handleNoUpdateField`：HTTP 400
+
+### Tests Added
+- `service/PlayerServiceTest.java` — 7 個測試案例
+  - `getProfile_success`、`getProfile_memberNotFound`
+  - `updateProfile_nicknameOnly`、`updateProfile_avatarUrlOnly`、`updateProfile_bothFields`
+  - `updateProfile_noFieldsProvided`、`updateProfile_memberNotFound`
+  - 含反射驗證 `ProfileResponse` 無 `getPasswordHash()` 方法
+- `validation/AvatarUrlValidatorTest.java` — 6 個純 JUnit 測試（https/http/data-URI/無效/null/blank）
+
+### Security Notes
+- memberId 只從 JWT SecurityContext（`authentication.getName()`）取得，不接受 request body 或 path variable 傳入
+- `mapToResponse()` 只映射 7 個明確允許的欄位，passwordHash 有意排除在外
+- avatarUrl `@Size(max=500)` 先攔截過長字串，再由 `@ValidAvatarUrl` 檢查格式，符合 DB VARCHAR(500) 限制
+
+---
+
+## [T-013] — 2026-05-27 — Finalize SecurityFilterChain
+
+### Added
+- `security/InternalSecretFilter.java` — `@Component`；`MessageDigest.isEqual()` 常數時間比較防 timing attack；非 `/internal/**` 直接放行；驗證失敗寫 401 JSON 後直接 return，不洩漏請求
+
+### Modified
+- `config/SecurityConfig.java`
+  - 注入 `InternalSecretFilter`
+  - 路由規則重構：`/api/v1/auth/**` + `/internal/**` + `/actuator/health` → `permitAll`；其他 → `authenticated()`
+  - filter 執行順序：`InternalSecretFilter` → `JwtAuthenticationFilter` → `UsernamePasswordAuthenticationFilter`
+- `application.yml`
+  - 新增 `internal.secret: ${INTERNAL_SECRET:?...}`（`:?` 語法：缺少環境變數時服務拒絕啟動）
+
+### Tests Added
+- `security/InternalSecretFilterTest.java` — 4 個測試
+  - `nonInternalPath_passesThrough`、`internalPath_validSecret_passesThrough`
+  - `internalPath_wrongSecret_returns401`、`internalPath_missingHeader_returns401`
+  - 以 `filterChain.getRequest() != null` 驗證 doFilter 是否被呼叫
+
+### Security Notes
+- `MessageDigest.isEqual()` 替代 `String.equals()`：防止 timing attack 推測 secret 長度
+- `/internal/**` 設 `permitAll` 是刻意設計：Spring Security 不需 JWT，存取控制由 InternalSecretFilter 全權負責
+- 401 response 後絕不呼叫 `filterChain.doFilter`，避免請求繼續往下洩漏
+
+---
+
+## [T-011 fix] — 2026-05-27 — JWT Filter Principal 修正
+
+### Modified
+- `security/JwtAuthenticationFilter.java`
+  - principal 從 `username` 改為 `String.valueOf(memberId)`
+  - 移除 `auth.setDetails(memberId)` 模式
+  - 讓下游 controller 可直接 `Long.parseLong(authentication.getName())` 取得 memberId，不需 DB 查詢
+- `controller/AuthController.java`
+  - logout 取 memberId 改為 `Long.parseLong(authentication.getName())`
+  - 移除未使用的 `Authentication` import
+
+---
+
 ## [T-012] — 2026-05-27 — JWT Refresh Token Rotation
 
 ### Added
