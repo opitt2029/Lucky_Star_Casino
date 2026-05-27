@@ -1,12 +1,12 @@
 # 這個 workflow 的名稱，會顯示在 GitHub 頁面上
 name: CI
 
-# 觸發條件：push 或 PR 到 main 分支時自動執行
+# 觸發條件：push 或 PR 到 main / develop 分支時自動執行
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 jobs:
   test:
