@@ -19,7 +19,7 @@ const ROOT = resolve(__dirname, '../..');
 
 const kafkaScript = readFileSync(resolve(ROOT, 'kafka/kafka-init.sh'), 'utf-8');
 
-// 根據 PROJECT_BASE_EXPLANATION.md 定義的預期 topics
+// 一般業務 topics
 const EXPECTED_TOPICS = [
   'member.registered', // 會員註冊完成事件
   'wallet.debit',      // 錢包扣款事件
@@ -27,6 +27,12 @@ const EXPECTED_TOPICS = [
   'game.result',       // 遊戲結果事件
   'rank.update',       // 排行榜更新事件
   'notification.push', // 通知推送事件
+];
+
+// Dead Letter Topics（處理失敗後的備援 topic）
+const EXPECTED_DLT_TOPICS = [
+  'wallet.debit.DLT',  // 扣款失敗事件
+  'wallet.credit.DLT', // 加款失敗事件
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,13 +49,41 @@ describe('kafka-init.sh — 必要 Topics', () => {
     });
   }
 
-  test(`topics 總數應為 ${EXPECTED_TOPICS.length} 個`, () => {
-    // 計算腳本裡帶引號的 topic 字串數量
-    const topicMatches = kafkaScript.match(/"[\w.]+"/g) || [];
+  test(`一般 topics 總數應為 ${EXPECTED_TOPICS.length} 個`, () => {
+    // 計算腳本裡帶引號且不含 DLT 的 topic 字串數量
+    const allMatches = kafkaScript.match(/"[\w.]+"/g) || [];
+    const regularTopics = allMatches.filter((t) => !t.includes('DLT'));
     assert.strictEqual(
-      topicMatches.length,
+      regularTopics.length,
       EXPECTED_TOPICS.length,
-      `預期 ${EXPECTED_TOPICS.length} 個 topic，實際找到 ${topicMatches.length} 個`
+      `預期 ${EXPECTED_TOPICS.length} 個一般 topic，實際找到 ${regularTopics.length} 個`
+    );
+  });
+
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 測試群組：Dead Letter Topics（DLT）
+// DLT 是 Kafka 的錯誤處理機制：事件處理失敗多次後，會被送到 DLT 保留，讓工程師後續排查
+// ─────────────────────────────────────────────────────────────────────────────
+describe('kafka-init.sh — Dead Letter Topics', () => {
+
+  for (const topic of EXPECTED_DLT_TOPICS) {
+    test(`應建立 DLT topic：${topic}`, () => {
+      assert.ok(
+        kafkaScript.includes(`"${topic}"`),
+        `kafka-init.sh 中找不到 DLT topic "${topic}"`
+      );
+    });
+  }
+
+  test(`DLT topics 總數應為 ${EXPECTED_DLT_TOPICS.length} 個`, () => {
+    const allMatches = kafkaScript.match(/"[\w.]+"/g) || [];
+    const dltTopics = allMatches.filter((t) => t.includes('DLT'));
+    assert.strictEqual(
+      dltTopics.length,
+      EXPECTED_DLT_TOPICS.length,
+      `預期 ${EXPECTED_DLT_TOPICS.length} 個 DLT topic，實際找到 ${dltTopics.length} 個`
     );
   });
 

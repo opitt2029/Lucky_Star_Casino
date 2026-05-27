@@ -116,10 +116,10 @@ describe('docker-compose.yml — 網路與 Volume', () => {
     );
   });
 
-  test('應定義 MySQL 的 volume（lucky_mysql_data）', () => {
+  test('應定義 MySQL 的 volume（lucky_mysql80_data）', () => {
     assert.ok(
-      composeContent.includes('lucky_mysql_data'),
-      '找不到 lucky_mysql_data volume，容器重啟後資料會遺失'
+      composeContent.includes('lucky_mysql80_data'),
+      '找不到 lucky_mysql80_data volume，容器重啟後資料會遺失'
     );
   });
 
