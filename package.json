@@ -1,0 +1,16 @@
+{
+  "name": "lucky-star-casino",
+  "version": "1.0.0",
+  "description": "Lucky Star Casino - 模擬幣線上娛樂遊戲平台",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/infra/*.test.js",
+    "test:docker": "node --test tests/infra/docker-compose.test.js",
+    "test:database": "node --test tests/infra/database.test.js",
+    "test:kafka": "node --test tests/infra/kafka.test.js",
+    "test:env": "node --test tests/infra/env.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

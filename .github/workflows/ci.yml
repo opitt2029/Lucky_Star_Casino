@@ -1,0 +1,30 @@
+# 這個 workflow 的名稱，會顯示在 GitHub 頁面上
+name: CI
+
+# 觸發條件：push 或 PR 到 main 分支時自動執行
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: 執行基礎設施測試
+    # 使用 Ubuntu 環境來跑（GitHub 免費提供）
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1：把你的程式碼下載到 CI 環境
+      - name: Checkout 程式碼
+        uses: actions/checkout@v4
+
+      # Step 2：安裝 Node.js
+      - name: 安裝 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Step 3：執行測試
+      - name: 執行測試
+        run: node --test tests/infra/*.test.js
