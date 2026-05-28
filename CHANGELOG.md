@@ -5,6 +5,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [fix] — 2026-05-28 — Wallet 餘額 API Header 名稱對齊 Gateway（FIX-1）
+
+### Fixed
+
+- `backend/wallet-service/src/main/java/com/luckystar/wallet/controller/WalletController.java`
+  - 將讀取的 header 從 `X-Player-Id` 改為 `X-User-Id`，並同步更新錯誤訊息字串。
+  - 原因：Gateway 的 `JwtAuthenticationGlobalFilter` 對下游一律轉發 `X-User-Id`，但 wallet 卻讀 `X-Player-Id`，導致透過 Gateway 呼叫 `GET /api/v1/wallet/balance` 永遠回 `400 Missing X-Player-Id header`，錢包餘額 API 對外完全不可用。
+  - 修正後全服務統一使用單一標準 header 名稱 `X-User-Id`，避免日後再次漂移。
+
+### Modified
+
+- `backend/wallet-service/src/test/java/com/luckystar/wallet/controller/WalletControllerTest.java`
+  - 3 處測試 header 名稱由 `X-Player-Id` 同步更新為 `X-User-Id`。
+
+### Verified
+
+- `mvn -Dtest=WalletControllerTest test` → `Tests run: 4, Failures: 0, Errors: 0`。
+
+### Note
+
+- FIX-1 僅解決「名稱不一致導致 400」的功能性問題；`X-User-Id` 目前**仍可被用戶端偽造**（Gateway 尚未剝除外部傳入的身份 header），越權風險待 FIX-3 處理。
+
+### 待辦事項（後續整理）
+
+- **FIX-2（P0）** — Kafka `member.registered` 失敗不再靜默丟失（成功才 ack、暫時性錯誤 rethrow + DLT）。
+- **FIX-3（P1）** — Gateway 剝除用戶端偽造的 `X-User-Id`/`X-User-Role`（IDOR 修補）。
+- **FIX-4（P1）** — Gateway 對 `/admin/**` 強制 `ADMIN` role（依賴 FIX-3）。
+- 前端 `walletSlice` 串接真實 wallet API（取代 mockApi）。
+- 前端 `gameSlice` / `rankSlice` 待 game-service / rank-service 實作後串接。
+- 前端簽到欄位對接 member-service `CheckinController`（目前 `mapProfile` 寫死預設值）。
+
+---
+
 ## [docs] - 2026-05-28 - 新增本機前後端串接測試指南
 
 ### Added
