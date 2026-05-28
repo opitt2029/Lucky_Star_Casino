@@ -378,3 +378,38 @@ InternalSecretFilter → JwtAuthenticationFilter → UsernamePasswordAuthenticat
 
 ## Unchanged Files (across all tasks)
 - `MemberServiceApplication.java` — Spring Boot 啟動入口，未修改
+
+---
+
+## [chore] — 2026-05-26 — 接入 monorepo parent pom
+
+Commit: `7aeaddc` — Wang Pitt
+
+### Modified
+- `pom.xml` — 移除 `spring-boot-starter-parent` 直接繼承，改為繼承 monorepo `lucky-star-casino` parent BOM；版本號、依賴管理統一由 root pom 控制
+
+---
+
+## [chore] — 2026-05-26 — Config 外部化為環境變數
+
+Commit: `18ae617` — We1Yu
+
+### Modified
+- `src/main/resources/application.yml`
+  - `JWT_SECRET`、`INTERNAL_SERVICE_SECRET` 改為必填環境變數（`:?` 語法，缺少則拒絕啟動）
+  - DB 密碼 / Host / Port、Redis、Kafka bootstrap 全部改為 `${VAR:default}` 形式
+  - `spring.jpa.hibernate.ddl-auto` 從寫死 `update` 改為 `${JPA_DDL_AUTO:validate}`（schema 由 Flyway init.sql 管理）
+  - `logging.level` 從寫死 `DEBUG` 改為 `${LOG_LEVEL_*:INFO}`
+
+---
+
+## [init] — 2026-05-26 — 服務初始化
+
+Commit: `90b2774` — ALexChang1999
+
+### Added
+- `pom.xml` — Spring Boot 3.3.5 + Java 21，MySQL / Redis / Kafka 依賴
+- `MemberServiceApplication.java` — `@SpringBootApplication` 入口
+- `src/main/resources/application.yml` — DB / Redis / Kafka 連線設定，port `8081`
+- `mvnw` / `mvnw.cmd` — Maven Wrapper 3.9.6
+- `MemberServiceApplicationTests.java` — context load smoke test
