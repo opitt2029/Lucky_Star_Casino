@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [fix] - 2026-05-28 - Gateway CORS 支援 Vite 備用 Port
+
+### Fixed
+
+- `.env.example`
+  - 將 `CORS_ALLOWED_ORIGINS` 從只允許 `http://localhost:5173`，更新為同時允許 `http://localhost:5173,http://localhost:5174`。
+  - 修正前端因 Vite 預設 port 被佔用而改跑 `5174` 時，瀏覽器呼叫 Gateway `8080` 會被 CORS 擋下的問題。
+
+### Verified
+
+- 已重啟 Gateway，確認 `http://localhost:5173` 與 `http://localhost:5174` 的 CORS preflight 都能通過。
+- 已透過 Gateway 測試會員流程：`register -> login -> GET /api/v1/player/profile` 成功。
+- `frontend` 執行 `npm run build` 成功。
+
+---
+
 ## [feat] — 2026-05-28 — 前端會員系統 API 串接
 
 ### Added
