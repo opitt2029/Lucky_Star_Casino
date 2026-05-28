@@ -5,6 +5,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [docs] - 2026-05-28 - 新增本機前後端串接測試指南
+
+### Added
+
+- `docs/LOCAL_API_INTEGRATION_GUIDE.md`
+  - 新增一份給同學與 AI 都能快速理解的本機串接指南。
+  - 說明本機架構：Frontend 透過 Gateway `http://localhost:8080` 呼叫後端，不直接打 `member-service:8081`。
+  - 補上完整啟動順序：Docker 基礎服務、Member Service、Gateway Service、Frontend。
+  - 補上會員 API 測試流程：`register -> login -> GET /api/v1/player/profile`。
+  - 補上 PowerShell 測試指令，方便不用開前端也能確認 Gateway 與會員 API 是否正常。
+  - 補上常見問題排查：CORS、401 Unauthorized、資料庫 schema validation、Vite port `5173/5174`。
+  - 加入「給 AI 的快速上下文」段落，讓同學之後把這段貼給其他電腦上的 AI，也能快速知道怎麼協助串接與 debug。
+
+### Modified
+
+- `.env.example`
+  - 補上 `INTERNAL_SECRET`，並保留 `INTERNAL_SERVICE_SECRET`。
+  - 原因是目前不同 service 讀取的環境變數名稱不完全一致：`member-service` 讀 `INTERNAL_SECRET`，部分服務仍使用 `INTERNAL_SERVICE_SECRET`。
+  - 本機開發先讓兩個 secret 都存在且值一致，避免同學啟動不同 service 時遇到缺少環境變數的錯誤。
+
+### Why
+
+- 這份文件的目的不是取代 README，而是提供「本機前後端串接」的最短路徑。
+- 對新同學來說，可以照步驟完成本機環境設定與會員系統測試。
+- 對 AI 來說，可以快速取得專案 port、API 入口、重要檔案與常見錯誤背景，減少每次 debug 都要重新探索專案結構的時間。
+
+---
+
 ## [fix] - 2026-05-28 - Gateway CORS 支援 Vite 備用 Port
 
 ### Fixed
