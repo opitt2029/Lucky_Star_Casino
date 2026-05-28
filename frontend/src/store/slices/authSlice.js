@@ -1,51 +1,51 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
-import { mockApi, readStoredSession } from '../../services/mockApi'
+import { memberApi, extractError } from '../../services/memberApi'
 
-const storedSession = readStoredSession()
 const initialState = {
-  accessToken: storedSession?.accessToken || localStorage.getItem('accessToken') || null,
-  refreshToken: storedSession?.refreshToken || localStorage.getItem('refreshToken') || null,
-  expiresIn: storedSession?.expiresIn || null,
-  player: storedSession?.player || null,
-  isAuthenticated: Boolean(storedSession?.accessToken || localStorage.getItem('accessToken')),
+  // 頁面重整時從 localStorage 還原 token，但 player 需等 fetchProfile 取回
+  accessToken: localStorage.getItem('accessToken') || null,
+  refreshToken: localStorage.getItem('refreshToken') || null,
+  expiresIn: null,
+  player: null,
+  isAuthenticated: Boolean(localStorage.getItem('accessToken')),
   loading: false,
   error: null,
 }
 
 export const loginMember = createAsyncThunk('auth/loginMember', async (payload, { rejectWithValue }) => {
   try {
-    return await mockApi.login(payload)
+    return await memberApi.login(payload)
   } catch (error) {
-    return rejectWithValue(error.message)
+    return rejectWithValue(extractError(error))
   }
 })
 
 export const registerMember = createAsyncThunk('auth/registerMember', async (payload, { rejectWithValue }) => {
   try {
-    return await mockApi.register(payload)
+    return await memberApi.register(payload)
   } catch (error) {
-    return rejectWithValue(error.message)
+    return rejectWithValue(extractError(error))
   }
 })
 
 export const fetchProfile = createAsyncThunk('auth/fetchProfile', async (_, { rejectWithValue }) => {
   try {
-    return await mockApi.getProfile()
+    return await memberApi.getProfile()
   } catch (error) {
-    return rejectWithValue(error.message)
+    return rejectWithValue(extractError(error))
   }
 })
 
 export const updateProfile = createAsyncThunk('auth/updateProfile', async (payload, { rejectWithValue }) => {
   try {
-    return await mockApi.updateProfile(payload)
+    return await memberApi.updateProfile(payload)
   } catch (error) {
-    return rejectWithValue(error.message)
+    return rejectWithValue(extractError(error))
   }
 })
 
 export const logoutMember = createAsyncThunk('auth/logoutMember', async () => {
-  await mockApi.logout()
+  await memberApi.logout()
 })
 
 function applySession(state, session) {
@@ -56,6 +56,8 @@ function applySession(state, session) {
   state.isAuthenticated = true
   state.loading = false
   state.error = null
+  localStorage.setItem('accessToken', session.accessToken)
+  if (session.refreshToken) localStorage.setItem('refreshToken', session.refreshToken)
 }
 
 const authSlice = createSlice({

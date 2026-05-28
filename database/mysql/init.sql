@@ -36,8 +36,9 @@ CREATE TABLE IF NOT EXISTS members (
     password_hash VARCHAR(255)  NOT NULL COMMENT 'BCrypt 雜湊密碼',
     nickname      VARCHAR(50)   NOT NULL COMMENT '顯示暱稱',
     avatar        TEXT          NULL     COMMENT '頭像：URL 或 Base64 data URI',
-    role          ENUM('PLAYER','ADMIN')    NOT NULL DEFAULT 'PLAYER',
-    status        ENUM('ACTIVE','DISABLED') NOT NULL DEFAULT 'ACTIVE',
+    role          VARCHAR(20) NOT NULL DEFAULT 'PLAYER',
+    status        VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    is_new_gift_claimed TINYINT(1) NOT NULL DEFAULT 0 COMMENT '新手贈幣是否已領取',
     created_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP
                                          ON UPDATE CURRENT_TIMESTAMP,
@@ -137,6 +138,22 @@ CREATE TABLE IF NOT EXISTS gift_logs (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE INDEX idx_gift_logs_sender_id   ON gift_logs (sender_id);
+
+-- -------------------------------------------------------
+-- outbox_events：Transactional Outbox Pattern 暫存表
+-- 由 OutboxPoller 輪詢後推送至 Kafka，確保事件不遺失
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS outbox_events (
+    id          BIGINT       NOT NULL AUTO_INCREMENT,
+    topic       VARCHAR(100) NOT NULL,
+    kafka_key   VARCHAR(100),
+    payload     TEXT         NOT NULL,
+    status      VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
+    retry_count INT          NOT NULL DEFAULT 0,
+    created_at  DATETIME     NOT NULL,
+    sent_at     DATETIME,
+    CONSTRAINT pk_outbox_events PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE INDEX idx_gift_logs_receiver_id ON gift_logs (receiver_id);
 CREATE INDEX idx_gift_logs_created_at  ON gift_logs (created_at);
 

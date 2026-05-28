@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
+import { fetchProfile } from './store/slices/authSlice'
 
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -16,6 +18,16 @@ function PrivateRoute({ children }) {
 }
 
 export default function App() {
+  const dispatch = useDispatch()
+  const { isAuthenticated, player } = useSelector((state) => state.auth)
+
+  // 頁面重整後 token 還在，但 player 是 null，自動重新抓一次 profile
+  useEffect(() => {
+    if (isAuthenticated && !player) {
+      dispatch(fetchProfile())
+    }
+  }, [dispatch, isAuthenticated, player])
+
   return (
     <BrowserRouter>
       <Routes>

@@ -35,10 +35,10 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                 .anyRequest().authenticated()
             )
-            // InternalSecretFilter 先跑，攔截 /internal/** 並驗證 X-Internal-Secret
-            .addFilterBefore(internalSecretFilter, JwtAuthenticationFilter.class)
-            // JwtAuthenticationFilter 解析 Bearer token，驗證後寫入 SecurityContext
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+            // 兩個 filter 都跑在 UsernamePasswordAuthenticationFilter 之前
+            // internalSecretFilter 只處理 /internal/**，jwtFilter 只處理有 Bearer token 的請求
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(internalSecretFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
