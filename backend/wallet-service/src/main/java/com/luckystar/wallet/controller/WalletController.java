@@ -21,11 +21,11 @@ public class WalletController {
 
     @GetMapping("/balance")
     public ResponseEntity<ApiResponse<WalletBalanceResponse>> getBalance(
-            @RequestHeader(value = "X-Player-Id", required = false) String playerIdStr) {
+            @RequestHeader(value = "X-User-Id", required = false) String playerIdStr) {
 
         if (playerIdStr == null || playerIdStr.isBlank()) {
             return ResponseEntity.badRequest()
-                    .body(ApiResponse.error("Missing X-Player-Id header"));
+                    .body(ApiResponse.error("Missing X-User-Id header"));
         }
 
         Long playerId;
@@ -33,7 +33,7 @@ public class WalletController {
             playerId = Long.parseLong(playerIdStr);
         } catch (NumberFormatException e) {
             return ResponseEntity.badRequest()
-                    .body(ApiResponse.error("Invalid X-Player-Id header"));
+                    .body(ApiResponse.error("Invalid X-User-Id header"));
         }
 
         WalletBalanceResponse response = walletService.getBalance(playerId);
