@@ -44,7 +44,7 @@ class WalletControllerTest {
         when(walletService.getBalance(42L)).thenReturn(resp);
 
         mockMvc.perform(get("/api/v1/wallet/balance")
-                        .header("X-Player-Id", "42"))
+                        .header("X-User-Id", "42"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.balance").value(1000))
@@ -63,7 +63,7 @@ class WalletControllerTest {
     @Test
     void getBalance_nonNumericHeader_returns400() throws Exception {
         mockMvc.perform(get("/api/v1/wallet/balance")
-                        .header("X-Player-Id", "abc"))
+                        .header("X-User-Id", "abc"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("Invalid")));
@@ -75,7 +75,7 @@ class WalletControllerTest {
                 .thenThrow(new WalletNotFoundException("Wallet not found for player: 42"));
 
         mockMvc.perform(get("/api/v1/wallet/balance")
-                        .header("X-Player-Id", "42"))
+                        .header("X-User-Id", "42"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("not found")));
