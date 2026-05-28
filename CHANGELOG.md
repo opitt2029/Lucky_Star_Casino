@@ -5,6 +5,57 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-05-28 — 前端會員系統 API 串接
+
+### Added
+
+- `frontend/src/services/memberApi.js`（新增）
+  - 封裝對後端真實 API 的呼叫，取代原本的 `mockApi`
+  - `login()` — 呼叫 `POST /api/v1/auth/login` 取得 token 後，再呼叫 `GET /api/v1/player/profile` 補回玩家資料，組合成前端所需格式
+  - `register()` — 呼叫 `POST /api/v1/auth/register`，成功後自動執行登入流程取得 token
+  - `logout()` — 呼叫 `POST /api/v1/auth/logout`，並清除 localStorage 中的 token
+  - `getProfile()` — 呼叫 `GET /api/v1/player/profile`
+  - `updateProfile()` — 呼叫 `PUT /api/v1/player/profile`，自動將前端的 `avatarUrl` 欄位對應後端的 `avatar`
+  - `mapProfile()` — 統一轉換後端回傳的 `playerId`/`avatar` 為前端慣用的 `id`/`avatarUrl`
+  - `extractError()` — 從 axios 錯誤物件中取出 `error.response.data.message`，使錯誤訊息顯示後端的說明而非泛用訊息
+
+### Modified
+
+- `frontend/src/store/slices/authSlice.js`
+  - 移除對 `mockApi` 與 `readStoredSession` 的依賴，改用 `memberApi`
+  - `initialState` 不再從 localStorage 還原 player 物件（需重新 fetch），token 仍從 localStorage 還原
+  - `loginMember`、`registerMember`、`fetchProfile`、`updateProfile`、`logoutMember` 的 thunk 均換用真實 API
+  - `applySession` 同步將 token 寫入 localStorage
+  - 所有 `rejectWithValue` 改用 `extractError()` 取得後端錯誤訊息
+
+- `frontend/src/App.jsx`
+  - 新增 `useEffect`：頁面重整後若 localStorage 有 token 但 Redux store 中 player 為 null，自動 dispatch `fetchProfile` 補回玩家資料
+
+---
+
+## [fix] — 2026-05-28 — 後端 Schema 與 Security 修復
+
+### Fixed
+
+- `database/mysql/init.sql`
+  - `members` 表新增 `is_new_gift_claimed TINYINT(1) NOT NULL DEFAULT 0` 欄位（與 `Member` entity 同步）
+  - `members` 表的 `role` 與 `status` 欄位型別從 `ENUM` 改為 `VARCHAR(20)`（對應 entity 的 `String` 型別，避免 Hibernate schema validation 失敗）
+  - 新增 `outbox_events` 資料表（Transactional Outbox Pattern，對應 `OutboxEvent` entity）
+
+- `backend/member-service/src/main/java/com/luckystar/member/config/SecurityConfig.java`
+  - 修正 `addFilterBefore(internalSecretFilter, JwtAuthenticationFilter.class)` 導致的啟動錯誤
+  - 原因：Spring Security 的 `addFilterBefore` 第二個參數須為 Spring Security 內建 filter，自訂 filter class 未在 order registry 登記
+  - 改為兩個 filter 皆以 `UsernamePasswordAuthenticationFilter.class` 為錨點
+
+### Modified
+
+- `.env`
+  - 補上開發環境必填變數：`JWT_SECRET`、`INTERNAL_SECRET`、`CORS_ALLOWED_ORIGINS`
+  - 補上服務間呼叫 URL：`MEMBER_SERVICE_URL`、`WALLET_SERVICE_URL` 等
+  - 補上 `ZOOKEEPER_PORT`、`KAFKA_BOOTSTRAP_SERVERS`
+
+---
+
 ## [chore] — 2026-05-27 — 基礎設施測試與 GitHub Actions CI
 
 ### Added
