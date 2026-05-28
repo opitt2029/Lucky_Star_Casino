@@ -5,6 +5,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [security] — 2026-05-28 — Gateway 身份 Header 防偽造與 /admin 權限強制（FIX-3 / FIX-4）
+
+### Fixed
+
+- `backend/gateway-service/src/main/java/com/luckystar/gateway/filter/JwtAuthenticationGlobalFilter.java`
+  - **FIX-3（IDOR 修補）**：原本 Gateway 不會移除用戶端傳入的 `X-User-Id` / `X-User-Role`，且用 `.header(...)` 是「附加」而非「覆蓋」，導致偽造的同名 header 會以重複值殘留、被下游 `getFirst()` 讀到。下游（如 wallet-service）完全信任此 header → 任何登入者可越權查他人錢包。
+    - 已驗證路徑：改用 `headers(Consumer)` **先 remove 再 set**，確保身份 header 只可能來自 Gateway 的 JWT 驗證結果。
+    - 白名單路徑（登入/註冊/健康檢查）：放行前也**剝除**這兩個 header，避免未驗證請求注入身份。
+  - **FIX-4（權限強制）**：原本 `/admin/**` 只需有效 JWT、未檢查角色。新增：路徑以 `/admin/` 開頭且 role 非 `ADMIN` 時回 **403**（`X-Auth-Error: admin role required`），採 default-deny（role 為 null/空一律拒絕）。檢查置於黑名單檢查之後，確保撤銷/無效 token 仍回 401 而非 403。
+
+### Added
+
+- `backend/gateway-service/src/test/java/com/luckystar/gateway/filter/JwtAuthenticationGlobalFilterTest.java`（新增）
+  - 12 個 filter 單元測試（先前 Gateway 僅有 `contextLoads`）：
+    - FIX-3：偽造 `X-User-Id`/`X-User-Role` 被 claim 覆蓋、白名單剝除、缺 token 401、無效 token 401、黑名單 401、Redis 故障 fail-closed 401、正常轉發。
+    - FIX-4：`/admin` + ADMIN 放行、`/admin` + 非 ADMIN 403、`/admin` 無 role claim 403、非 admin 路徑不受影響。
+
+### Verified
+
+- `mvn -Dtest=JwtAuthenticationGlobalFilterTest test` → `Tests run: 12, Failures: 0, Errors: 0`。
+
+### Note
+
+- FIX-4 的角色檢查仰賴 JWT 的 `role` claim 不可被偽造，而這正由 FIX-3 保證，故兩者一併提交。
+- `admin-service` 目前仍為空骨架；本次僅在 Gateway 層補上權限關卡，admin-service 實作其端點時仍應自行做縱深防禦（驗 `X-User-Role` 或內部 secret）。
+
+---
+
 ## [fix] — 2026-05-28 — Wallet Kafka 事件失敗不再靜默丟失（FIX-2）
 
 ### Fixed
