@@ -86,7 +86,10 @@ wallet-service、game-service、rank-service、admin-service **目前僅有 `App
 
 ### 已知獨立議題（不在本次審計範圍）
 
-- `member-service/src/test/.../AuthServiceLoginTest.java` 與 `RefreshTokenServiceTest.java` 引用不存在的 method（`setActive`、`getRefreshTokenExpiryMs`、`getMemberIdFromToken`），在本次修改前已編譯失敗，需另開 task 同步測試與 source schema
+- ~~`member-service/src/test/.../AuthServiceLoginTest.java` 與 `RefreshTokenServiceTest.java` 引用不存在的 method（`setActive`、`getRefreshTokenExpiryMs`、`getMemberIdFromToken`），在本次修改前已編譯失敗，需另開 task 同步測試與 source schema~~
+  - ✅ **已解決並驗證（2026-05-29）**：實際編譯與執行確認，這兩個測試已改為對齊現行 source（改用 `setStatus("ACTIVE")`、`JwtTokenProvider.getClaims/getRemainingTtlMs/getJti`、`TokenRedisService`），不再引用上述舊 method。
+  - 驗證指令：`mvn -pl backend/member-service test` → **Tests run: 69, Failures: 0, Errors: 0, Skipped: 0, BUILD SUCCESS**（全套件綠燈，含 14 個測試類）。
+  - 上述「編譯失敗」描述為更早期狀態，現已不成立。
 
 ---
 
@@ -329,3 +332,171 @@ PostgreSQL (admin read replica)
 Auth: JWT (access + refresh token) via gateway filter
 Internal calls: X-Internal-Secret header → InternalSecretFilter
 ```
+
+---
+
+## 附錄 A — 工作分配總表與實作進度
+
+> 來源：`docs/幸運星幣城_工作分配表.xlsx`（工作表「📋 工作總覽（依模組）」）
+> 進度盤點日期：2026-05-29
+> 盤點方式：逐一比對 `backend/*/src`、`frontend/src`、`database/`、`docker-compose.yml`、git log 與任務交付物
+> 狀態圖例：✅ 已完成　⚠️ 部分完成　❌ 未開始　❓ 待確認（無法由程式碼直接判定）
+
+### A.1 全域 / 基礎建設（S0-W1）
+
+| 任務 | 負責人 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
+|---|---|:--:|---|:--:|---|
+| T-000 | 組長A | P0 | GitHub Repo 與分支策略 | ✅ | README.md / CONTRIBUTING.md / .github/pull_request_template.md 皆存在 |
+| T-001 | 組長A | P0 | 架構圖與 ADR | ✅ | docs/architecture.md、docs/adr/ADR-001.md 存在 |
+| T-002 | 組員D | P0 | Docker Compose 環境 | ⚠️ | docker-compose.yml 存在且完整，但**使用 Zookeeper 而非規格要求的 KRaft 模式**（規格偏離，需確認決策） |
+| T-003 | 組員D | P0 | 各 Service Spring Boot 初始化 | ✅ | 6 個服務模組皆能獨立啟動（pom.xml 已掛模組） |
+| T-004 | 組員E | P0 | React 前端初始化 | ✅ | frontend/ 為 Vite + React，含 Redux/Router/Tailwind/Axios |
+| T-005 | 組長A | P0 | Kafka Topic 規劃 | ✅ | kafka/kafka-init.sh 存在 |
+| T-006 | 全員 | P0 | DB Schema 與 DDL | ✅ | database/mysql、database/postgres 的 init.sql + migration 皆存在 |
+
+### A.2 Member Service（組長A）
+
+| 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
+|---|:--:|---|:--:|---|
+| T-010 | P0 | 會員註冊 API | ✅ | AuthController `POST /register` |
+| T-011 | P0 | JWT 登入/登出 API | ✅ | AuthController `POST /login`、`/logout` |
+| T-012 | P0 | JWT Token 刷新 | ✅ | AuthController `POST /refresh` |
+| T-013 | P0 | Spring Security 過濾器鏈 | ✅ | SecurityConfig.java + JwtFilterConfig.java |
+| T-014 | P0 | 玩家個人資料 CRUD | ✅ | PlayerController `GET/PUT /profile` |
+| T-015 | P1 | 好友系統 API | ✅ | FriendshipController（request/accept/reject/list/delete） |
+| T-016 | P1 | 任務系統資料結構 | ✅ | TaskDefinition / PlayerTask / TaskType entity |
+| T-017 | P1 | 每日簽到 API | ✅ | CheckinController `POST /daily-checkin` 發 `wallet.credit.request` 指令，wallet `WalletCreditRequestListener` 消費後入帳（ADR-002）；簽到入帳鏈路 2026-05-29 接通 |
+| T-018 | P1 | 新手禮包自動發放 | ✅ | MemberRegisteredConsumer 已實作 |
+
+### A.3 Wallet Service（組員C）
+
+| 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
+|---|:--:|---|:--:|---|
+| T-020 | P0 | Wallet 初始化（開戶） | ✅ | MemberEventListener 消費 member.registered |
+| T-021 | P0 | 查詢星幣餘額 API | ✅ | WalletController `GET /balance` |
+| T-022 | P0 | 下注扣款 API | ✅ | InternalWalletController `POST /internal/wallet/debit`（含樂觀鎖） |
+| T-023 | P0 | 派彩入帳 API | ✅ | `POST /internal/wallet/credit` 已實作（冪等/樂觀鎖/解凍/發 wallet.credit），2026-05-29 完成並通過單元測試 |
+| T-024 | P0 | 冪等性防重複 | ✅ | debit 與 credit 皆具 idempotencyKey + DB UNIQUE 防重 |
+| T-025 | P0 | 帳務流水查詢 API | ❌ | 無 `GET /api/v1/wallet/transactions` |
+| T-026 | P1 | 好友星幣贈送 API | ❌ | 無 `/gift` 端點 |
+| T-027 | P1 | 破產補助 API | ❌ | 無 `/bankruptcy-aid` 端點 |
+| T-028 | P2 | Kafka DLT 處理 | ⚠️ | DLT topic 已於 kafka-init 建立、有 fix/wallet-kafka-dlt 修復，但 Admin 查詢/重試 API 未做 |
+
+### A.4 RNG Game Service（組員B）
+
+| 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
+|---|:--:|---|:--:|---|
+| T-030 | P0 | Provably Fair RNG 引擎 | ❌ | game-service 僅有 Application.java |
+| T-031 | P0 | 老虎機遊戲邏輯 | ❌ | 同上 |
+| T-032 | P0 | 老虎機遊戲 API | ❌ | 同上 |
+| T-033 | P0 | Redis 遊戲 Session 管理 | ❌ | 同上 |
+| T-034 | P1 | 百家樂遊戲邏輯 | ❌ | 同上 |
+| T-035 | P1 | 百家樂遊戲 API | ❌ | 同上 |
+| T-036 | P1 | RNG 公平性驗證 API | ❌ | 同上 |
+| T-037 | P2 | 遊戲 RTP 統計 | ❌ | 同上 |
+
+> ⚠️ **game-service 完全未開始實作**，僅有 Spring Boot 啟動類。此為賭場核心產品功能，目前缺口最大。
+
+### A.5 Rank Service（組員D）
+
+| 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
+|---|:--:|---|:--:|---|
+| T-040 | P0 | Redis ZSet 全服排行榜 | ❌ | rank-service 僅有 Application.java |
+| T-041 | P0 | 好友排行榜 | ❌ | 同上 |
+| T-042 | P0 | 排行榜查詢 API | ❌ | 同上 |
+| T-043 | P1 | 每週排行榜重置排程 | ❌ | 同上 |
+| T-044 | P1 | 每日持幣快照任務 | ❌ | 同上 |
+| T-045 | P2 | 今日贏幣王排行榜 | ❌ | 同上 |
+
+### A.6 Admin Service（組員D）
+
+| 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
+|---|:--:|---|:--:|---|
+| T-050 | P1 | Admin JWT 認證（角色區分） | ❌ | admin-service 僅有 DataSourceConfig / PostgresJpaConfig 骨架 |
+| T-051 | P1 | 玩家帳號管理 API | ❌ | 同上 |
+| T-052 | P1 | 星幣流通量報表 API | ❌ | 同上 |
+| T-053 | P1 | 遊戲 RTP 監控儀表板 API | ❌ | 同上 |
+| T-054 | P2 | 異常玩家偵測機制 | ❌ | 同上 |
+| T-055 | P2 | 手動發放星幣 API（GM 工具） | ❌ | 同上 |
+
+### A.7 Gateway（組長A）
+
+| 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
+|---|:--:|---|:--:|---|
+| T-060 | P0 | Spring Cloud Gateway 路由 | ✅ | application.yml 7 條路由 + CORS |
+| T-061 | P0 | Gateway JWT 驗證過濾器 | ✅ | JwtAuthenticationGlobalFilter.java |
+| T-062 | P0 | 每玩家速率限制 | ✅ | PlayerRateLimitGlobalFilter + RateLimitConfig（已有測試） |
+| T-063 | P1 | Circuit Breaker 熔斷 | ✅ | FallbackController + resilience4j 設定 |
+
+### A.8 Notification Service（組員D）
+
+| 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
+|---|:--:|---|:--:|---|
+| T-070 | P1 | WebSocket STOMP Server | ❌ | **backend 無 notification-service 模組**（pom.xml 未掛載） |
+| T-071 | P1 | Kafka → WebSocket 推播橋接 | ❌ | 服務不存在 |
+| T-072 | P1 | 遊戲結果推播 | ❌ | 服務不存在 |
+| T-073 | P2 | 排行榜變動廣播 | ❌ | 服務不存在 |
+
+> ⚠️ 前端已備妥 `useWebSocket.js` / `RealtimeBridge.jsx`，但**後端 notification-service 整個服務尚未建立**，即時推播無法運作。
+
+### A.9 前端（組員E）
+
+| 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
+|---|:--:|---|:--:|---|
+| T-080 | P0 | 登入/註冊頁面 | ✅ | Login.jsx / Register.jsx + authSlice |
+| T-081 | P0 | Redux Toolkit 全域狀態 | ✅ | auth/wallet/game/rank slice + store/index.js |
+| T-082 | P0 | 遊戲大廳頁面 | ✅ | Lobby.jsx |
+| T-083 | P0 | 老虎機遊戲頁面 | ⚠️ | SlotGame.jsx 存在，但後端 T-032 未做 → 僅能對 mockApi 運作 |
+| T-084 | P0 | WebSocket 連線管理 | ⚠️ | useWebSocket.js 存在，但後端 notification 不存在 → 無對象可連 |
+| T-085 | P1 | 排行榜頁面 | ⚠️ | Rank.jsx 存在，後端 rank-service 未做 |
+| T-086 | P1 | 帳務明細頁面 | ⚠️ | Transactions.jsx 存在，後端 T-025 未做 |
+| T-087 | P1 | 百家樂遊戲頁面 | ⚠️ | Baccarat.jsx / BaccaratTable.jsx 存在，後端 T-035 未做 |
+| T-088 | P1 | 個人資料/好友管理頁面 | ⚠️ | Profile.jsx 存在；**未見獨立 Friends.jsx**（好友管理 UI 待確認，有 Member.jsx） |
+| T-089 | P2 | RWD 響應式優化 | ❓ | 無法由檔案結構直接判定，需實機檢視三斷點 |
+
+> 說明：前端頁面骨架大致齊全，但**多數頁面依賴尚未實作的後端 API**（遊戲、百家樂、帳務流水、排行榜、推播），目前推測主要對 `mockApi.js` 運作，尚未完成真實串接。
+
+### A.10 測試 / DevOps / 收尾（組員D + 組長A）
+
+| 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
+|---|:--:|---|:--:|---|
+| T-090 | P0 | JMeter 高併發壓測腳本 | ❌ | 未見 .jmx 腳本 |
+| T-091 | P0 | 帳務一致性對帳腳本 | ❌ | 未見對帳 SQL |
+| T-092 | P1 | Swagger UI API 文件 | ❌ | 各服務 pom.xml 無 springdoc-openapi 依賴 |
+| T-093 | P0 | End-to-End 整合測試 | ❌ | 多數後端服務未實作，無法執行完整流程 |
+| T-094 | P0 | README 與部署文件 | ✅ | README.md + DEPLOY.md 皆存在（DEPLOY.md 於 2026-05-29 補上本機部署 SOP） |
+| T-095 | P0 | ADR 整理（ADR-001~005） | ⚠️ | ADR-001（DB 分配）、ADR-002（wallet.credit 事件契約）已產出；ADR-003~005 未產出 |
+| T-096 | P0 | 結業簡報 | ❌ | 未見簡報 / Demo 影片 |
+
+### A.11 鑽石點數卡系統（T-100~T-107，後續新增需求）
+
+| 任務 | 負責人 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
+|---|---|:--:|---|:--:|---|
+| T-100 | 組員D | P0 | 鑽石相關資料表 | ❌ | database 內無 diamond_cards / diamond_wallets |
+| T-101 | 組員C | P0 | 鑽石錢包初始化 | ❌ | 無實作 |
+| T-102 | 組員C | P0 | 點數卡序號兌換鑽石 API | ❌ | 無實作 |
+| T-103 | 組員C | P0 | 鑽石兌換星幣 API | ❌ | 無實作 |
+| T-104 | 組員C | P0 | 查詢鑽石餘額 API | ❌ | 無實作 |
+| T-105 | 組員D | P1 | 批量生成點數卡序號 API | ❌ | 無實作 |
+| T-106 | 組員D | P1 | 查詢點數卡列表 API | ❌ | 無實作 |
+| T-107 | 組員E | P1 | 鑽石錢包頁面（前端） | ❌ | 無 Diamond.jsx / diamondSlice.js |
+
+> ⚠️ **鑽石系統 T-100~T-107 全數未實作**（全程式碼庫 grep `diamond` 無任何結果），但該需求已寫入任務表（git 有 `docs/diamond-system-tasks` 提交）。屬於「已規劃、零產出」的範圍膨脹風險。
+
+### A.12 進度統計
+
+| 狀態 | 任務數 | 占比 |
+|---|:--:|:--:|
+| ✅ 已完成 | 24 | ~31% |
+| ⚠️ 部分完成 | 11 | ~14% |
+| ❌ 未開始 | 42 | ~54% |
+| ❓ 待確認 | 1 | ~1% |
+| **總計** | **78** | 100% |
+
+**按模組完成度概覽：**
+
+- ✅ **完成度高**：全域基礎建設、Member Service、Gateway（地基與大門已蓋好）
+- ⚠️ **進行中**：Wallet Service（開戶/查餘額/扣款 OK，但入帳/流水/贈送/補助未完）、前端（UI 多已備但真實串接待補）
+- ❌ **尚未起步**：Game Service、Rank Service、Admin Service、Notification Service、鑽石系統、測試/壓測/收尾文件
+
+> **結論**：目前完成的部分集中在「認證與帳號」這條主線；**賭場真正的營利核心（遊戲對局、派彩入帳、排行榜、後台、即時推播）幾乎都還沒開始**。後端有 4 個服務（game/rank/admin/notification）等同空白。

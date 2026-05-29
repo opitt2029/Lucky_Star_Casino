@@ -144,11 +144,14 @@ npm run dev
 | Topic | 發布者 | 消費者 |
 |-------|--------|--------|
 | `member.registered` | Member Service | Wallet Service（開戶）、Member Service（新手禮） |
-| `wallet.debit` | Wallet Service | Rank Service |
-| `wallet.credit` | Wallet Service | Rank Service |
+| `wallet.debit` | Wallet Service（事件：已扣款） | Rank Service |
+| `wallet.credit.request` | Member Service（指令：請入帳，簽到/新手禮） | Wallet Service |
+| `wallet.credit` | Wallet Service（事件：已入帳） | Rank Service |
 | `game.result` | Game Service | Notification Service |
 | `rank.update` | Rank Service | Notification Service |
 | `notification.push` | 多個 Service | Notification Service |
+
+> 指令（request）與事件（已發生）刻意分離，詳見 [ADR-002](docs/adr/ADR-002.md)。
 
 ---
 

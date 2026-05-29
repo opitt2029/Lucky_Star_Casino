@@ -5,6 +5,130 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-05-29 — ADR-002 wallet.credit 指令/事件分離，串通簽到入帳（T-017/T-018）
+
+### Decision
+
+- `docs/adr/ADR-002.md`（新增）：拍板 `wallet.credit` 事件契約，**分離「入帳指令」與「入帳事件」**：
+  - `wallet.credit.request`（指令）：member 等發出「請入帳」，wallet 消費後真正加餘額。
+  - `wallet.credit`（事件）：wallet 入帳後發出「已入帳」，供 rank/notification 消費。
+  - wallet-service **永不消費** `wallet.credit`（避免自我迴圈）。
+
+### Added
+
+- `backend/wallet-service/.../kafka/WalletCreditRequestEvent.java`、`WalletCreditRequestListener.java`（新增）
+  - 消費 `wallet.credit.request` → 組 `CreditRequest` → 呼叫既有 `WalletService.credit()`（重用 T-023）→ 成功才 ack。手動 ack、失敗進 DLT。
+- `backend/wallet-service/.../kafka/WalletCreditRequestListenerTest.java`（新增）：3 個單元測試（正常入帳 / 格式錯誤不 ack / credit 失敗不 ack）。
+
+### Changed
+
+- `kafka/kafka-init.sh`：新增 topic `wallet.credit.request` 與 `wallet.credit.request.DLT`，並補上指令/事件語意註解。
+- `backend/member-service/.../service/CheckinService.java`、`NewGiftService.java`：outbox 發布 topic 由 `wallet.credit` 改為 `wallet.credit.request`（payload 不變）。
+- 對應更新 `CheckinServiceTest`、`NewGiftServiceTest` 的 topic 斷言。
+- `backend/wallet-service/.../kafka/WalletCreditEvent.java`：更新架構備註對齊 ADR-002。
+
+### Result
+
+- ✅ **T-017 簽到入帳 / T-018 新手禮入帳鏈路接通**：member 發指令 → wallet 消費入帳 → 發事件。先前因「無 consumer」而斷裂的問題解除。
+
+### Verified
+
+- `mvn -pl backend/member-service,backend/wallet-service test` → **member 69 + wallet 32 全綠，BUILD SUCCESS**（含新 consumer 測試與 wallet contextLoads 載入該 bean）。
+
+### Note
+
+- ⚠️ 本次在 wallet-service 的實作與 Wei Yu 上傳的 T-023 可能重疊，**需與 Wei Yu 協調合併**（擇一為準或將 consumer 疊加到其分支）。
+- rank-service（T-040）實作時請消費 `wallet.credit`/`wallet.debit`（事件），勿消費 `wallet.credit.request`（指令）。
+
+---
+
+## [feat] — 2026-05-29 — Wallet 派彩入帳 API（T-023）+ 啟動修復 + 後端 CI 擋關
+
+### Added
+
+- `backend/wallet-service/.../dto/CreditRequest.java`、`CreditResponse.java`（新增）
+  - 入帳請求 / 回應 DTO，與 debit 對稱。`CreditRequest` 含 `subType`（限 WIN/CHECKIN/TASK/GIFT/GM_REWARD/BANKRUPTCY_AID）、`idempotencyKey`、選填 `unfreezeAmount`（解凍）。
+- `backend/wallet-service/.../kafka/WalletCreditEvent.java`（新增）
+  - 入帳完成事件（發布到 `wallet.credit`），含架構備註：禁止在 wallet-service 內新增 `wallet.credit` consumer，否則與本事件形成無限迴圈（詳見 `docs/_TMP_wallet-credit-架構決策筆記.md`）。
+- `backend/wallet-service/.../service/WalletService#credit()`（新增方法）
+  - 冪等檢查 → 載入錢包 → 加餘額 +（選填）解凍 → 樂觀鎖存檔 → 寫 `wallet_transactions`（type=CREDIT）→ 發 `wallet.credit` 事件。結構對稱於 `debit()`，含並發 UNIQUE 衝突回查與樂觀鎖 409 處理。
+- `backend/wallet-service/.../controller/InternalWalletController`：新增 `POST /internal/wallet/credit`。
+- `backend/wallet-service/.../service/WalletServiceCreditTest.java`（新增）：7 個單元測試（含解凍、解凍守衛、冪等、並發、樂觀鎖、查無錢包）。
+
+### Fixed
+
+- `backend/wallet-service/.../config/KafkaConsumerConfig.java`
+  - **修復 wallet-service 無法啟動的 bug**：移除重複的 `kafkaErrorHandler` @Bean（Spring Boot 3.2+ 同名 @Bean 會丟 `BeanDefinitionParsingException` 導致 context 無法載入）。等同套用未合併分支 `fix/wallet-service-t020-t021-review` 的 `2b074dd`。
+  - 驗證：`WalletServiceApplicationTests.contextLoads` 由「啟動失敗」轉為通過。
+
+### Changed
+
+- `backend/wallet-service/pom.xml`：新增 H2（test scope）與 surefire `jpa.ddl-auto=create`，讓 `@SpringBootTest` 用記憶體資料庫啟動（比照 member-service）。
+- `backend/wallet-service/src/test/resources/application.yml`：雙資料源改指向 H2（PostgreSQL / MySQL 相容模式），使 contextLoads 不需外部 DB。
+- `.github/workflows/ci.yml`：**新增 `backend-test` job**，PR 到 main/develop 時對 gateway/member/wallet 跑 `mvn clean test`（用 H2，無需外部基礎設施）。這正是先前漏掉、導致 wallet 啟動 bug 溜進 develop 的擋關規則。
+
+### Verified
+
+- `mvn -pl backend/gateway-service,backend/member-service,backend/wallet-service test` → 三服務皆 **BUILD SUCCESS**（member 69、wallet 29 含 contextLoads、gateway 通過）。
+
+### Note
+
+- ⚠️ **T-017 簽到入帳仍未串通**：member 發 `wallet.credit` 作為「請入帳」指令，但 wallet 端尚未消費（避免與本次新增的事件發布形成迴圈）。需先拍板 `wallet.credit` topic 語意（見決策筆記）才能補上 consumer。本次 T-023 僅交付 HTTP 入帳端點，未處理該架構決策。
+- ⚠️ 需在 GitHub 設定 **branch protection**，將 `backend-test` 設為必過檢查，CI 才真正能「擋」住合併（workflow 本身只負責執行）。
+
+---
+
+## [progress] — 2026-05-29 — 全專案進度盤點與未完成事項標記
+
+> 依據 `docs/幸運星幣城_工作分配表.xlsx`（T-000~T-107，共 78 項）逐一比對實際程式碼。
+> 完整逐項狀態與盤點依據見 `AUDIT_REPORT.md` 附錄 A。
+> 統計：✅ 已完成 24 項（~31%）、⚠️ 部分完成 11 項（~14%）、❌ 未開始 42 項（~54%）、❓ 待確認 1 項。
+
+### Done（已完成主線）
+
+- **全域基礎建設**：T-000 Repo/分支、T-001 架構/ADR-001、T-003 服務初始化、T-004 前端初始化、T-005 Kafka Topic、T-006 DB Schema。
+- **Member Service**：T-010 註冊、T-011 登入/登出、T-012 Token 刷新、T-013 Security、T-014 個人資料、T-015 好友、T-016 任務結構、T-018 新手禮包。
+- **Gateway**：T-060 路由、T-061 JWT 過濾器、T-062 速率限制、T-063 熔斷。
+- **前端骨架**：T-080 登入/註冊、T-081 Redux、T-082 大廳。
+
+### TODO — 未完成事項（依優先級）
+
+#### 🔴 P0 — 核心功能缺口（阻擋產品成形）
+
+- [x] **T-023 派彩入帳 API（wallet credit）**（2026-05-29 完成）— `POST /internal/wallet/credit` 已實作（冪等/樂觀鎖/解凍/發 wallet.credit）。⚠️ 但 **T-017 簽到入帳仍未串通**：wallet 尚未消費 member 發的 wallet.credit 指令（待 topic 語意拍板，見 `docs/_TMP_wallet-credit-架構決策筆記.md`）。
+- [ ] **T-030~T-033 老虎機核心**（組員B）— RNG 引擎、遊戲邏輯、Spin API、Redis Session：game-service 僅有啟動類，**整個服務未開始**。
+- [ ] **T-040~T-042 排行榜核心**（組員D）— ZSet 全服榜、好友榜、查詢 API：rank-service 僅有啟動類。
+- [ ] **T-025 帳務流水查詢 API**（組員C）。
+- [ ] **T-090 JMeter 壓測腳本、T-091 帳務一致性對帳腳本、T-093 E2E 整合測試**（組員D / 全員）。
+- [ ] **T-100~T-104 鑽石系統 P0**（資料表 / 開戶 / 序號兌換 / 鑽石換星幣 / 查餘額）— 全數未實作。
+
+#### 🟠 P1 — 重要功能
+
+- [ ] **T-026 好友星幣贈送、T-027 破產補助**（組員C）。
+- [ ] **T-034~T-036 百家樂邏輯/API、RNG 公平性驗證**（組員B）。
+- [ ] **T-043 每週排行榜重置、T-044 每日持幣快照**（組員D）。
+- [ ] **T-050~T-053 Admin 後台**（JWT 角色、玩家管理、流通量報表、RTP 儀表板）— admin-service 僅有 datasource 骨架。
+- [ ] **T-070~T-073 Notification Service**（組員D）— **backend 無 notification-service 模組**，WebSocket 推播整段缺失。
+- [ ] **T-085~T-088 前端**（排行榜/帳務/百家樂/個人資料）UI 存在但**多依賴未實作後端 API**，真實串接未完成。
+- [ ] **T-092 Swagger UI**（各服務無 springdoc 依賴）。
+- [ ] **T-105~T-107 鑽石系統 P1**（後台序號生成/查詢、前端鑽石頁面）。
+
+#### ⚪ P2 / 收尾
+
+- [ ] **T-028 Wallet DLT Admin 查詢/重試 API**（DLT topic 已建，管理端未做）。
+- [ ] **T-037 遊戲 RTP 統計、T-045 今日贏幣王榜、T-054 異常玩家偵測、T-055 GM 發幣工具**。
+- [ ] **T-089 RWD 響應式優化**（待實機驗證三斷點）。
+- [x] **T-094 DEPLOY.md**（2026-05-29 完成本機部署 SOP）。剩 **T-095 ADR-002~005、T-096 結業簡報/Demo 影片**。
+
+### 已知偏離 / 風險標記
+
+- ⚠️ **T-002 偏離規格**：docker-compose 使用 **Zookeeper** 模式，規格表要求 **KRaft（無 Zookeeper）**，需確認是否為刻意決策。
+- ⚠️ **範圍膨脹**：鑽石系統 T-100~T-107 已寫入任務表（git 有 `docs/diamond-system-tasks`）但**零程式碼產出**。
+- ⚠️ **未完成的後端服務佔 4 個**：game / rank / admin / notification，等同賭場營利核心尚未起步。
+- ✅ 測試狀態（2026-05-29 驗證）：member-service 全套件 `mvn test` → **69 個測試全綠**；AUDIT 先前記載的「測試引用不存在方法、編譯失敗」已不成立（測試早已對齊 source）。
+
+---
+
 ## [feat] — 2026-05-29 — Gateway Circuit Breaker 熔斷降級（T-063）
 
 ### Added
