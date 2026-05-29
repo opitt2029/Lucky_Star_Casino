@@ -5,6 +5,48 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-05-29 — Kafka→MySQL 讀端同步（補 T-025 流水查詢資料來源）
+
+### Added
+- `backend/wallet-service/.../kafka/WalletReadSyncListener.java`（新增）：消費 `wallet.debit`/`wallet.credit` 事件，把每筆交易寫入 MySQL 讀庫 `wallet_transactions`（經 `WalletTransactionViewRepository`），讓 `GET /api/v1/wallet/transactions`（T-025）回傳真實流水。
+  - `onDebit`：寫入 `type=DEBIT`、`subType=BET`；`onCredit`：寫入 `type=CREDIT`、`subType=event.subType()`（WIN/CHECKIN/TASK/GIFT/GM_REWARD/BANKRUPTCY_AID）。
+  - 冪等：以讀庫主鍵 `existsById(transactionId)` 檢查，重送即略過寫入仍 ack（Kafka at-least-once 安全）。
+  - 每個 handler 個別標註 `@Transactional(transactionManager = "mysqlTransactionManager")`（不在類別層級，避免干擾 Kafka listener proxy）；成功 `save` 後才 `ack.acknowledge()`。
+- 測試（新增）：`kafka/WalletReadSyncListenerTest.java`（7 案，`@ExtendWith(MockitoExtension.class)`、真實 `ObjectMapper`）：debit/credit 正常同步、冪等跳過重送、JSON 格式錯誤往外拋不 ack、`DataAccessException` 往外拋不 ack。
+
+### Why
+- T-025 查詢 API 先前讀的是空的 MySQL 讀庫；需要事件驅動的同步管線把 PostgreSQL 寫端結果投影到讀端（ADR-001 CQRS、最終一致）。
+- ⚠️ ADR-002 地雷：本 listener **只消費事件 `wallet.debit`/`wallet.credit`，絕不消費指令 `wallet.credit.request`**——在 wallet-service 內消費指令會形成「再入帳→再發指令」的無限迴圈。
+- 錯誤處理沿用既有 `KafkaConsumerConfig`：`JsonProcessingException` 不可重試直送 `<topic>.DLT`；暫時性失敗往外拋、不 ack，重試 3 次耗盡後送 DLT。
+
+### How（如何驗證）
+- `mvn -pl backend/wallet-service test`（單元測試以 Mockito 驗證 save/ack 行為與冪等、不可重試/可重試例外路徑；listener 不需外部 Kafka）。
+
+---
+
+## [feat] — 2026-05-29 — 帳務流水查詢 API（T-025，CQRS MySQL 讀端）
+
+### Added
+- `backend/wallet-service/.../mysql/entity/WalletTransactionView.java`（新增）：MySQL 讀庫 `wallet_transactions` 唯讀視圖，由 `mysqlEntityManagerFactory` 管理（ADR-001 CQRS 讀端）。
+- `backend/wallet-service/.../mysql/repository/WalletTransactionViewRepository.java`（新增）：`search(...)` JPQL 查詢，支援 playerId + 可選類型 + 可選日期區間 + 分頁（null 即略過該條件）。
+- `backend/wallet-service/.../service/WalletQueryService.java`（新增）：讀端查詢服務，固定 `@Transactional(readOnly=true, transactionManager="mysqlTransactionManager")`，排序 createdAt DESC, id DESC。
+- `backend/wallet-service/.../dto/WalletTransactionResponse.java`、`common/PagedResponse.java`（新增）：對外回傳 DTO 與穩定分頁格式（不直接序列化 Spring `Page`）。
+- 測試（新增）：`controller/WalletTransactionsControllerTest.java`（10 案）、`service/WalletQueryServiceTest.java`（3 案）。
+
+### Changed
+- `backend/wallet-service/.../controller/WalletController.java`：新增 `GET /api/v1/wallet/transactions`，支援 `page/size`（size 上限 100）、`type`（DEBIT/CREDIT/BONUS，大小寫不敏感）、`from/to`（ISO yyyy-MM-dd，涵蓋整個 to 當日）；玩家身分取自 `X-User-Id` header；參數錯誤回 400。
+- `backend/wallet-service/.../config/DataSourceConfig.java`：MySQL EMF 的 `hibernate.hbm2ddl.auto` 由硬編 `validate` 改為與寫端共用組態來源（system property `jpa.ddl-auto` → env `JPA_DDL_AUTO` → 預設 `validate`），讓測試（surefire `jpa.ddl-auto=create`）能在 H2 自動建讀庫表；正式環境仍 `validate`。
+- `backend/wallet-service/.../exception/GlobalExceptionHandler.java`：新增 `MethodArgumentTypeMismatchException` → 400 處理（例如 `from/to` 日期格式錯誤、`page/size` 非數字）。
+
+### Why
+- T-025 要求帳務流水查詢走 MySQL 讀庫（ADR-001 CQRS 讀寫分離），與扣款/入帳（PostgreSQL 寫端）解耦，避免查詢與寫入鎖競爭。
+- 讀端視圖不含 `idempotency_key` 等冪等控制欄位，僅暴露查詢所需欄位；分頁採固定 schema 避免前端依賴 Spring `Page` 不穩定結構。
+
+### How（如何驗證）
+- `mvn -pl backend/wallet-service test` → **BUILD SUCCESS，Tests run: 51, Failures: 0, Errors: 0**（含本次新增 13 個單元測試，及 `contextLoads` 驗證新增 MySQL 實體後雙 EMF 仍正常啟動）。
+
+---
+
 ## [docs] — 2026-05-29 — AI 開發前必讀（AGENTS.md/CLAUDE.md）+ CHANGELOG 單一來源約定
 
 ### Added

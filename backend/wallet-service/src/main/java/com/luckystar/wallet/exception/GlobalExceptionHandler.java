@@ -8,6 +8,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @Slf4j
 @RestControllerAdvice
@@ -40,6 +41,16 @@ public class GlobalExceptionHandler {
                 .map(fe -> "Invalid request: " + fe.getField() + " " + fe.getDefaultMessage())
                 .orElse("Invalid request");
         return ApiResponse.error(message);
+    }
+
+    /**
+     * 查詢參數型別不符（例如 from/to 非 yyyy-MM-dd、page/size 非數字）→ 400。
+     * 例：T-025 的 GET /transactions 帶了格式錯誤的日期。
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiResponse<Void> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        return ApiResponse.error("Invalid value for parameter '" + ex.getName() + "'");
     }
 
     @ExceptionHandler(Exception.class)

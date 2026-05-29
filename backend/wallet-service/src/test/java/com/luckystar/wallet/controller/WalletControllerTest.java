@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.luckystar.wallet.dto.WalletBalanceResponse;
 import com.luckystar.wallet.exception.GlobalExceptionHandler;
 import com.luckystar.wallet.exception.WalletNotFoundException;
+import com.luckystar.wallet.service.WalletQueryService;
 import com.luckystar.wallet.service.WalletService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,9 @@ class WalletControllerTest {
 
     @Mock
     WalletService walletService;
+
+    @Mock
+    WalletQueryService walletQueryService;
 
     @InjectMocks
     WalletController walletController;
