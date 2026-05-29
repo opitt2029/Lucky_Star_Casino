@@ -21,18 +21,20 @@ const kafkaScript = readFileSync(resolve(ROOT, 'kafka/kafka-init.sh'), 'utf-8');
 
 // 一般業務 topics
 const EXPECTED_TOPICS = [
-  'member.registered', // 會員註冊完成事件
-  'wallet.debit',      // 錢包扣款事件
-  'wallet.credit',     // 錢包加款事件
-  'game.result',       // 遊戲結果事件
-  'rank.update',       // 排行榜更新事件
-  'notification.push', // 通知推送事件
+  'member.registered',     // 會員註冊完成事件
+  'wallet.debit',          // 錢包扣款事件（事件：已扣款）
+  'wallet.credit.request', // 入帳指令（請入帳，member 發；ADR-002）
+  'wallet.credit',         // 錢包加款事件（事件：已入帳）
+  'game.result',           // 遊戲結果事件
+  'rank.update',           // 排行榜更新事件
+  'notification.push',     // 通知推送事件
 ];
 
 // Dead Letter Topics（處理失敗後的備援 topic）
 const EXPECTED_DLT_TOPICS = [
-  'wallet.debit.DLT',  // 扣款失敗事件
-  'wallet.credit.DLT', // 加款失敗事件
+  'wallet.debit.DLT',          // 扣款失敗事件
+  'wallet.credit.DLT',         // 加款失敗事件
+  'wallet.credit.request.DLT', // 入帳指令失敗（ADR-002）
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
