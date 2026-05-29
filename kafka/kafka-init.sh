@@ -5,16 +5,21 @@ set -euo pipefail
 # =============================================================================
 # Kafka Topics for Lucky Star Casino
 # =============================================================================
-# member.registered  - Fired when a new member completes registration
-# wallet.debit       - Fired when a debit (spend/withdraw) is applied to a wallet
-# wallet.credit      - Fired when a credit (deposit/win) is applied to a wallet
-# game.result        - Fired when a game round concludes with an outcome
-# rank.update        - Fired when a player's leaderboard ranking changes
-# notification.push  - Fired to trigger a push notification to a user
+# member.registered      - Fired when a new member completes registration
+# wallet.debit           - EVENT: a debit (spend) HAS been applied to a wallet
+# wallet.credit.request  - COMMAND: please credit a wallet (published by member checkin / new-gift / etc.)
+# wallet.credit          - EVENT: a credit (deposit/win) HAS been applied to a wallet (published by wallet-service)
+# game.result            - Fired when a game round concludes with an outcome
+# rank.update            - Fired when a player's leaderboard ranking changes
+# notification.push      - Fired to trigger a push notification to a user
+#
+# ADR-002: wallet.credit.request 是「指令」(請入帳)，wallet.credit 是「事件」(已入帳)。
+#          兩者分離以避免「自己發、自己收」迴圈，並與 wallet.debit(事件) 語意對稱。
 #
 # Dead Letter Topics (DLT) — receive events that failed processing after retries
-# wallet.debit.DLT   - Failed debit events for manual inspection and reprocessing
-# wallet.credit.DLT  - Failed credit events for manual inspection and reprocessing
+# wallet.debit.DLT           - Failed debit events
+# wallet.credit.DLT          - Failed credit events
+# wallet.credit.request.DLT  - Failed credit-request commands (e.g. bad payload, wallet not found)
 # =============================================================================
 
 echo "Creating Kafka topics..."
@@ -22,6 +27,7 @@ echo "Creating Kafka topics..."
 topics=(
   "member.registered"
   "wallet.debit"
+  "wallet.credit.request"
   "wallet.credit"
   "game.result"
   "rank.update"
@@ -40,6 +46,7 @@ done
 dlt_topics=(
   "wallet.debit.DLT"
   "wallet.credit.DLT"
+  "wallet.credit.request.DLT"
 )
 
 for topic in "${dlt_topics[@]}"; do

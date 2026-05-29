@@ -66,7 +66,7 @@ class CheckinServiceTest {
         assertThat(result.consecutiveDays()).isEqualTo(1);
         assertThat(result.rewardAmount()).isEqualTo(50L);
         verify(dailyCheckinRepository, times(1)).save(any(DailyCheckin.class));
-        verify(outboxService, times(1)).save(eq("wallet.credit"), eq(String.valueOf(PLAYER_ID)), any());
+        verify(outboxService, times(1)).save(eq("wallet.credit.request"), eq(String.valueOf(PLAYER_ID)), any());
     }
 
     // ── Test 3 ───────────────────────────────────────────────────────────
@@ -142,7 +142,7 @@ class CheckinServiceTest {
 
         // 攔截傳給 outboxService.save 的 payload map
         ArgumentCaptor<Object> payloadCaptor = ArgumentCaptor.forClass(Object.class);
-        verify(outboxService).save(eq("wallet.credit"), eq(String.valueOf(PLAYER_ID)), payloadCaptor.capture());
+        verify(outboxService).save(eq("wallet.credit.request"), eq(String.valueOf(PLAYER_ID)), payloadCaptor.capture());
 
         @SuppressWarnings("unchecked")
         Map<String, Object> capturedPayload = (Map<String, Object>) payloadCaptor.getValue();

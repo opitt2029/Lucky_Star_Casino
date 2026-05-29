@@ -39,15 +39,16 @@ public class NewGiftService {
         member.setIsNewGiftClaimed(true);
         memberRepository.save(member);
 
-        // Step 4: 與旗標寫入同一交易寫入 outbox（wallet.credit）
+        // Step 4: 與旗標寫入同一交易寫入 outbox（wallet.credit.request — 入帳「指令」，ADR-002）
         // 旗標與事件要嘛一起 commit、要嘛一起 rollback，徹底解決「已標記領取卻沒發錢」的空窗
+        // wallet-service 消費此指令後才真正加餘額，並另發 wallet.credit「事件」給 rank 等下游
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("playerId", playerId);
         payload.put("amount", 100L);
         payload.put("subType", "GM_REWARD");
         payload.put("idempotencyKey", "new-gift-" + playerId);
         payload.put("reason", "new player gift");
-        outboxService.save("wallet.credit", String.valueOf(playerId), payload);
+        outboxService.save("wallet.credit.request", String.valueOf(playerId), payload);
 
         log.info("New gift queued to outbox for playerId={}", playerId);
     }

@@ -70,7 +70,7 @@ class NewGiftServiceTest {
         assertThat(member.getIsNewGiftClaimed()).isTrue();
         verify(memberRepository, times(1)).save(member);
         verify(outboxService, times(1))
-                .save(eq("wallet.credit"), eq(String.valueOf(PLAYER_ID)), any());
+                .save(eq("wallet.credit.request"), eq(String.valueOf(PLAYER_ID)), any());
     }
 
     // ── Test 4 ───────────────────────────────────────────────────────────
@@ -83,7 +83,7 @@ class NewGiftServiceTest {
         newGiftService.processNewGift(PLAYER_ID);
 
         ArgumentCaptor<Object> payloadCaptor = ArgumentCaptor.forClass(Object.class);
-        verify(outboxService).save(eq("wallet.credit"), eq(String.valueOf(PLAYER_ID)), payloadCaptor.capture());
+        verify(outboxService).save(eq("wallet.credit.request"), eq(String.valueOf(PLAYER_ID)), payloadCaptor.capture());
 
         @SuppressWarnings("unchecked")
         Map<String, Object> capturedPayload = (Map<String, Object>) payloadCaptor.getValue();
