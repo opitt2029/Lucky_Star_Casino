@@ -11,6 +11,8 @@ const sections = [
   { id: 'shop', label: '商城' },
 ]
 
+const clamp = (value, min = 0, max = 1) => Math.min(Math.max(value, min), max)
+
 function HomeHeader({ scrolled, progress }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
@@ -97,6 +99,7 @@ export default function Home() {
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
   const scrollRef = useRef(null)
   const [scrollState, setScrollState] = useState({ scrolled: false, progress: 0 })
+  const scrollProgress = scrollState.progress
 
   useEffect(() => {
     const element = scrollRef.current
@@ -109,6 +112,38 @@ export default function Home() {
     const updateScrollState = () => {
       const maxScroll = element.scrollHeight - element.clientHeight
       const progress = maxScroll > 0 ? element.scrollTop / maxScroll : 0
+      const viewportCenter = element.scrollTop + element.clientHeight / 2
+      const sectionNodes = element.querySelectorAll('.scroll-section')
+
+      sectionNodes.forEach((section) => {
+        const sectionCenter = section.offsetTop + section.offsetHeight / 2
+        const centerDistance = (sectionCenter - viewportCenter) / element.clientHeight
+        const visibility = clamp(1 - Math.abs(centerDistance) * 1.25)
+        const revealProgress = clamp(
+          (element.scrollTop - section.offsetTop + element.clientHeight * 0.84) /
+            (element.clientHeight * 0.92),
+        )
+        const parallax = clamp(centerDistance, -1, 1)
+        const copyOffset = (1 - revealProgress) * 34 + parallax * -14
+        const visualOffset = parallax * -52
+        const sectionLift = (1 - visibility) * 22
+        const sectionScale = 0.965 + visibility * 0.035
+        const glowOpacity = 0.16 + visibility * 0.38
+        const sectionOpacity = 0.5 + visibility * 0.5
+        const sectionBlur = (1 - visibility) * 4.5
+
+        section.style.setProperty('--section-visibility', visibility.toFixed(3))
+        section.style.setProperty('--section-reveal', revealProgress.toFixed(3))
+        section.style.setProperty('--section-parallax', parallax.toFixed(3))
+        section.style.setProperty('--section-copy-offset', `${copyOffset.toFixed(1)}px`)
+        section.style.setProperty('--section-visual-offset', `${visualOffset.toFixed(1)}px`)
+        section.style.setProperty('--section-lift', `${sectionLift.toFixed(1)}px`)
+        section.style.setProperty('--section-scale', sectionScale.toFixed(3))
+        section.style.setProperty('--section-glow-opacity', glowOpacity.toFixed(3))
+        section.style.setProperty('--section-opacity', sectionOpacity.toFixed(3))
+        section.style.setProperty('--section-blur', `${sectionBlur.toFixed(2)}px`)
+        section.toggleAttribute('data-active', visibility > 0.72)
+      })
 
       setScrollState({
         scrolled: element.scrollTop > 24,
@@ -134,13 +169,20 @@ export default function Home() {
     <div
       ref={scrollRef}
       className={['theme-background scroll-shell scroll-sections h-screen overflow-y-auto text-white', scrollState.scrolled ? 'is-scrolled' : ''].join(' ')}
-      style={{ ...getBackgroundStyle('home'), '--scroll-progress': scrollState.progress }}
+      style={{
+        ...getBackgroundStyle('home'),
+        '--scroll-progress': scrollProgress,
+        '--scroll-glow-opacity': (0.24 + scrollProgress * 0.34).toFixed(3),
+        '--scroll-glow-y': `${(-32 * scrollProgress).toFixed(1)}px`,
+        '--scroll-gold-x': `${(18 + scrollProgress * 56).toFixed(1)}%`,
+        '--scroll-red-y': `${(20 + scrollProgress * 34).toFixed(1)}%`,
+      }}
     >
       <HomeHeader scrolled={scrollState.scrolled} progress={scrollState.progress} />
 
       <section id="intro" className="scroll-section flex items-center px-4 pt-24 sm:px-6 lg:px-8">
-        <div className="mx-auto grid w-full max-w-7xl items-center gap-8 lg:grid-cols-[1fr_0.84fr]">
-          <div>
+        <div className="scroll-section-grid mx-auto grid w-full max-w-7xl items-center gap-8 lg:grid-cols-[1fr_0.84fr]">
+          <div className="scroll-copy">
             <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Lucky Star Casino</p>
             <h1 className="brand-title mt-4 max-w-4xl text-5xl font-black tracking-tight sm:text-7xl">幸運星幣城</h1>
             <p className="mt-6 max-w-2xl text-base font-bold leading-8 text-yellow-100/78">
@@ -155,14 +197,14 @@ export default function Home() {
               </a>
             </div>
           </div>
-          <DecorativeAsset assetKey="homeHero" className="min-h-[420px]" />
+          <DecorativeAsset assetKey="homeHero" className="scroll-visual min-h-[420px]" />
         </div>
       </section>
 
       <section id="games" className="scroll-section flex items-center px-4 py-24 sm:px-6 lg:px-8">
-        <div className="mx-auto grid w-full max-w-7xl gap-8 lg:grid-cols-[0.72fr_1fr]">
-          <DecorativeAsset assetKey="homeGames" className="min-h-[360px]" />
-          <div className="grid content-center gap-5">
+        <div className="scroll-section-grid mx-auto grid w-full max-w-7xl gap-8 lg:grid-cols-[0.72fr_1fr]">
+          <DecorativeAsset assetKey="homeGames" className="scroll-visual min-h-[360px]" />
+          <div className="scroll-copy grid content-center gap-5">
             <div>
               <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Game Directory</p>
               <h2 className="brand-title mt-3 text-4xl font-black tracking-tight sm:text-5xl">遊戲大全作為所有遊戲入口</h2>
@@ -188,8 +230,8 @@ export default function Home() {
       </section>
 
       <section id="member" className="scroll-section flex items-center px-4 py-24 sm:px-6 lg:px-8">
-        <div className="mx-auto grid w-full max-w-7xl items-center gap-8 lg:grid-cols-[1fr_0.72fr]">
-          <div>
+        <div className="scroll-section-grid mx-auto grid w-full max-w-7xl items-center gap-8 lg:grid-cols-[1fr_0.72fr]">
+          <div className="scroll-copy">
             <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Member Gate</p>
             <h2 className="brand-title mt-3 text-4xl font-black tracking-tight sm:text-5xl">會員頁負責登入、註冊與遊戲門禁</h2>
             <p className="mt-4 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
@@ -204,14 +246,14 @@ export default function Home() {
               </Link>
             </div>
           </div>
-          <DecorativeAsset assetKey="memberHero" className="min-h-[360px]" />
+          <DecorativeAsset assetKey="memberHero" className="scroll-visual min-h-[360px]" />
         </div>
       </section>
 
       <section id="shop" className="scroll-section flex items-center px-4 py-24 sm:px-6 lg:px-8">
-        <div className="mx-auto grid w-full max-w-7xl items-center gap-8 lg:grid-cols-[0.72fr_1fr]">
-          <DecorativeAsset assetKey="shopHero" className="min-h-[360px]" />
-          <div>
+        <div className="scroll-section-grid mx-auto grid w-full max-w-7xl items-center gap-8 lg:grid-cols-[0.72fr_1fr]">
+          <DecorativeAsset assetKey="shopHero" className="scroll-visual min-h-[360px]" />
+          <div className="scroll-copy">
             <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Casino Shop</p>
             <h2 className="brand-title mt-3 text-4xl font-black tracking-tight sm:text-5xl">賭場商城承接遊戲贏得的籌碼</h2>
             <p className="mt-4 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">

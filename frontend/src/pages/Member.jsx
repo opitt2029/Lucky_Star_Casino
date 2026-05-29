@@ -6,9 +6,17 @@ import { loginMember, registerMember } from '../store/slices/authSlice'
 import { fetchRanks } from '../store/slices/rankSlice'
 import { fetchWallet } from '../store/slices/walletSlice'
 import { getBackgroundStyle } from '../theme/backgroundTheme'
+import { getBirthDateMax, isAdultBirthDate, socialProviders } from '../utils/memberPreferences'
 
 const defaultLogin = { username: 'test', password: 'test1234' }
-const defaultRegister = { username: '', nickname: '', email: '', password: '' }
+const defaultRegister = {
+  username: '',
+  nickname: '',
+  email: '',
+  password: '',
+  birthDate: '',
+  adultConfirmed: false,
+}
 
 export default function Member() {
   const dispatch = useDispatch()
@@ -20,7 +28,10 @@ export default function Member() {
   const [mode, setMode] = useState(initialMode)
   const [loginForm, setLoginForm] = useState(defaultLogin)
   const [registerForm, setRegisterForm] = useState(defaultRegister)
+  const [memberNotice, setMemberNotice] = useState('')
   const from = location.state?.from?.pathname || '/games'
+  const birthDateMax = getBirthDateMax()
+  const registerAgeError = registerForm.birthDate && !isAdultBirthDate(registerForm.birthDate)
 
   const pageCopy = useMemo(
     () =>
@@ -54,6 +65,7 @@ export default function Member() {
     const nextMode = mode === 'login' ? 'register' : 'login'
     setSearchParams({ mode: nextMode })
     setMode(nextMode)
+    setMemberNotice('')
   }
 
   const handleLoginChange = (event) => {
@@ -61,7 +73,8 @@ export default function Member() {
   }
 
   const handleRegisterChange = (event) => {
-    setRegisterForm((current) => ({ ...current, [event.target.name]: event.target.value }))
+    const { name, type, checked, value } = event.target
+    setRegisterForm((current) => ({ ...current, [name]: type === 'checkbox' ? checked : value }))
   }
 
   const syncAfterAuth = () => {
@@ -80,8 +93,16 @@ export default function Member() {
     }
   }
 
+  const handleSocialLogin = (provider) => {
+    setMemberNotice(`${provider.label} 登入入口已建立，請先用帳密登入後到會員中心完成綁定。`)
+  }
+
   const handleRegisterSubmit = async (event) => {
     event.preventDefault()
+    if (!isAdultBirthDate(registerForm.birthDate) || !registerForm.adultConfirmed) {
+      setMemberNotice('註冊需完成年齡驗證，且必須年滿 18 歲。')
+      return
+    }
     try {
       await dispatch(registerMember(registerForm)).unwrap()
       syncAfterAuth()
@@ -105,10 +126,15 @@ export default function Member() {
       <main className="mx-auto grid max-w-7xl items-center gap-8 px-4 pb-12 pt-4 sm:px-6 lg:grid-cols-[1fr_520px] lg:px-8">
         <section className="grid gap-6">
           <div>
-            <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Member Access</p>
-            <h1 className="brand-title mt-4 max-w-3xl text-4xl font-black tracking-tight sm:text-6xl">會員頁是遊戲入口的門禁</h1>
+            <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">
+              Member Access
+            </p>
+            <h1 className="brand-title mt-4 max-w-3xl text-4xl font-black tracking-tight sm:text-6xl">
+              會員頁是遊戲入口的門禁
+            </h1>
             <p className="mt-5 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
-              註冊或登入後，才能進入遊戲大全、各遊戲網頁與賭場商城。測試帳號 test / test1234 已預填，可直接登入檢查流程。
+              註冊或登入後，才能進入遊戲大全、各遊戲網頁與賭場商城。測試帳號 test / test1234
+              已預填，可直接登入檢查流程。
             </p>
           </div>
           <DecorativeAsset assetKey="memberHero" className="min-h-[340px]" />
@@ -144,7 +170,9 @@ export default function Member() {
             </button>
           </div>
 
-          <p className="gold-muted mt-6 text-xs font-black uppercase tracking-[0.3em]">{pageCopy.eyebrow}</p>
+          <p className="gold-muted mt-6 text-xs font-black uppercase tracking-[0.3em]">
+            {pageCopy.eyebrow}
+          </p>
           <h2 className="brand-title mt-3 text-2xl font-black">{pageCopy.title}</h2>
 
           {mode === 'login' ? (
@@ -172,7 +200,28 @@ export default function Member() {
                   required
                 />
               </label>
-              {error && <p className="rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">{error}</p>}
+              <div className="grid gap-2 sm:grid-cols-3">
+                {socialProviders.map((provider) => (
+                  <button
+                    key={provider.id}
+                    type="button"
+                    onClick={() => handleSocialLogin(provider)}
+                    className={`rounded border px-3 py-3 text-sm font-black transition hover:brightness-125 ${provider.accentClass}`}
+                  >
+                    {provider.label}
+                  </button>
+                ))}
+              </div>
+              {memberNotice && (
+                <p className="rounded border border-yellow-200/25 bg-yellow-200/10 px-4 py-3 text-sm font-bold text-yellow-100">
+                  {memberNotice}
+                </p>
+              )}
+              {error && (
+                <p className="rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">
+                  {error}
+                </p>
+              )}
               <button
                 type="submit"
                 disabled={loading}
@@ -233,7 +282,44 @@ export default function Member() {
                   required
                 />
               </label>
-              {error && <p className="rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">{error}</p>}
+              <label className="grid gap-2 text-sm font-bold text-yellow-100/78">
+                出生日期
+                <input
+                  name="birthDate"
+                  className="rounded border border-yellow-200/15 bg-red-950/70 px-4 py-3 text-white outline-none focus:border-yellow-200"
+                  value={registerForm.birthDate}
+                  onChange={handleRegisterChange}
+                  type="date"
+                  max={birthDateMax}
+                  required
+                />
+              </label>
+              <label className="flex items-start gap-3 rounded border border-yellow-200/15 bg-red-950/50 px-4 py-3 text-sm font-bold text-yellow-100/78">
+                <input
+                  name="adultConfirmed"
+                  className="mt-1 h-4 w-4 accent-yellow-200"
+                  checked={registerForm.adultConfirmed}
+                  onChange={handleRegisterChange}
+                  type="checkbox"
+                  required
+                />
+                <span>我確認已年滿 18 歲，並同意建立會員帳號。</span>
+              </label>
+              {memberNotice && (
+                <p className="rounded border border-yellow-200/25 bg-yellow-200/10 px-4 py-3 text-sm font-bold text-yellow-100">
+                  {memberNotice}
+                </p>
+              )}
+              {registerAgeError && (
+                <p className="rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">
+                  出生日期未滿 18 歲，無法完成註冊。
+                </p>
+              )}
+              {error && (
+                <p className="rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">
+                  {error}
+                </p>
+              )}
               <button
                 type="submit"
                 disabled={loading}
@@ -244,7 +330,11 @@ export default function Member() {
             </form>
           )}
 
-          <button type="button" onClick={switchMode} className="gold-muted mt-5 w-full text-center text-sm font-bold transition hover:text-yellow-100">
+          <button
+            type="button"
+            onClick={switchMode}
+            className="gold-muted mt-5 w-full text-center text-sm font-bold transition hover:text-yellow-100"
+          >
             {pageCopy.switchText}
           </button>
         </section>

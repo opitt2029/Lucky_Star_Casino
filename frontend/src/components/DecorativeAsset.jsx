@@ -9,7 +9,7 @@ export default function DecorativeAsset({ assetKey, className = '' }) {
       style={getDecorativeAssetStyle(assetKey)}
     >
       <div>
-        <p className="gold-muted text-xs font-black uppercase tracking-[0.28em]">Asset Slot</p>
+        <p className="gold-muted text-xs font-black uppercase tracking-[0.28em]">{asset.meta || 'Lucky Star'}</p>
         <h3 className="brand-title mt-2 text-2xl font-black">{asset.label}</h3>
         <p className="mt-2 text-sm font-bold leading-6 text-yellow-100/66">{asset.caption}</p>
       </div>

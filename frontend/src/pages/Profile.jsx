@@ -5,6 +5,15 @@ import MetricCard from '../components/MetricCard'
 import { fetchProfile, updateProfile } from '../store/slices/authSlice'
 import { mockApi } from '../services/mockApi'
 import { setBalance } from '../store/slices/walletSlice'
+import {
+  createAvatarPresetUrls,
+  getSocialBindings,
+  setSocialBinding,
+  socialProviders,
+} from '../utils/memberPreferences'
+
+const MAX_AVATAR_SIZE = 300 * 1024
+const allowedAvatarTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
 
 export default function Profile() {
   const dispatch = useDispatch()
@@ -17,7 +26,10 @@ export default function Profile() {
   const [friendName, setFriendName] = useState('')
   const [giftAmount, setGiftAmount] = useState(500)
   const [notice, setNotice] = useState('')
+  const [avatarPreviewError, setAvatarPreviewError] = useState(false)
+  const [socialBindings, setSocialBindings] = useState({})
   const progress = Math.min(((player?.consecutiveCheckInDays || 0) / 7) * 100, 100)
+  const avatarPresets = createAvatarPresetUrls(player?.username || form.nickname || 'player')
 
   useEffect(() => {
     dispatch(fetchProfile())
@@ -29,6 +41,10 @@ export default function Profile() {
       nickname: player?.nickname || '',
       avatarUrl: player?.avatarUrl || '',
     })
+    setAvatarPreviewError(false)
+    if (player?.id) {
+      setSocialBindings(getSocialBindings(player.id))
+    }
   }, [player])
 
   const handleChange = (event) => {
@@ -43,6 +59,44 @@ export default function Profile() {
     } catch {
       setNotice('')
     }
+  }
+
+  const handleAvatarFile = (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    if (!allowedAvatarTypes.includes(file.type)) {
+      setNotice('頭像僅支援 JPG、PNG、GIF 或 WebP')
+      event.target.value = ''
+      return
+    }
+    if (file.size > MAX_AVATAR_SIZE) {
+      setNotice('頭像檔案請小於 300KB')
+      event.target.value = ''
+      return
+    }
+
+    const reader = new window.FileReader()
+    reader.onload = () => {
+      setForm((current) => ({ ...current, avatarUrl: reader.result }))
+      setAvatarPreviewError(false)
+      setNotice('頭像已載入，記得儲存設定')
+    }
+    reader.onerror = () => setNotice('頭像讀取失敗，請重新選擇檔案')
+    reader.readAsDataURL(file)
+  }
+
+  const handlePickAvatar = (avatarUrl) => {
+    setForm((current) => ({ ...current, avatarUrl }))
+    setAvatarPreviewError(false)
+    setNotice('已套用頭像預設，記得儲存設定')
+  }
+
+  const handleSocialBinding = (providerId) => {
+    if (!player?.id) return
+    const nextBound = !socialBindings[providerId]
+    setSocialBindings(setSocialBinding(player.id, providerId, nextBound))
+    const provider = socialProviders.find((item) => item.id === providerId)
+    setNotice(`${provider?.label || '第三方帳戶'}${nextBound ? '已綁定' : '已解除綁定'}`)
   }
 
   const handleAddFriend = async (event) => {
@@ -84,34 +138,90 @@ export default function Profile() {
         <form onSubmit={handleSave} className="luxury-panel rounded p-6">
           <p className="gold-muted text-xs font-black uppercase tracking-[0.3em]">Profile</p>
           <h2 className="brand-title mt-3 text-3xl font-black">會員中心</h2>
-          <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-2 text-sm font-bold text-yellow-100/78">
-              玩家 ID
-              <input className="rounded border border-yellow-200/15 bg-red-950/70 px-4 py-3 text-white outline-none focus:border-yellow-200" value={player?.id || 'demo-player'} readOnly />
-            </label>
-            <label className="grid gap-2 text-sm font-bold text-yellow-100/78">
-              暱稱
-              <input
-                name="nickname"
-                className="rounded border border-yellow-200/15 bg-red-950/70 px-4 py-3 text-white outline-none focus:border-yellow-200"
-                value={form.nickname}
-                onChange={handleChange}
-                required
-              />
-            </label>
-            <label className="grid gap-2 text-sm font-bold text-yellow-100/78 sm:col-span-2">
-              Avatar URL
-              <input
-                name="avatarUrl"
-                className="rounded border border-yellow-200/15 bg-red-950/70 px-4 py-3 text-white outline-none focus:border-yellow-200"
-                placeholder="https://example.com/avatar.png"
-                value={form.avatarUrl}
-                onChange={handleChange}
-              />
-            </label>
+          <div className="mt-6 grid gap-5 lg:grid-cols-[180px_1fr]">
+            <div className="grid content-start gap-3">
+              <div className="aspect-square overflow-hidden rounded border border-yellow-200/20 bg-red-950/70">
+                {form.avatarUrl && !avatarPreviewError ? (
+                  <img
+                    src={form.avatarUrl}
+                    alt="會員頭像預覽"
+                    className="h-full w-full object-cover"
+                    onError={() => setAvatarPreviewError(true)}
+                  />
+                ) : (
+                  <div className="grid h-full place-items-center bg-gradient-to-br from-red-900 to-yellow-900/60 text-5xl font-black text-yellow-100">
+                    {(form.nickname || player?.username || 'P').slice(0, 1).toUpperCase()}
+                  </div>
+                )}
+              </div>
+              <label className="red-gold-button cursor-pointer rounded px-4 py-3 text-center text-sm font-black transition">
+                上傳頭像
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  className="sr-only"
+                  onChange={handleAvatarFile}
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-2 text-sm font-bold text-yellow-100/78">
+                玩家 ID
+                <input
+                  className="rounded border border-yellow-200/15 bg-red-950/70 px-4 py-3 text-white outline-none focus:border-yellow-200"
+                  value={player?.id || 'demo-player'}
+                  readOnly
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-bold text-yellow-100/78">
+                暱稱
+                <input
+                  name="nickname"
+                  className="rounded border border-yellow-200/15 bg-red-950/70 px-4 py-3 text-white outline-none focus:border-yellow-200"
+                  value={form.nickname}
+                  onChange={handleChange}
+                  required
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-bold text-yellow-100/78 sm:col-span-2">
+                頭像 URL
+                <input
+                  name="avatarUrl"
+                  className="rounded border border-yellow-200/15 bg-red-950/70 px-4 py-3 text-white outline-none focus:border-yellow-200"
+                  placeholder="https://example.com/avatar.png"
+                  value={form.avatarUrl}
+                  onChange={handleChange}
+                />
+              </label>
+              <div className="sm:col-span-2">
+                <p className="text-sm font-bold text-yellow-100/78">快速頭像</p>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {avatarPresets.map((avatarUrl) => (
+                    <button
+                      key={avatarUrl}
+                      type="button"
+                      onClick={() => handlePickAvatar(avatarUrl)}
+                      className="aspect-square overflow-hidden rounded border border-yellow-200/15 bg-red-950/70 transition hover:border-yellow-200"
+                      aria-label="套用頭像預設"
+                    >
+                      <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
-          {authError && <p className="mt-4 rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">{authError}</p>}
-          {notice && <p className="mt-4 rounded border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-200">{notice}</p>}
+          {authError && (
+            <p className="mt-4 rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">
+              {authError}
+            </p>
+          )}
+          {notice && (
+            <p className="mt-4 rounded border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-200">
+              {notice}
+            </p>
+          )}
           <button
             type="submit"
             disabled={authLoading}
@@ -122,17 +232,76 @@ export default function Profile() {
         </form>
 
         <aside className="grid gap-4 content-start">
-          <MetricCard label="可用籌碼" value={wallet.balance.toLocaleString()} caption="walletSlice.balance" tone="light" />
-          <MetricCard label="凍結籌碼" value={wallet.frozenAmount.toLocaleString()} caption="下注中保留" />
+          <MetricCard
+            label="可用籌碼"
+            value={wallet.balance.toLocaleString()}
+            caption="walletSlice.balance"
+            tone="light"
+          />
+          <MetricCard
+            label="凍結籌碼"
+            value={wallet.frozenAmount.toLocaleString()}
+            caption="下注中保留"
+          />
           <div className="luxury-panel-soft rounded p-4">
             <p className="gold-muted text-xs font-black uppercase tracking-[0.25em]">Check-in</p>
-            <p className="brand-title mt-2 text-2xl font-black">{player?.consecutiveCheckInDays || 0} 天</p>
+            <p className="brand-title mt-2 text-2xl font-black">
+              {player?.consecutiveCheckInDays || 0} 天
+            </p>
             <div className="mt-4 h-3 overflow-hidden rounded bg-red-950/70">
-              <div className="h-full bg-yellow-200 transition-all" style={{ width: `${progress}%` }} />
+              <div
+                className="h-full bg-yellow-200 transition-all"
+                style={{ width: `${progress}%` }}
+              />
             </div>
             <p className="gold-muted mt-2 text-xs font-bold">7 天進度獎勵</p>
           </div>
         </aside>
+      </section>
+
+      <section className="luxury-panel-soft mt-6 rounded p-6">
+        <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
+          <div>
+            <p className="gold-muted text-xs font-black uppercase tracking-[0.3em]">
+              Linked Accounts
+            </p>
+            <h2 className="brand-title mt-1 text-2xl font-black">第三方帳戶綁定</h2>
+          </div>
+          <p className="max-w-xl text-sm font-bold leading-6 text-yellow-100/62">
+            綁定後可在登入頁選擇 LINE、Google 或 Apple 入口；目前以前端偏好設定保存綁定狀態。
+          </p>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          {socialProviders.map((provider) => {
+            const bound = Boolean(socialBindings[provider.id])
+            return (
+              <div key={provider.id} className={`rounded border p-4 ${provider.accentClass}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-lg font-black">{provider.label}</p>
+                    <p className="mt-1 text-xs font-bold opacity-75">
+                      {bound ? '已綁定，可作為登入方式' : '尚未綁定'}
+                    </p>
+                  </div>
+                  <span className="grid h-10 w-10 place-items-center rounded-full border border-current/30 text-sm font-black">
+                    {provider.label.slice(0, 1)}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleSocialBinding(provider.id)}
+                  className={
+                    bound
+                      ? 'red-gold-button mt-4 w-full rounded px-4 py-3 text-sm font-black'
+                      : 'gold-button mt-4 w-full rounded px-4 py-3 text-sm font-black'
+                  }
+                >
+                  {bound ? '解除綁定' : '綁定帳戶'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
       </section>
 
       <section className="luxury-panel-soft mt-6 rounded p-6">
@@ -149,7 +318,10 @@ export default function Profile() {
               onChange={(event) => setFriendName(event.target.value)}
               required
             />
-            <button type="submit" className="gold-button rounded px-4 py-2 text-sm font-black transition">
+            <button
+              type="submit"
+              className="gold-button rounded px-4 py-2 text-sm font-black transition"
+            >
               加好友
             </button>
           </form>
@@ -190,7 +362,11 @@ export default function Profile() {
               </div>
             </div>
           ))}
-          {friends.length === 0 && <p className="rounded border border-yellow-200/15 bg-red-950/70 p-5 text-sm font-bold text-yellow-100/56">目前尚無好友</p>}
+          {friends.length === 0 && (
+            <p className="rounded border border-yellow-200/15 bg-red-950/70 p-5 text-sm font-bold text-yellow-100/56">
+              目前尚無好友
+            </p>
+          )}
         </div>
       </section>
     </AppShell>
