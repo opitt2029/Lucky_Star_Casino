@@ -44,37 +44,135 @@ spring:
                 redis-rate-limiter.replenishRate: ${AUTH_RATE_LIMIT_REPLENISH:5}
                 redis-rate-limiter.burstCapacity: ${AUTH_RATE_LIMIT_BURST:10}
                 key-resolver: "#{@ipKeyResolver}"
+            - name: CircuitBreaker
+              args:
+                name: member-service
+                fallbackUri: forward:/fallback/member
         # 會員 API（需 JWT）
         - id: member-player
           uri: ${MEMBER_SERVICE_URL:http://localhost:8081}
           predicates:
             - Path=/api/v1/player/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: member-service
+                fallbackUri: forward:/fallback/member
         # 每日簽到（需 JWT）：端點實作在 member-service，路徑落在 /api/v1/wallet 底下，
         # 必須排在下方 wallet 路由「之前」，否則會被 /api/v1/wallet/** 攔截轉發到 wallet-service。
         - id: member-checkin
           uri: ${MEMBER_SERVICE_URL:http://localhost:8081}
           predicates:
             - Path=/api/v1/wallet/daily-checkin
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: member-service
+                fallbackUri: forward:/fallback/member
         # 錢包 API（需 JWT）
         - id: wallet
           uri: ${WALLET_SERVICE_URL:http://localhost:8082}
           predicates:
             - Path=/api/v1/wallet/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: wallet-service
+                fallbackUri: forward:/fallback/wallet
         # 遊戲 API（需 JWT）
         - id: game
           uri: ${GAME_SERVICE_URL:http://localhost:8083}
           predicates:
             - Path=/api/v1/game/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: game-service
+                fallbackUri: forward:/fallback/game
         # 排行榜 API（需 JWT）
         - id: rank
           uri: ${RANK_SERVICE_URL:http://localhost:8084}
           predicates:
             - Path=/api/v1/rank/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: rank-service
+                fallbackUri: forward:/fallback/rank
         # 管理介面（需 ADMIN role）
         - id: admin
           uri: ${ADMIN_SERVICE_URL:http://localhost:8086}
           predicates:
             - Path=/admin/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: admin-service
+                fallbackUri: forward:/fallback/admin
+
+# 每玩家限流設定（PlayerRateLimitGlobalFilter 使用）
+rate-limit:
+  player:
+    replenish-rate: ${PLAYER_RATE_LIMIT_REPLENISH:10}
+    burst-capacity: ${PLAYER_RATE_LIMIT_BURST:20}
+  game:
+    replenish-rate: ${GAME_RATE_LIMIT_REPLENISH:5}
+    burst-capacity: ${GAME_RATE_LIMIT_BURST:10}
+
+# Resilience4j Circuit Breaker instances — one per downstream service
+resilience4j:
+  circuitbreaker:
+    instances:
+      member-service:
+        failure-rate-threshold: 50           # 失敗率 > 50% 觸發熔斷
+        slow-call-rate-threshold: 80         # 慢呼叫率 > 80% 觸發熔斷
+        slow-call-duration-threshold: 3s     # 超過 3s 視為慢呼叫
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10              # 最近 10 次請求統計
+        minimum-number-of-calls: 5           # 至少 5 次後才開始評估
+        wait-duration-in-open-state: 10s     # 熔斷後等 10s 進入 half-open
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+      wallet-service:
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 80
+        slow-call-duration-threshold: 3s
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+      game-service:
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 80
+        slow-call-duration-threshold: 3s
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+      rank-service:
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 80
+        slow-call-duration-threshold: 3s
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+      admin-service:
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 80
+        slow-call-duration-threshold: 3s
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
 
 # JWT 設定 — secret 必須與 member-service 簽發端完全一致
 jwt:
@@ -83,6 +181,7 @@ jwt:
   whitelist:
     - /api/v1/auth/
     - /actuator/health
+    - /fallback/
 
 management:
   endpoints:

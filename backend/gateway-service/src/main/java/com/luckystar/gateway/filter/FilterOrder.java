@@ -12,6 +12,8 @@ package com.luckystar.gateway.filter;
  *       ↓
  *     JWT_AUTHENTICATION (-100) ← 驗 JWT + 黑名單，注入 X-User-Id / X-User-Role header
  *       ↓
+ *     PLAYER_RATE_LIMIT (-50)  ← 依 X-User-Id 做每玩家滑動視窗限流
+ *       ↓
  *     (Gateway 內建路由轉發 Filter, order ≥ 0)
  * </pre>
  */
@@ -22,6 +24,9 @@ public final class FilterOrder {
 
     /** JWT 驗證：驗簽、查黑名單、注入下游 header。 */
     public static final int JWT_AUTHENTICATION = -100;
+
+    /** 每玩家速率限制：JWT 驗證完成後執行，以 X-User-Id 為計數金鑰。 */
+    public static final int PLAYER_RATE_LIMIT = -50;
 
     private FilterOrder() {
         // utility class
