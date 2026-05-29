@@ -5,6 +5,114 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-05-29 — Gateway Circuit Breaker 熔斷降級（T-063）
+
+### Added
+
+- `backend/gateway-service/src/main/java/com/luckystar/gateway/dto/ApiResponse.java`（新增）
+  - Gateway 本地統一 API 回應格式 record：`boolean success`、`Object data`、`String message`。
+  - 僅供 gateway-service 內部使用，不與下游服務共用。
+
+- `backend/gateway-service/src/main/java/com/luckystar/gateway/controller/FallbackController.java`（新增）
+  - `@RestController`，處理 `GET|POST /fallback/{service}`。
+  - 從 exchange attribute `CIRCUITBREAKER_EXECUTION_EXCEPTION_ATTR` 讀取觸發熔斷的例外：
+    - `CallNotPermittedException`（熔斷開路）→ 回傳「請稍後再試」友善訊息。
+    - 其他例外（連線逾時等）→ 回傳通用服務不可用訊息。
+  - 固定回傳 HTTP 503，Content-Type: application/json，不暴露熔斷狀態（OPEN/HALF_OPEN/CLOSED）。
+
+### Modified
+
+- `backend/gateway-service/pom.xml`
+  - 新增 `spring-cloud-starter-circuitbreaker-reactor-resilience4j`（BOM 管理，無需指定版本）。
+  - 說明：Spring Cloud Gateway 是 reactive 應用，需 `reactor-resilience4j` 而非普通版；後者缺少 `resilience4j-reactor` 傳遞依賴，`ReactiveResilience4JAutoConfiguration` 的 `@ConditionalOnClass(CircuitBreakerOperator.class)` 不成立，導致 `CircuitBreaker` filter factory 無法被 Gateway 發現。
+
+- `backend/gateway-service/src/main/resources/application.yml`
+  - **所有 7 條路由**新增 `CircuitBreaker` filter（instance 對應關係如下）：
+
+    | 路由 | instance name | fallbackUri |
+    |------|--------------|-------------|
+    | member-auth、member-player、member-checkin | `member-service` | `forward:/fallback/member` |
+    | wallet | `wallet-service` | `forward:/fallback/wallet` |
+    | game | `game-service` | `forward:/fallback/game` |
+    | rank | `rank-service` | `forward:/fallback/rank` |
+    | admin | `admin-service` | `forward:/fallback/admin` |
+
+  - 新增 `resilience4j.circuitbreaker.instances` 區塊，5 個服務共用相同參數：
+    - `failure-rate-threshold: 50`（失敗率 > 50% 觸發熔斷）
+    - `slow-call-rate-threshold: 80 / slow-call-duration-threshold: 3s`
+    - `sliding-window-type: COUNT_BASED / sliding-window-size: 10 / minimum-number-of-calls: 5`
+    - `wait-duration-in-open-state: 10s / permitted-number-of-calls-in-half-open-state: 3`
+    - `automatic-transition-from-open-to-half-open-enabled: true`
+  - `jwt.whitelist` 新增 `/fallback/`，讓 JWT filter 不攔截 Gateway 內部熔斷降級端點。
+
+### Verified
+
+- `mvn test` → `Tests run: 21, Failures: 0, Errors: 0, Skipped: 0`（含 `GatewayServiceApplicationTests.contextLoads` 整合測試）。
+
+### Note
+
+- 降級回應刻意不揭露熔斷狀態，符合安全要求（不讓外部探測服務拓撲）。
+- `/fallback/**` 是 Gateway 自身端點，不對外路由到任何下游服務；JWT 白名單必須包含此路徑，否則熔斷後的 forward 請求本身也會被攔截回 401。
+
+---
+
+## [feat] — 2026-05-29 — Gateway 每玩家速率限制（T-062）
+
+### Added
+
+- `backend/gateway-service/src/main/java/com/luckystar/gateway/config/RateLimitProperties.java`（新增）
+  - `@ConfigurationProperties(prefix = "rate-limit")` record，含內嵌 `Player(replenishRate, burstCapacity)` 與 `Game(replenishRate, burstCapacity)` record。
+  - 對應 application.yml 新增的 `rate-limit.player` / `rate-limit.game` 設定區塊。
+
+- `backend/gateway-service/src/main/java/com/luckystar/gateway/filter/PlayerRateLimitGlobalFilter.java`（新增）
+  - `GlobalFilter, Ordered`，order = `-50`（在 JWT filter `-100` 之後、Gateway 路由轉發 `≥0` 之前）。
+  - 讀取 JWT filter 注入的 `X-User-Id` header 作為計數金鑰，確保一個玩家超限不影響其他人。
+  - 路徑識別：
+    - `/api/v1/game/**` → 套用較嚴格的 `game` 設定（預設 burst 10）
+    - 其他已驗證路徑 → 套用 `player` 設定（預設 burst 20）
+  - Redis 實作（滑動視窗 token bucket）：
+    - `INCR key` → 若計數 = 1 則 `EXPIRE key 1s`（開啟新視窗）
+    - 計數 > burstCapacity → 回傳 HTTP 429，Header `Retry-After: 1`，JSON body `{"success":false,"data":null,"message":"Too many requests"}`
+    - 計數 ≤ burstCapacity → 繼續轉發
+  - Redis 故障採 **fail-open**（記錄 WARN 後放行），與 JWT 黑名單的 fail-closed 策略相反，優先保障可用性。
+  - 白名單路徑（`/api/v1/auth/`、`/actuator/health` 等）與缺少 `X-User-Id` 的請求直接跳過，不查 Redis。
+
+- `backend/gateway-service/src/test/java/com/luckystar/gateway/filter/PlayerRateLimitGlobalFilterTest.java`（新增）
+  - 8 個純單元測試，無 Spring context、直接 mock `ReactiveStringRedisTemplate`：
+
+    | 測試 | 情境 | 預期 |
+    |------|------|------|
+    | whitelistedPath_skipsRateLimit | POST /api/v1/auth/login | redis 不呼叫，chain 放行 |
+    | normalPath_firstRequest_allows | 計數 = 1 | chain 放行，expire(1s) 被呼叫 |
+    | normalPath_withinBurst_allows | 計數 = 20（= burstCapacity） | chain 放行 |
+    | normalPath_exceedsBurst_returns429 | 計數 = 21（> burstCapacity） | HTTP 429，chain 不呼叫 |
+    | gamePath_stricterLimit_exceedsBurst_returns429 | /game/bet，計數 = 11（> 10） | HTTP 429 |
+    | gamePath_withinStrictLimit_allows | /game/bet，計數 = 5（≤ 10） | chain 放行 |
+    | redisError_failOpen_allowsRequest | increment 拋 RuntimeException | chain 放行（fail-open） |
+    | missingUserId_skipsRateLimit | 無 X-User-Id header | redis 不呼叫，chain 放行 |
+
+### Modified
+
+- `backend/gateway-service/src/main/java/com/luckystar/gateway/filter/FilterOrder.java`
+  - 新增常數 `PLAYER_RATE_LIMIT = -50`，更新類別 Javadoc 的執行鏈說明。
+
+- `backend/gateway-service/src/main/java/com/luckystar/gateway/GatewayServiceApplication.java`
+  - `@EnableConfigurationProperties` 陣列加入 `RateLimitProperties.class`。
+
+- `backend/gateway-service/src/main/resources/application.yml`
+  - 根層新增 `rate-limit.player`（replenish 10，burst 20）與 `rate-limit.game`（replenish 5，burst 10）設定區塊，支援環境變數覆寫（`PLAYER_RATE_LIMIT_REPLENISH` 等）。
+
+### Verified
+
+- `mvn -Dtest=PlayerRateLimitGlobalFilterTest test` → `Tests run: 8, Failures: 0, Errors: 0`。
+
+### Note
+
+- Filter 執行順序：`RATE_LIMIT(-200，IP 限流)` → `JWT_AUTHENTICATION(-100)` → **`PLAYER_RATE_LIMIT(-50，本任務)`** → 路由轉發。
+- order = -50 是設計必要條件：order -200 執行時 JWT filter 尚未注入 `X-User-Id`，若放在 -200 永遠讀不到 userId。
+
+---
+
 ## [feat] — 2026-05-28 — 錢包餘額/簽到前後端串接 + Gateway 簽到路由修復（FIX-5）
 
 ### Fixed

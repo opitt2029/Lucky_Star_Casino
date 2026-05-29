@@ -41,6 +41,12 @@
             <artifactId>spring-boot-starter-data-redis-reactive</artifactId>
         </dependency>
 
+        <!-- Circuit Breaker: Resilience4j reactive (Spring Cloud Gateway 需要 reactor 版本) -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-circuitbreaker-reactor-resilience4j</artifactId>
+        </dependency>
+
         <!-- JWT: JWS 簽章驗證（與 member-service 共用同套 secret） -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
