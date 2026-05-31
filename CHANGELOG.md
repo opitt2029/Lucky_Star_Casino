@@ -5,6 +5,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [changed] — 2026-05-31 — Slot 轉輪改為 requestAnimationFrame 精準停輪
+
+### Changed
+- `frontend/src/components/SlotMachinePreview.jsx`：重構為 reusable `Reel` component，新增 `animateReel`、`easeOutCubic`、圖片預載與固定 track 建立流程；動畫開始前即把結果 symbol 放進最終停止位置。
+- `frontend/src/components/SlotMachinePreview.jsx`：每軸使用 5/6/7 圈與 1800/2200/2600ms 錯開停輪，動畫期間只更新 reel track 的 `transform: translate3d(...)`，結束時修正到精準 `targetY`。
+- `frontend/src/index.css`：移除 slot reel 的 CSS keyframe strip 切換，改用固定 symbol 高度與 `will-change: transform` 的 composited track。
+- `frontend/src/pages/SlotGame.jsx`：直接改用新版 `SlotMachine` 元件，讓 `/game/slot` 實際接上 requestAnimationFrame 轉輪動畫；spin handler 會回傳本局結果給 slot 元件，確保可視動畫開跑前已取得並預排結果 grid。
+- `frontend/src/components/SlotMachine.jsx`、`frontend/src/components/Reel.jsx`、`frontend/src/components/slotMachine.css`：抽出現行 slot 機台正在使用的 reusable reel 元件與動畫工具，避免專案同時維護 demo 版與實際版兩套轉輪邏輯。
+- `frontend/src/components/SlotMachinePreview.jsx`：改為相容轉出口，舊 import 會導向新版 `SlotMachine`。
+- `frontend/src/services/mockApi.js`、`frontend/src/store/slices/gameSlice.js`：將現行 `/game/slot` 使用的 mock symbols 與初始 grid 改為 `['🍒', '🍋', '🔔', '⭐', '7️⃣']`，讓新版轉輪在頁面上直接可見。
+- `frontend/src/components/SlotMachine.jsx`、`frontend/src/components/Reel.jsx`、`frontend/src/index.css`：將 slot reel 非 compact symbol 高度調整為 170px，讓三列 symbol 填滿目前 reel window；symbol 內容改為 `.slot-symbol-art` 顯示，避免 emoji / 圖片因文字行高被裁切。
+- `frontend/src/pages/SlotGame.jsx`：移除 Bet Control 面板中「三轉輪 / 中線獎 / 停輪回彈」這排使用者不需要的說明標籤。
+- `frontend/src/index.css`：重繪 slot lever 視覺，新增金屬底座、桿身、球形握把與下拉回彈 `slot-lever-pull` 動畫，讓 spin 時拉桿更接近實體機台。
+- `frontend/src/index.css`：調整 slot lever 動畫為垂直由上至下拉動，移除大角度旋轉，讓拉桿動作更協調。
+- `frontend/src/index.css`：收斂 slot lever 的握把、桿身與下拉行程到外殼內，避免動畫時看起來脫離 parent container。
+- `frontend/src/index.css`：徹底重構 slot lever 的動件模型，保留原外觀材質但改為透明 `span` 容器承載球頭與桿身一起垂直滑動，讓拉桿不再有部件分離感。
+- `frontend/src/index.css`：讓 slot lever 的 parent 外殼、底座與導槽在 active 狀態同步下壓與改變光影，避免背景靜止造成拉桿與容器不協調。
+- `frontend/src/index.css`：依俯視視角重做 slot lever，移除側視金屬桿與底座表現，改為凹槽中的握把上下滑動。
+- `frontend/src/index.css`：將俯視 slot lever 的滑動握把改成球形，使用圓形高光與內陰影強化球體感。
+
+### Why
+- Slot reel 原本會在 spinning / settling / result 三種 DOM 之間切換，容易出現頓感與結果替換感；改為單一 track + rAF 可降低 layout/repaint，並讓停輪位置可精準計算。
+
+### How（如何驗證）
+- `npm run lint`（frontend）→ PASS。
+- `npm run build`（frontend）→ PASS（sandbox 內 esbuild 讀取 `vite.config.js` 權限失敗，升權重跑後成功）。
+- `http://127.0.0.1:5173/game/slot` → dev server 回應 200；Browser 外掛在目前 Windows sandbox 初始化失敗，未能完成互動截圖驗證。
+
+---
+
 ## [changed] — 2026-05-30 — Slot 遊戲畫面與 spin 動畫精修
 
 ### Changed

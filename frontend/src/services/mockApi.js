@@ -1,7 +1,7 @@
 const DB_KEY = 'lucky-star-mock-db-v1'
 const SESSION_KEY = 'lucky-star-session-v1'
 
-const slotSymbols = ['7', 'BAR', 'STAR', 'CHIP', 'A', 'K']
+const slotSymbols = ['🍒', '🍋', '🔔', '⭐', '7️⃣']
 const MOCK_SLOT_FORCED_WIN_RATE = 0.18
 const baccaratValues = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
 const transactionLabels = {

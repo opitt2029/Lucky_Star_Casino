@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import AppShell from '../components/AppShell'
 import MetricCard from '../components/MetricCard'
-import SlotMachinePreview from '../components/SlotMachinePreview'
+import SlotMachine from '../components/SlotMachine'
 import { spinSlot } from '../store/slices/gameSlice'
 import { setBalance } from '../store/slices/walletSlice'
 
@@ -27,17 +27,16 @@ export default function SlotGame() {
     try {
       const spinResult = await dispatch(spinSlot({ bet: resolvedBet })).unwrap()
       dispatch(setBalance(spinResult.wallet))
-    } catch {
-      // gameSlice already exposes the message in state.error
+      return spinResult
     } finally {
-      window.setTimeout(() => setVisualLock(false), 2300)
+      window.setTimeout(() => setVisualLock(false), 2900)
     }
   }
 
   return (
     <AppShell>
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_280px]">
-        <SlotMachinePreview grid={slotGrid} winningCells={winningCells} spinning={loading} onSpin={handleSpinRound} />
+        <SlotMachine grid={slotGrid} winningCells={winningCells} spinning={loading} onSpin={handleSpinRound} />
 
         <aside className="grid gap-4 content-start">
           <MetricCard label="可用星幣" value={balance.toLocaleString()} caption="下注後即時更新" tone="light" />
@@ -67,11 +66,6 @@ export default function SlotGame() {
                   {option === 'MAX' ? 'MAX' : option.toLocaleString()}
                 </button>
               ))}
-            </div>
-            <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs font-bold text-yellow-100/64">
-              <span className="rounded border border-yellow-200/10 bg-red-950/60 px-2 py-2">三轉輪</span>
-              <span className="rounded border border-yellow-200/10 bg-red-950/60 px-2 py-2">中線獎</span>
-              <span className="rounded border border-yellow-200/10 bg-red-950/60 px-2 py-2">停輪回彈</span>
             </div>
           </div>
 

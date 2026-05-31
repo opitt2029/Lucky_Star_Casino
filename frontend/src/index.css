@@ -420,7 +420,7 @@ a {
 }
 
 .slot-cabinet {
-  --slot-reel-height: 26rem;
+  --slot-reel-height: calc(var(--slot-symbol-height, 100px) * 3);
   position: relative;
   min-height: calc(var(--slot-reel-height) + 44px);
   padding: 22px;
@@ -440,7 +440,7 @@ a {
 }
 
 .slot-cabinet--compact {
-  --slot-reel-height: 11rem;
+  --slot-reel-height: calc(var(--slot-symbol-height, 52px) * 3);
   min-height: calc(var(--slot-reel-height) + 20px);
   padding: 10px;
 }
@@ -486,8 +486,6 @@ a {
 }
 
 .slot-reel-window {
-  --slot-row-gap: 10px;
-  --slot-row-padding: 10px;
   position: relative;
   overflow: hidden;
   min-height: 0;
@@ -502,12 +500,8 @@ a {
     inset 0 -22px 34px rgba(0, 0, 0, 0.44),
     0 0 0 4px rgba(10, 0, 2, 0.48);
   contain: layout paint;
-  transform: translateZ(0);
-}
-
-.slot-cabinet--compact .slot-reel-window {
-  --slot-row-gap: 5px;
-  --slot-row-padding: 5px;
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
 }
 
 .slot-reel-window::before,
@@ -531,47 +525,28 @@ a {
   background: linear-gradient(0deg, rgba(2, 0, 1, 0.72), transparent);
 }
 
-.slot-reel-result {
-  display: grid;
-  height: 100%;
-  grid-template-rows: repeat(3, minmax(0, 1fr));
-  gap: var(--slot-row-gap);
-  padding: var(--slot-row-padding);
-}
-
-.slot-cabinet--compact .slot-reel-result {
-  gap: var(--slot-row-gap);
-  padding: var(--slot-row-padding);
-}
-
-.slot-reel-strip,
-.slot-reel-settle-strip {
+.slot-reel-track {
   position: absolute;
   inset: 0;
   display: grid;
-  grid-auto-rows: calc((var(--slot-reel-height) - var(--slot-row-padding) - var(--slot-row-padding)) / 3);
-  gap: var(--slot-row-gap);
-  padding: var(--slot-row-padding);
+  grid-auto-rows: var(--slot-symbol-height, 100px);
+  gap: 0;
+  padding: 0;
   will-change: transform;
   backface-visibility: hidden;
   transform: translate3d(0, 0, 0);
-}
-
-.slot-reel-strip {
-  animation: slot-reel-silk var(--reel-duration) linear var(--reel-delay) infinite;
-}
-
-.slot-reel-settle-strip {
-  animation: slot-reel-decelerate 1.16s cubic-bezier(0.04, 0.82, 0.12, 1) both;
+  transform-origin: center top;
 }
 
 .slot-symbol-tile {
   position: relative;
   display: grid;
+  height: var(--slot-symbol-height, 100px);
   min-height: 0;
   place-items: center;
   align-content: center;
-  gap: 2px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 0;
   border: 1px solid rgba(255, 234, 160, 0.22);
   border-radius: 5px;
   overflow: hidden;
@@ -580,6 +555,45 @@ a {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
     inset 0 -14px 24px rgba(0, 0, 0, 0.22);
+}
+
+.slot-symbol-art {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  height: min(76%, calc(var(--slot-symbol-height, 100px) - 28px));
+  min-height: 0;
+  place-items: center;
+  padding: 0 8px;
+  font-family: var(--font-display);
+  font-size: clamp(2.2rem, calc(var(--slot-symbol-height, 100px) * 0.5), 4.8rem);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0;
+  text-shadow:
+    0 2px 0 rgba(50, 2, 6, 0.88),
+    0 0 18px rgba(255, 234, 160, 0.26);
+}
+
+.slot-symbol-tile--emoji .slot-symbol-art {
+  height: min(82%, calc(var(--slot-symbol-height, 100px) - 24px));
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", var(--font-display);
+  font-size: clamp(2.35rem, calc(var(--slot-symbol-height, 100px) * 0.58), 5.6rem);
+  line-height: 1.05;
+  transform: translateY(1px);
+}
+
+.slot-symbol-image {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 82%;
+  height: min(82%, calc(var(--slot-symbol-height, 100px) - 24px));
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
 }
 
 .slot-symbol-tile::after {
@@ -607,6 +621,10 @@ a {
 .slot-symbol-caption {
   position: relative;
   z-index: 1;
+  align-self: end;
+  width: 100%;
+  min-height: 16px;
+  padding: 0 6px 8px;
   font-size: 0.68rem;
   font-weight: 900;
   line-height: 1;
@@ -616,6 +634,12 @@ a {
 
 .slot-symbol-tile--compact .slot-symbol-label {
   font-size: 1.4rem;
+}
+
+.slot-symbol-tile--compact .slot-symbol-art {
+  height: 100%;
+  padding: 0 4px;
+  font-size: 1.8rem;
 }
 
 .slot-symbol-tile--compact .slot-symbol-caption {
@@ -827,52 +851,145 @@ a {
   }
 
   .slot-console {
-    grid-template-columns: minmax(0, 1fr) 150px 42px;
+    grid-template-columns: minmax(0, 1fr) 150px 64px;
   }
 
   .slot-lever {
     position: relative;
     display: block;
-    height: 124px;
+    height: 136px;
     justify-self: center;
-    width: 34px;
+    width: 58px;
+    border: 1px solid rgba(255, 234, 160, 0.24);
     border-radius: 999px;
-    background: linear-gradient(90deg, rgba(255, 234, 160, 0.22), rgba(55, 2, 7, 0.96), rgba(255, 234, 160, 0.18));
+    background:
+      radial-gradient(ellipse at 50% 12%, rgba(255, 234, 160, 0.16), transparent 34%),
+      linear-gradient(90deg, rgba(255, 234, 160, 0.08), rgba(20, 1, 5, 0.98) 28%, rgba(5, 0, 2, 0.98) 50%, rgba(20, 1, 5, 0.98) 72%, rgba(255, 234, 160, 0.08));
     box-shadow:
-      inset 0 0 0 1px rgba(255, 234, 160, 0.2),
-      0 12px 28px rgba(10, 0, 2, 0.38);
+      inset 0 0 0 4px rgba(0, 0, 0, 0.24),
+      inset 0 16px 22px rgba(255, 234, 160, 0.06),
+      inset 0 -20px 28px rgba(0, 0, 0, 0.5),
+      0 12px 24px rgba(10, 0, 2, 0.34);
+    overflow: hidden;
+    transition:
+      background 0.34s ease,
+      box-shadow 0.34s ease;
   }
 
   .slot-lever::before {
     content: "";
     position: absolute;
     left: 50%;
-    top: -18px;
-    width: 28px;
-    height: 28px;
+    top: 10px;
+    bottom: 10px;
+    width: 18px;
+    border: 1px solid rgba(255, 234, 160, 0.12);
     border-radius: 999px;
     background:
-      radial-gradient(circle at 35% 28%, rgba(255, 255, 230, 0.95), transparent 18%),
-      radial-gradient(circle, #ffeaa0, #c97911);
-    box-shadow: 0 0 20px rgba(255, 221, 93, 0.42);
+      linear-gradient(90deg, rgba(0, 0, 0, 0.42), rgba(255, 234, 160, 0.08), rgba(0, 0, 0, 0.42)),
+      rgba(4, 0, 2, 0.66);
+    box-shadow:
+      inset 0 8px 14px rgba(0, 0, 0, 0.46),
+      inset 0 -8px 14px rgba(0, 0, 0, 0.42);
     transform: translateX(-50%);
-    transition: transform 0.28s ease;
+    transition:
+      transform 0.34s cubic-bezier(0.2, 0.9, 0.18, 1),
+      box-shadow 0.34s ease;
   }
 
   .slot-lever::after {
     content: "";
     position: absolute;
     left: 50%;
-    bottom: 10px;
-    width: 10px;
-    height: 78px;
+    top: 15px;
+    width: 6px;
+    height: 106px;
     border-radius: 999px;
-    background: linear-gradient(180deg, #ffeaa0, #a56408);
+    opacity: 0.62;
+    background: linear-gradient(180deg, transparent, rgba(255, 234, 160, 0.3) 18%, rgba(255, 234, 160, 0.12) 82%, transparent);
+    transform: translateX(-50%);
+    transition:
+      height 0.34s ease,
+      opacity 0.34s ease,
+      transform 0.34s cubic-bezier(0.2, 0.9, 0.18, 1);
+  }
+
+  .slot-lever span {
+    position: absolute;
+    left: 50%;
+    top: 14px;
+    z-index: 2;
+    display: block;
+    width: 42px;
+    height: 42px;
+    background: transparent;
+    border-radius: 999px;
+    box-shadow: none;
+    transform: translateX(-50%) translateY(0);
+    transition: transform 0.42s cubic-bezier(0.2, 0.9, 0.18, 1);
+    will-change: transform;
+  }
+
+  .slot-lever span::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 0;
+    width: 42px;
+    height: 42px;
+    border: 1px solid rgba(255, 242, 181, 0.46);
+    border-radius: 999px;
+    background:
+      radial-gradient(circle at 30% 24%, rgba(255, 255, 238, 0.95), transparent 14%),
+      radial-gradient(circle at 38% 34%, #fff2b6, #f3bd45 42%, #b66a10 68%, #5b1d06 100%);
+    box-shadow:
+      inset -9px -10px 13px rgba(78, 23, 2, 0.42),
+      inset 4px 4px 7px rgba(255, 255, 255, 0.16),
+      0 0 16px rgba(255, 221, 93, 0.34),
+      0 8px 14px rgba(0, 0, 0, 0.42);
     transform: translateX(-50%);
   }
 
+  .slot-lever span::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 26px;
+    height: 8px;
+    border-radius: 999px;
+    opacity: 0.5;
+    background: radial-gradient(ellipse, rgba(0, 0, 0, 0.64), transparent 68%);
+    transform: translate(-50%, 120%);
+  }
+
+  .slot-lever--active span {
+    animation: slot-lever-pull 0.62s cubic-bezier(0.18, 0.9, 0.2, 1.02) both;
+    transform: translateX(-50%) translateY(62px);
+  }
+
+  .slot-lever--active {
+    background:
+      radial-gradient(ellipse at 50% 88%, rgba(255, 234, 160, 0.16), transparent 34%),
+      linear-gradient(90deg, rgba(255, 234, 160, 0.06), rgba(14, 0, 4, 0.98) 28%, rgba(3, 0, 1, 0.98) 50%, rgba(14, 0, 4, 0.98) 72%, rgba(255, 234, 160, 0.06));
+    box-shadow:
+      inset 0 0 0 4px rgba(0, 0, 0, 0.28),
+      inset 0 10px 18px rgba(255, 234, 160, 0.04),
+      inset 0 -14px 22px rgba(0, 0, 0, 0.56),
+      0 12px 24px rgba(10, 0, 2, 0.38);
+  }
+
   .slot-lever--active::before {
-    transform: translate(-50%, 34px);
+    box-shadow:
+      inset 0 10px 16px rgba(0, 0, 0, 0.52),
+      inset 0 -8px 12px rgba(0, 0, 0, 0.38);
+    transform: translate(-50%, 1px);
+  }
+
+  .slot-lever--active::after {
+    height: 96px;
+    opacity: 0.36;
+    transform: translate(-50%, 4px);
   }
 
   .slot-symbol-label {
@@ -997,39 +1114,6 @@ a {
   }
 }
 
-@keyframes slot-reel-spin {
-  from {
-    transform: translate3d(0, -2%, 0);
-  }
-  to {
-    transform: translate3d(0, -52%, 0);
-  }
-}
-
-@keyframes slot-reel-silk {
-  0% {
-    transform: translate3d(0, -2%, 0);
-  }
-  100% {
-    transform: translate3d(0, -52%, 0);
-  }
-}
-
-@keyframes slot-reel-decelerate {
-  0% {
-    transform: translate3d(0, -18%, 0);
-  }
-  62% {
-    transform: translate3d(0, calc(var(--settle-offset) + 4%), 0);
-  }
-  84% {
-    transform: translate3d(0, calc(var(--settle-offset) - 0.75%), 0);
-  }
-  100% {
-    transform: translate3d(0, var(--settle-offset), 0);
-  }
-}
-
 @keyframes slot-symbol-win {
   0%,
   100% {
@@ -1050,6 +1134,24 @@ a {
     box-shadow:
       0 0 18px rgba(255, 218, 80, 0.55),
       0 0 36px rgba(255, 218, 80, 0.35);
+  }
+}
+
+@keyframes slot-lever-pull {
+  0% {
+    transform: translateX(-50%) translateY(0);
+  }
+  46% {
+    transform: translateX(-50%) translateY(70px);
+  }
+  68% {
+    transform: translateX(-50%) translateY(56px);
+  }
+  86% {
+    transform: translateX(-50%) translateY(64px);
+  }
+  100% {
+    transform: translateX(-50%) translateY(62px);
   }
 }
 
@@ -1092,8 +1194,6 @@ a {
   .coin-rain__coin,
   .slot-machine::before,
   .slot-machine__bulb,
-  .slot-reel-strip,
-  .slot-reel-settle-strip,
   .slot-symbol-tile--winning,
   .slot-cabinet--win .slot-payline,
   .slot-status--active::after {
@@ -1104,7 +1204,7 @@ a {
     opacity: 0.14;
   }
 
-  .slot-reel-settle-strip {
-    transform: translate3d(0, var(--settle-offset), 0);
+  .slot-reel-track {
+    transition: none;
   }
 }

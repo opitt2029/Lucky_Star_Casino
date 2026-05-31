@@ -1,0 +1,3 @@
+/* SlotMachine imports this file so /game/slot is explicitly wired to the new
+   reel implementation. The concrete visual rules live in index.css today to
+   preserve the existing app theme and avoid duplicating the full machine skin. */
