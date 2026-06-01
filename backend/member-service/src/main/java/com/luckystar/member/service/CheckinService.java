@@ -20,7 +20,7 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class CheckinService {
 
-    private static final long REWARD_AMOUNT = 50L;
+    private static final long DAILY_REWARD_AMOUNT = 100L;
 
     private final DailyCheckinRepository dailyCheckinRepository;
     private final OutboxService outboxService;
@@ -53,18 +53,30 @@ public class CheckinService {
         checkin.setConsecutiveDays(consecutiveDays);
         DailyCheckin saved = dailyCheckinRepository.save(checkin);
 
+        long rewardAmount = calculateReward(consecutiveDays);
+
         // Step 5: 與簽到記錄同一交易寫入 outbox（wallet.credit.request — 入帳「指令」，ADR-002）
-        // 不再 best-effort 吞錯：簽到與發獎事件原子綁定，避免「簽到成功卻沒拿到 50 獎勵」
+        // 不再 best-effort 吞錯：簽到與發獎事件原子綁定，避免「簽到成功卻沒拿到獎勵」
         // wallet-service 消費此指令後才真正加餘額，並另發 wallet.credit「事件」給 rank 等下游
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("playerId", playerId);
-        payload.put("amount", REWARD_AMOUNT);
+        payload.put("amount", rewardAmount);
         payload.put("subType", "CHECKIN");
         payload.put("idempotencyKey", "checkin-" + playerId + "-" + today);
         payload.put("consecutiveDays", consecutiveDays);
         outboxService.save("wallet.credit.request", String.valueOf(playerId), payload);
 
         // Step 6: return response
-        return new CheckinResponse(saved.getId(), today, consecutiveDays, REWARD_AMOUNT);
+        return new CheckinResponse(saved.getId(), today, consecutiveDays, rewardAmount);
+    }
+
+    private long calculateReward(int consecutiveDays) {
+        return DAILY_REWARD_AMOUNT + switch (consecutiveDays) {
+            case 7 -> 1000L;
+            case 14 -> 2000L;
+            case 21 -> 3000L;
+            case 30 -> 5000L;
+            default -> 0L;
+        };
     }
 }

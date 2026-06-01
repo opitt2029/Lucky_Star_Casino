@@ -23,16 +23,16 @@ export default function Transactions() {
 
   return (
     <AppShell>
-      <section className="rounded border border-white/10 bg-zinc-900 p-4">
+      <section className="luxury-panel rounded p-4">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.3em] text-zinc-500">Wallet Ledger</p>
-            <h2 className="mt-1 text-2xl font-black text-white">交易紀錄</h2>
+            <p className="gold-muted text-xs font-black uppercase tracking-[0.3em]">Wallet Ledger</p>
+            <h2 className="brand-title mt-1 text-2xl font-black">交易紀錄</h2>
           </div>
           <button
             type="button"
             onClick={() => dispatch(fetchTransactions({ ...filters, page: transactionPage, pageSize: transactionPageSize }))}
-            className="rounded bg-white px-4 py-2 text-sm font-black text-zinc-950 transition hover:bg-zinc-200"
+            className="gold-button rounded px-4 py-2 text-sm font-black transition"
           >
             {loading ? '同步中...' : '同步流水'}
           </button>
@@ -40,7 +40,7 @@ export default function Transactions() {
 
         <div className="mt-5 grid gap-3 md:grid-cols-[1fr_180px_180px]">
           <select
-            className="min-h-11 rounded border border-white/10 bg-black px-4 text-sm font-bold text-white outline-none focus:border-white"
+            className="min-h-11 rounded border border-yellow-200/15 bg-red-950/70 px-4 text-sm font-bold text-white outline-none focus:border-yellow-200"
             value={filters.type}
             onChange={(event) => dispatch(setTransactionFilters({ type: event.target.value }))}
           >
@@ -52,13 +52,13 @@ export default function Transactions() {
           </select>
           <input
             type="date"
-            className="min-h-11 rounded border border-white/10 bg-black px-4 text-sm font-bold text-white outline-none focus:border-white"
+            className="min-h-11 rounded border border-yellow-200/15 bg-red-950/70 px-4 text-sm font-bold text-white outline-none focus:border-yellow-200"
             value={filters.startDate}
             onChange={(event) => dispatch(setTransactionFilters({ startDate: event.target.value }))}
           />
           <input
             type="date"
-            className="min-h-11 rounded border border-white/10 bg-black px-4 text-sm font-bold text-white outline-none focus:border-white"
+            className="min-h-11 rounded border border-yellow-200/15 bg-red-950/70 px-4 text-sm font-bold text-white outline-none focus:border-yellow-200"
             value={filters.endDate}
             onChange={(event) => dispatch(setTransactionFilters({ endDate: event.target.value }))}
           />
@@ -67,7 +67,7 @@ export default function Transactions() {
 
         <div className="mt-5 overflow-x-auto">
           <table className="w-full min-w-[680px] border-separate border-spacing-y-2 text-left text-sm">
-            <thead className="text-xs uppercase tracking-[0.2em] text-zinc-500">
+            <thead className="gold-muted text-xs uppercase tracking-[0.2em]">
               <tr>
                 <th className="px-3 py-2">交易 ID</th>
                 <th className="px-3 py-2">類型</th>
@@ -78,20 +78,20 @@ export default function Transactions() {
             </thead>
             <tbody>
               {transactions.map((row) => (
-                <tr key={row.id} className="bg-black">
-                  <td className="rounded-l border-y border-l border-white/10 px-3 py-4 font-black text-white">{row.id}</td>
-                  <td className="border-y border-white/10 px-3 py-4 text-zinc-300">{row.typeLabel}</td>
-                  <td className={['border-y border-white/10 px-3 py-4 font-black', row.amount < 0 ? 'text-red-300' : 'text-emerald-300'].join(' ')}>
+                <tr key={row.id} className="bg-red-950/70">
+                  <td className="rounded-l border-y border-l border-yellow-200/15 px-3 py-4 font-black text-yellow-100">{row.id}</td>
+                  <td className="border-y border-yellow-200/15 px-3 py-4 text-yellow-100/72">{row.typeLabel}</td>
+                  <td className={['border-y border-yellow-200/15 px-3 py-4 font-black', row.amount < 0 ? 'text-red-200' : 'text-yellow-200'].join(' ')}>
                     {row.amount > 0 ? '+' : ''}
                     {row.amount.toLocaleString()}
                   </td>
-                  <td className="border-y border-white/10 px-3 py-4 text-zinc-300">{row.status}</td>
-                  <td className="rounded-r border-y border-r border-white/10 px-3 py-4 text-zinc-400">{new Date(row.createdAt).toLocaleString()}</td>
+                  <td className="border-y border-yellow-200/15 px-3 py-4 text-yellow-100/72">{row.status}</td>
+                  <td className="rounded-r border-y border-r border-yellow-200/15 px-3 py-4 text-yellow-100/60">{new Date(row.createdAt).toLocaleString()}</td>
                 </tr>
               ))}
               {transactions.length === 0 && (
-                <tr className="bg-black">
-                  <td colSpan="5" className="rounded border border-white/10 px-3 py-8 text-center font-bold text-zinc-500">
+                <tr className="bg-red-950/70">
+                  <td colSpan="5" className="rounded border border-yellow-200/15 px-3 py-8 text-center font-bold text-yellow-100/56">
                     沒有符合條件的交易紀錄
                   </td>
                 </tr>
@@ -100,7 +100,7 @@ export default function Transactions() {
           </table>
         </div>
         <div className="mt-4 flex items-center justify-between">
-          <p className="text-sm font-bold text-zinc-500">
+          <p className="gold-muted text-sm font-bold">
             第 {transactionPage} / {totalPages} 頁，共 {transactionTotal} 筆
           </p>
           <div className="flex gap-2">
@@ -108,7 +108,7 @@ export default function Transactions() {
               type="button"
               onClick={() => dispatch(setTransactionPage(Math.max(transactionPage - 1, 1)))}
               disabled={transactionPage <= 1}
-              className="rounded border border-white/10 px-4 py-2 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
+              className="red-gold-button rounded px-4 py-2 text-sm font-black disabled:cursor-not-allowed disabled:opacity-40"
             >
               上一頁
             </button>
@@ -116,7 +116,7 @@ export default function Transactions() {
               type="button"
               onClick={() => dispatch(setTransactionPage(Math.min(transactionPage + 1, totalPages)))}
               disabled={transactionPage >= totalPages}
-              className="rounded border border-white/10 px-4 py-2 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
+              className="red-gold-button rounded px-4 py-2 text-sm font-black disabled:cursor-not-allowed disabled:opacity-40"
             >
               下一頁
             </button>

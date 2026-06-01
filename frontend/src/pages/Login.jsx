@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { loginMember } from '../store/slices/authSlice'
 import { fetchRanks } from '../store/slices/rankSlice'
 import { fetchWallet } from '../store/slices/walletSlice'
+import CoinRain from '../components/CoinRain'
 import { getBackgroundStyle } from '../theme/backgroundTheme'
 
 export default function Login() {
@@ -31,6 +32,7 @@ export default function Login() {
 
   return (
     <div className="theme-background grid min-h-screen text-white lg:grid-cols-[1fr_520px]" style={getBackgroundStyle('auth')}>
+      <CoinRain />
       <section
         className="theme-artwork flex min-h-[46vh] items-end border-b border-white/10 p-6 sm:p-10 lg:min-h-screen lg:border-b-0 lg:border-r"
         style={getBackgroundStyle('authHero')}

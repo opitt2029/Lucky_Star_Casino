@@ -5,6 +5,68 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-01 — 點數卡序號兌換鑽石 API（T-102）
+
+### Added
+- `backend/wallet-service/.../mysql/entity/DiamondCard.java`（新增）：`diamond_cards`（MySQL 讀端）對應 entity（`cardCode` UNIQUE、`faceValue`、`isRedeemed`、`redeemedBy`、`redeemedAt`）。由 `mysqlEntityManagerFactory` 掃描。
+- `mysql/repository/DiamondCardRepository.java`（新增）：`findByCardCode`；防重複兌換核心 `markRedeemed`（條件式 `@Modifying` UPDATE，CAS：`WHERE card_code=? AND is_redeemed=false`，回傳 1=成功 / 0=不存在或已兌換）；補償用 `revertRedemption`。
+- `service/DiamondCardService.java`（新增，`@Transactional(mysqlTransactionManager)`）：`redeemCard`（SELECT 區分 404/422 後 CAS 標記、回面額）、`revertRedemption`（best-effort 補償，吞例外不外拋）。獨立成 bean 讓交易 proxy 生效。
+- `service/DiamondRedeemService.java`（新增）：跨資料源協調器。先 MySQL CAS 標記序號（防重複兌換關卡）、再 PostgreSQL 入帳鑽石；入帳失敗則補償回滾序號標記後原樣拋例外。**不引入 XA**（比照 `GiftService`）。
+- `controller/DiamondController.java`（新增）：`POST /api/v1/wallet/diamond/redeem`，playerId 取自 gateway 注入的 `X-User-Id`、序號走 body。與星幣 `WalletController` 分開讓鑽石邏輯獨立演進。
+- `dto/DiamondRedeemRequest.java`、`dto/DiamondRedeemResponse.java`（新增）：請求只帶 `cardCode`（`@NotBlank`/`@Size(max=50)`）；回應含 `redeemedDiamonds`（面額）與 `diamondBalance`（兌換後餘額）。
+- `exception/CardNotFoundException`(404)、`CardAlreadyRedeemedException`(422)、`DiamondWalletNotFoundException`(404)（新增），並在 `GlobalExceptionHandler` 加對應對映。
+- 測試（新增）：`DiamondCardServiceTest`(5)、`DiamondRedeemServiceTest`(3)、`DiamondControllerTest`(7)；`DiamondWalletServiceTest` 補 `creditDiamond` 2 案。
+
+### Changed
+- `service/DiamondWalletService.java`：新增 `creditDiamond(playerId, amount)`（`@Transactional(postgresTransactionManager)`），鑽石入帳、`@Version` 樂觀鎖防並發超帳，錢包不存在丟 `DiamondWalletNotFoundException`。
+
+### Why
+- 鑽石餘額在 PostgreSQL 寫端、序號在 MySQL 讀端（ADR-001），兌換天生跨資料源。沿用 `GiftService` 的取捨刻意不引入 XA，改以「先 CAS 標記序號（不可重複的關卡）→ 再入帳 → 失敗補償回滾」串接兩個獨立交易，永遠偏向「不重複入帳」的安全側。
+- 防重複兌換的真正關卡是 `is_redeemed` 上的條件式 UPDATE（CAS）而非 `card_code` UNIQUE（後者只防序號重複建立）：並發雙擊時 DB 列鎖 + 條件保證僅一方回傳列數為 1。
+- `CardAlreadyRedeemedException` 用 422 而非 409：「已兌換」是不可重試的業務狀態，與 409「並發衝突請重試」（樂觀鎖）語意不同。
+
+### How（驗證）
+- `mvn -pl backend/wallet-service test` → BUILD SUCCESS，Tests run: 105, Failures: 0, Errors: 0（H2，含 `contextLoads` 驗證新 entity/repository/CAS query 正確 wire-up）。
+
+## [feat] — 2026-06-01 — 鑽石錢包初始化（開戶）（T-101）
+
+### Added
+- `backend/wallet-service/.../postgres/entity/DiamondWallet.java`（新增）：`diamond_wallets` 對應 entity。結構比照 `Wallet`（`@Id playerId`、`balance` 預設 0、`@Version version`、`@PrePersist`/`@PreUpdate` 時間戳），但**不設 `frozenAmount`**（鑽石無凍結/下注概念）。放在 `postgres.entity` 套件，確保由 `postgresEntityManagerFactory` 掃描（ADR-001 雙資料源）。
+- `postgres/repository/DiamondWalletRepository.java`（新增）：`extends JpaRepository<DiamondWallet, Long>`。
+- `service/DiamondWalletService.java`（新增）：`createDiamondWallet(Long playerId)`，與 `WalletService.createWallet`（T-020）平行。冪等兩層保證：`existsById` 預檢 + 並發時 PostgreSQL 主鍵唯一約束擋下後到者（`DataIntegrityViolationException` 吞掉成 no-op）。走 `@Transactional(postgresTransactionManager)`。
+- 測試（新增）：`service/DiamondWalletServiceTest.java`（3 案：新玩家建戶 balance/version=0、既有玩家略過不存、並發 UNIQUE 衝突靜默處理）。
+
+### Changed
+- `kafka/MemberEventListener.java`：在既有星幣開戶後、`ack` 前**加掛**鑽石開戶 `diamondWalletService.createDiamondWallet(playerId)`。**未**另開 `@KafkaListener`（避免同 consumer group 雙 listener 分裂 partition，破壞「兩錢包一起建立」保證）。兩開戶皆冪等，任一失敗皆不 ack、由 error handler 重試/送 DLT。
+- 測試：`kafka/MemberEventListenerTest.java` 注入 `DiamondWalletService` mock；既有 3 案更新為驗證雙開戶 + 新增 1 案（鑽石開戶失敗同樣不 ack）。
+
+### Why
+- 完成 T-101（工作分配表規格）：消費 `member.registered` 為新玩家建立 `diamond_wallets`（balance=0、version=0）、確保冪等，與 T-020 星幣開戶邏輯平行。
+- 依賴 T-100 的 `diamond_wallets` schema（本次同日落地）。沿用既有冪等（DB UNIQUE 防重）模式（AGENTS.md §2.8）。
+
+### 如何驗證
+- `mvn -pl backend/wallet-service test` → **BUILD SUCCESS，Tests run: 78, Failures: 0, Errors: 0**（H2，surefire `jpa.ddl-auto=create` 自動建 `diamond_wallets` 表；`WalletServiceApplicationTests` contextLoads 確認新 entity/bean 正常裝配）。
+
+---
+
+## [feat] — 2026-06-01 — 鑽石系統資料表 schema（T-100）
+
+### Added
+- `database/postgres/init.sql`：新增 `diamond_wallets` 表（鑽石錢包寫端，PostgreSQL）。欄位 `player_id`(PK)、`balance`(預設 0)、`version`(樂觀鎖)、`created_at`/`updated_at`，`CHECK (balance >= 0)`。與 `wallets`（星幣）平行、同庫；刻意**不**設 `frozen_amount`（鑽石無凍結/下注概念）。
+- `database/mysql/init.sql`：新增 `diamond_cards` 表（點數卡序號，MySQL 讀庫）。欄位 `id`(PK)、`card_code`(`UNIQUE`，格式 `XXXX-XXXX-XXXX-XXXX`)、`face_value`(`CHECK > 0`)、`is_redeemed`(預設 0)、`redeemed_by`、`redeemed_at`、`created_at`；另建 `is_redeemed`、`redeemed_by` 索引供後台列表查詢（T-106）。
+- `database/postgres/migration/V2__add_diamond_wallets.sql`、`database/mysql/migration/V5__add_diamond_cards.sql`（新增）：與上述 init.sql 同步的 Flyway 遷移檔，維持 `schema.sql` 清單所指的遷移歷史一致（目前 Flyway 未接入 runtime，遷移檔為平行文件）。
+
+### Why
+- 完成 T-100（工作分配表規格）：`diamond_cards` 存 MySQL、`diamond_wallets` 存 PostgreSQL 與 `wallets` 同庫，作為鑽石點數卡系統（T-101~T-107）的資料地基。
+- `card_code UNIQUE` + `is_redeemed` 旗標：在 DB 層為 T-102「序號兌換」提供防重複兌換的唯一約束；`diamond_wallets.version` 為 T-103「鑽石換星幣」提供樂觀鎖防超扣（沿用 AGENTS.md §2.8 帳務模式）。
+- 下游依賴：T-101 將在 wallet-service 的 `com.luckystar.wallet.postgres.entity` 下新增 `DiamondWallet` entity 對應本表（測試以 H2 `jpa.ddl-auto=create` 自動建表）。
+
+### 如何驗證
+- 純 DDL 變更、無 Java 程式碼動到，既有測試不受影響。本機可比照 DEPLOY.md 以 `docker compose` 重建 `mysql`/`postgres`（init.sql 走 docker-entrypoint-initdb.d），確認兩表建立成功。
+- T-101 落地後將由 `mvn -pl backend/wallet-service test`（H2）覆蓋 `diamond_wallets` 對應 entity。
+
+---
+
 ## [feat] — 2026-06-01 — Kafka 消費失敗 Dead Letter Queue 處理（T-028）
 
 ### Added
@@ -92,6 +154,339 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### How（如何驗證）
 - `mvn -pl backend/gateway-service,backend/member-service,backend/wallet-service test` → BUILD SUCCESS（wallet-service 74 案全綠，含 GiftServiceTest 10、GiftTransferServiceTest 4、WalletReadSyncListenerTest 9；`@SpringBootTest` contextLoads 通過，含新 bean 與 Redis 自動配置）。
+
+---
+
+## [changed] — 2026-05-31 — 調整百家樂側欄結算摘要
+
+### Changed
+- `frontend/src/pages/Baccarat.jsx`：移除 `/game/baccarat` 側邊欄的「目前玩家」區塊。
+- `frontend/src/pages/Baccarat.jsx`：在「本局選項」下方新增「本局獲利」區塊；命中時顯示正獲利，未命中時顯示負的下注面額。
+
+### Why
+- 百家樂側欄應優先呈現本局下注與結算資訊，減少與登入狀態重複的玩家資料。
+
+### How（如何驗證）
+- `npm run lint`（frontend）→ PASS。
+- `npm run build`（frontend）→ PASS（sandbox 內 esbuild 讀取 `vite.config.js` 權限失敗，升權重跑後成功）。
+
+---
+
+## [added] — 2026-05-31 — 遊戲頁側欄新增規則說明彈窗
+
+### Added
+- `frontend/src/components/GameRuleCard.jsx`：新增共用遊戲規則卡片，點擊後以紅金主題小視窗顯示規則與賠率，支援背景點擊與 Escape 關閉。
+- `frontend/src/pages/SlotGame.jsx`：在 `/game/slot` 側邊欄最上方加入星幣老虎機規則說明。
+- `frontend/src/pages/Baccarat.jsx`：在 `/game/baccarat` 側邊欄最上方加入百家樂規則說明。
+
+### Why
+- 遊戲頁需要在操作區旁提供可隨時查看的規則說明，避免玩家離開當前局面查詢下注、命中與賠率規則。
+
+### How（如何驗證）
+- `npm run lint`（frontend）→ PASS。
+- `npm run build`（frontend）→ PASS（sandbox 內 esbuild 讀取 `vite.config.js` 權限失敗，升權重跑後成功）。
+- `http://127.0.0.1:5175/game/slot`、`http://127.0.0.1:5175/game/baccarat` → dev server 回應 200；Browser 外掛在目前 Windows sandbox 初始化失敗，未能完成互動截圖驗證。
+
+---
+
+## [changed] — 2026-05-31 — 面額選單箭頭改為 CSS 圖示
+
+### Changed
+- `frontend/src/pages/Baccarat.jsx`：移除百家樂面額按鈕中的文字箭頭。
+- `frontend/src/index.css`：改用 `baccarat-amount-toggle::after` 繪製 chevron 圖示，並在展開時旋轉。
+
+### Why
+- 面額按鈕上的文字箭頭看起來像 `v` 字元；改為 CSS 圖示可維持一致的紅金 UI 質感。
+
+### How（如何驗證）
+- `npm run lint`（frontend）→ PASS。
+- `npm run build`（frontend）→ PASS（sandbox 內 esbuild 讀取 `vite.config.js` 權限失敗，升權重跑後成功）。
+
+---
+
+## [changed] — 2026-05-31 — 百家樂下注金額改為自製面額選單
+
+### Changed
+- `frontend/src/pages/Baccarat.jsx`：下注金額保留自訂輸入，新增非原生 select 的面額選單，提供 100、200、500、1000、3000、5000、7000、10000 快速選擇。
+- `frontend/src/index.css`：新增 `baccarat-amount-*` 樣式，讓面額選單、切換按鈕與選中狀態符合紅金 VIP 牌桌風格。
+
+### Why
+- 原本純輸入框操作較慢；改為自訂金額搭配常用面額按鈕，可保留樣式掌控並提升下注效率。
+
+### How（如何驗證）
+- `npm run lint`（frontend）→ PASS。
+- `npm run build`（frontend）→ PASS（sandbox 內 esbuild 讀取 `vite.config.js` 權限失敗，升權重跑後成功）。
+
+---
+
+## [changed] — 2026-05-31 — 放大百家樂下注與結算區
+
+### Changed
+- `frontend/src/index.css`：將 `/game/baccarat` 牌桌內的下注區與本局結算改為上下獨立橫列，放大面板、選項按鈕與內距。
+- `frontend/src/index.css`：移除百家樂結算欄位文字的 ellipsis 截斷，改為自然換行，避免長文字顯示成 `...`。
+
+### Why
+- 百家樂下注區與本局結算同列時資訊較擁擠，部分文字會被截斷；改成獨立列後更適合掃讀與操作。
+
+### How（如何驗證）
+- `npm run lint`（frontend）→ PASS。
+- `npm run build`（frontend）→ PASS（sandbox 內 esbuild 讀取 `vite.config.js` 權限失敗，升權重跑後成功）。
+
+---
+
+## [changed] — 2026-05-31 — 百家樂頁面改為 VIP 賭桌視覺
+
+### Changed
+- `frontend/src/pages/Baccarat.jsx`：將 `/game/baccarat` 版面重整為 `baccarat-*` 語意區塊，包含遊戲標題、Player / Banker 對戰牌桌、下注面板、結算面板與右側狀態欄。
+- `frontend/src/index.css`：新增百家樂專屬樣式，包含暗紅絨布桌面、深色玻璃牌區、象牙白撲克牌、金色選中 / hover / winner glow、結算面板狀態色與 RWD 斷點。
+
+### Why
+- 百家樂頁面需要更貼近 Lucky Star Casino 既有紅金暗色主題，並呈現高級賭城內百家樂桌面的視覺層級。
+
+### How（如何驗證）
+- `npm run lint`（frontend）→ PASS。
+- `npm run build`（frontend）→ PASS（sandbox 內 esbuild 讀取 `vite.config.js` 權限失敗，升權重跑後成功）。
+- `http://127.0.0.1:5173/game/baccarat` → dev server 回應 200；Browser 外掛在目前 Windows sandbox 初始化失敗，未能完成互動截圖驗證。
+
+---
+
+## [feat] — 2026-05-31 — 新增前端百家樂遊戲頁互動流程
+
+### Added
+- `frontend/src/utils/baccaratGame.js`：新增百家樂前端模擬 helper，包含 `createDeck()`、`drawCard()`、`calculateBaccaratScore()`、`determineWinner()`、`calculatePayout()` 與下注倍率設定。
+
+### Changed
+- `frontend/src/pages/Baccarat.jsx`：重做 `/game/baccarat` 頁面，加入 Player / Banker / Tie 下注選擇、下注金額輸入、兩張牌簡化發牌、點數與勝方計算、命中派彩 / 未命中損失顯示。
+- `frontend/src/pages/Baccarat.jsx`：沿用既有 `AppShell`、`MetricCard`、紅金暗色系樣式與 PrivateRoute；保留未來 `POST /api/game/baccarat/play` 與 wallet-service 扣款 / 派彩 TODO。
+
+### Why
+- 既有百家樂頁面只有點下注區即開局的簡化桌面互動，缺少本次需求指定的下注驗證、發牌按鈕、結果明細與後端串接預留契約。
+
+### How（如何驗證）
+- `npm run lint`（frontend）→ PASS。
+- `npm run build`（frontend）→ PASS（sandbox 內 esbuild 讀取 `vite.config.js` 權限失敗，升權重跑後成功）。
+- `http://127.0.0.1:5173/game/baccarat` → dev server 回應 200；Browser 外掛在目前 Windows sandbox 初始化失敗，未能完成互動截圖驗證。
+
+---
+
+## [changed] — 2026-05-31 — Slot 轉輪改為 requestAnimationFrame 精準停輪
+
+### Changed
+- `frontend/src/components/SlotMachinePreview.jsx`：重構為 reusable `Reel` component，新增 `animateReel`、`easeOutCubic`、圖片預載與固定 track 建立流程；動畫開始前即把結果 symbol 放進最終停止位置。
+- `frontend/src/components/SlotMachinePreview.jsx`：每軸使用 5/6/7 圈與 1800/2200/2600ms 錯開停輪，動畫期間只更新 reel track 的 `transform: translate3d(...)`，結束時修正到精準 `targetY`。
+- `frontend/src/index.css`：移除 slot reel 的 CSS keyframe strip 切換，改用固定 symbol 高度與 `will-change: transform` 的 composited track。
+- `frontend/src/pages/SlotGame.jsx`：直接改用新版 `SlotMachine` 元件，讓 `/game/slot` 實際接上 requestAnimationFrame 轉輪動畫；spin handler 會回傳本局結果給 slot 元件，確保可視動畫開跑前已取得並預排結果 grid。
+- `frontend/src/components/SlotMachine.jsx`、`frontend/src/components/Reel.jsx`、`frontend/src/components/slotMachine.css`：抽出現行 slot 機台正在使用的 reusable reel 元件與動畫工具，避免專案同時維護 demo 版與實際版兩套轉輪邏輯。
+- `frontend/src/components/SlotMachinePreview.jsx`：改為相容轉出口，舊 import 會導向新版 `SlotMachine`。
+- `frontend/src/services/mockApi.js`、`frontend/src/store/slices/gameSlice.js`：將現行 `/game/slot` 使用的 mock symbols 與初始 grid 改為 `['🍒', '🍋', '🔔', '⭐', '7️⃣']`，讓新版轉輪在頁面上直接可見。
+- `frontend/src/components/SlotMachine.jsx`、`frontend/src/components/Reel.jsx`、`frontend/src/index.css`：將 slot reel 非 compact symbol 高度調整為 170px，讓三列 symbol 填滿目前 reel window；symbol 內容改為 `.slot-symbol-art` 顯示，避免 emoji / 圖片因文字行高被裁切。
+- `frontend/src/pages/SlotGame.jsx`：移除 Bet Control 面板中「三轉輪 / 中線獎 / 停輪回彈」這排使用者不需要的說明標籤。
+- `frontend/src/index.css`：重繪 slot lever 視覺，新增金屬底座、桿身、球形握把與下拉回彈 `slot-lever-pull` 動畫，讓 spin 時拉桿更接近實體機台。
+- `frontend/src/index.css`：調整 slot lever 動畫為垂直由上至下拉動，移除大角度旋轉，讓拉桿動作更協調。
+- `frontend/src/index.css`：收斂 slot lever 的握把、桿身與下拉行程到外殼內，避免動畫時看起來脫離 parent container。
+- `frontend/src/index.css`：徹底重構 slot lever 的動件模型，保留原外觀材質但改為透明 `span` 容器承載球頭與桿身一起垂直滑動，讓拉桿不再有部件分離感。
+- `frontend/src/index.css`：讓 slot lever 的 parent 外殼、底座與導槽在 active 狀態同步下壓與改變光影，避免背景靜止造成拉桿與容器不協調。
+- `frontend/src/index.css`：依俯視視角重做 slot lever，移除側視金屬桿與底座表現，改為凹槽中的握把上下滑動。
+- `frontend/src/index.css`：將俯視 slot lever 的滑動握把改成球形，使用圓形高光與內陰影強化球體感。
+
+### Why
+- Slot reel 原本會在 spinning / settling / result 三種 DOM 之間切換，容易出現頓感與結果替換感；改為單一 track + rAF 可降低 layout/repaint，並讓停輪位置可精準計算。
+
+### How（如何驗證）
+- `npm run lint`（frontend）→ PASS。
+- `npm run build`（frontend）→ PASS（sandbox 內 esbuild 讀取 `vite.config.js` 權限失敗，升權重跑後成功）。
+- `http://127.0.0.1:5173/game/slot` → dev server 回應 200；Browser 外掛在目前 Windows sandbox 初始化失敗，未能完成互動截圖驗證。
+
+---
+
+## [changed] — 2026-05-30 — Slot 遊戲畫面與 spin 動畫精修
+
+### Changed
+- `frontend/src/components/SlotMachinePreview.jsx`：將原本 3x3 靜態格子改為三欄式轉輪機台，新增跑馬燈、玻璃反光、中線 payline、逐欄滾動與停輪回彈狀態。
+- `frontend/src/index.css`：新增 slot machine 專用樣式、轉輪滾動、燈泡追光、停輪落點、命中高亮與 reduced-motion fallback。
+- `frontend/src/index.css`：固定 slot 轉輪視窗高度並將 spin 用長轉輪 strip 改為絕對定位，避免 spin 時撐高畫面；平常狀態即使用加高後高度。
+- `frontend/src/components/SlotMachinePreview.jsx`、`frontend/src/index.css`：調整 spin 轉輪週期、blur、抖動幅度與停輪 easing，讓轉動和煞停更絲滑。
+- `frontend/src/components/SlotMachinePreview.jsx`、`frontend/src/index.css`：新增左到右逐欄煞停狀態，最終 symbol 會在同一條煞停 strip 中滑入定位，避免轉到一半直接彈出結果。
+- `frontend/src/components/SlotMachinePreview.jsx`、`frontend/src/index.css`：移除移動中轉輪的 filter/blur 動畫與抖動，改用純 `transform` 合成層動畫，降低掉幀感並提升 spin smoothness。
+- `frontend/src/components/SlotMachinePreview.jsx`、`frontend/src/index.css`：放大 slot 主機台，新增實體老虎機常見的 jackpot 燈箱、厚框轉輪窗、下方控制台、大型 SPIN 按鈕與拉桿造型。
+- `frontend/src/pages/SlotGame.jsx`：重整 slot 頁面資訊層級，新增上方狀態指標與右側下注/回合面板，spin 按鈕會顯示本局下注金額與餘額不足狀態。
+- `frontend/src/pages/SlotGame.jsx`：將遊戲資訊卡移到右側欄，讓主 slot 機台在第一視覺佔更大比例。
+- `frontend/src/pages/SlotGame.jsx`：移除側邊欄 SPIN 按鈕，slot 遊戲只保留機台控制台內的主要 SPIN 按鈕。
+- `frontend/src/pages/SlotGame.jsx`：調整側邊欄「最近派彩」說明文字，不再顯示 `5x / SLOT-...` 這類 round id 技術字串，改顯示中獎倍率或未中獎狀態。
+- `frontend/src/pages/SlotGame.jsx`、`frontend/src/index.css`：將 Round 面板中的狀態值改為燈號樣式，依 spinning/result/win/idle 顯示不同亮度與顏色。
+- `frontend/src/pages/SlotGame.jsx`：spin 視覺煞停期間維持按鈕鎖定，避免 API 回應後動畫尚未結束時重複觸發。
+- `frontend/src/services/mockApi.js`：降低前端 mock slot 強制中線命中率，由原本約 48% 調整為 18%，加上自然湊線後約落在兩成上下。
+
+### Why
+- 使用者希望 slot 遊戲畫面更精緻，且 spin 時動畫更接近真實老虎機轉輪，而不是單純格子跳動。
+
+### How（如何驗證）
+- `npm run lint`（frontend）→ PASS（無 ESLint warnings）。
+- `npm run build`（frontend）→ PASS。
+- 已啟動本機 Vite dev server 並確認 `http://127.0.0.1:5173` 回應 200；Browser 外掛在目前 Windows sandbox 連線失敗，未能完成瀏覽器截圖驗證。
+
+---
+
+## [added] — 2026-05-30 — 全站新增金幣雨背景特效
+
+### Added
+- `frontend/src/components/CoinRain.jsx`：新增全域金幣雨背景元件，使用固定數量的 CSS 金幣粒子產生落下效果。
+- `frontend/src/index.css`：新增 `coin-rain` 樣式與 `coin-fall` 動畫，並支援 `prefers-reduced-motion` 降低動態。
+
+### Changed
+- `frontend/src/App.jsx`：在全站路由外層掛載 `CoinRain`，讓首頁、登入/註冊、Lobby、遊戲、商城、排行榜、Profile、交易紀錄等頁面都顯示金幣雨。
+- `frontend/src/index.css`：調整金幣雨堆疊順序為背景之上、頁面內容之下；移除 page stage 整層 z-index，改由背景容器內容層高於金幣雨，避免金幣覆蓋卡片、按鈕與表單。
+- `frontend/src/App.jsx`：將 `CoinRain` 移入 `PageTransition` 內，讓金幣雨與頁面內容共用同一個堆疊環境，避免在 Router 外層壓過整個頁面。
+- `frontend/src/components/CoinRain.jsx`、`frontend/src/index.css`：加大金幣尺寸差異與單顆透明度差異，讓落下效果更有前後層次。
+- `frontend/src/App.jsx`、`frontend/src/components/AppShell.jsx`、`frontend/src/pages/Home.jsx`、`frontend/src/pages/Member.jsx`、`frontend/src/pages/Login.jsx`、`frontend/src/pages/Register.jsx`：移除 Router 外層金幣雨，改掛在各頁實際背景容器內，修正首頁因 `scroll-shell` stacking context 造成金幣覆蓋內容的問題。
+
+### Why
+- 使用者希望所有頁面都有金幣雨落下的背景特效，提升 Lucky Star Casino 的賭場氛圍。
+
+### How（如何驗證）
+- `npm run lint`（frontend）→ PASS（無 ESLint warnings）。
+- `npm run build`（frontend）→ PASS（sandbox 內 esbuild 讀取 `vite.config.js` 會遇到 Windows `Access is denied`，升權重跑後成功）。
+
+---
+
+## [changed] — 2026-05-30 — Profile 新增簽到彈出獎勵面板
+
+### Added
+- `frontend/src/pages/Profile.jsx`：Check-in 卡片可展開彈出 section，顯示本月簽到天數、當月日曆、今日可領獎勵與 7/14/21/30 天連續簽到追加獎勵。
+- 彈出面板新增「立即簽到」操作，會呼叫既有 `dailyCheckIn` thunk；簽到成功後更新本地本月簽到日期紀錄並同步刷新 profile。
+- `frontend/src/components/AppShell.jsx`：登入狀態下每日第一次進入任一登入後頁面時，若今日尚未簽到，會在畫面正中央自動彈出簽到確認 modal。
+
+### Changed
+- `backend/member-service/src/main/java/com/luckystar/member/service/CheckinService.java`：簽到獎勵改為每日 100 星幣，連續第 7/14/21/30 天分別追加 1000/2000/3000/5000。
+- `backend/member-service/src/test/java/com/luckystar/member/service/CheckinServiceTest.java`：更新每日簽到獎勵斷言，新增第 7 天里程碑追加獎勵測試。
+- `frontend/src/services/mockApi.js`：mock 簽到獎勵公式同步改為每日 100 + 里程碑追加獎勵。
+- `frontend/src/pages/Profile.jsx`：移除舊的 Profile 內自動展開右側簽到浮層邏輯，保留手動查看用簽到面板。
+- `frontend/src/components/AppShell.jsx`：中央簽到 modal 的 dismiss 按鈕在尚未簽到時顯示「稍後」，簽到完成或今日已簽到後改顯示「關閉」。
+
+### Why
+- 使用者希望 Profile 的 check-in 功能以彈出 section 呈現，並依月份顯示目前簽到天數與新的連續簽到獎勵規則。
+- 使用者希望每日第一次以登入狀態進入網站任一登入後頁面時，能在畫面正中間主動提醒簽到；以玩家 ID + 日期記錄每日自動彈出狀態，避免同一天重複打擾。
+- 真實 API 與 mock API 同步更新獎勵公式，避免前端顯示與實際入帳不一致。
+
+### How（如何驗證）
+- `npm run lint`（frontend）→ PASS（無 ESLint warnings）。
+- `npm run build`（frontend）→ PASS。
+- `mvn -pl backend/member-service test` → PASS（70 tests）。
+
+---
+
+## [changed] — 2026-05-30 — Header 玩家資訊改為頭像與姓名
+
+### Changed
+- `frontend/src/components/AppShell.jsx`：將 header 原本「玩家 / 姓名」文字卡改為玩家頭像 + 姓名資訊欄。
+- 頭像優先使用 `player.avatarUrl`；圖片載入失敗或未設定時，顯示玩家名稱首字作為 fallback。
+
+### Why
+- 使用者希望 header 玩家資訊更直覺顯示目前登入者，改成頭像搭配姓名的視覺資訊欄。
+
+### How（如何驗證）
+- `npm run lint`（frontend）→ PASS（無 ESLint warnings）。
+- `npm run build`（frontend）→ PASS（sandbox 內 esbuild 讀取 `vite.config.js` 會遇到 Windows `Access is denied`，升權重跑後成功）。
+
+---
+
+## [changed] — 2026-05-30 — Profile 快速頭像改為六個賭場角色
+
+### Added
+- `frontend/src/assets/avatars/*.webp`：新增 6 張 AI 生成的賭場角色頭像（三男三女），供會員中心快速頭像使用。
+
+### Changed
+- `frontend/src/pages/Profile.jsx`：快速頭像由 3 個外部 DiceBear URL 改為 6 個本地賭場角色資產，並將頭像按鈕縮小為固定小尺寸。
+- `frontend/src/utils/memberPreferences.js`：移除已不再使用的 DiceBear 快速頭像 URL helper。
+- 選擇快速頭像時會把本地 WebP 資產轉成 `data:image/webp;base64,...` 再寫入表單，符合 member-service 既有頭像 validator 支援的格式。
+
+### Why
+- 使用者希望 `/profile` 頁面的快速頭像縮小一點、增加到六個，且頭像圖片改成三男三女的賭場角色。
+- 本地資產可避免外部頭像服務變動；小型 WebP data URI 可維持後端 profile 欄位相容性。
+
+### How（如何驗證）
+- `npm run lint`（frontend）→ PASS。
+- `npm run build`（frontend）→ PASS（sandbox 內 esbuild 讀取 `vite.config.js` 會遇到 Windows `Access is denied`，升權重跑後成功）。
+
+---
+
+## [changed] — 2026-05-30 — 遊戲大全入口卡片放大
+
+### Changed
+- `frontend/src/pages/Lobby.jsx`：移除 `/games` 頁面遊戲列表左側的 `gamesGallery` 裝飾視覺區塊，讓遊戲入口卡片直接佔滿 main 內容寬度。
+- 放大遊戲入口 `Link` 卡片尺寸，改為更寬的主入口版型，並加入 hover 位移、縮放、光線、陰影、圖片飽和度與 CTA 箭頭互動效果；不同卡片使用不同 hover 動態。
+
+### Why
+- 使用者指定刪除「遊戲大全視覺」裝飾 div，並希望遊戲入口 a tag 更大、更符合 main 區塊尺度，互動時有更明顯的 hover 回饋。
+
+### How（如何驗證）
+- `npm run lint`（frontend）→ PASS。
+- `npm run build`（frontend）→ PASS（sandbox 內 esbuild 讀取 `vite.config.js` 會遇到 Windows `Access is denied`，升權重跑後成功）。
+
+---
+
+## [changed] — 2026-05-30 — 排行榜預設顯示 20 名
+
+### Changed
+- `frontend/src/pages/Rank.jsx`：排行榜預設只顯示前 20 名，列表下方新增「顯示更多」按鈕；點擊後展開至完整 100 名玩家。
+- 切換全服/好友榜或變更搜尋關鍵字時，排行榜顯示數量會重置為前 20 名，避免篩選後仍維持展開狀態。
+
+### Why
+- 排行榜初始顯示 100 名資訊量過大；預設顯示 20 名更容易掃讀，需要時再展開完整 TOP100。
+
+### How（如何驗證）
+- `npm run lint`（frontend）→ PASS。
+- `npm run build`（frontend）→ PASS（sandbox 內 esbuild 讀取 `vite.config.js` 會遇到 Windows `Access is denied`，升權重跑後成功）。
+
+---
+
+## [changed] — 2026-05-30 — 移除登入後頁面 Header 技術狀態
+
+### Changed
+- `frontend/src/components/AppShell.jsx`：移除 header 內「狀態」與「WS」兩個技術資訊區塊，保留玩家、籌碼、通知中心與登出。
+- 同步移除 `state.game.status`、`connectionStatus`、`reconnectAttempt` 的 header selector，避免 UI 仍依賴這些除錯用欄位。
+
+### Why
+- 一般使用者不需要看到遊戲狀態字串或 WebSocket 連線狀態；移除後登入後頁面的 header 更簡潔，聚焦在玩家資訊與操作入口。
+
+### How（如何驗證）
+- `npm run lint`（frontend）→ PASS。
+- `npm run build`（frontend）→ PASS（sandbox 內 esbuild 讀取 `vite.config.js` 會遇到 Windows `Access is denied`，升權重跑後成功）。
+
+---
+
+## [changed] — 2026-05-30 — 首頁登入狀態顯示頭像與暱稱
+
+### Changed
+- `frontend/src/pages/Home.jsx`：首頁右上角保留原本 CTA（登入後仍顯示「進入遊戲大全」並導向 `/games`；未登入顯示「會員登入」並導向 `/member`），登入狀態時在按鈕旁新增頭像 + 暱稱的會員入口，點擊導向 `/profile`。
+- 未登入狀態時，頭像/暱稱位置顯示「未登入」chip；點擊後在旁邊/選單內顯示紅字「請先登入」，不自動跳頁。
+- 手機首頁選單同步顯示登入頭像 + 暱稱或未登入 chip，並保留原本「會員中心」/「會員登入 / 註冊」入口。
+
+### Why
+- 使用者希望保留首頁原本按鈕配置，同時在按鈕旁顯示目前會員狀態：登入時顯示設定頭像與暱稱並可直達會員中心，未登入時顯示「未登入」並以紅字提示需先登入。
+
+### How（如何驗證）
+- `npm run lint`（frontend）→ PASS。
+- `npm run build`（frontend）→ PASS（sandbox 內 esbuild 讀取 `vite.config.js` 會遇到 Windows `Access is denied`，升權重跑後成功）。
+
+---
+
+## [feat] — 2026-05-30 — 前端站內連結過場動畫
+
+### Added
+- `frontend/src/components/PageTransition.jsx`（新增）：監聽站內 `<a>` 點擊與 React Router `pathname` 變化，對 `Link`、`NavLink`、錨點連結與程式導頁觸發 720ms 以內的全域過場。
+- `frontend/src/index.css`：新增 `page-enter` 與 `link-sheen` 動畫，讓頁面切換淡入上移、連結點擊時有金紅掃光效果；支援 `prefers-reduced-motion: reduce` 關閉動畫。
+
+### Changed
+- `frontend/src/App.jsx`：在 `BrowserRouter` 內包覆 `PageTransition`，集中處理所有 route 頁面切換，不需逐一修改既有頁面連結。
+
+### Why
+- 使用者要求每個 link 點擊後都能在 1 秒內有過場動畫，提升 React 前端頁面切換的絲滑感。
+- 採全域元件攔截站內連結與 route 變化，可以涵蓋首頁錨點、導覽列、卡片連結與登入後 `navigate()`，同時避免散落在每個頁面重複實作。
+
+### How（如何驗證）
+- `npm run lint`（frontend）→ PASS。
+- `npm run build`（frontend）→ PASS（sandbox 內 esbuild 讀取 `vite.config.js` 遇到 Windows `Access is denied`，升權重跑後成功）。
 
 ---
 

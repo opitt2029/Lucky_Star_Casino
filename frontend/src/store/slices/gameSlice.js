@@ -7,9 +7,9 @@ const initialState = {
   status: 'idle', // 'idle' | 'betting' | 'spinning' | 'result'
   result: null,
   slotGrid: [
-    ['7', 'BAR', 'STAR'],
-    ['CHIP', '7', 'A'],
-    ['K', 'STAR', '7'],
+    ['🍒', '🍋', '🔔'],
+    ['⭐', '7️⃣', '🍒'],
+    ['🔔', '⭐', '7️⃣'],
   ],
   winningCells: [],
   baccaratRound: null,

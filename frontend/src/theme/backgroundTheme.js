@@ -53,135 +53,145 @@ export const shopCatalog = [
 
 export const decorativeAssets = {
   homeHero: {
-    image: '',
-    label: '首頁主視覺',
-    caption: '可放品牌 KV、角色或場景圖',
+    image: 'casino-city-hero.png',
+    meta: 'Neon Boulevard',
+    label: '霓虹賭城入口',
+    caption: '金色燈海、紅毯大道與高級賭場門面，作為幸運星幣城的主視覺。',
     overlay:
-      'linear-gradient(90deg, rgba(9, 9, 11, 0.9) 0%, rgba(9, 9, 11, 0.64) 48%, rgba(9, 9, 11, 0.92) 100%)',
+      'linear-gradient(90deg, rgba(32, 1, 5, 0.72) 0%, rgba(92, 5, 12, 0.3) 46%, rgba(8, 1, 3, 0.76) 100%), radial-gradient(circle at 82% 18%, rgba(255, 230, 148, 0.12), transparent 34%)',
   },
   homeGames: {
-    image: '',
-    label: '遊戲入口素材',
-    caption: '可放遊戲集合、轉輪或牌桌情境',
+    image: 'casino-game-hall.png',
+    meta: 'Game Hall',
+    label: '豪華遊戲大廳',
+    caption: '老虎機、牌桌與水晶吊燈構成明亮的遊戲入口氛圍。',
     overlay:
-      'linear-gradient(135deg, rgba(24, 24, 27, 0.78) 0%, rgba(9, 9, 11, 0.92) 100%)',
+      'linear-gradient(135deg, rgba(72, 3, 8, 0.56) 0%, rgba(12, 1, 3, 0.78) 100%), radial-gradient(circle at 18% 20%, rgba(248, 213, 106, 0.12), transparent 32%)',
   },
   memberHero: {
-    image: '',
-    label: '會員頁素材',
-    caption: '可放會員徽章、登入背景或品牌角色',
+    image: 'casino-city-hero.png',
+    meta: 'Member Gate',
+    label: '尊榮會員入口',
+    caption: '從賭城門面進入會員中心，登入後開啟遊戲與商城權限。',
     overlay:
-      'linear-gradient(180deg, rgba(2, 6, 23, 0.52) 0%, rgba(2, 6, 23, 0.92) 100%)',
+      'linear-gradient(180deg, rgba(64, 3, 8, 0.48) 0%, rgba(12, 1, 3, 0.82) 100%), radial-gradient(circle at 70% 16%, rgba(255, 234, 160, 0.14), transparent 30%)',
   },
   gamesGallery: {
-    image: '',
-    label: '遊戲大全素材',
-    caption: '可放收編遊戲牆或分類視覺',
+    image: 'casino-game-hall.png',
+    meta: 'Game Directory',
+    label: '遊戲大全視覺',
+    caption: '把遊戲機台與牌桌整合成明確的遊戲瀏覽入口。',
     overlay:
-      'linear-gradient(135deg, rgba(0, 0, 0, 0.62) 0%, rgba(9, 9, 11, 0.92) 100%)',
+      'linear-gradient(135deg, rgba(70, 3, 8, 0.5) 0%, rgba(10, 1, 3, 0.82) 100%), radial-gradient(circle at 78% 24%, rgba(248, 213, 106, 0.12), transparent 32%)',
   },
   slotGame: {
-    image: '',
-    label: '老虎機素材',
-    caption: '可放遊戲封面、角色或機台圖',
+    image: 'casino-game-hall.png',
+    meta: 'Slot Game',
+    label: '老虎機燈海',
+    caption: '金色燈光與轉輪機台強化快速局的刺激感。',
     overlay:
-      'linear-gradient(135deg, rgba(63, 63, 70, 0.28) 0%, rgba(9, 9, 11, 0.92) 100%)',
+      'linear-gradient(135deg, rgba(188, 11, 21, 0.2) 0%, rgba(12, 1, 3, 0.8) 100%), radial-gradient(circle at 22% 18%, rgba(255, 234, 160, 0.12), transparent 28%)',
   },
   baccaratGame: {
-    image: '',
-    label: '百家樂素材',
-    caption: '可放牌桌、荷官或籌碼圖',
+    image: 'casino-game-hall.png',
+    meta: 'Baccarat',
+    label: '百家樂牌桌',
+    caption: '紅色牌桌與金色籌碼呈現經典賭場桌局。',
     overlay:
-      'linear-gradient(135deg, rgba(39, 39, 42, 0.32) 0%, rgba(9, 9, 11, 0.92) 100%)',
+      'linear-gradient(135deg, rgba(132, 7, 14, 0.26) 0%, rgba(12, 1, 3, 0.8) 100%), radial-gradient(circle at 76% 18%, rgba(248, 213, 106, 0.12), transparent 30%)',
   },
   shopHero: {
-    image: '',
-    label: '商城主視覺',
-    caption: '可放禮品、寶箱或兌換活動圖',
+    image: 'casino-rewards-showcase.png',
+    meta: 'Reward Shop',
+    label: '賭場獎品櫃',
+    caption: '禮盒、籌碼與會員卡呈現商城兌換的獎勵期待感。',
     overlay:
-      'linear-gradient(90deg, rgba(9, 9, 11, 0.9) 0%, rgba(39, 39, 42, 0.58) 58%, rgba(9, 9, 11, 0.96) 100%)',
+      'linear-gradient(90deg, rgba(20, 1, 4, 0.72) 0%, rgba(110, 6, 13, 0.22) 58%, rgba(12, 1, 3, 0.78) 100%), radial-gradient(circle at 72% 24%, rgba(255, 234, 160, 0.14), transparent 34%)',
   },
   shopPrizeA: {
-    image: '',
-    label: '禮品素材 A',
-    caption: 'VIP 票券圖',
+    image: 'casino-rewards-showcase.png',
+    meta: 'VIP Reward',
+    label: 'VIP 入場券',
+    caption: '兌換限時活動與尊榮桌台資格。',
     overlay:
-      'linear-gradient(135deg, rgba(250, 204, 21, 0.16) 0%, rgba(9, 9, 11, 0.88) 100%)',
+      'linear-gradient(135deg, rgba(255, 214, 86, 0.14) 0%, rgba(24, 1, 4, 0.78) 100%)',
   },
   shopPrizeB: {
-    image: '',
-    label: '禮品素材 B',
-    caption: '頭像框圖',
+    image: 'casino-rewards-showcase.png',
+    meta: 'Avatar Reward',
+    label: '會員頭像框',
+    caption: '替會員中心增加更亮眼的個人識別。',
     overlay:
-      'linear-gradient(135deg, rgba(14, 165, 233, 0.16) 0%, rgba(9, 9, 11, 0.88) 100%)',
+      'linear-gradient(135deg, rgba(248, 213, 106, 0.12) 0%, rgba(28, 1, 5, 0.78) 100%)',
   },
   shopPrizeC: {
-    image: '',
-    label: '禮品素材 C',
-    caption: '禮盒圖',
+    image: 'casino-rewards-showcase.png',
+    meta: 'Lucky Box',
+    label: '幸運禮盒',
+    caption: '承接活動兌換、抽獎與稀有獎勵。',
     overlay:
-      'linear-gradient(135deg, rgba(244, 63, 94, 0.16) 0%, rgba(9, 9, 11, 0.88) 100%)',
+      'linear-gradient(135deg, rgba(201, 13, 24, 0.18) 0%, rgba(18, 1, 4, 0.78) 100%), radial-gradient(circle at 76% 22%, rgba(255, 234, 160, 0.12), transparent 28%)',
   },
 }
 
 export const backgroundTheme = {
   app: {
-    color: '#09090b',
-    image: '',
+    color: '#160103',
+    image: 'casino-city-hero.png',
     overlay:
-      'linear-gradient(180deg, rgba(9, 9, 11, 0.88) 0%, rgba(9, 9, 11, 0.72) 42%, rgba(9, 9, 11, 0.94) 100%)',
+      'linear-gradient(180deg, rgba(28, 1, 4, 0.9) 0%, rgba(88, 4, 10, 0.74) 42%, rgba(8, 1, 3, 0.96) 100%)',
     accent:
-      'radial-gradient(circle at 18% 12%, rgba(250, 204, 21, 0.14), transparent 30%), radial-gradient(circle at 82% 0%, rgba(244, 63, 94, 0.12), transparent 28%)',
+      'radial-gradient(circle at 18% 12%, rgba(255, 234, 160, 0.22), transparent 30%), radial-gradient(circle at 82% 0%, rgba(201, 13, 24, 0.32), transparent 28%)',
     position: 'center',
     size: 'cover',
   },
   auth: {
-    color: '#09090b',
-    image: '',
+    color: '#170103',
+    image: 'casino-city-hero.png',
     overlay:
-      'linear-gradient(135deg, rgba(9, 9, 11, 0.94) 0%, rgba(9, 9, 11, 0.72) 48%, rgba(9, 9, 11, 0.96) 100%)',
+      'linear-gradient(135deg, rgba(51, 2, 6, 0.94) 0%, rgba(114, 6, 13, 0.72) 48%, rgba(14, 1, 3, 0.96) 100%)',
     accent:
-      'radial-gradient(circle at 14% 18%, rgba(250, 204, 21, 0.18), transparent 28%), radial-gradient(circle at 78% 86%, rgba(14, 165, 233, 0.14), transparent 32%)',
+      'radial-gradient(circle at 14% 18%, rgba(255, 234, 160, 0.24), transparent 28%), radial-gradient(circle at 78% 86%, rgba(201, 13, 24, 0.28), transparent 32%)',
     position: 'center',
     size: 'cover',
   },
   authHero: {
-    color: '#020617',
-    image: '',
+    color: '#180103',
+    image: 'casino-city-hero.png',
     overlay:
-      'linear-gradient(180deg, rgba(2, 6, 23, 0.5) 0%, rgba(2, 6, 23, 0.88) 100%)',
+      'linear-gradient(180deg, rgba(108, 6, 13, 0.54) 0%, rgba(18, 1, 4, 0.9) 100%)',
     accent:
-      'radial-gradient(circle at 24% 20%, rgba(250, 204, 21, 0.22), transparent 30%), radial-gradient(circle at 78% 66%, rgba(244, 63, 94, 0.18), transparent 34%)',
+      'radial-gradient(circle at 24% 20%, rgba(255, 234, 160, 0.28), transparent 30%), radial-gradient(circle at 78% 66%, rgba(201, 13, 24, 0.28), transparent 34%)',
     position: 'center',
     size: 'cover',
   },
   lobbyHero: {
-    color: '#050505',
-    image: '',
+    color: '#170103',
+    image: 'casino-game-hall.png',
     overlay:
-      'linear-gradient(90deg, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.58) 58%, rgba(0, 0, 0, 0.9) 100%)',
+      'linear-gradient(90deg, rgba(55, 2, 7, 0.9) 0%, rgba(133, 7, 15, 0.58) 58%, rgba(12, 1, 3, 0.92) 100%)',
     accent:
-      'radial-gradient(circle at 72% 22%, rgba(250, 204, 21, 0.16), transparent 28%), radial-gradient(circle at 92% 82%, rgba(255, 255, 255, 0.08), transparent 24%)',
+      'radial-gradient(circle at 72% 22%, rgba(255, 234, 160, 0.22), transparent 28%), radial-gradient(circle at 92% 82%, rgba(248, 213, 106, 0.1), transparent 24%)',
     position: 'center',
     size: 'cover',
   },
   home: {
-    color: '#09090b',
-    image: '',
+    color: '#170103',
+    image: 'casino-city-hero.png',
     overlay:
-      'linear-gradient(180deg, rgba(9, 9, 11, 0.92) 0%, rgba(9, 9, 11, 0.72) 48%, rgba(9, 9, 11, 0.96) 100%)',
+      'linear-gradient(180deg, rgba(61, 2, 7, 0.92) 0%, rgba(118, 6, 13, 0.72) 48%, rgba(13, 1, 3, 0.96) 100%)',
     accent:
-      'radial-gradient(circle at 16% 12%, rgba(250, 204, 21, 0.16), transparent 28%), radial-gradient(circle at 82% 20%, rgba(14, 165, 233, 0.12), transparent 30%)',
+      'radial-gradient(circle at 16% 12%, rgba(255, 234, 160, 0.25), transparent 28%), radial-gradient(circle at 82% 20%, rgba(201, 13, 24, 0.34), transparent 30%)',
     position: 'center',
     size: 'cover',
   },
   shop: {
-    color: '#08080a',
-    image: '',
+    color: '#170103',
+    image: 'casino-rewards-showcase.png',
     overlay:
-      'linear-gradient(180deg, rgba(8, 8, 10, 0.9) 0%, rgba(8, 8, 10, 0.74) 46%, rgba(8, 8, 10, 0.96) 100%)',
+      'linear-gradient(180deg, rgba(54, 2, 7, 0.9) 0%, rgba(116, 6, 13, 0.74) 46%, rgba(13, 1, 3, 0.96) 100%)',
     accent:
-      'radial-gradient(circle at 18% 18%, rgba(250, 204, 21, 0.14), transparent 30%), radial-gradient(circle at 78% 78%, rgba(244, 63, 94, 0.12), transparent 32%)',
+      'radial-gradient(circle at 18% 18%, rgba(255, 234, 160, 0.22), transparent 30%), radial-gradient(circle at 78% 78%, rgba(201, 13, 24, 0.3), transparent 32%)',
     position: 'center',
     size: 'cover',
   },

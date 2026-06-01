@@ -64,7 +64,7 @@ class CheckinServiceTest {
         CheckinResponse result = checkinService.checkin(PLAYER_ID);
 
         assertThat(result.consecutiveDays()).isEqualTo(1);
-        assertThat(result.rewardAmount()).isEqualTo(50L);
+        assertThat(result.rewardAmount()).isEqualTo(100L);
         verify(dailyCheckinRepository, times(1)).save(any(DailyCheckin.class));
         verify(outboxService, times(1)).save(eq("wallet.credit.request"), eq(String.valueOf(PLAYER_ID)), any());
     }
@@ -86,6 +86,31 @@ class CheckinServiceTest {
         CheckinResponse result = checkinService.checkin(PLAYER_ID);
 
         assertThat(result.consecutiveDays()).isEqualTo(6);
+    }
+
+    @Test
+    void checkin_seventhConsecutiveDay_addsMilestoneBonus() {
+        DailyCheckin yesterday = buildCheckin(10L, PLAYER_ID, TODAY.minusDays(1), 6);
+
+        when(dailyCheckinRepository.findByPlayerIdAndCheckinDate(PLAYER_ID, TODAY))
+                .thenReturn(Optional.empty());
+        when(dailyCheckinRepository.findTopByPlayerIdOrderByCheckinDateDesc(PLAYER_ID))
+                .thenReturn(Optional.of(yesterday));
+
+        DailyCheckin saved = buildCheckin(11L, PLAYER_ID, TODAY, 7);
+        when(dailyCheckinRepository.save(any(DailyCheckin.class))).thenReturn(saved);
+
+        CheckinResponse result = checkinService.checkin(PLAYER_ID);
+
+        assertThat(result.consecutiveDays()).isEqualTo(7);
+        assertThat(result.rewardAmount()).isEqualTo(1100L);
+
+        ArgumentCaptor<Object> payloadCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(outboxService).save(eq("wallet.credit.request"), eq(String.valueOf(PLAYER_ID)), payloadCaptor.capture());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> capturedPayload = (Map<String, Object>) payloadCaptor.getValue();
+        assertThat(capturedPayload.get("amount")).isEqualTo(1100L);
     }
 
     // ── Test 4 ───────────────────────────────────────────────────────────

@@ -1,12 +1,7 @@
-<<<<<<< Updated upstream
 import { useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchProfile } from './store/slices/authSlice'
-=======
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { useSelector } from 'react-redux'
->>>>>>> Stashed changes
 
 import Home from './pages/Home'
 import Member from './pages/Member'
@@ -17,6 +12,7 @@ import Rank from './pages/Rank'
 import Profile from './pages/Profile'
 import Transactions from './pages/Transactions'
 import CasinoShop from './pages/CasinoShop'
+import PageTransition from './components/PageTransition'
 
 function PrivateRoute({ children }) {
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
@@ -37,74 +33,76 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        {/* Public routes */}
-        <Route path="/" element={<Home />} />
-        <Route path="/member" element={<Member />} />
-        <Route path="/login" element={<Navigate to="/member?mode=login" replace />} />
-        <Route path="/register" element={<Navigate to="/member?mode=register" replace />} />
+      <PageTransition>
+        <Routes>
+          {/* Public routes */}
+          <Route path="/" element={<Home />} />
+          <Route path="/member" element={<Member />} />
+          <Route path="/login" element={<Navigate to="/member?mode=login" replace />} />
+          <Route path="/register" element={<Navigate to="/member?mode=register" replace />} />
 
-        {/* Protected routes */}
-        <Route
-          path="/games"
-          element={
-            <PrivateRoute>
-              <Lobby />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/game/slot"
-          element={
-            <PrivateRoute>
-              <SlotGame />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/game/baccarat"
-          element={
-            <PrivateRoute>
-              <Baccarat />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/shop"
-          element={
-            <PrivateRoute>
-              <CasinoShop />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/rank"
-          element={
-            <PrivateRoute>
-              <Rank />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/profile"
-          element={
-            <PrivateRoute>
-              <Profile />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/transactions"
-          element={
-            <PrivateRoute>
-              <Transactions />
-            </PrivateRoute>
-          }
-        />
+          {/* Protected routes */}
+          <Route
+            path="/games"
+            element={
+              <PrivateRoute>
+                <Lobby />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/game/slot"
+            element={
+              <PrivateRoute>
+                <SlotGame />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/game/baccarat"
+            element={
+              <PrivateRoute>
+                <Baccarat />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/shop"
+            element={
+              <PrivateRoute>
+                <CasinoShop />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/rank"
+            element={
+              <PrivateRoute>
+                <Rank />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <PrivateRoute>
+                <Profile />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/transactions"
+            element={
+              <PrivateRoute>
+                <Transactions />
+              </PrivateRoute>
+            }
+          />
 
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </PageTransition>
     </BrowserRouter>
   )
 }

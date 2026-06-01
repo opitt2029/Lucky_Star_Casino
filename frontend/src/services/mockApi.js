@@ -1,7 +1,8 @@
 const DB_KEY = 'lucky-star-mock-db-v1'
 const SESSION_KEY = 'lucky-star-session-v1'
 
-const slotSymbols = ['7', 'BAR', 'STAR', 'CHIP', 'A', 'K']
+const slotSymbols = ['🍒', '🍋', '🔔', '⭐', '7️⃣']
+const MOCK_SLOT_FORCED_WIN_RATE = 0.18
 const baccaratValues = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
 const transactionLabels = {
   bet: '下注',
@@ -9,6 +10,13 @@ const transactionLabels = {
   checkin: '簽到',
   task: '任務',
   gift: '贈送',
+}
+const DAILY_CHECKIN_REWARD = 100
+const checkInMilestoneBonuses = {
+  7: 1000,
+  14: 2000,
+  21: 3000,
+  30: 5000,
 }
 
 const TEST_ACCOUNT = {
@@ -238,6 +246,10 @@ function applyWalletChange(db, playerId, amount, type, title) {
   return wallet
 }
 
+function calculateCheckInReward(days) {
+  return DAILY_CHECKIN_REWARD + (checkInMilestoneBonuses[days] || 0)
+}
+
 export function readStoredSession() {
   return readJson(SESSION_KEY, null)
 }
@@ -322,7 +334,7 @@ export const mockApi = {
     }
 
     const days = (user?.player.consecutiveCheckInDays || 0) + 1
-    const reward = 800 + Math.min(days, 7) * 100
+    const reward = calculateCheckInReward(days)
     user.player.consecutiveCheckInDays = days
     user.player.lastCheckInDate = today
     const wallet = applyWalletChange(db, playerId, reward, 'checkin', `每日簽到第 ${days} 天`)
@@ -360,7 +372,7 @@ export const mockApi = {
     applyWalletChange(db, playerId, -bet, 'bet', '老虎機下注')
     const grid = randomSlotGrid()
     const centerSymbol = grid[1][0]
-    const isWin = grid[1].every((symbol) => symbol === centerSymbol) || Math.random() > 0.52
+    const isWin = grid[1].every((symbol) => symbol === centerSymbol) || Math.random() < MOCK_SLOT_FORCED_WIN_RATE
     if (isWin) grid[1] = [centerSymbol, centerSymbol, centerSymbol]
 
     const multiplier = isWin ? [2, 3, 5, 8][Math.floor(Math.random() * 4)] : 0
