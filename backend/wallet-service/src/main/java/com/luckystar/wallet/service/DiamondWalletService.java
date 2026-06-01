@@ -70,6 +70,20 @@ public class DiamondWalletService {
     }
 
     /**
+     * 查詢鑽石餘額（T-104）。唯讀查詢，不加悲觀鎖。
+     *
+     * @return 鑽石餘額
+     * @throws DiamondWalletNotFoundException 鑽石錢包不存在 → 404
+     */
+    @Transactional(transactionManager = "postgresTransactionManager", readOnly = true)
+    public long getBalance(Long playerId) {
+        return diamondWalletRepository.findById(playerId)
+                .orElseThrow(() -> new DiamondWalletNotFoundException(
+                        "Diamond wallet not found for player: " + playerId))
+                .getBalance();
+    }
+
+    /**
      * 鑽石扣款（T-103）。鑽石換星幣流程的 PostgreSQL 寫端步驟：驗證餘額後以樂觀鎖扣除鑽石餘額，回傳扣除後餘額。
      *
      * <p>餘額不足丟 {@link InsufficientDiamondException} → 422。

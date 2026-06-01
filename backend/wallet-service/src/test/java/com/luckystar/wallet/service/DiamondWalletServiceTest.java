@@ -90,6 +90,26 @@ class DiamondWalletServiceTest {
         verify(diamondWalletRepository, never()).save(any());
     }
 
+    // ── getBalance（T-104）──────────────────────────────────────────────────
+
+    @Test
+    void getBalance_existingWallet_returnsBalance() {
+        DiamondWallet wallet = DiamondWallet.builder().playerId(42L).balance(750L).version(0L).build();
+        when(diamondWalletRepository.findById(42L)).thenReturn(Optional.of(wallet));
+
+        long balance = diamondWalletService.getBalance(42L);
+
+        assertThat(balance).isEqualTo(750L);
+    }
+
+    @Test
+    void getBalance_walletNotFound_throwsDiamondWalletNotFoundException() {
+        when(diamondWalletRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> diamondWalletService.getBalance(99L))
+                .isInstanceOf(DiamondWalletNotFoundException.class);
+    }
+
     // ── debitDiamond（T-103）────────────────────────────────────────────────
 
     @Test

@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-01 — 查詢鑽石餘額 API（T-104）
+
+### Added
+- `DiamondBalanceResponse` DTO：`{ balance, exchangeRate: 20 }`
+- `DiamondWalletService.getBalance()`：唯讀查詢 `diamond_wallets`，錢包不存在拋 `DiamondWalletNotFoundException`
+- `DiamondController.balance()`：`GET /api/v1/wallet/diamond/balance`，以 `X-User-Id` header 定位玩家
+- `DiamondControllerBalanceTest`：5 個 controller 層測試（成功、零餘額、缺 header、非數字 header、404）
+- `DiamondWalletServiceTest` 新增 2 個 getBalance 測試
+
+### Changed
+- `DiamondController` 建構子注入 `DiamondWalletService`
+- `DiamondControllerTest` / `DiamondControllerExchangeTest` 補 `@Mock DiamondWalletService` 以配合新建構子
+
+### Verified
+- `mvn -pl backend/wallet-service test` → 142 tests, 0 failures
+
+---
+
 ## [feat] — 2026-06-01 — 鑽石兌換星幣 API（T-103）
 
 ### Added
