@@ -1,9 +1,11 @@
 package com.luckystar.wallet.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.luckystar.wallet.dto.BankruptcyAidResponse;
 import com.luckystar.wallet.dto.WalletBalanceResponse;
+import com.luckystar.wallet.exception.BankruptcyAidNotEligibleException;
 import com.luckystar.wallet.exception.GlobalExceptionHandler;
 import com.luckystar.wallet.exception.WalletNotFoundException;
+import com.luckystar.wallet.service.BankruptcyAidService;
 import com.luckystar.wallet.service.WalletQueryService;
 import com.luckystar.wallet.service.WalletService;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +19,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -28,6 +31,9 @@ class WalletControllerTest {
 
     @Mock
     WalletQueryService walletQueryService;
+
+    @Mock
+    BankruptcyAidService bankruptcyAidService;
 
     @InjectMocks
     WalletController walletController;
@@ -83,5 +89,52 @@ class WalletControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("not found")));
+    }
+
+    @Test
+    void bankruptcyAid_eligible_returns200WithData() throws Exception {
+        BankruptcyAidResponse resp = BankruptcyAidResponse.builder()
+                .playerId(42L).amount(1000L).transactionId(99L)
+                .balanceBefore(50L).balanceAfter(1050L).build();
+        when(bankruptcyAidService.claim(42L)).thenReturn(resp);
+
+        mockMvc.perform(post("/api/v1/wallet/bankruptcy-aid")
+                        .header("X-User-Id", "42"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.amount").value(1000))
+                .andExpect(jsonPath("$.data.transactionId").value(99))
+                .andExpect(jsonPath("$.data.balanceAfter").value(1050));
+    }
+
+    @Test
+    void bankruptcyAid_missingHeader_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/wallet/bankruptcy-aid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("Missing")));
+    }
+
+    @Test
+    void bankruptcyAid_notEligible_returns422() throws Exception {
+        when(bankruptcyAidService.claim(42L))
+                .thenThrow(new BankruptcyAidNotEligibleException("Bankruptcy aid already claimed today"));
+
+        mockMvc.perform(post("/api/v1/wallet/bankruptcy-aid")
+                        .header("X-User-Id", "42"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("already claimed")));
+    }
+
+    @Test
+    void bankruptcyAid_walletNotFound_returns404() throws Exception {
+        when(bankruptcyAidService.claim(42L))
+                .thenThrow(new WalletNotFoundException("Wallet not found for player: 42"));
+
+        mockMvc.perform(post("/api/v1/wallet/bankruptcy-aid")
+                        .header("X-User-Id", "42"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false));
     }
 }

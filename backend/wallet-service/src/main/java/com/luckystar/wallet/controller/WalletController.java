@@ -2,10 +2,12 @@ package com.luckystar.wallet.controller;
 
 import com.luckystar.wallet.common.ApiResponse;
 import com.luckystar.wallet.common.PagedResponse;
+import com.luckystar.wallet.dto.BankruptcyAidResponse;
 import com.luckystar.wallet.dto.GiftRequest;
 import com.luckystar.wallet.dto.GiftResponse;
 import com.luckystar.wallet.dto.WalletBalanceResponse;
 import com.luckystar.wallet.dto.WalletTransactionResponse;
+import com.luckystar.wallet.service.BankruptcyAidService;
 import com.luckystar.wallet.service.GiftService;
 import com.luckystar.wallet.service.WalletQueryService;
 import com.luckystar.wallet.service.WalletService;
@@ -37,12 +39,14 @@ public class WalletController {
     private final WalletService walletService;
     private final WalletQueryService walletQueryService;
     private final GiftService giftService;
+    private final BankruptcyAidService bankruptcyAidService;
 
     public WalletController(WalletService walletService, WalletQueryService walletQueryService,
-                           GiftService giftService) {
+                           GiftService giftService, BankruptcyAidService bankruptcyAidService) {
         this.walletService = walletService;
         this.walletQueryService = walletQueryService;
         this.giftService = giftService;
+        this.bankruptcyAidService = bankruptcyAidService;
     }
 
     @GetMapping("/balance")
@@ -161,6 +165,37 @@ public class WalletController {
         }
 
         GiftResponse response = giftService.gift(senderId, request);
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
+    /**
+     * 破產補助領取（T-027）。對應 {@code POST /api/v1/wallet/bankruptcy-aid}。
+     *
+     * <p>玩家身分由 gateway 注入的 {@code X-User-Id} header 決定（只能領自己的）。無 request body。
+     * 餘額低於門檻且當日未領過時，發放固定金額補助；當日狀態記在 Redis、TTL 到午夜，邏輯見
+     * {@link BankruptcyAidService#claim}。
+     *
+     * <p>錯誤對應：餘額未達門檻 / 當日已領過 → 422；錢包不存在 → 404；
+     * 並發樂觀鎖衝突 → 409（皆由 GlobalExceptionHandler 統一處理）。
+     */
+    @PostMapping("/bankruptcy-aid")
+    public ResponseEntity<ApiResponse<BankruptcyAidResponse>> bankruptcyAid(
+            @RequestHeader(value = "X-User-Id", required = false) String playerIdStr) {
+
+        if (playerIdStr == null || playerIdStr.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Missing X-User-Id header"));
+        }
+
+        Long playerId;
+        try {
+            playerId = Long.parseLong(playerIdStr);
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Invalid X-User-Id header"));
+        }
+
+        BankruptcyAidResponse response = bankruptcyAidService.claim(playerId);
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 }

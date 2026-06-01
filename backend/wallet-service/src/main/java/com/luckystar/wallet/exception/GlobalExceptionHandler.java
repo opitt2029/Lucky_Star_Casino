@@ -40,6 +40,13 @@ public class GlobalExceptionHandler {
         return ApiResponse.error(ex.getMessage());
     }
 
+    /** 不符破產補助資格：餘額未達門檻或當日已領過（T-027）→ 422。 */
+    @ExceptionHandler(BankruptcyAidNotEligibleException.class)
+    @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+    public ApiResponse<Void> handleBankruptcyAidNotEligible(BankruptcyAidNotEligibleException ex) {
+        return ApiResponse.error(ex.getMessage());
+    }
+
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public ApiResponse<Void> handleOptimisticLock(ObjectOptimisticLockingFailureException ex) {

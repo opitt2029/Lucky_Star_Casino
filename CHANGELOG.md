@@ -5,6 +5,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-01 — 破產補助機制 API（T-027）
+
+### Added
+- `backend/wallet-service/.../controller/WalletController.java`：新增 `POST /api/v1/wallet/bankruptcy-aid`。領取者取自 gateway 注入的 `X-User-Id` header（只能領自己的），**無 request body**。
+- `dto/BankruptcyAidResponse.java`（新增）：回應 DTO（`playerId`/`amount`/`transactionId`/`balanceBefore`/`balanceAfter`）。
+- `service/BankruptcyAidService.java`（新增，協調器）：
+  - **資格檢查**：以 `WalletService.getBalance` 取餘額，**總餘額**（非可用餘額）須 **< 100** 星幣才符資格，否則拋 `BankruptcyAidNotEligibleException` → 422；錢包不存在 → 404（沿用 `WalletNotFoundException`）。**用總餘額是刻意決策**：防止玩家把錢凍結在未結算下注上壓低可用餘額來套利，且「總身家枯竭」才是真破產（與規格字面一致）。
+  - **Redis 當日鎖（原子 SETNX+TTL）**：`SET wallet:bankruptcy-aid:{playerId}:{date} 1 NX PX(到午夜)` 單一指令搶當日領取權並一併設 TTL（到當地 Asia/Taipei 下一個午夜），搶不到代表今天已領過 → 422。SETNX 與 TTL 一次完成，避免兩步之間程序被硬殺導致鎖殘留卻無 TTL（玩家當天再也領不了）。
+  - **入帳**：委派 `WalletService.credit` 加 **1,000** 星幣，subType=`BANKRUPTCY_AID`，冪等鍵 `bankruptcy-aid:{playerId}:{date}`（DB UNIQUE 為第二道防線：Redis 即使被清空，同日仍不會重複入帳）。入帳失敗會 `DELETE` Redis 鎖讓玩家可重試。
+  - **冪等命中保護**：若 `credit` 回 `idempotent=true`（Redis 曾被清空、DB 已有當日紀錄），視為今天已領過 → 422，不重複加錢、保留鎖。
+- `exception/BankruptcyAidNotEligibleException.java`（→422，新增），並在 `GlobalExceptionHandler` 註冊。
+- 測試（新增）：`service/BankruptcyAidServiceTest.java`（6 案：符資格發放+設 TTL、餘額達門檻不符、當日已領 SETNX 失敗、入帳失敗釋放鎖、冪等命中視為已領且保留鎖、錢包不存在傳遞）；`controller/WalletControllerTest.java` 新增 4 案（發放 200、缺 header 400、不符資格 422、錢包不存在 404）。
+
+### Why
+- 完成 T-027（工作分配表規格：`POST /api/v1/wallet/bankruptcy-aid`、餘額 < 100 且當日未領過、發放 1,000 星幣、用 Redis 記當日已領狀態、TTL 到午夜）。
+- 沿用既有帳務模式：複用 `WalletService.credit`（冪等鍵 DB UNIQUE 防重、`@Version` 樂觀鎖防超扣，AGENTS.md §2.8）；schema 既有的 `chk_wt_sub_type` 已包含 `BANKRUPTCY_AID`，無需改 DB。
+- Redis SETNX 提供「每日一次」的快路徑保護，`credit` 的 idempotencyKey 為 Redis 失效時的第二道防線（即使 Redis 被清空也不會重複發放）。
+
+### 如何驗證
+- `mvn -pl backend/wallet-service test`：**84 passed / 0 failed**（含 6 個新 service 案、4 個新 controller 案，`contextLoads` 仍綠）。
+
+### 已知限制
+- Redis 鎖在「JVM 於 SETNX 成功後、入帳 commit 前被硬殺」時可能殘留（玩家當日無法重領）；但鎖建立時已原子帶上午夜 TTL（必定會自動歸零），且 `credit` 冪等鍵保證不會重複發放。
+
+---
+
 ## [feat] — 2026-06-01 — 好友星幣贈送 API（T-026）
 
 ### Added
