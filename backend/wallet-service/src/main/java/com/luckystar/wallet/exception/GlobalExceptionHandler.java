@@ -47,6 +47,27 @@ public class GlobalExceptionHandler {
         return ApiResponse.error(ex.getMessage());
     }
 
+    /** 點數卡序號不存在（T-102）→ 404。 */
+    @ExceptionHandler(CardNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ApiResponse<Void> handleCardNotFound(CardNotFoundException ex) {
+        return ApiResponse.error(ex.getMessage());
+    }
+
+    /** 鑽石錢包不存在（T-102）→ 404。 */
+    @ExceptionHandler(DiamondWalletNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ApiResponse<Void> handleDiamondWalletNotFound(DiamondWalletNotFoundException ex) {
+        return ApiResponse.error(ex.getMessage());
+    }
+
+    /** 點數卡已兌換，或並發重複兌換時 CAS 落敗（T-102）→ 422（不可重試的業務狀態）。 */
+    @ExceptionHandler(CardAlreadyRedeemedException.class)
+    @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+    public ApiResponse<Void> handleCardAlreadyRedeemed(CardAlreadyRedeemedException ex) {
+        return ApiResponse.error(ex.getMessage());
+    }
+
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public ApiResponse<Void> handleOptimisticLock(ObjectOptimisticLockingFailureException ex) {

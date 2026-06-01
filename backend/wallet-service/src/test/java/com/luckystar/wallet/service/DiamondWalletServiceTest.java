@@ -1,5 +1,6 @@
 package com.luckystar.wallet.service;
 
+import com.luckystar.wallet.exception.DiamondWalletNotFoundException;
 import com.luckystar.wallet.postgres.entity.DiamondWallet;
 import com.luckystar.wallet.postgres.repository.DiamondWalletRepository;
 import org.junit.jupiter.api.Test;
@@ -10,8 +11,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 
+import java.util.Optional;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -60,5 +64,28 @@ class DiamondWalletServiceTest {
         assertThatCode(() -> diamondWalletService.createDiamondWallet(3L)).doesNotThrowAnyException();
 
         verify(diamondWalletRepository, times(1)).saveAndFlush(any());
+    }
+
+    @Test
+    void creditDiamond_existingWallet_addsAmountAndReturnsNewBalance() {
+        DiamondWallet wallet = DiamondWallet.builder().playerId(42L).balance(100L).version(0L).build();
+        when(diamondWalletRepository.findById(42L)).thenReturn(Optional.of(wallet));
+
+        long newBalance = diamondWalletService.creditDiamond(42L, 500L);
+
+        assertThat(newBalance).isEqualTo(600L);
+        ArgumentCaptor<DiamondWallet> captor = ArgumentCaptor.forClass(DiamondWallet.class);
+        verify(diamondWalletRepository).save(captor.capture());
+        assertThat(captor.getValue().getBalance()).isEqualTo(600L);
+    }
+
+    @Test
+    void creditDiamond_walletNotFound_throwsAndDoesNotSave() {
+        when(diamondWalletRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> diamondWalletService.creditDiamond(99L, 500L))
+                .isInstanceOf(DiamondWalletNotFoundException.class);
+
+        verify(diamondWalletRepository, never()).save(any());
     }
 }

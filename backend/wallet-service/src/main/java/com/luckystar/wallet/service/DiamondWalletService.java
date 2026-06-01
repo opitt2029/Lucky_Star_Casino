@@ -1,5 +1,6 @@
 package com.luckystar.wallet.service;
 
+import com.luckystar.wallet.exception.DiamondWalletNotFoundException;
 import com.luckystar.wallet.postgres.entity.DiamondWallet;
 import com.luckystar.wallet.postgres.repository.DiamondWalletRepository;
 import lombok.RequiredArgsConstructor;
@@ -43,5 +44,27 @@ public class DiamondWalletService {
         } catch (DataIntegrityViolationException e) {
             log.warn("Concurrent diamond wallet creation detected for playerId={}, ignoring", playerId);
         }
+    }
+
+    /**
+     * 鑽石入帳（T-102）。點數卡兌換流程的 PostgreSQL 寫端步驟：把面額加進玩家鑽石餘額，回傳入帳後餘額。
+     *
+     * <p>鑽石只增不需餘額守衛；{@code @Version} 樂觀鎖防並發超帳，衝突丟
+     * {@link org.springframework.orm.ObjectOptimisticLockingFailureException} → GlobalExceptionHandler 轉 409。
+     * 防重複兌換的關卡在序號（{@link DiamondCardService#redeemCard}），不在此處。
+     *
+     * @return 入帳後的鑽石總餘額
+     * @throws DiamondWalletNotFoundException 鑽石錢包不存在 → 404
+     */
+    @Transactional(transactionManager = "postgresTransactionManager")
+    public long creditDiamond(Long playerId, long amount) {
+        DiamondWallet wallet = diamondWalletRepository.findById(playerId)
+                .orElseThrow(() -> new DiamondWalletNotFoundException(
+                        "Diamond wallet not found for player: " + playerId));
+        wallet.setBalance(wallet.getBalance() + amount);
+        diamondWalletRepository.save(wallet);
+        log.info("Diamond credited: playerId={} amount={} balanceAfter={}",
+                playerId, amount, wallet.getBalance());
+        return wallet.getBalance();
     }
 }

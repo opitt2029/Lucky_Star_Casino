@@ -5,6 +5,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-01 — 點數卡序號兌換鑽石 API（T-102）
+
+### Added
+- `backend/wallet-service/.../mysql/entity/DiamondCard.java`（新增）：`diamond_cards`（MySQL 讀端）對應 entity（`cardCode` UNIQUE、`faceValue`、`isRedeemed`、`redeemedBy`、`redeemedAt`）。由 `mysqlEntityManagerFactory` 掃描。
+- `mysql/repository/DiamondCardRepository.java`（新增）：`findByCardCode`；防重複兌換核心 `markRedeemed`（條件式 `@Modifying` UPDATE，CAS：`WHERE card_code=? AND is_redeemed=false`，回傳 1=成功 / 0=不存在或已兌換）；補償用 `revertRedemption`。
+- `service/DiamondCardService.java`（新增，`@Transactional(mysqlTransactionManager)`）：`redeemCard`（SELECT 區分 404/422 後 CAS 標記、回面額）、`revertRedemption`（best-effort 補償，吞例外不外拋）。獨立成 bean 讓交易 proxy 生效。
+- `service/DiamondRedeemService.java`（新增）：跨資料源協調器。先 MySQL CAS 標記序號（防重複兌換關卡）、再 PostgreSQL 入帳鑽石；入帳失敗則補償回滾序號標記後原樣拋例外。**不引入 XA**（比照 `GiftService`）。
+- `controller/DiamondController.java`（新增）：`POST /api/v1/wallet/diamond/redeem`，playerId 取自 gateway 注入的 `X-User-Id`、序號走 body。與星幣 `WalletController` 分開讓鑽石邏輯獨立演進。
+- `dto/DiamondRedeemRequest.java`、`dto/DiamondRedeemResponse.java`（新增）：請求只帶 `cardCode`（`@NotBlank`/`@Size(max=50)`）；回應含 `redeemedDiamonds`（面額）與 `diamondBalance`（兌換後餘額）。
+- `exception/CardNotFoundException`(404)、`CardAlreadyRedeemedException`(422)、`DiamondWalletNotFoundException`(404)（新增），並在 `GlobalExceptionHandler` 加對應對映。
+- 測試（新增）：`DiamondCardServiceTest`(5)、`DiamondRedeemServiceTest`(3)、`DiamondControllerTest`(7)；`DiamondWalletServiceTest` 補 `creditDiamond` 2 案。
+
+### Changed
+- `service/DiamondWalletService.java`：新增 `creditDiamond(playerId, amount)`（`@Transactional(postgresTransactionManager)`），鑽石入帳、`@Version` 樂觀鎖防並發超帳，錢包不存在丟 `DiamondWalletNotFoundException`。
+
+### Why
+- 鑽石餘額在 PostgreSQL 寫端、序號在 MySQL 讀端（ADR-001），兌換天生跨資料源。沿用 `GiftService` 的取捨刻意不引入 XA，改以「先 CAS 標記序號（不可重複的關卡）→ 再入帳 → 失敗補償回滾」串接兩個獨立交易，永遠偏向「不重複入帳」的安全側。
+- 防重複兌換的真正關卡是 `is_redeemed` 上的條件式 UPDATE（CAS）而非 `card_code` UNIQUE（後者只防序號重複建立）：並發雙擊時 DB 列鎖 + 條件保證僅一方回傳列數為 1。
+- `CardAlreadyRedeemedException` 用 422 而非 409：「已兌換」是不可重試的業務狀態，與 409「並發衝突請重試」（樂觀鎖）語意不同。
+
+### How（驗證）
+- `mvn -pl backend/wallet-service test` → BUILD SUCCESS，Tests run: 105, Failures: 0, Errors: 0（H2，含 `contextLoads` 驗證新 entity/repository/CAS query 正確 wire-up）。
+
 ## [feat] — 2026-06-01 — 鑽石錢包初始化（開戶）（T-101）
 
 ### Added
