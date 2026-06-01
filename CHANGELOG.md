@@ -5,6 +5,45 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-01 — 鑽石錢包初始化（開戶）（T-101）
+
+### Added
+- `backend/wallet-service/.../postgres/entity/DiamondWallet.java`（新增）：`diamond_wallets` 對應 entity。結構比照 `Wallet`（`@Id playerId`、`balance` 預設 0、`@Version version`、`@PrePersist`/`@PreUpdate` 時間戳），但**不設 `frozenAmount`**（鑽石無凍結/下注概念）。放在 `postgres.entity` 套件，確保由 `postgresEntityManagerFactory` 掃描（ADR-001 雙資料源）。
+- `postgres/repository/DiamondWalletRepository.java`（新增）：`extends JpaRepository<DiamondWallet, Long>`。
+- `service/DiamondWalletService.java`（新增）：`createDiamondWallet(Long playerId)`，與 `WalletService.createWallet`（T-020）平行。冪等兩層保證：`existsById` 預檢 + 並發時 PostgreSQL 主鍵唯一約束擋下後到者（`DataIntegrityViolationException` 吞掉成 no-op）。走 `@Transactional(postgresTransactionManager)`。
+- 測試（新增）：`service/DiamondWalletServiceTest.java`（3 案：新玩家建戶 balance/version=0、既有玩家略過不存、並發 UNIQUE 衝突靜默處理）。
+
+### Changed
+- `kafka/MemberEventListener.java`：在既有星幣開戶後、`ack` 前**加掛**鑽石開戶 `diamondWalletService.createDiamondWallet(playerId)`。**未**另開 `@KafkaListener`（避免同 consumer group 雙 listener 分裂 partition，破壞「兩錢包一起建立」保證）。兩開戶皆冪等，任一失敗皆不 ack、由 error handler 重試/送 DLT。
+- 測試：`kafka/MemberEventListenerTest.java` 注入 `DiamondWalletService` mock；既有 3 案更新為驗證雙開戶 + 新增 1 案（鑽石開戶失敗同樣不 ack）。
+
+### Why
+- 完成 T-101（工作分配表規格）：消費 `member.registered` 為新玩家建立 `diamond_wallets`（balance=0、version=0）、確保冪等，與 T-020 星幣開戶邏輯平行。
+- 依賴 T-100 的 `diamond_wallets` schema（本次同日落地）。沿用既有冪等（DB UNIQUE 防重）模式（AGENTS.md §2.8）。
+
+### 如何驗證
+- `mvn -pl backend/wallet-service test` → **BUILD SUCCESS，Tests run: 78, Failures: 0, Errors: 0**（H2，surefire `jpa.ddl-auto=create` 自動建 `diamond_wallets` 表；`WalletServiceApplicationTests` contextLoads 確認新 entity/bean 正常裝配）。
+
+---
+
+## [feat] — 2026-06-01 — 鑽石系統資料表 schema（T-100）
+
+### Added
+- `database/postgres/init.sql`：新增 `diamond_wallets` 表（鑽石錢包寫端，PostgreSQL）。欄位 `player_id`(PK)、`balance`(預設 0)、`version`(樂觀鎖)、`created_at`/`updated_at`，`CHECK (balance >= 0)`。與 `wallets`（星幣）平行、同庫；刻意**不**設 `frozen_amount`（鑽石無凍結/下注概念）。
+- `database/mysql/init.sql`：新增 `diamond_cards` 表（點數卡序號，MySQL 讀庫）。欄位 `id`(PK)、`card_code`(`UNIQUE`，格式 `XXXX-XXXX-XXXX-XXXX`)、`face_value`(`CHECK > 0`)、`is_redeemed`(預設 0)、`redeemed_by`、`redeemed_at`、`created_at`；另建 `is_redeemed`、`redeemed_by` 索引供後台列表查詢（T-106）。
+- `database/postgres/migration/V2__add_diamond_wallets.sql`、`database/mysql/migration/V5__add_diamond_cards.sql`（新增）：與上述 init.sql 同步的 Flyway 遷移檔，維持 `schema.sql` 清單所指的遷移歷史一致（目前 Flyway 未接入 runtime，遷移檔為平行文件）。
+
+### Why
+- 完成 T-100（工作分配表規格）：`diamond_cards` 存 MySQL、`diamond_wallets` 存 PostgreSQL 與 `wallets` 同庫，作為鑽石點數卡系統（T-101~T-107）的資料地基。
+- `card_code UNIQUE` + `is_redeemed` 旗標：在 DB 層為 T-102「序號兌換」提供防重複兌換的唯一約束；`diamond_wallets.version` 為 T-103「鑽石換星幣」提供樂觀鎖防超扣（沿用 AGENTS.md §2.8 帳務模式）。
+- 下游依賴：T-101 將在 wallet-service 的 `com.luckystar.wallet.postgres.entity` 下新增 `DiamondWallet` entity 對應本表（測試以 H2 `jpa.ddl-auto=create` 自動建表）。
+
+### 如何驗證
+- 純 DDL 變更、無 Java 程式碼動到，既有測試不受影響。本機可比照 DEPLOY.md 以 `docker compose` 重建 `mysql`/`postgres`（init.sql 走 docker-entrypoint-initdb.d），確認兩表建立成功。
+- T-101 落地後將由 `mvn -pl backend/wallet-service test`（H2）覆蓋 `diamond_wallets` 對應 entity。
+
+---
+
 ## [feat] — 2026-06-01 — 好友星幣贈送 API（T-026）
 
 ### Added

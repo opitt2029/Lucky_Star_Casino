@@ -2,6 +2,7 @@ package com.luckystar.wallet.kafka;
 
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.luckystar.wallet.service.DiamondWalletService;
 import com.luckystar.wallet.service.WalletService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,6 +28,9 @@ class MemberEventListenerTest {
     WalletService walletService;
 
     @Mock
+    DiamondWalletService diamondWalletService;
+
+    @Mock
     ObjectMapper objectMapper;
 
     @InjectMocks
@@ -36,14 +40,16 @@ class MemberEventListenerTest {
             "{\"playerId\":42,\"username\":\"testuser\",\"email\":\"test@example.com\"}";
 
     @Test
-    void handleMemberRegistered_validJson_callsCreateWalletAndAcks() throws Exception {
+    void handleMemberRegistered_validJson_createsBothWalletsAndAcks() throws Exception {
         Acknowledgment ack = mock(Acknowledgment.class);
         MemberRegisteredEvent event = new MemberRegisteredEvent(42L, "testuser", "test@example.com");
         when(objectMapper.readValue(VALID_JSON, MemberRegisteredEvent.class)).thenReturn(event);
 
         listener.handleMemberRegistered(VALID_JSON, ack);
 
+        // 星幣（T-020）與鑽石（T-101）開戶都要被觸發，且最後才 ack
         verify(walletService, times(1)).createWallet(42L);
+        verify(diamondWalletService, times(1)).createDiamondWallet(42L);
         verify(ack, times(1)).acknowledge();
     }
 
@@ -58,11 +64,12 @@ class MemberEventListenerTest {
                 .isInstanceOf(JsonParseException.class);
 
         verify(walletService, never()).createWallet(any());
+        verify(diamondWalletService, never()).createDiamondWallet(any());
         verify(ack, never()).acknowledge();
     }
 
     @Test
-    void handleMemberRegistered_createWalletThrows_doesNotAck() throws Exception {
+    void handleMemberRegistered_createWalletThrows_doesNotCreateDiamondOrAck() throws Exception {
         Acknowledgment ack = mock(Acknowledgment.class);
         MemberRegisteredEvent event = new MemberRegisteredEvent(99L, "user", "user@example.com");
         when(objectMapper.readValue(VALID_JSON, MemberRegisteredEvent.class)).thenReturn(event);
@@ -73,6 +80,24 @@ class MemberEventListenerTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("DB down");
 
+        // 星幣開戶先失敗 → 鑽石開戶不應被觸發、不可 ack
+        verify(diamondWalletService, never()).createDiamondWallet(any());
+        verify(ack, never()).acknowledge();
+    }
+
+    @Test
+    void handleMemberRegistered_createDiamondWalletThrows_doesNotAck() throws Exception {
+        Acknowledgment ack = mock(Acknowledgment.class);
+        MemberRegisteredEvent event = new MemberRegisteredEvent(7L, "user", "user@example.com");
+        when(objectMapper.readValue(VALID_JSON, MemberRegisteredEvent.class)).thenReturn(event);
+        doThrow(new RuntimeException("DB down")).when(diamondWalletService).createDiamondWallet(7L);
+
+        // 鑽石開戶失敗同樣往外拋 → 不 ack，事件由 error handler 重試（兩開戶皆冪等，重跑安全）
+        assertThatThrownBy(() -> listener.handleMemberRegistered(VALID_JSON, ack))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("DB down");
+
+        verify(walletService, times(1)).createWallet(7L);
         verify(ack, never()).acknowledge();
     }
 }
