@@ -57,4 +57,25 @@ public class KafkaConsumerConfig {
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
         return factory;
     }
+
+    /**
+     * DLT 專用 listener factory（T-028）。
+     *
+     * <p>給 {@link com.luckystar.wallet.kafka.DeadLetterListener} 消費 {@code <topic>.DLT} 用。
+     * <b>刻意不掛 {@link #kafkaErrorHandler}</b>：DLT 已是「最後一站」，若再套用會把失敗訊息
+     * 路由成 {@code .DLT.DLT} 形成連鎖。DLT listener 自身保證永遠 ack、不重拋，
+     * 故此 factory 只需手動 ack 模式，不需錯誤重試/路由。
+     *
+     * <p>⚠️ 方法名 {@code dltListenerContainerFactory} 必須與其他 @Bean 唯一
+     * （Spring Boot 3.2+ enforceUniqueMethods）。
+     */
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, String> dltListenerContainerFactory(
+            ConsumerFactory<String, String> consumerFactory) {
+        ConcurrentKafkaListenerContainerFactory<String, String> factory =
+                new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory);
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
+        return factory;
+    }
 }

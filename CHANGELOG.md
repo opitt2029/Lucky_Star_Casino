@@ -64,7 +64,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### 如何驗證
 - 純 DDL 變更、無 Java 程式碼動到，既有測試不受影響。本機可比照 DEPLOY.md 以 `docker compose` 重建 `mysql`/`postgres`（init.sql 走 docker-entrypoint-initdb.d），確認兩表建立成功。
 - T-101 落地後將由 `mvn -pl backend/wallet-service test`（H2）覆蓋 `diamond_wallets` 對應 entity。
+
 ---
+
+## [feat] — 2026-06-01 — Kafka 消費失敗 Dead Letter Queue 處理（T-028）
+
+### Added
+- `database/postgres/migration/V3__create_dead_letter_messages.sql`（新增，原 V2 已被 T-100 佔用故改 V3）：`dead_letter_messages` 表（寫於 PostgreSQL 寫庫），欄位含 `dlt_topic`/`original_topic`/`message_key`/`payload`/`exception_class`/`failure_reason`/`stack_trace`/`status`/`retry_count`/`created_at`/`last_retried_at`，`chk_dlm_status` 限 FAILED/RETRIED/RESOLVED，並建 status/dlt_topic/created_at 索引。
+- `database/postgres/init.sql`（新增 dead_letter_messages 定義）：補齊一鍵建表所需的 schema 定義，與 V3 migration 保持一致。
+- `postgres/entity/DeadLetterMessage.java` + `postgres/repository/DeadLetterMessageRepository.java`（新增）：DLT 失敗訊息實體與查詢（`findByStatus`/`findByDltTopic`/`findByStatusAndDltTopic` 分頁）。
+- `kafka/DeadLetterListener.java`（新增）：消費 `wallet.credit.DLT`、`wallet.debit.DLT` 與 `wallet.credit.request.DLT`（入帳指令失敗），自 DLT header（`DLT_ORIGINAL_TOPIC`/`DLT_EXCEPTION_FQCN`/`DLT_EXCEPTION_MESSAGE`/`DLT_EXCEPTION_STACKTRACE`）取出原始 topic 與失敗原因落庫。**try/finally 保證永遠 ack、永不重拋**（避免 `.DLT.DLT` 連鎖或卡 partition），使用獨立 groupId `wallet-service-dlt-group`。
+- `config/KafkaConsumerConfig.java`（修改，append）：新增 `dltListenerContainerFactory` @Bean，**刻意不掛 `kafkaErrorHandler`**（DLT 是最後一站，不可再路由）。方法名唯一以符 Spring Boot 3.2+ `enforceUniqueMethods`。
+- `service/DeadLetterService.java`（新增）：`record`（落庫，內部吞例外不外拋、堆疊截斷 4000 字）、`query`（依 status/dltTopic 過濾分頁）、`retry`（把原 payload 重發回 `original_topic`，標記 RETRIED、累加 retry_count；下游 listener 冪等故重送安全）。
+- `controller/AdminDeadLetterController.java`（新增）：`GET /internal/wallet/dlt`（狀態/topic 過濾分頁查詢）、`POST /internal/wallet/dlt/{id}/retry`（手動重試）。掛在 `/internal/wallet/**` 沿用既有 `InternalSecretFilter`。
+- `dto/DeadLetterMessageResponse.java`、`dto/DeadLetterRetryResponse.java`（新增）。
+- `exception/DeadLetterNotFoundException.java`（→404）、`exception/IllegalDltStateException.java`（→409，已 RESOLVED 不可重試），並在 `GlobalExceptionHandler` 註冊。
+- 測試（新增）：`service/DeadLetterServiceTest.java`（9 案）、`kafka/DeadLetterListenerTest.java`（4 案，含 credit.request.DLT）。
+
+### Why
+- 完成 T-028（工作分配表規格：設定 `wallet.credit.DLT`/`wallet.debit.DLT`、消費失敗超過 3 次轉入 DLT、Admin 可查詢並手動重試、記錄失敗原因至 DB）。額外納入既有的 `wallet.credit.request.DLT`（入帳指令失敗）一併監控，避免指令類失敗無人看管。
+- DLT「重試 3 次後路由」基建在前置任務的 `KafkaConsumerConfig`（`DefaultErrorHandler` + `DeadLetterPublishingRecoverer`）已存在，且 DLT topic 已於 `kafka/kafka-init.sh` 建立；本任務只補「DLT consumer 落庫 + Admin 查詢/重試 API」，**未增刪 Kafka topic，故 `tests/infra/kafka.test.js` 無需更動**（AGENTS.md §2.7）。
+- 手動重試靠下游冪等保安全：`WalletReadSyncListener` 以 `existsById` 去重、`WalletService.credit/debit` 以 `idempotency_key` UNIQUE 去重（AGENTS.md §2.8），重發原 payload 不會重複入帳。
+
+### 如何驗證
+- `mvn -pl backend/wallet-service test`：**97 passed / 0 failed**（含 13 個新案；`contextLoads` 確認 H2 建表與三個 DLT consumer 掛載成功）。
+
+---
+
 ## [feat] — 2026-06-01 — 破產補助機制 API（T-027）
 
 ### Added

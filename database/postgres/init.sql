@@ -160,3 +160,29 @@ CREATE TABLE IF NOT EXISTS diamond_wallets (
     CONSTRAINT pk_diamond_wallets         PRIMARY KEY (player_id),
     CONSTRAINT chk_diamond_wallets_balance CHECK (balance >= 0)
 );
+
+-- -------------------------------------------------------
+-- dead_letter_messages：Kafka 消費失敗 DLT 訊息紀錄（T-028）
+-- 重試 3 次仍失敗的訊息由 DeadLetterListener 落庫，供 Admin 查詢與手動重試
+-- status：FAILED（待處理）/ RETRIED（已重試）/ RESOLVED（已解決）
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS dead_letter_messages (
+    id              BIGSERIAL    NOT NULL,
+    dlt_topic       VARCHAR(100) NOT NULL,
+    original_topic  VARCHAR(100) NOT NULL,
+    message_key     VARCHAR(255),
+    payload         TEXT         NOT NULL,
+    exception_class VARCHAR(255),
+    failure_reason  TEXT,
+    stack_trace     TEXT,
+    status          VARCHAR(20)  NOT NULL DEFAULT 'FAILED',
+    retry_count     INT          NOT NULL DEFAULT 0,
+    created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_retried_at TIMESTAMP,
+    CONSTRAINT pk_dead_letter_messages PRIMARY KEY (id),
+    CONSTRAINT chk_dlm_status CHECK (status IN ('FAILED', 'RETRIED', 'RESOLVED'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_dlm_status     ON dead_letter_messages (status);
+CREATE INDEX IF NOT EXISTS idx_dlm_dlt_topic  ON dead_letter_messages (dlt_topic);
+CREATE INDEX IF NOT EXISTS idx_dlm_created_at ON dead_letter_messages (created_at);

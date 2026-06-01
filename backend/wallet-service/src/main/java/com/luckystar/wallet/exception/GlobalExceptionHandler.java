@@ -68,6 +68,20 @@ public class GlobalExceptionHandler {
         return ApiResponse.error(ex.getMessage());
     }
 
+    /** 查無指定的 DLT 失敗訊息（T-028）→ 404。 */
+    @ExceptionHandler(DeadLetterNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ApiResponse<Void> handleDeadLetterNotFound(DeadLetterNotFoundException ex) {
+        return ApiResponse.error(ex.getMessage());
+    }
+
+    /** 對已解決的 DLT 訊息重試等不合法狀態操作（T-028）→ 409。 */
+    @ExceptionHandler(IllegalDltStateException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ApiResponse<Void> handleIllegalDltState(IllegalDltStateException ex) {
+        return ApiResponse.error(ex.getMessage());
+    }
+
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public ApiResponse<Void> handleOptimisticLock(ObjectOptimisticLockingFailureException ex) {
