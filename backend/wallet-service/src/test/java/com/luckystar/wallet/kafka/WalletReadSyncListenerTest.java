@@ -45,7 +45,7 @@ class WalletReadSyncListenerTest {
     @Test
     void onDebit_validJson_idNotInDb_savesAndAcks() throws Exception {
         WalletReadSyncListener target = listenerWithRealMapper();
-        WalletDebitEvent event = new WalletDebitEvent(100L, 7L, 500L, 1000L, 500L, "idem-1", "ref-1");
+        WalletDebitEvent event = new WalletDebitEvent(100L, 7L, 500L, 1000L, 500L, "BET", "idem-1", "ref-1");
         String message = objectMapper.writeValueAsString(event);
         when(viewRepository.existsById(100L)).thenReturn(false);
 
@@ -67,9 +67,41 @@ class WalletReadSyncListenerTest {
     }
 
     @Test
+    void onDebit_giftSubType_isPreservedInReadModel() throws Exception {
+        // T-026：贈送出帳事件帶 subType=GIFT，讀庫應如實記錄（而非一律 BET）
+        WalletReadSyncListener target = listenerWithRealMapper();
+        WalletDebitEvent event = new WalletDebitEvent(101L, 7L, 500L, 1000L, 500L, "GIFT", "gift-1:gift:debit", "gift-to:8");
+        String message = objectMapper.writeValueAsString(event);
+        when(viewRepository.existsById(101L)).thenReturn(false);
+
+        target.onDebit(message, ack);
+
+        ArgumentCaptor<WalletTransactionView> captor = ArgumentCaptor.forClass(WalletTransactionView.class);
+        verify(viewRepository).save(captor.capture());
+        assertThat(captor.getValue().getSubType()).isEqualTo("GIFT");
+        verify(ack, times(1)).acknowledge();
+    }
+
+    @Test
+    void onDebit_nullSubType_fallsBackToBet() throws Exception {
+        // 相容舊訊息：無 subType（null）回退為 BET
+        WalletReadSyncListener target = listenerWithRealMapper();
+        String legacyMessage =
+                "{\"transactionId\":102,\"playerId\":7,\"amount\":500,\"balanceBefore\":1000,\"balanceAfter\":500,\"idempotencyKey\":\"idem-x\",\"referenceId\":\"ref-x\"}";
+        when(viewRepository.existsById(102L)).thenReturn(false);
+
+        target.onDebit(legacyMessage, ack);
+
+        ArgumentCaptor<WalletTransactionView> captor = ArgumentCaptor.forClass(WalletTransactionView.class);
+        verify(viewRepository).save(captor.capture());
+        assertThat(captor.getValue().getSubType()).isEqualTo("BET");
+        verify(ack, times(1)).acknowledge();
+    }
+
+    @Test
     void onDebit_duplicateId_skipsSaveButAcks() throws Exception {
         WalletReadSyncListener target = listenerWithRealMapper();
-        WalletDebitEvent event = new WalletDebitEvent(100L, 7L, 500L, 1000L, 500L, "idem-1", "ref-1");
+        WalletDebitEvent event = new WalletDebitEvent(100L, 7L, 500L, 1000L, 500L, "BET", "idem-1", "ref-1");
         String message = objectMapper.writeValueAsString(event);
         when(viewRepository.existsById(100L)).thenReturn(true);
 
@@ -94,7 +126,7 @@ class WalletReadSyncListenerTest {
     @Test
     void onDebit_saveThrows_propagatesAndNeverAcks() throws Exception {
         WalletReadSyncListener target = listenerWithRealMapper();
-        WalletDebitEvent event = new WalletDebitEvent(100L, 7L, 500L, 1000L, 500L, "idem-1", "ref-1");
+        WalletDebitEvent event = new WalletDebitEvent(100L, 7L, 500L, 1000L, 500L, "BET", "idem-1", "ref-1");
         String message = objectMapper.writeValueAsString(event);
         when(viewRepository.existsById(100L)).thenReturn(false);
         DataAccessException ex = new DataAccessResourceFailureException("DB down");

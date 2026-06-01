@@ -26,6 +26,20 @@ public class GlobalExceptionHandler {
         return ApiResponse.error(ex.getMessage());
     }
 
+    /** 贈送超過當日上限（T-026）→ 422。 */
+    @ExceptionHandler(GiftLimitExceededException.class)
+    @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+    public ApiResponse<Void> handleGiftLimitExceeded(GiftLimitExceededException ex) {
+        return ApiResponse.error(ex.getMessage());
+    }
+
+    /** 不合法的贈送請求，例如贈送給自己（T-026）→ 400。 */
+    @ExceptionHandler(InvalidGiftException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiResponse<Void> handleInvalidGift(InvalidGiftException ex) {
+        return ApiResponse.error(ex.getMessage());
+    }
+
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public ApiResponse<Void> handleOptimisticLock(ObjectOptimisticLockingFailureException ex) {

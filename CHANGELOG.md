@@ -5,6 +5,46 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-01 — 好友星幣贈送 API（T-026）
+
+### Added
+- `backend/wallet-service/.../controller/WalletController.java`：新增 `POST /api/v1/wallet/gift`。贈送方取自 gateway 注入的 `X-User-Id` header（**不**由 body 指定，避免冒名贈送他人的錢）；body 帶 `receiverId`/`amount`/`idempotencyKey`。
+- `dto/GiftRequest.java`、`dto/GiftResponse.java`（新增）：請求/回應 DTO（`idempotencyKey` 上限 80 字，預留衍生後綴空間）。
+- `service/GiftService.java`（新增，協調器）：
+  - **基本驗證**：不可贈送給自己（`InvalidGiftException` → 400）。
+  - **冪等預檢**：以贈送方分錄 key（`<key>:gift:debit`）查流水，已存在即直接回原結果、**完全不碰 Redis**（重送不會灌爆當日額度）。
+  - **Redis 當日額度預扣**：贈出上限 **5,000**、收受上限 **10,000**（`wallet:gift:sent:{senderId}:{date}` / `wallet:gift:recv:{receiverId}:{date}`，`INCRBY` 後檢查，超限 `DECRBY` 回補並拋 `GiftLimitExceededException` → 422）；鍵 TTL 設到當地（Asia/Taipei）下一個午夜。
+  - **best-effort 下游**：轉帳 commit 後寫 `gift_logs`、發 `wallet.debit`/`wallet.credit` 事件；失敗只記 WARN，不回滾金流。
+- `service/GiftTransferService.java`（新增）：PostgreSQL **單一交易**內的雙向分錄（DEBIT/GIFT + CREDIT/GIFT），餘額守衛、樂觀鎖（`@Version`）、雙冪等鍵。獨立成 bean 以讓 `@Transactional(postgresTransactionManager)` proxy 生效。
+- `service/GiftLogService.java`（新增）：`gift_logs` 稽核寫入，走 `@Transactional(mysqlTransactionManager)`。
+- `mysql/entity/GiftLog.java`、`mysql/repository/GiftLogRepository.java`（新增）：對應既有 `gift_logs` 讀庫表。
+- `exception/GiftLimitExceededException.java`（→422）、`exception/InvalidGiftException.java`（→400）（新增），並在 `GlobalExceptionHandler` 註冊。
+- 測試（新增）：`service/GiftServiceTest.java`（10 案：成功、贈己、冪等重送、贈出/收受超限回補、餘額不足/錢包不存在回補、並發 UNIQUE 衝突回補+冪等、gift_logs 失敗不影響、Kafka 失敗不影響）、`service/GiftTransferServiceTest.java`（4 案：雙向異動與兩筆分錄、餘額不足、雙方錢包不存在）。
+
+### Changed
+- `kafka/WalletDebitEvent.java`：**新增 `subType` 欄位**（Kafka 契約變更）。先前 `wallet.debit` 事件無 subType、`WalletReadSyncListener.onDebit` 一律寫死 `BET`，會把贈送出帳誤標為下注。現由事件帶 `subType`（下注=`BET`、贈送出帳=`GIFT`）。
+- `kafka/WalletReadSyncListener.java`：`onDebit` 改用 `event.subType()`，**null 回退為 `BET`**（相容仍在 topic 中的舊訊息）。
+- `service/WalletService.java`：`debit()` 發布事件時帶上 `tx.getSubType()`。
+- 測試：`kafka/WalletReadSyncListenerTest.java` 更新既有 debit 事件建構子（補 subType=`BET`），並新增兩案（GIFT 如實保留、null 回退 BET）。
+- **Topic 清單未變**（仍是 `wallet.debit`/`wallet.credit`），故 `kafka/kafka-init.sh` 與 `tests/infra/kafka.test.js` 無需變更。
+
+### Why
+- 完成 T-026（工作分配表規格：`POST /api/v1/wallet/gift`、贈出 5,000／收受 10,000 當日上限、Redis TTL 到午夜、寫 `gift_logs`、觸發雙向帳務異動）。
+- 沿用既有帳務模式：冪等鍵（DB UNIQUE）防重、樂觀鎖（`@Version`）防超扣（AGENTS.md §2.8）。
+- `WalletDebitEvent` 加 `subType` 是為讀端流水正確標示贈送 vs 下注；改動向後相容（舊訊息回退 BET），且不新增 topic。
+
+### 已知限制（刻意放棄跨資料源原子性，**不**引入 XA/JTA；見程式內 `TODO(T-026)`）
+- PostgreSQL 雙分錄是唯一金流真相；commit 之後的 `gift_logs` 寫入與 Kafka 事件皆 best-effort。
+  1. **`gift_logs` 可能少列**：轉帳已 commit 但 MySQL 寫入失敗時，餘額仍正確，僅稽核列遺失（贈送歷史查詢會少報、`gift_logs` 與 `sub_type='GIFT'` 對不齊）。屬「稽核缺口」非「餘額錯誤」，失敗記 WARN 可事後補。
+  2. **Kafka 事件可能掉**：發布失敗則 rank-service 落後到下次帳務事件/重算（既有服務級限制，非 T-026 新增）。
+  3. **Redis 預扣僅在硬性程序死亡時可能與轉帳分歧**：try/catch 在任何拋出例外時 `DECRBY` 回補；但 JVM 在 `INCRBY` 後、commit 前被 OOM/SIGKILL 無法回補 → 當日計數略為多計（fail-safe：只會讓額度更嚴格、不會讓玩家超額），當地午夜 TTL 到期自動歸零。
+- **後續強化（本任務不做）**：優先走 **Outbox Pattern**（repo 已有 `database/mysql/migration/V3__create_outbox_events.sql`），把 `gift_logs` 意圖 + Kafka 事件與轉帳寫進同一筆 PostgreSQL 交易再非同步轉送，達成最終一致且保證投遞；或較簡單的對帳 job 從 PostgreSQL `sub_type='GIFT'` 回填 MySQL `gift_logs`。
+
+### How（如何驗證）
+- `mvn -pl backend/gateway-service,backend/member-service,backend/wallet-service test` → BUILD SUCCESS（wallet-service 74 案全綠，含 GiftServiceTest 10、GiftTransferServiceTest 4、WalletReadSyncListenerTest 9；`@SpringBootTest` contextLoads 通過，含新 bean 與 Redis 自動配置）。
+
+---
+
 ## [feat] — 2026-05-29 — Kafka→MySQL 讀端同步（補 T-025 流水查詢資料來源）
 
 ### Added
@@ -162,7 +202,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 #### 🟠 P1 — 重要功能
 
-- [ ] **T-026 好友星幣贈送、T-027 破產補助**（組員C）。
+- [x] **T-026 好友星幣贈送**（組員C）— 2026-06-01 完成（`POST /api/v1/wallet/gift`）。
+- [ ] **T-027 破產補助**（組員C）。
 - [ ] **T-034~T-036 百家樂邏輯/API、RNG 公平性驗證**（組員B）。
 - [ ] **T-043 每週排行榜重置、T-044 每日持幣快照**（組員D）。
 - [ ] **T-050~T-053 Admin 後台**（JWT 角色、玩家管理、流通量報表、RTP 儀表板）— admin-service 僅有 datasource 骨架。

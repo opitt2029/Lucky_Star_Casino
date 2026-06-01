@@ -117,6 +117,7 @@ public class WalletService {
                     tx.getAmount(),
                     tx.getBalanceBefore(),
                     tx.getBalanceAfter(),
+                    tx.getSubType(),
                     tx.getIdempotencyKey(),
                     tx.getReferenceId());
             String payload = objectMapper.writeValueAsString(event);

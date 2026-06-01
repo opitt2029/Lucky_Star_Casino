@@ -55,11 +55,13 @@ public class WalletReadSyncListener {
             return;
         }
 
+        // 舊訊息可能無 subType（null）→ 回退為 BET（早期 debit 一律下注）
+        String subType = event.subType() == null ? "BET" : event.subType();
         WalletTransactionView view = WalletTransactionView.builder()
                 .id(event.transactionId())
                 .playerId(event.playerId())
                 .type("DEBIT")
-                .subType("BET")
+                .subType(subType)
                 .amount(event.amount())
                 .balanceBefore(event.balanceBefore())
                 .balanceAfter(event.balanceAfter())

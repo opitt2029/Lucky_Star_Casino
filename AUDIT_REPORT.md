@@ -377,8 +377,8 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | T-022 | P0 | 下注扣款 API | ✅ | InternalWalletController `POST /internal/wallet/debit`（含樂觀鎖） |
 | T-023 | P0 | 派彩入帳 API | ✅ | `POST /internal/wallet/credit` 已實作（冪等/樂觀鎖/解凍/發 wallet.credit），2026-05-29 完成並通過單元測試 |
 | T-024 | P0 | 冪等性防重複 | ✅ | debit 與 credit 皆具 idempotencyKey + DB UNIQUE 防重 |
-| T-025 | P0 | 帳務流水查詢 API | ❌ | 無 `GET /api/v1/wallet/transactions` |
-| T-026 | P1 | 好友星幣贈送 API | ❌ | 無 `/gift` 端點 |
+| T-025 | P0 | 帳務流水查詢 API | ✅ | `GET /api/v1/wallet/transactions`（CQRS MySQL 讀端，分頁/類型/日期過濾）+ Kafka→MySQL 讀端同步，commit b7d4a4f 完成並通過單元測試 |
+| T-026 | P1 | 好友星幣贈送 API | ✅ | `POST /api/v1/wallet/gift`：Redis 當日上限（贈出 5,000／收受 10,000，TTL 到午夜）+ PostgreSQL 雙向分錄（DEBIT/CREDIT GIFT，冪等/樂觀鎖）+ best-effort gift_logs/Kafka，2026-06-01 完成並通過單元測試 |
 | T-027 | P1 | 破產補助 API | ❌ | 無 `/bankruptcy-aid` 端點 |
 | T-028 | P2 | Kafka DLT 處理 | ⚠️ | DLT topic 已於 kafka-init 建立、有 fix/wallet-kafka-dlt 修復，但 Admin 查詢/重試 API 未做 |
 

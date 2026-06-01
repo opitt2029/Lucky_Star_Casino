@@ -2,13 +2,19 @@ package com.luckystar.wallet.controller;
 
 import com.luckystar.wallet.common.ApiResponse;
 import com.luckystar.wallet.common.PagedResponse;
+import com.luckystar.wallet.dto.GiftRequest;
+import com.luckystar.wallet.dto.GiftResponse;
 import com.luckystar.wallet.dto.WalletBalanceResponse;
 import com.luckystar.wallet.dto.WalletTransactionResponse;
+import com.luckystar.wallet.service.GiftService;
 import com.luckystar.wallet.service.WalletQueryService;
 import com.luckystar.wallet.service.WalletService;
+import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -30,10 +36,13 @@ public class WalletController {
 
     private final WalletService walletService;
     private final WalletQueryService walletQueryService;
+    private final GiftService giftService;
 
-    public WalletController(WalletService walletService, WalletQueryService walletQueryService) {
+    public WalletController(WalletService walletService, WalletQueryService walletQueryService,
+                           GiftService giftService) {
         this.walletService = walletService;
         this.walletQueryService = walletQueryService;
+        this.giftService = giftService;
     }
 
     @GetMapping("/balance")
@@ -120,6 +129,38 @@ public class WalletController {
 
         PagedResponse<WalletTransactionResponse> response =
                 walletQueryService.getTransactions(playerId, normalizedType, fromDateTime, toDateTime, page, size);
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
+    /**
+     * 好友星幣贈送（T-026）。贈送方由 gateway 注入的 {@code X-User-Id} header 決定（不可由 body 指定，
+     * 避免冒名贈送他人的錢）；接收方、金額、冪等鍵走 body。
+     *
+     * <p>受 Redis 當日額度限制（贈出 5,000 / 收受 10,000，TTL 到午夜），在 PostgreSQL 一筆交易內
+     * 做雙向帳務異動並寫 gift_logs，邏輯見 {@link GiftService#gift}。
+     *
+     * <p>錯誤對應：贈送給自己 → 400；當日超額 → 422；餘額不足 → 422；錢包不存在 → 404；
+     * 並發樂觀鎖衝突 → 409（皆由 GlobalExceptionHandler 統一處理）。
+     */
+    @PostMapping("/gift")
+    public ResponseEntity<ApiResponse<GiftResponse>> gift(
+            @RequestHeader(value = "X-User-Id", required = false) String playerIdStr,
+            @Valid @RequestBody GiftRequest request) {
+
+        if (playerIdStr == null || playerIdStr.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Missing X-User-Id header"));
+        }
+
+        Long senderId;
+        try {
+            senderId = Long.parseLong(playerIdStr);
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Invalid X-User-Id header"));
+        }
+
+        GiftResponse response = giftService.gift(senderId, request);
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 }
