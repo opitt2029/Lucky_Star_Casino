@@ -319,7 +319,7 @@ export default function Home() {
             <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Member Gate</p>
             <h2 className="brand-title mt-3 text-4xl font-black tracking-tight sm:text-5xl">會員頁負責登入、註冊與遊戲門禁</h2>
             <p className="mt-4 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
-              遊戲大全、遊戲網頁與賭場商城都需要登入。尚未登入時會導回會員頁，完成登入後再進入遊戲流程。
+              遊戲大全與遊戲網頁需要登入；賭場商城開放瀏覽。尚未登入時會導回會員頁，完成登入後再進入遊戲流程。
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link to="/member" className="gold-button rounded px-6 py-3 text-sm font-black transition">
@@ -344,7 +344,7 @@ export default function Home() {
               商城頁已預留禮品素材與兌換流程，後續可以接上實際庫存、出貨狀態或活動 API。
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link to={isAuthenticated ? '/shop' : '/member'} className="gold-button rounded px-6 py-3 text-sm font-black transition">
+              <Link to="/shop" className="gold-button rounded px-6 py-3 text-sm font-black transition">
                 進入賭場商城
               </Link>
               <Link to={isAuthenticated ? '/games' : '/member'} className="red-gold-button rounded px-6 py-3 text-sm font-black transition">

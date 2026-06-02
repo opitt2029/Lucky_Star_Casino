@@ -31,6 +31,7 @@
 body {
   margin: 0;
   min-width: 320px;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at 50% -10%, rgba(248, 213, 106, 0.18), transparent 30%),
     linear-gradient(180deg, var(--casino-red-dark), var(--casino-red-deep) 58%, #070001);

@@ -12,12 +12,14 @@ import Rank from './pages/Rank'
 import Profile from './pages/Profile'
 import Transactions from './pages/Transactions'
 import CasinoShop from './pages/CasinoShop'
+import CheckIn from './pages/CheckIn'
 import PageTransition from './components/PageTransition'
+import QuickToolbar from './components/QuickToolbar'
 
 function PrivateRoute({ children }) {
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
   const location = useLocation()
-  return isAuthenticated ? children : <Navigate to="/member" replace state={{ from: location }} />
+  return isAuthenticated ? children : <Navigate to="/member?mode=login" replace state={{ from: location }} />
 }
 
 export default function App() {
@@ -40,8 +42,17 @@ export default function App() {
           <Route path="/member" element={<Member />} />
           <Route path="/login" element={<Navigate to="/member?mode=login" replace />} />
           <Route path="/register" element={<Navigate to="/member?mode=register" replace />} />
+          <Route path="/shop" element={<CasinoShop />} />
 
           {/* Protected routes */}
+          <Route
+            path="/check-in"
+            element={
+              <PrivateRoute>
+                <CheckIn />
+              </PrivateRoute>
+            }
+          />
           <Route
             path="/games"
             element={
@@ -63,14 +74,6 @@ export default function App() {
             element={
               <PrivateRoute>
                 <Baccarat />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/shop"
-            element={
-              <PrivateRoute>
-                <CasinoShop />
               </PrivateRoute>
             }
           />
@@ -103,6 +106,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </PageTransition>
+      <QuickToolbar />
     </BrowserRouter>
   )
 }

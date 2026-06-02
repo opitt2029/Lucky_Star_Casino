@@ -1,0 +1,177 @@
+.quick-toolbar {
+  position: fixed;
+  right: 18px;
+  top: 56%;
+  z-index: 35;
+  display: grid;
+  gap: 10px;
+  width: 116px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.quick-toolbar__panel {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(255, 234, 160, 0.42);
+  border-radius: 8px;
+  background:
+    linear-gradient(155deg, rgba(31, 2, 5, 0.92), rgba(100, 4, 11, 0.82)),
+    radial-gradient(circle at top, rgba(255, 234, 160, 0.18), transparent 42%);
+  box-shadow:
+    0 20px 50px rgba(20, 0, 2, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
+  pointer-events: auto;
+}
+
+.quick-toolbar__button {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+  min-height: 42px;
+  width: 100%;
+  border: 1px solid rgba(248, 213, 106, 0.2);
+  border-radius: 7px;
+  padding: 7px 8px;
+  background: linear-gradient(135deg, rgba(75, 3, 8, 0.86), rgba(17, 1, 4, 0.86));
+  color: rgba(255, 234, 160, 0.9);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1.15;
+  text-align: left;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease,
+    color 0.18s ease;
+}
+
+.quick-toolbar__button span {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.quick-toolbar__button:hover,
+.quick-toolbar__button:focus-visible {
+  border-color: rgba(255, 234, 160, 0.78);
+  background: linear-gradient(135deg, rgba(196, 11, 23, 0.94), rgba(78, 3, 9, 0.94));
+  color: #fff5c7;
+  box-shadow:
+    0 0 22px rgba(201, 13, 24, 0.38),
+    0 0 14px rgba(248, 213, 106, 0.16);
+  transform: translateX(-3px);
+  outline: none;
+}
+
+.quick-toolbar__button--top {
+  margin-top: 4px;
+  border-top-color: rgba(255, 234, 160, 0.5);
+  background: linear-gradient(135deg, rgba(255, 234, 160, 0.94), rgba(165, 100, 8, 0.94));
+  color: #270205;
+}
+
+.quick-toolbar__icon {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.quick-toolbar__notice-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(8, 0, 2, 0.28);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+
+.quick-toolbar__notice-box {
+  margin: 0;
+  width: min(320px, calc(100vw - 48px));
+  min-height: 108px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 234, 160, 0.62);
+  border-radius: 8px;
+  padding: 22px 24px;
+  background:
+    linear-gradient(145deg, rgba(83, 4, 10, 0.96), rgba(20, 1, 4, 0.96)),
+    radial-gradient(circle at top, rgba(255, 234, 160, 0.16), transparent 38%);
+  color: #fff2b5;
+  text-align: center;
+  box-shadow:
+    0 24px 64px rgba(18, 0, 2, 0.7),
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 0 34px rgba(201, 13, 24, 0.28);
+}
+
+.quick-toolbar__notice-box p {
+  margin: 0;
+  color: #fff2b5;
+  font-size: 1.18rem;
+  font-weight: 900;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .quick-toolbar {
+    left: auto;
+    right: 8px;
+    top: auto;
+    bottom: 10px;
+    width: min(148px, calc(100vw - 16px));
+    max-width: calc(100vw - 16px);
+    transform: translateX(-50%);
+  }
+
+  .quick-toolbar__panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    padding: 7px;
+  }
+
+  .quick-toolbar__button {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 3px;
+    min-height: 46px;
+    padding: 6px 5px;
+    font-size: 0.68rem;
+    line-height: 1.05;
+    text-align: center;
+  }
+
+  .quick-toolbar__button:hover,
+  .quick-toolbar__button:focus-visible {
+    transform: translateY(-2px);
+  }
+
+  .quick-toolbar__icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .quick-toolbar__notice-layer {
+    padding: 16px;
+  }
+
+  .quick-toolbar__notice-box {
+    width: min(280px, calc(100vw - 32px));
+    min-height: 96px;
+    padding: 18px 20px;
+  }
+}

@@ -135,7 +135,7 @@ export default function Member() {
               會員頁是遊戲入口的門禁
             </h1>
             <p className="mt-5 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
-              註冊或登入後，才能進入遊戲大全、各遊戲網頁與賭場商城。測試帳號 test / test1234
+              註冊或登入後，才能進入遊戲大全與各遊戲網頁；賭場商城可先瀏覽。測試帳號 test / test1234
               已預填，可直接登入檢查流程。
             </p>
           </div>

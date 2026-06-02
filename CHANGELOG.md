@@ -5,6 +5,45 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [fix] — 2026-06-02 — 快速工具欄文字與提示位置修正
+
+### Fixed
+- `frontend/src/components/QuickToolbar.css`：工具欄按鈕文字改為單行顯示，避免被擠到下一列。
+- `frontend/src/components/QuickToolbar.css` / `QuickToolbar.jsx`：提示訊息改為畫面正中央的自製 prompt 風格提示方塊，不使用瀏覽器 `prompt()`，且不再參與側邊欄排版。
+- `frontend/src/components/QuickToolbar.jsx`：將提示浮層移出帶有 `transform` 的側邊欄容器，避免 fixed 定位被側邊欄截住而偏到畫面右側。
+- `AI 客服` 點擊後沿用中央提示顯示「AI 客服功能即將推出」，避免撐開或改變工具欄尺寸。
+
+### Why
+- 快速工具欄是固定操作入口，按鈕尺寸與文字行高必須穩定；提示訊息應獨立於工具欄 layout，避免互動後 UI 跳動。
+
+### Verified
+- `npm run lint`（frontend）→ passed。
+- `npm run build`（frontend）→ passed。
+
+---
+
+## [feat] — 2026-06-01 — 前端右側快速工具欄
+
+### Added
+- `frontend/src/components/QuickToolbar.jsx` / `QuickToolbar.css`：新增固定於右側的快速工具欄，包含每日簽到、遊戲大廳、遊戲商城、會員中心、AI 客服與 Top。
+- `frontend/src/pages/CheckIn.jsx`：新增 `/check-in` 每日簽到頁面，沿用既有 `dailyCheckIn` / `fetchWallet` / `fetchProfile` 流程。
+
+### Changed
+- `frontend/src/App.jsx`：全域掛載 `QuickToolbar`；新增 `/check-in` 受保護路由；將 `/shop` 改為公開路由；未登入 ProtectedRoute 導向 `/member?mode=login` 並保留 `state.from`。
+- `frontend/src/components/AppShell.jsx`：訪客瀏覽公開商城時不主動抓受保護錢包 API，並顯示登入按鈕；登出後同步清空 wallet state。
+- `frontend/src/pages/Home.jsx`、`frontend/src/pages/Member.jsx`：更新商城可先瀏覽的相關文案與首頁商城連結。
+- `frontend/src/index.css`：關閉 body 橫向 overflow，避免窄螢幕頁面橫向寬度影響 fixed 工具欄定位。
+
+### Why
+- 讓主要頁面都有符合紅金深色賭城風格的快速入口，同時維持既有 Redux auth 判斷與會員頁 redirect 流程。
+- 商城瀏覽不應受登入保護，避免訪客進入 `/shop` 時被路由或 AppShell 的錢包同步流程導回登入。
+
+### Verified
+- `npm run lint`（frontend）→ passed。
+- `npm run build`（frontend）→ passed；第一次在沙盒內因 Vite 讀取 config 被 Windows 權限擋住，升權重跑後成功。
+
+---
+
 ## [feat] — 2026-06-01 — 查詢鑽石餘額 API（T-104）
 
 ### Added

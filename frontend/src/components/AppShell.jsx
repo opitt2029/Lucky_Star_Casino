@@ -5,7 +5,7 @@ import ErrorBoundary from './ErrorBoundary'
 import { fetchProfile, logoutMember } from '../store/slices/authSlice'
 import { clearNotifications } from '../store/slices/gameSlice'
 import { fetchRanks } from '../store/slices/rankSlice'
-import { dailyCheckIn, fetchWallet } from '../store/slices/walletSlice'
+import { dailyCheckIn, fetchWallet, resetWallet } from '../store/slices/walletSlice'
 import { getBackgroundStyle } from '../theme/backgroundTheme'
 import CoinRain from './CoinRain'
 
@@ -94,11 +94,12 @@ export default function AppShell({ children }) {
   const [checkInModalOpen, setCheckInModalOpen] = useState(false)
   const [checkInDates, setCheckInDates] = useState([])
   const [checkInDatesReady, setCheckInDatesReady] = useState(false)
+  const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
   const player = useSelector((state) => state.auth.player)
   const wallet = useSelector((state) => state.wallet)
   const balance = wallet.balance
   const notifications = useSelector((state) => state.game.notifications)
-  const playerName = player?.nickname || player?.username || 'Demo Player'
+  const playerName = player?.nickname || player?.username || (isAuthenticated ? 'Demo Player' : '訪客')
   const canShowAvatar = player?.avatarUrl && !avatarFailed
   const todayKey = getTaipeiDateKey()
   const currentMonthKey = todayKey.slice(0, 7)
@@ -113,9 +114,11 @@ export default function AppShell({ children }) {
   const checkInDismissLabel = hasCheckedInToday || wallet.checkIn.message ? '關閉' : '稍後'
 
   useEffect(() => {
-    dispatch(fetchWallet())
+    if (isAuthenticated) {
+      dispatch(fetchWallet())
+    }
     dispatch(fetchRanks())
-  }, [dispatch])
+  }, [dispatch, isAuthenticated])
 
   useEffect(() => {
     setAvatarFailed(false)
@@ -159,7 +162,14 @@ export default function AppShell({ children }) {
   }, [])
 
   const handleLogout = () => {
-    dispatch(logoutMember()).finally(() => navigate('/member'))
+    dispatch(logoutMember()).finally(() => {
+      dispatch(resetWallet())
+      navigate('/member')
+    })
+  }
+
+  const handleLogin = () => {
+    navigate('/member?mode=login')
   }
 
   const handleDailyCheckIn = async () => {
@@ -262,13 +272,23 @@ export default function AppShell({ children }) {
                   </div>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="red-gold-button rounded px-4 py-2 text-sm font-bold transition"
-              >
-                登出
-              </button>
+              {isAuthenticated ? (
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="red-gold-button rounded px-4 py-2 text-sm font-bold transition"
+                >
+                  登出
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleLogin}
+                  className="red-gold-button rounded px-4 py-2 text-sm font-bold transition"
+                >
+                  登入
+                </button>
+              )}
             </div>
           </div>
 
