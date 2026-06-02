@@ -5,6 +5,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [changed] — 2026-06-02 — 更新網站金幣 favicon
+
+### Changed
+- `frontend/public/icon/casino-svgrepo-com.svg`：將原本 SVG icon 改為單純金色金幣造型，中央使用星形壓印，沿用既有 favicon 路徑。
+
+### Why
+- 讓瀏覽器分頁 icon 更直覺呈現星幣/金幣意象，保持小尺寸下的辨識度。
+
+### Verified
+- `npm run build`（frontend）→ sandbox 內因 Windows 權限無法讀取 Vite config；升權重跑後 passed。
+
+---
+
+## [feat] — 2026-06-02 — 新增好友清單浮動面板
+
+### Added
+- `frontend/src/components/FriendFloatingPanel.jsx` / `FriendFloatingPanel.css`：新增右下角紅金主題好友清單入口，已登入時包含綠色在線狀態點、往上展開面板、搜尋欄、全部/線上/離線/遊戲中分類與 8 筆 mock 好友資料。
+- `frontend/src/components/FriendFloatingPanel.jsx` / `FriendFloatingPanel.css`：好友列表項目可點擊切換到好友詳情，顯示頭像、遊戲暱稱、遊戲 ID、狀態、等級、註冊日期與目前遊戲。
+- `frontend/src/components/FriendFloatingPanel.jsx` / `FriendFloatingPanel.css`：好友詳情內新增 mock「贈送星幣」表單，含數量/留言欄位、二次確認、餘額扣除、成功與錯誤提示。
+- `frontend/src/App.jsx`：全域掛載好友清單浮動面板，包含首頁 `/` 在內的全網站都顯示。
+
+### Changed
+- `frontend/src/pages/Profile.jsx`：移除會員中心舊好友列表 UI、好友 mock API 操作與只供該區塊使用的 state/import，保留個人資料、頭像、簽到與第三方綁定功能。
+- `frontend/src/components/FriendFloatingPanel.jsx` / `FriendFloatingPanel.css`：未登入狀態不自動導頁，改以灰色燈號與「未登入」狀態呈現，面板內提供登入入口。
+
+### Why
+- 好友清單改為全站浮動入口，讓首頁、遊戲大廳與其他頁面都有一致入口；未登入時以低干擾狀態列呈現，不打斷瀏覽流程。好友詳情與 mock 贈幣先放在浮動面板內，避免會員中心內維護另一套好友列表 UI，並在後端 API 完成前提供可驗收的前端流程。
+
+### Verified
+- `npm run lint`（frontend）→ passed。
+- `npm run build`（frontend）→ sandbox 內因 Windows 權限無法讀取 Vite config；升權重跑後 passed。
+- Headless Chrome CDP 驗證 → 舊版需求曾驗證 `/shop`、`/games` 展開/搜尋/分類與 390px 手機 viewport；最終版另以 lint/build 驗證全站常駐與未登入灰燈狀態可正常編譯。
+
+---
+
 ## [fix] — 2026-06-02 — 快速工具欄文字與提示位置修正
 
 ### Fixed

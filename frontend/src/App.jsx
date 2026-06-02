@@ -15,6 +15,7 @@ import CasinoShop from './pages/CasinoShop'
 import CheckIn from './pages/CheckIn'
 import PageTransition from './components/PageTransition'
 import QuickToolbar from './components/QuickToolbar'
+import FriendFloatingPanel from './components/FriendFloatingPanel'
 
 function PrivateRoute({ children }) {
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
@@ -107,6 +108,7 @@ export default function App() {
         </Routes>
       </PageTransition>
       <QuickToolbar />
+      <FriendFloatingPanel />
     </BrowserRouter>
   )
 }

@@ -293,7 +293,7 @@ export default function Home() {
               <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Game Directory</p>
               <h2 className="brand-title mt-3 text-4xl font-black tracking-tight sm:text-5xl">遊戲大全作為所有遊戲入口</h2>
               <p className="mt-4 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
-                未登入使用者會先導向會員頁。登入後可從遊戲大全進入每個遊戲網頁，遊玩結果會更新籌碼。
+                登入後可從遊戲大全進入每個遊戲網頁，遊玩結果會更新籌碼。
               </p>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
