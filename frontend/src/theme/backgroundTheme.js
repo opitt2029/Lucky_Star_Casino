@@ -45,7 +45,7 @@ export const shopCatalog = [
   {
     id: 'bonus-box',
     title: '幸運禮盒',
-    caption: '預留給兌換碼、道具或實體禮品',
+    caption: '預留給活動道具或實體禮品',
     cost: 20000,
     assetKey: 'shopPrizeC',
   },
@@ -96,7 +96,7 @@ export const decorativeAssets = {
     image: 'casino-game-hall.png',
     meta: 'Baccarat',
     label: '百家樂牌桌',
-    caption: '紅色牌桌與金色籌碼呈現經典賭場桌局。',
+    caption: '紅色牌桌與金色星幣呈現經典賭場桌局。',
     overlay:
       'linear-gradient(135deg, rgba(132, 7, 14, 0.26) 0%, rgba(12, 1, 3, 0.8) 100%), radial-gradient(circle at 76% 18%, rgba(248, 213, 106, 0.12), transparent 30%)',
   },
@@ -104,7 +104,7 @@ export const decorativeAssets = {
     image: 'casino-rewards-showcase.png',
     meta: 'Reward Shop',
     label: '賭場獎品櫃',
-    caption: '禮盒、籌碼與會員卡呈現商城兌換的獎勵期待感。',
+    caption: '禮盒、鑽石與會員卡呈現商城兌換的獎勵期待感。',
     overlay:
       'linear-gradient(90deg, rgba(20, 1, 4, 0.72) 0%, rgba(110, 6, 13, 0.22) 58%, rgba(12, 1, 3, 0.78) 100%), radial-gradient(circle at 72% 24%, rgba(255, 234, 160, 0.14), transparent 34%)',
   },

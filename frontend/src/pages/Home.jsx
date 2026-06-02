@@ -270,7 +270,7 @@ export default function Home() {
             <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Lucky Star Casino</p>
             <h1 className="brand-title mt-4 max-w-4xl text-5xl font-black tracking-tight sm:text-7xl">幸運星幣城</h1>
             <p className="mt-6 max-w-2xl text-base font-bold leading-8 text-yellow-100/78">
-              從首頁進入會員、遊戲大全與賭場商城。登入後即可選擇遊戲、累積籌碼，並在商城兌換禮品。
+              從首頁進入會員、遊戲大全、鑽石錢包與禮品商城。Diamond 鑽石負責充值兌換，Star Coin 星幣用於遊戲下注與禮品兌換。
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link to={isAuthenticated ? '/games' : '/member'} className="gold-button rounded px-6 py-3 text-sm font-black transition">
@@ -293,7 +293,7 @@ export default function Home() {
               <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Game Directory</p>
               <h2 className="brand-title mt-3 text-4xl font-black tracking-tight sm:text-5xl">遊戲大全作為所有遊戲入口</h2>
               <p className="mt-4 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
-                登入後可從遊戲大全進入每個遊戲網頁，遊玩結果會更新籌碼。
+                登入後可從遊戲大全進入每個遊戲網頁，遊玩結果會更新 Star Coin 星幣。
               </p>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
@@ -319,7 +319,7 @@ export default function Home() {
             <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Member Gate</p>
             <h2 className="brand-title mt-3 text-4xl font-black tracking-tight sm:text-5xl">會員頁負責登入、註冊與遊戲門禁</h2>
             <p className="mt-4 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
-              遊戲大全與遊戲網頁需要登入；賭場商城開放瀏覽。尚未登入時會導回會員頁，完成登入後再進入遊戲流程。
+              遊戲大全、遊戲網頁與鑽石錢包需要登入；禮品商城開放瀏覽。尚未登入時會導回會員頁，完成登入後再進入遊戲流程。
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link to="/member" className="gold-button rounded px-6 py-3 text-sm font-black transition">
@@ -339,16 +339,16 @@ export default function Home() {
           <DecorativeAsset assetKey="shopHero" className="scroll-visual min-h-[360px]" />
           <div className="scroll-copy">
             <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Casino Shop</p>
-            <h2 className="brand-title mt-3 text-4xl font-black tracking-tight sm:text-5xl">賭場商城承接遊戲贏得的籌碼</h2>
+            <h2 className="brand-title mt-3 text-4xl font-black tracking-tight sm:text-5xl">鑽石錢包串起充值與星幣兌換</h2>
             <p className="mt-4 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
-              商城頁已預留禮品素材與兌換流程，後續可以接上實際庫存、出貨狀態或活動 API。
+              Diamond 鑽石可透過序號兌換入帳，並固定以 1 鑽石 = 20 星幣換成 Star Coin；禮品商城則消耗星幣完成兌換。
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link to="/shop" className="gold-button rounded px-6 py-3 text-sm font-black transition">
-                進入賭場商城
+              <Link to={isAuthenticated ? '/diamond' : '/member'} className="gold-button rounded px-6 py-3 text-sm font-black transition">
+                進入鑽石錢包
               </Link>
-              <Link to={isAuthenticated ? '/games' : '/member'} className="red-gold-button rounded px-6 py-3 text-sm font-black transition">
-                先去贏籌碼
+              <Link to="/shop" className="red-gold-button rounded px-6 py-3 text-sm font-black transition">
+                瀏覽禮品商城
               </Link>
             </div>
           </div>

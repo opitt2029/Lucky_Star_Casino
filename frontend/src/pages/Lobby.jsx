@@ -63,13 +63,16 @@ export default function Lobby() {
 
           <div className="mt-8 flex flex-wrap gap-3">
             <Link to="/shop" className="red-gold-button rounded px-5 py-3 text-sm font-black transition">
-              前往賭場商城
+              前往禮品商城
+            </Link>
+            <Link to="/diamond" className="gold-button rounded px-5 py-3 text-sm font-black transition">
+              鑽石兌換星幣
             </Link>
           </div>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
-          <MetricCard label="目前星幣" value={balance.toLocaleString()} caption="您目前的籌碼總數" tone="light" />
+          <MetricCard label="目前星幣" value={balance.toLocaleString()} caption="遊戲下注與派彩使用" tone="light" />
           <MetricCard label="收錄遊戲" value={gameCatalog.length.toString()} caption="遊戲大全展示數" />
         </div>
       </section>

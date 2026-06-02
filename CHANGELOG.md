@@ -5,6 +5,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-02 — 新增前端鑽石錢包頁面與 Redux 狀態
+
+### Added
+- `frontend/src/pages/Diamond.jsx`：新增 `/diamond` 鑽石錢包頁，包含鑽石餘額卡片、序號兌換鑽石、鑽石兌換星幣、即時換算預覽、loading、成功/錯誤提示與表單驗證。
+- `frontend/src/store/slices/diamondSlice.js`：新增 `diamond` Redux state，管理 `diamondBalance`、`loading`、`error`、`lastRedeemAmount`、成功訊息與餘額同步 thunk。
+- `frontend/src/services/diamondApi.js`：新增 `getDiamondBalance()`、`redeemDiamondCard(card_code)`、`exchangeDiamondToStarCoin(diamondAmount)`，串接 3 支 Diamond API 並沿用既有 axios/auth token 流程。
+
+### Changed
+- `frontend/src/store/index.js`、`frontend/src/App.jsx`：註冊 `diamondSlice`，新增 `/diamond` 受保護路由。
+- `frontend/src/components/AppShell.jsx`、`QuickToolbar.jsx`、`Member.jsx`：新增鑽石錢包入口，登入後同步鑽石餘額，登出時清空鑽石狀態。
+- `frontend/src/pages/Home.jsx`、`Lobby.jsx`、`CasinoShop.jsx`、`Profile.jsx`、`FriendFloatingPanel.jsx`、`theme/backgroundTheme.js`：調整主要貨幣文案，明確區分 Diamond 鑽石為充值/兌換貨幣、Star Coin 星幣為遊戲與禮品消耗貨幣。
+
+### Why
+- 完成 T-107 前端鑽石錢包需求，讓使用者可用點數卡取得 Diamond 鑽石，並依固定比例 `1 Diamond = 20 Star Coins` 兌換星幣，同時避免新增與既有 `walletSlice` 衝突的星幣狀態。
+
+### Verified
+- `npm run lint`（frontend）→ passed。
+- `npm run build`（frontend）→ sandbox 內因 Windows 權限無法讀取 Vite config；升權限重跑後 passed。
+- `Invoke-WebRequest http://127.0.0.1:5173/diamond` → HTTP 200。
+
+---
+
 ## [changed] — 2026-06-02 — 重整前端 WebSocket 通知 Hook
 
 ### Changed

@@ -5,6 +5,7 @@ import DecorativeAsset from '../components/DecorativeAsset'
 import CoinRain from '../components/CoinRain'
 import { loginMember, registerMember } from '../store/slices/authSlice'
 import { fetchRanks } from '../store/slices/rankSlice'
+import { fetchDiamondBalance } from '../store/slices/diamondSlice'
 import { fetchWallet } from '../store/slices/walletSlice'
 import { getBackgroundStyle } from '../theme/backgroundTheme'
 import { getBirthDateMax, isAdultBirthDate, socialProviders } from '../utils/memberPreferences'
@@ -80,6 +81,7 @@ export default function Member() {
 
   const syncAfterAuth = () => {
     dispatch(fetchWallet())
+    dispatch(fetchDiamondBalance())
     dispatch(fetchRanks())
   }
 
@@ -135,7 +137,7 @@ export default function Member() {
               會員頁是遊戲入口的門禁
             </h1>
             <p className="mt-5 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
-              註冊或登入後，才能進入遊戲大全與各遊戲網頁；賭場商城可先瀏覽。測試帳號 test / test1234
+              註冊或登入後，才能進入遊戲大全、各遊戲網頁與鑽石錢包；禮品商城可先瀏覽。測試帳號 test / test1234
               已預填，可直接登入檢查流程。
             </p>
           </div>

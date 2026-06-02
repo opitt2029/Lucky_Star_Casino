@@ -59,7 +59,7 @@ const mockFriends = [
   {
     id: 6,
     gameId: 'LSC101688',
-    name: '金幣獵人',
+    name: '星幣獵人',
     status: 'online',
     level: 27,
     avatar: '🪙',

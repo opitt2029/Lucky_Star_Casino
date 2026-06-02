@@ -5,6 +5,7 @@ import ErrorBoundary from './ErrorBoundary'
 import { fetchProfile, logoutMember } from '../store/slices/authSlice'
 import { clearNotifications } from '../store/slices/gameSlice'
 import { fetchRanks } from '../store/slices/rankSlice'
+import { fetchDiamondBalance, resetDiamond } from '../store/slices/diamondSlice'
 import { dailyCheckIn, fetchWallet, resetWallet } from '../store/slices/walletSlice'
 import { getBackgroundStyle } from '../theme/backgroundTheme'
 import CoinRain from './CoinRain'
@@ -12,7 +13,8 @@ import CoinRain from './CoinRain'
 const navItems = [
   { to: '/', label: '首頁' },
   { to: '/games', label: '遊戲大全' },
-  { to: '/shop', label: '賭場商城' },
+  { to: '/diamond', label: '鑽石錢包' },
+  { to: '/shop', label: '禮品商城' },
   { to: '/rank', label: '排行榜' },
   { to: '/transactions', label: '交易紀錄' },
   { to: '/profile', label: '會員中心' },
@@ -97,6 +99,7 @@ export default function AppShell({ children }) {
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
   const player = useSelector((state) => state.auth.player)
   const wallet = useSelector((state) => state.wallet)
+  const diamond = useSelector((state) => state.diamond)
   const balance = wallet.balance
   const notifications = useSelector((state) => state.game.notifications)
   const playerName = player?.nickname || player?.username || (isAuthenticated ? 'Demo Player' : '訪客')
@@ -116,6 +119,7 @@ export default function AppShell({ children }) {
   useEffect(() => {
     if (isAuthenticated) {
       dispatch(fetchWallet())
+      dispatch(fetchDiamondBalance())
     }
     dispatch(fetchRanks())
   }, [dispatch, isAuthenticated])
@@ -164,6 +168,7 @@ export default function AppShell({ children }) {
   const handleLogout = () => {
     dispatch(logoutMember()).finally(() => {
       dispatch(resetWallet())
+      dispatch(resetDiamond())
       navigate('/member')
     })
   }
@@ -225,7 +230,11 @@ export default function AppShell({ children }) {
                 <span className="min-w-0 truncate font-black">{playerName}</span>
               </div>
               <div className="luxury-panel-soft rounded px-4 py-2">
-                <span className="gold-muted block text-[11px] font-bold uppercase">籌碼</span>
+                <span className="gold-muted block text-[11px] font-bold uppercase">Diamond</span>
+                <span className="font-black">{diamond.diamondBalance.toLocaleString()}</span>
+              </div>
+              <div className="luxury-panel-soft rounded px-4 py-2">
+                <span className="gold-muted block text-[11px] font-bold uppercase">Star Coin</span>
                 <span className="font-black">{balance.toLocaleString()}</span>
               </div>
               <div className="relative">

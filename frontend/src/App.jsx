@@ -13,6 +13,7 @@ import Profile from './pages/Profile'
 import Transactions from './pages/Transactions'
 import CasinoShop from './pages/CasinoShop'
 import CheckIn from './pages/CheckIn'
+import Diamond from './pages/Diamond'
 import PageTransition from './components/PageTransition'
 import QuickToolbar from './components/QuickToolbar'
 import FriendFloatingPanel from './components/FriendFloatingPanel'
@@ -59,6 +60,14 @@ export default function App() {
             element={
               <PrivateRoute>
                 <Lobby />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/diamond"
+            element={
+              <PrivateRoute>
+                <Diamond />
               </PrivateRoute>
             }
           />

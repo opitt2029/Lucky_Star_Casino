@@ -19,13 +19,19 @@ const tools = [
     icon: <path d="M6 12h12M12 6v12M7 17l-2 2M17 17l2 2M7 7 5 5M17 7l2-2" />,
   },
   {
+    label: '鑽石錢包',
+    path: '/diamond',
+    protected: true,
+    icon: <path d="M12 3 4 9l8 12 8-12-8-6Zm0 0 3 6-3 12-3-12 3-6ZM4 9h16" />,
+  },
+  {
     label: '會員中心',
     path: '/profile',
     protected: true,
     icon: <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm7 8a7 7 0 0 0-14 0" />,
   },
   {
-    label: '遊戲商城',
+    label: '禮品商城',
     path: '/shop',
     protected: false,
     icon: <path d="M6 8h12l-1 11H7L6 8Zm2 0a4 4 0 0 1 8 0M9 13h.01M15 13h.01" />,

@@ -319,12 +319,12 @@ export default function Profile() {
 
         <aside className="grid gap-4 content-start">
           <MetricCard
-            label="可用籌碼"
+            label="可用星幣"
             value={wallet.balance.toLocaleString()}
             tone="light"
           />
           <MetricCard
-            label="凍結籌碼"
+            label="凍結星幣"
             value={wallet.frozenAmount.toLocaleString()}
             caption="下注中保留"
           />
