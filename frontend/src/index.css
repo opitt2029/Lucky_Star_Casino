@@ -52,6 +52,13 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
+img,
+svg,
+canvas,
+video {
+  max-width: 100%;
+}
+
 .page-transition-stage {
   position: relative;
   min-height: 100vh;
@@ -1652,6 +1659,185 @@ a {
   box-shadow:
     0 0 16px rgba(250, 204, 21, 0.58),
     0 0 28px rgba(250, 204, 21, 0.24);
+}
+
+@media (max-width: 768px) {
+  .theme-background {
+    background-attachment: scroll, scroll, scroll;
+  }
+
+  :where(button, input, select, textarea) {
+    min-height: 44px;
+  }
+
+  :where(a.gold-button, a.red-gold-button) {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .scroll-section {
+    min-height: auto;
+    padding-top: 5.5rem;
+    padding-bottom: 5.5rem;
+  }
+
+  .scroll-visual {
+    min-height: 260px;
+  }
+
+  .slot-machine.slot-machine {
+    padding: 14px;
+  }
+
+  .slot-machine__marquee {
+    grid-template-columns: repeat(11, minmax(0, 1fr));
+    gap: 5px;
+    margin-bottom: 10px;
+    padding: 6px;
+  }
+
+  .slot-machine__topper {
+    padding: 12px;
+  }
+
+  .slot-machine__title {
+    font-size: 2rem;
+  }
+
+  .slot-machine__jackpot {
+    min-height: 64px;
+  }
+
+  .slot-machine__jackpot strong {
+    font-size: 1.6rem;
+  }
+
+  .slot-cabinet {
+    min-height: calc(var(--slot-reel-height) + 26px);
+    padding: 13px;
+    box-shadow:
+      inset 0 0 0 4px rgba(12, 1, 3, 0.7),
+      inset 0 0 0 7px rgba(255, 234, 160, 0.1),
+      inset 0 -18px 34px rgba(5, 0, 1, 0.48),
+      0 18px 48px rgba(16, 0, 2, 0.42);
+  }
+
+  .slot-payline {
+    left: 16px;
+    right: 16px;
+  }
+
+  .slot-reels {
+    gap: 8px;
+  }
+
+  .slot-reel-window {
+    box-shadow:
+      inset 0 18px 22px rgba(255, 255, 255, 0.05),
+      inset 0 -18px 28px rgba(0, 0, 0, 0.42),
+      0 0 0 3px rgba(10, 0, 2, 0.48);
+  }
+
+  .slot-machine__glass {
+    inset: 13px;
+  }
+
+  .slot-console {
+    padding: 12px;
+  }
+
+  .slot-spin-button {
+    width: 100%;
+    min-height: 56px;
+  }
+}
+
+@media (max-width: 480px) {
+  .brand-title {
+    overflow-wrap: anywhere;
+  }
+
+  .scroll-section {
+    padding-top: 5rem;
+    padding-bottom: 5rem;
+  }
+
+  .scroll-visual {
+    min-height: 220px;
+  }
+
+  .slot-machine.slot-machine {
+    padding: 10px;
+  }
+
+  .slot-machine__topper {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .slot-machine__title {
+    font-size: 1.7rem;
+  }
+
+  .slot-machine__jackpot {
+    min-height: 58px;
+  }
+
+  .slot-machine__jackpot strong {
+    font-size: 1.35rem;
+  }
+
+  .slot-cabinet {
+    min-height: calc(var(--slot-reel-height) + 20px);
+    padding: 10px;
+  }
+
+  .slot-payline {
+    left: 12px;
+    right: 12px;
+  }
+
+  .slot-reels {
+    gap: 6px;
+  }
+
+  .slot-symbol-art {
+    padding: 0 4px;
+  }
+
+  .slot-symbol-caption {
+    min-height: 14px;
+    padding: 0 3px 6px;
+    font-size: 0.58rem;
+  }
+
+  .slot-machine__glass {
+    inset: 10px;
+  }
+
+  .slot-console {
+    gap: 10px;
+    margin-top: 10px;
+    padding: 10px;
+  }
+
+  .slot-console__meters {
+    gap: 6px;
+  }
+
+  .slot-console__meters div {
+    min-height: 54px;
+  }
+
+  .slot-console__meters strong {
+    font-size: 1rem;
+  }
+
+  .slot-status {
+    margin-top: 10px;
+  }
 }
 
 @media (min-width: 640px) {

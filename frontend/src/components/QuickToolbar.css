@@ -129,19 +129,21 @@
 
 @media (max-width: 760px) {
   .quick-toolbar {
-    left: auto;
-    right: 8px;
+    left: 10px;
+    right: 10px;
     top: auto;
     bottom: 10px;
-    width: min(148px, calc(100vw - 16px));
-    max-width: calc(100vw - 16px);
-    transform: translateX(-50%);
+    width: auto;
+    max-width: none;
+    transform: none;
   }
 
   .quick-toolbar__panel {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px;
     padding: 7px;
+    width: min(100%, 420px);
+    margin: 0 auto;
   }
 
   .quick-toolbar__button {

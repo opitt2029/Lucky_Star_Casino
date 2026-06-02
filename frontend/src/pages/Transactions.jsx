@@ -65,8 +65,48 @@ export default function Transactions() {
         </div>
         {error && <p className="mt-3 rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">{error}</p>}
 
-        <div className="mt-5 overflow-x-auto">
-          <table className="w-full min-w-[680px] border-separate border-spacing-y-2 text-left text-sm">
+        <div className="mt-5 grid gap-3 md:hidden">
+          {transactions.map((row) => (
+            <article key={row.id} className="rounded border border-yellow-200/15 bg-red-950/70 p-4 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="gold-muted text-xs font-black uppercase tracking-[0.2em]">交易 ID</p>
+                  <p className="mt-1 break-all font-black text-yellow-100">{row.id}</p>
+                </div>
+                <span className="shrink-0 rounded border border-yellow-200/15 px-2 py-1 text-xs font-black text-yellow-100/72">
+                  {row.typeLabel}
+                </span>
+              </div>
+              <dl className="mt-4 grid gap-2">
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-yellow-100/62">金額</dt>
+                  <dd className={['font-black', row.amount < 0 ? 'text-red-200' : 'text-yellow-200'].join(' ')}>
+                    {row.amount > 0 ? '+' : ''}
+                    {row.amount.toLocaleString()}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-yellow-100/62">狀態</dt>
+                  <dd className="font-bold text-yellow-100/72">{row.status}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-yellow-100/62">時間</dt>
+                  <dd className="text-right font-bold text-yellow-100/60">
+                    {new Date(row.createdAt).toLocaleString()}
+                  </dd>
+                </div>
+              </dl>
+            </article>
+          ))}
+          {transactions.length === 0 && (
+            <p className="rounded border border-yellow-200/15 bg-red-950/70 px-3 py-8 text-center font-bold text-yellow-100/56">
+              沒有符合條件的交易紀錄
+            </p>
+          )}
+        </div>
+
+        <div className="mt-5 hidden md:block">
+          <table className="w-full border-separate border-spacing-y-2 text-left text-sm">
             <thead className="gold-muted text-xs uppercase tracking-[0.2em]">
               <tr>
                 <th className="px-3 py-2">交易 ID</th>
@@ -99,11 +139,11 @@ export default function Transactions() {
             </tbody>
           </table>
         </div>
-        <div className="mt-4 flex items-center justify-between">
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="gold-muted text-sm font-bold">
             第 {transactionPage} / {totalPages} 頁，共 {transactionTotal} 筆
           </p>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:flex">
             <button
               type="button"
               onClick={() => dispatch(setTransactionPage(Math.max(transactionPage - 1, 1)))}

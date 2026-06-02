@@ -17,13 +17,13 @@ function ShopItem({ item, balance, onRedeem }) {
         <h3 className="brand-title mt-2 text-2xl font-black">{item.title}</h3>
         <p className="mt-2 text-sm font-bold leading-6 text-yellow-100/64">{item.caption}</p>
       </div>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="gold-text text-lg font-black">{item.cost.toLocaleString()} 星幣</p>
         <button
           type="button"
           onClick={() => onRedeem(item)}
           disabled={disabled}
-          className="gold-button rounded px-4 py-2 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-50"
+          className="gold-button min-w-24 rounded px-4 py-2 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-50"
         >
           兌換
         </button>

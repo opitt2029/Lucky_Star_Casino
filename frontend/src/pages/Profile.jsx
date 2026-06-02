@@ -233,8 +233,8 @@ export default function Profile() {
         <form onSubmit={handleSave} className="luxury-panel rounded p-6">
           <p className="gold-muted text-xs font-black uppercase tracking-[0.3em]">Profile</p>
           <h2 className="brand-title mt-3 text-3xl font-black">會員中心</h2>
-          <div className="mt-6 grid gap-5 lg:grid-cols-[180px_1fr]">
-            <div className="grid content-start gap-3">
+          <div className="mt-6 grid gap-5 md:grid-cols-[160px_1fr] lg:grid-cols-[180px_1fr]">
+            <div className="grid w-full max-w-[180px] content-start gap-3 justify-self-center md:max-w-none md:justify-self-auto">
               <div className="aspect-square overflow-hidden rounded border border-yellow-200/20 bg-red-950/70">
                 {form.avatarUrl && !avatarPreviewError ? (
                   <img

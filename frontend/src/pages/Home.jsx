@@ -118,7 +118,7 @@ function HomeHeader({ scrolled, progress }) {
           <button
             type="button"
             onClick={() => setMenuOpen((open) => !open)}
-            className="red-gold-button grid h-10 w-10 place-items-center rounded"
+            className="red-gold-button grid h-11 w-11 place-items-center rounded"
             aria-label="開啟會員選單"
             aria-expanded={menuOpen}
           >
@@ -130,7 +130,7 @@ function HomeHeader({ scrolled, progress }) {
           </button>
 
           {menuOpen && (
-            <div className="luxury-panel absolute right-0 top-12 w-56 rounded p-2 shadow-2xl">
+            <div className="luxury-panel absolute right-0 top-14 w-56 max-w-[calc(100vw-2rem)] rounded p-2 shadow-2xl">
               {sections.map((section) => (
                 <a
                   key={section.id}

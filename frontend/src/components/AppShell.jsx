@@ -246,13 +246,13 @@ export default function AppShell({ children }) {
                   )}
                 </button>
                 {noticeOpen && (
-                  <div className="luxury-panel absolute right-0 top-14 z-40 w-80 rounded p-3 shadow-2xl">
+                  <div className="luxury-panel absolute right-0 top-14 z-40 w-80 max-w-[calc(100vw-2rem)] rounded p-3 shadow-2xl">
                     <div className="flex items-center justify-between">
                       <p className="gold-text text-sm font-black">通知中心</p>
                       <button
                         type="button"
                         onClick={() => dispatch(clearNotifications())}
-                        className="red-gold-button rounded px-2 py-1 text-xs font-bold"
+                    className="red-gold-button rounded px-2 py-1 text-xs font-bold"
                       >
                         清空
                       </button>
@@ -292,7 +292,7 @@ export default function AppShell({ children }) {
             </div>
           </div>
 
-          <nav className="flex gap-2 overflow-x-auto pb-1">
+          <nav className="flex flex-wrap gap-2 pb-1">
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
@@ -314,7 +314,7 @@ export default function AppShell({ children }) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+      <main className="mx-auto max-w-7xl px-4 pb-36 pt-6 sm:px-6 md:pb-6 lg:px-8">{children}</main>
 
       {checkInModalOpen && (
         <section
