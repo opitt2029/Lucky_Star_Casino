@@ -386,16 +386,17 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
 |---|:--:|---|:--:|---|
-| T-030 | P0 | Provably Fair RNG 引擎 | ❌ | game-service 僅有 Application.java |
-| T-031 | P0 | 老虎機遊戲邏輯 | ❌ | 同上 |
-| T-032 | P0 | 老虎機遊戲 API | ❌ | 同上 |
-| T-033 | P0 | Redis 遊戲 Session 管理 | ❌ | 同上 |
+| T-030 | P0 | Provably Fair RNG 引擎 | ✅ | `rng.ProvablyFairRng`/`RandomStream`：commit-reveal + `SHA-256(serverSeed:clientSeed:nonce:block)`，純邏輯單元測試通過 |
+| T-031 | P0 | 老虎機遊戲邏輯 | ✅ | `slot.SlotMachine`/`SlotSymbol`：3x3 中線三連，符號決定倍率，確定性可驗證；RTP≈17.7% |
+| T-032 | P0 | 老虎機遊戲 API | ✅ | `POST /api/v1/game/slot/spin`：扣款(debit)→RNG→派彩(credit)→寫 `game_rounds`→發 `game.result`；`WalletClient` 走內部 API + 冪等鍵 |
+| T-033 | P0 | Redis 遊戲 Session 管理 | ❌ | 尚未實作（T-032 採每局即時揭露 seed；開局前承諾的完整流程待此任務） |
 | T-034 | P1 | 百家樂遊戲邏輯 | ❌ | 同上 |
 | T-035 | P1 | 百家樂遊戲 API | ❌ | 同上 |
 | T-036 | P1 | RNG 公平性驗證 API | ❌ | 同上 |
 | T-037 | P2 | 遊戲 RTP 統計 | ❌ | 同上 |
 
-> ⚠️ **game-service 完全未開始實作**，僅有 Spring Boot 啟動類。此為賭場核心產品功能，目前缺口最大。
+> 🟡 **game-service 已啟動實作**：RNG 引擎（T-030）、老虎機邏輯（T-031）、下注 API（T-032）已完成；
+> 百家樂（T-034/035）、Redis Session（T-033）、公平性驗證 API（T-036）、RTP 統計（T-037）尚未實作。
 
 ### A.5 Rank Service（組員D）
 

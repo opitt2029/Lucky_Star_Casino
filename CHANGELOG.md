@@ -5,6 +5,52 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-02 — 老虎機遊戲邏輯與下注 API（T-031、T-032）
+
+### Added（T-031 老虎機遊戲邏輯）
+- `com.luckystar.game.slot.SlotSymbol`：5 種符號（🍒/🍋/🔔/⭐/7️⃣，以整數 code point 建構、與前端
+  mockApi 逐位元組相符），各帶轉輪權重與中線倍率（2/3/5/8x）；加權索引對應、權重總和。
+- `com.luckystar.game.slot.SlotMachine`：3x3 盤面、中央橫線三連賠付。盤面由 `RandomStream`（T-030）
+  以固定抽樣順序產生，相同三元組必得相同盤面（可驗證公平）。`evaluate()` 為純函式。
+- `SlotOutcome`（record）：盤面、命中、倍率、派彩、命中格。
+- 理論 RTP 約 17.7%、命中率約 5.6%（單中線/三連/上限 8x 的既有玩法所致）；權重與倍率為常數，可調。
+
+### Added（T-032 老虎機下注 API）
+- `POST /api/v1/game/slot/spin`（`SlotController`）：玩家身分取自 gateway 注入的 `X-User-Id`；
+  下注金額驗證 `[100, 5000]`。回應 `ApiResponse<SpinResponse>`，`data` 形狀對齊前端 spinSlot
+  （roundId/game/grid/bet/multiplier/payout/winningCells/wallet），並附 Provably Fair 揭露欄位。
+- `SlotService`：串接下注完整流程（architecture §8.2）——扣下注 → RNG 計算 → 命中派彩 → 寫對局 →
+  發布 `game.result`；debit/credit 用確定性冪等鍵（`slot-bet-<roundId>`/`slot-win-<roundId>`）。
+- `WalletClient` + `WalletClientConfig`：以 Spring `RestClient` 呼叫 wallet 內部 API，送 `X-Internal-Secret`；
+  HTTP 422 → `InsufficientBalanceException`（對外 422）、連線/其他錯誤 → `WalletUnavailableException`（502）。
+- `GameRound` 實體 + `GameRoundRepository`：對應 PostgreSQL `game_rounds`，以 `SETTLED` 寫入並存種子。
+- `GameResultEventPublisher`：發布 `game.result`（best-effort，失敗不影響本局）。
+- `GlobalExceptionHandler`、`ApiResponse`、DTO（`SpinRequest`/`SpinResponse`/`WalletView`）。
+
+### Changed
+- `backend/game-service/pom.xml`：新增 `spring-boot-starter-validation`、`lombok`、`h2`（test），
+  boot plugin 排除 lombok。
+- 新增 `src/test/resources/application.yml`（H2 + 必填 internal secret）供 `@SpringBootTest` 啟動。
+
+### Added（測試）
+- 純邏輯：`SlotSymbolTest`、`SlotMachineTest`（確定性、中線評估、盤面合法性、RTP/命中率區間）。
+- API：`SlotControllerTest`（@WebMvcTest：header/下注驗證、happy path）、`SlotServiceTest`
+  （Mockito：命中/未中/餘額不足分支、冪等鍵）、`WalletClientTest`（MockRestServiceServer：成功/422/5xx）、
+  `GameResultEventPublisherTest`（發布/best-effort 容錯）。
+
+**為什麼**：把 game-service 從空殼推進到「可下注的老虎機」，串起 RNG（T-030）、帳務（wallet 內部 API）與
+事件（game.result）。倍率改由命中符號決定、結果完全由 seed 推導（取代 mock 的隨機灌水勝率），符合 Provably Fair。
+本任務的公平性為「每局即時揭露 serverSeed 供事後重算」；開局前先公布雜湊、下注後才揭露的完整 commit-ahead
+流程需 Redis Session（T-033），不在此範圍。
+
+**如何驗證**：本機無 Maven，且 `.m2` 缺 lombok/h2（此機從未跑過完整建置）。已驗證項：
+(1) T-031 純邏輯以 JDK 21 `javac` 編譯後執行 smoke，20 項全過（RTP 實測 0.176、命中率 0.056、emoji
+code point 與前端相符）；(2) T-032 非 Lombok 子集（`WalletClient`/`WalletClientConfig`/`GlobalExceptionHandler`/
+client DTO）`javac` 編譯通過。Lombok 檔案與 `@SpringBootTest` 待團隊 `mvn -pl backend/game-service test`
+環境執行（JUnit 測試已隨碼提交）。
+
+---
+
 ## [feat] — 2026-06-02 — Provably Fair RNG 引擎（T-030）
 
 ### Added
