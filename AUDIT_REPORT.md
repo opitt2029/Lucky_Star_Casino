@@ -439,6 +439,15 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 > ⚠️ 前端已備妥 `useWebSocket.js` / `RealtimeBridge.jsx`，但**後端 notification-service 整個服務尚未建立**，即時推播無法運作。
 
+#### 後端串接 TODO（2026-06-02 新增）
+
+- [ ] 建立 `notification-service`（或明確決定整合到既有服務），加入 Spring WebSocket/STOMP 依賴與 `@EnableWebSocketMessageBroker` 設定。
+- [ ] 提供 WebSocket endpoint：`/ws`，並支援 SockJS；前端目前會連 `VITE_WS_URL`，預設為 `/ws`。
+- [ ] 設定私人通知頻道：`/user/queue/notifications`；遊戲結果 payload 需包含 `type: "GAME_RESULT"`，並建議包含 `gameId`、`win`、`betAmount`、`rewardAmount`、`balance`、`message`。
+- [ ] 建立 Kafka → WebSocket 橋接：消費 `game.result` / `notification.push` / `rank.update`，再用 `SimpMessagingTemplate.convertAndSendToUser(...)` 或 topic broadcast 推送。
+- [ ] Gateway 補 `/ws/**` route 到 Notification Service，並處理 WebSocket handshake 認證；目前 `JwtAuthenticationGlobalFilter` 未白名單 `/ws`，SockJS handshake 也不一定會帶到 STOMP `connectHeaders.Authorization`。
+- [ ] 實作完成後用真實後端驗證：登入 → 進入遊戲頁 → 後端推送 `GAME_RESULT` → 前端通知中心新增訊息、`gameSlice.latestResult` / `resultHistory` 更新。
+
 ### A.9 前端（組員E）
 
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |

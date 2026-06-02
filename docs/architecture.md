@@ -147,6 +147,8 @@
 | **Kafka 消費** | `notification.push`、`game.result`、`rank.update` |
 | **備注** | 此服務未在 docker-compose 獨立列出，可整合至 Admin Service 或獨立 Port |
 
+> TODO（2026-06-02）：前端已新增 STOMP over SockJS 接收端（`frontend/src/hooks/useWebSocket.js`、`RealtimeBridge.jsx`），但後端尚未提供 `/ws` endpoint、Gateway 尚未轉發 `/ws/**`，也尚未有 Kafka → WebSocket 的 `GAME_RESULT` 推送橋接。實作 Notification Service 時需同步處理 WebSocket handshake 認證，避免 Gateway 在 SockJS 連線階段因缺少 bearer token 直接拒絕。
+
 ---
 
 ## 3. 服務間通信策略
