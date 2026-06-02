@@ -273,7 +273,7 @@ export default function AppShell({ children }) {
                         notifications.map((item) => (
                           <div key={item.id || item.createdAt} className="rounded border border-yellow-200/15 bg-red-950/70 p-3">
                             <p className="text-sm font-black text-yellow-100">{item.title || '系統通知'}</p>
-                            <p className="mt-1 text-xs leading-5 text-yellow-100/64">{item.message || '已收到新的即時事件'}</p>
+                            <p className="mt-1 text-xs leading-5 text-yellow-100/64">{item.message || '你有一則新通知'}</p>
                           </div>
                         ))
                       )}

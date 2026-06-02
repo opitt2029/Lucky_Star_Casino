@@ -66,7 +66,7 @@ export default function CheckIn() {
         </div>
 
         <aside className="luxury-panel-soft rounded p-5">
-          <p className="gold-muted text-xs font-black uppercase tracking-[0.28em]">Reward Status</p>
+          <p className="gold-muted text-xs font-black uppercase tracking-[0.28em]">Reward</p>
           <dl className="mt-5 grid gap-4">
             <div>
               <dt className="text-sm font-bold text-yellow-100/62">目前星幣</dt>

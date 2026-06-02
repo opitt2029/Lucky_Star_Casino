@@ -24,6 +24,12 @@
   font-family: var(--font-body);
 }
 
+@media (min-width: 1024px) {
+  :root {
+    font-size: 17px;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1872,6 +1878,17 @@ video {
 }
 
 @media (min-width: 1024px) {
+  .gold-button,
+  .red-gold-button,
+  .luxury-panel,
+  .luxury-panel-soft,
+  input,
+  select,
+  textarea,
+  button {
+    line-height: 1.45;
+  }
+
   .baccarat-main-grid {
     grid-template-columns: minmax(0, 1fr) 320px;
   }

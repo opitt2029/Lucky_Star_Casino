@@ -40,7 +40,7 @@ function toNotification(payload) {
   return {
     id: payload.id || payload.notificationId || `notice-${Date.now()}`,
     title: payload.title || (payload.type === 'GAME_RESULT' ? '遊戲結果通知' : '系統通知'),
-    message: payload.message || '已收到新的即時事件',
+    message: payload.message || '你有一則新通知',
     createdAt: payload.createdAt || new Date().toISOString(),
     ...payload,
   }
@@ -218,7 +218,7 @@ export function useWebSocket(subscriptions = {}) {
           betAmount: 100,
           rewardAmount: 500,
           balance: 1200,
-          message: '前端模擬 WebSocket：你的最新局數已完成結算',
+          message: '你的最新局數已完成結算',
         })
       }, 16000)
 

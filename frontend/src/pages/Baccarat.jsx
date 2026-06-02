@@ -25,7 +25,7 @@ const suitSymbols = {
 const redSuits = new Set(['heart', 'diamond'])
 const chipDenominations = [100, 200, 500, 1000, 3000, 5000, 7000, 10000]
 const baccaratRules = [
-  '先選擇閒家 Player、莊家 Banker 或和局 Tie，再輸入下注金額或使用面額快速選擇。',
+  '先選擇閒家、莊家或和局，再輸入下注金額或用面額快速選擇。',
   'A 計 1 點，2 到 9 依牌面計點，10、J、Q、K 計 0 點；兩張牌總和只取個位數。',
   '目前前端版由閒家與莊家各發兩張牌，點數高者勝出，兩邊同分為和局。',
   '押中會依賠率計算本局獲利，未押中則損失下注金額，結果會即時反映在可用星幣。',
@@ -218,7 +218,7 @@ export default function Baccarat() {
             <header className="baccarat-hero">
               <p className="baccarat-hero__eyebrow">VIP Table Game</p>
               <h2 className="baccarat-hero__title">Baccarat</h2>
-              <p className="baccarat-hero__subtitle">選擇 Player、Banker 或 Tie，下注後開始發牌</p>
+              <p className="baccarat-hero__subtitle">選擇閒家、莊家或和局，下注後開始發牌</p>
             </header>
 
             <div className="baccarat-table-felt">
@@ -250,7 +250,7 @@ export default function Baccarat() {
               <div className="baccarat-control-grid">
                 <section className="baccarat-bet-panel">
                   <div className="baccarat-panel-heading">
-                    <p>Bet Control</p>
+                    <p>Bet</p>
                     <h3>下注區</h3>
                   </div>
 
@@ -266,7 +266,7 @@ export default function Baccarat() {
                           selectedBet === betType ? 'baccarat-bet-option--selected' : '',
                         ].join(' ')}
                       >
-                        <span>Odds {BET_ODDS[betType]}x</span>
+                        <span>賠率 {BET_ODDS[betType]}x</span>
                         <strong>{BET_LABELS[betType]}</strong>
                       </button>
                     ))}
@@ -377,12 +377,12 @@ export default function Baccarat() {
             <MetricCard
               label="可用星幣"
               value={formatCoins(balance)}
-              caption="目前以前端模擬結果更新"
+              caption="依本局結果更新"
               tone="light"
             />
             <MetricCard
               label="本局選項"
-              value={selectedBet || '-'}
+              value={selectedBet ? BET_LABELS[selectedBet] : '-'}
               caption={selectedBet ? BET_LABELS[selectedBet] : '尚未下注'}
             />
             <MetricCard
@@ -392,12 +392,12 @@ export default function Baccarat() {
             />
 
             <div className="baccarat-api-panel">
-              <p>API Placeholder</p>
-              <h3>後端串接預留</h3>
+              <p>Round Note</p>
+              <h3>目前以本機牌局結算</h3>
               <div>
-                <span>POST /api/game/baccarat/play</span>
-                <span>Request: userId、betType、betAmount</span>
-                <span>Response: cards、score、winner、payout、balance</span>
+                <span>發牌後會立即顯示勝方、點數與本局獲利。</span>
+                <span>星幣餘額會依目前畫面的結算結果更新。</span>
+                <span>正式伺服器結算開放後，畫面會保留同樣操作方式。</span>
               </div>
             </div>
           </aside>

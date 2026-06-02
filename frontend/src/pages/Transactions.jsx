@@ -26,7 +26,7 @@ export default function Transactions() {
       <section className="luxury-panel rounded p-4">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
           <div>
-            <p className="gold-muted text-xs font-black uppercase tracking-[0.3em]">Wallet Ledger</p>
+            <p className="gold-muted text-xs font-black uppercase tracking-[0.3em]">Wallet History</p>
             <h2 className="brand-title mt-1 text-2xl font-black">交易紀錄</h2>
           </div>
           <button
@@ -34,7 +34,7 @@ export default function Transactions() {
             onClick={() => dispatch(fetchTransactions({ ...filters, page: transactionPage, pageSize: transactionPageSize }))}
             className="gold-button rounded px-4 py-2 text-sm font-black transition"
           >
-            {loading ? '同步中...' : '同步流水'}
+            {loading ? '更新中...' : '更新紀錄'}
           </button>
         </div>
 

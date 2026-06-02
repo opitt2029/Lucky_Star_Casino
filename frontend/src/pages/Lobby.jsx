@@ -52,12 +52,12 @@ export default function Lobby() {
           style={getBackgroundStyle('lobbyHero')}
         >
           <div>
-            <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Game Directory</p>
+            <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Game Lobby</p>
             <h2 className="brand-title mt-4 max-w-3xl text-4xl font-black tracking-tight sm:text-5xl">
               遊戲大全
             </h2>
             <p className="mt-5 max-w-2xl text-base leading-7 text-yellow-100/70">
-              這裡只展示平台目前收錄的遊戲清單。使用者從遊戲大全選擇遊戲後，才會進入各自的遊玩頁面。
+              選一款想玩的遊戲開始下注。每局都使用模擬星幣結算，餘額會在畫面上即時更新。
             </p>
           </div>
 
@@ -72,8 +72,8 @@ export default function Lobby() {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
-          <MetricCard label="目前星幣" value={balance.toLocaleString()} caption="遊戲下注與派彩使用" tone="light" />
-          <MetricCard label="收錄遊戲" value={gameCatalog.length.toString()} caption="遊戲大全展示數" />
+          <MetricCard label="目前星幣" value={balance.toLocaleString()} caption="用於下注與結算" tone="light" />
+          <MetricCard label="可玩遊戲" value={gameCatalog.length.toString()} caption="目前開放項目" />
         </div>
       </section>
 

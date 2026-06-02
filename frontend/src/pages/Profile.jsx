@@ -38,7 +38,7 @@ const avatarPresets = [
 function readAssetAsDataUrl(src) {
   return fetch(src)
     .then((response) => {
-      if (!response.ok) throw new Error('Avatar asset failed to load')
+      if (!response.ok) throw new Error('頭像圖片載入失敗')
       return response.blob()
     })
     .then(
@@ -458,7 +458,7 @@ export default function Profile() {
             <h2 className="brand-title mt-1 text-2xl font-black">第三方帳戶綁定</h2>
           </div>
           <p className="max-w-xl text-sm font-bold leading-6 text-yellow-100/62">
-            綁定後可在登入頁選擇 LINE、Google 或 Apple 入口；目前以前端偏好設定保存綁定狀態。
+            綁定後即可使用 LINE、Google 或 Apple 作為登入方式；目前綁定狀態會先保存在這台裝置。
           </p>
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-3">

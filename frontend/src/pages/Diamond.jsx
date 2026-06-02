@@ -142,14 +142,14 @@ export default function Diamond() {
             鑽石錢包
           </h2>
           <p className="mt-4 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
-            Diamond 鑽石是主要充值與兌換貨幣，可透過序號入帳，並以固定比例兌換成遊戲內 Star Coin 星幣。
+            輸入序號可取得鑽石，鑽石能依固定比例兌換成星幣，供遊戲下注與禮品兌換使用。
           </p>
 
           <div className="mt-6 grid gap-4 md:grid-cols-3">
             <MetricCard
               label="目前鑽石"
               value={loading ? '同步中...' : diamondBalance.toLocaleString()}
-              caption="Diamond balance"
+              caption="可兌換成星幣"
               tone="light"
             />
             <MetricCard
@@ -160,7 +160,7 @@ export default function Diamond() {
             <MetricCard
               label="目前星幣"
               value={wallet.balance.toLocaleString()}
-              caption="Star Coin balance"
+              caption="可用於下注與兌換"
             />
           </div>
 
@@ -180,7 +180,7 @@ export default function Diamond() {
           <div className="luxury-panel-soft rounded p-5">
             <p className="gold-muted text-xs font-black uppercase tracking-[0.28em]">Balance</p>
             <p className="brand-title mt-2 text-4xl font-black">{diamondBalance.toLocaleString()}</p>
-            <p className="mt-2 text-sm font-bold text-yellow-100/62">可用 Diamond 鑽石</p>
+            <p className="mt-2 text-sm font-bold text-yellow-100/62">可用鑽石</p>
             <button
               type="button"
               onClick={() => dispatch(fetchDiamondBalance())}
@@ -198,7 +198,7 @@ export default function Diamond() {
           <p className="gold-muted text-xs font-black uppercase tracking-[0.28em]">Redeem Card</p>
           <h3 className="brand-title mt-2 text-2xl font-black">序號兌換鑽石</h3>
           <label className="mt-5 grid gap-2 text-sm font-bold text-yellow-100/78">
-            card_code
+              序號
             <input
               name="card_code"
               value={cardCode}

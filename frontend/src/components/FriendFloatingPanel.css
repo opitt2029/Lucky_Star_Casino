@@ -718,24 +718,33 @@
 
 @media (max-width: 760px) {
   .friend-float {
+    left: auto;
     right: 10px;
-    bottom: 128px;
-    width: min(320px, calc(100vw - 20px));
+    top: calc(12px + env(safe-area-inset-top, 0px));
+    bottom: auto;
+    width: min(300px, calc(100vw - 20px));
   }
 
   .friend-float__trigger {
-    width: min(238px, calc(100vw - 20px));
-    min-height: 54px;
+    width: min(176px, calc(100vw - 20px));
+    min-height: 46px;
+    margin-left: auto;
+    padding: 6px 10px 6px 13px;
   }
 
   .friend-float__panel {
-    bottom: 66px;
+    left: auto;
+    right: 0;
+    top: 58px;
+    bottom: auto;
     width: min(320px, calc(100vw - 20px));
-    height: min(420px, calc(100vh - 210px));
+    height: min(420px, calc(100vh - 178px - env(safe-area-inset-bottom, 0px)));
+    transform: translateY(-12px) scale(0.96);
+    transform-origin: top right;
   }
 
   .friend-float__panel--guest {
-    height: min(250px, calc(100vh - 210px));
+    height: min(250px, calc(100vh - 178px - env(safe-area-inset-bottom, 0px)));
   }
 
   .friend-float__detail-avatar {
@@ -746,13 +755,9 @@
 }
 
 @media (max-width: 390px) {
-  .friend-float {
-    bottom: 122px;
-  }
-
   .friend-float__trigger {
-    width: min(210px, calc(100vw - 20px));
-    min-height: 50px;
+    width: min(158px, calc(100vw - 20px));
+    min-height: 44px;
   }
 
   .friend-float__filters {
@@ -760,11 +765,12 @@
   }
 
   .friend-float__panel {
-    height: min(420px, calc(100vh - 196px));
+    top: 54px;
+    height: min(420px, calc(100vh - 170px - env(safe-area-inset-bottom, 0px)));
   }
 
   .friend-float__panel--guest {
-    height: min(250px, calc(100vh - 196px));
+    height: min(250px, calc(100vh - 170px - env(safe-area-inset-bottom, 0px)));
   }
 
   .friend-float__detail-actions {

@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [changed] — 2026-06-02 — 優化前端文案、桌面字級與手機浮動元件
+
+### Changed
+- `frontend/src/pages/Home.jsx`、`Lobby.jsx`、`Member.jsx`、`Login.jsx`、`Register.jsx`：將首頁、遊戲大廳、登入/註冊與會員入口文案改為使用者導向，移除「工作台」「門禁」「網站結構」等偏內部說法。
+- `frontend/src/pages/CasinoShop.jsx`、`Diamond.jsx`、`Profile.jsx`、`Transactions.jsx`、`CheckIn.jsx`：調整商城兌換、鑽石錢包、會員中心、交易紀錄與簽到提示，避免出現 API、技術欄位或過度直譯文字。
+- `frontend/src/pages/SlotGame.jsx`、`Baccarat.jsx`、`components/GameRuleCard.jsx`、`QuickToolbar.jsx`、`ErrorBoundary.jsx`、`hooks/useWebSocket.js`、`theme/backgroundTheme.js`：更新遊戲狀態、規則、工具欄、錯誤頁、通知與商品卡文案，讓提示更自然且符合目前功能現狀。
+- `frontend/src/index.css`：桌面版 `1024px` 以上提高根字級並改善共用按鈕/表單/面板行高，提升主要頁面閱讀舒適度。
+- `frontend/src/components/QuickToolbar.css`、`FriendFloatingPanel.css`：手機版加入 safe-area spacing，快速工具欄維持底部位置，好友清單按鈕固定到 header 右上角並向下展開，避免遮擋 quick tool。
+
+### Why
+- 使用者頁面不應露出工程語言或未完成的串接描述；桌面版原字級偏小，手機版好友清單與快速工具列也需要避免互相遮擋與影響點擊。
+
+### Verified
+- `npm run lint`（frontend）→ passed。
+- `npm run build`（frontend）→ sandbox 內因 Windows 權限無法讀取 Vite config；升權限重跑後 passed。
+
+---
+
 ## [feat] — 2026-06-02 — 新增前端鑽石錢包頁面與 Redux 狀態
 
 ### Added

@@ -42,12 +42,12 @@ export default function CasinoShop() {
 
   const handleRedeem = (item) => {
     if (balance < item.cost) {
-      setNotice('星幣不足，請先到鑽石錢包兌換 Star Coin 星幣。')
+    setNotice('星幣不足，請先到鑽石錢包兌換星幣。')
       return
     }
 
     dispatch(setBalance({ balance: balance - item.cost, frozenAmount }))
-    setNotice(`已兌換 ${item.title}，後續可接出貨或背包 API。`)
+    setNotice(`已兌換 ${item.title}，星幣已從餘額扣除。`)
   }
 
   return (
@@ -60,7 +60,7 @@ export default function CasinoShop() {
               禮品商城
             </h2>
             <p className="mt-4 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
-              使用 Star Coin 星幣兌換禮品；若星幣不足，可先到鑽石錢包用 Diamond 鑽石兌換星幣。
+              使用星幣兌換目前提供的禮品；若星幣不足，可先到鑽石錢包用鑽石兌換星幣。
             </p>
             <Link to="/diamond" className="gold-button mt-5 inline-flex rounded px-5 py-3 text-sm font-black transition">
               前往鑽石錢包
@@ -74,7 +74,7 @@ export default function CasinoShop() {
           <MetricCard
             label="凍結星幣"
             value={frozenAmount.toLocaleString()}
-            caption="保留給未結算流程"
+            caption="暫時保留的星幣"
           />
           <MetricCard
             label="商城總值"

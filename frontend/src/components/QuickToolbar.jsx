@@ -19,16 +19,16 @@ const tools = [
     icon: <path d="M6 12h12M12 6v12M7 17l-2 2M17 17l2 2M7 7 5 5M17 7l2-2" />,
   },
   {
-    label: '鑽石錢包',
-    path: '/diamond',
-    protected: true,
-    icon: <path d="M12 3 4 9l8 12 8-12-8-6Zm0 0 3 6-3 12-3-12 3-6ZM4 9h16" />,
-  },
-  {
     label: '會員中心',
     path: '/profile',
     protected: true,
     icon: <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm7 8a7 7 0 0 0-14 0" />,
+  },
+  {
+    label: '鑽石錢包',
+    path: '/diamond',
+    protected: true,
+    icon: <path d="M12 3 4 9l8 12 8-12-8-6Zm0 0 3 6-3 12-3-12 3-6ZM4 9h16" />,
   },
   {
     label: '禮品商城',
@@ -59,7 +59,7 @@ export default function QuickToolbar() {
 
   const goToLogin = (path, withNotice = true) => {
     if (withNotice) {
-      setMessage('請先登入')
+      setMessage('登入後即可使用此功能')
     }
     navigate('/member?mode=login', { state: { from: { pathname: path } } })
   }
@@ -81,7 +81,7 @@ export default function QuickToolbar() {
   }
 
   const handleAiService = () => {
-    setMessage('AI 客服功能即將推出')
+    setMessage('客服入口準備中，請稍後再試')
   }
 
   const handleBackToTop = () => {
@@ -109,7 +109,7 @@ export default function QuickToolbar() {
             <ToolbarIcon>
               <path d="M5 11a7 7 0 0 1 14 0v5a3 3 0 0 1-3 3h-2M5 11v4a2 2 0 0 0 2 2h1v-6H5Zm14 0h-3v6h1a2 2 0 0 0 2-2v-4Z" />
             </ToolbarIcon>
-            <span>AI 客服</span>
+            <span>客服</span>
           </button>
 
           <button
@@ -120,7 +120,7 @@ export default function QuickToolbar() {
             <ToolbarIcon>
               <path d="M12 19V5M6 11l6-6 6 6" />
             </ToolbarIcon>
-            <span>Top</span>
+            <span>回頂端</span>
           </button>
         </div>
       </aside>

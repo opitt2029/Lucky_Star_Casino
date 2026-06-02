@@ -132,7 +132,7 @@
     left: 10px;
     right: 10px;
     top: auto;
-    bottom: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     width: auto;
     max-width: none;
     transform: none;
@@ -175,5 +175,22 @@
     width: min(280px, calc(100vw - 32px));
     min-height: 96px;
     padding: 18px 20px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .quick-toolbar {
+    width: 128px;
+  }
+
+  .quick-toolbar__button {
+    grid-template-columns: 22px minmax(0, 1fr);
+    min-height: 46px;
+    font-size: 0.82rem;
+  }
+
+  .quick-toolbar__icon {
+    width: 20px;
+    height: 20px;
   }
 }
