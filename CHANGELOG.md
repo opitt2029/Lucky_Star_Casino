@@ -5,6 +5,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-02 — Provably Fair RNG 引擎（T-030）
+
+### Added
+- `com.luckystar.game.rng.ProvablyFairRng`：game-service 第一個實作元件。commit-reveal 公平機制核心——
+  `generateServerSeed()`（密碼學亂數，64 hex）、`commit()`（`SHA-256(serverSeed)` 承諾雜湊，開局前公布）、
+  `verifyCommitment()`（常數時間比對，事後揭露驗證）、`stream()`（建立確定性隨機數串流）、
+  靜態 `computeOutcomeHash()`（單次下注結果雜湊，供存檔與外部獨立重算）。
+- `com.luckystar.game.rng.RandomStream`：由 `(serverSeed, clientSeed, nonce)` 推導的確定性串流，
+  演算法 `SHA-256(serverSeed:clientSeed:nonce:block)`，跨區塊延伸；提供 `nextDouble()`、
+  `nextInt(bound)`（拒絕取樣消除取模偏差）、`nextInts(count, bound)`。
+- 單元測試 `ProvablyFairRngTest`、`RandomStreamTest`：確定性、承諾驗證、範圍邊界、跨區塊延伸、
+  分布卡方檢定（純 JUnit，不載入 Spring 容器，免外部基礎設施）。
+
+**為什麼**：T-030 是 game-service（賭場核心，原為空殼）的第一塊地基，後續老虎機（T-031/032）與
+百家樂（T-034/035）的隨機結果都建立在此引擎上。採 architecture.md §2.4 指定的
+`SHA-256(serverSeed + clientSeed + nonce)`，以 `':'` 分隔消除字串串接歧義，並以遞增 block 索引
+延伸出足量隨機位元組。commit-reveal 確保結果開局前已定、事後可被玩家獨立驗證（為 T-036 公平性驗證 API 鋪路）。
+
+**如何驗證**：本機未安裝 Maven，改以 JDK 21 `javac` 對 `spring-context` jar 編譯產品碼並執行 16 項
+行為 smoke 檢查（確定性、commit/verify、範圍、拒絕取樣、均勻分布卡方 14.72<30、跨區塊、邊界例外）
+全數通過；JUnit 測試已隨碼提交，待團隊 `mvn -pl backend/game-service test` 環境執行。
+
+---
+
 ## [feat] — 2026-06-01 — 鑽石兌換星幣 API（T-103）
 
 ### Added
