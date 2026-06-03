@@ -5,6 +5,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-03 — 遊戲 RTP 統計排程與 API（T-037）
+
+### Added
+- `entity.GameRtpStat` + `repository.GameRtpStatRepository`：對應 PostgreSQL `game_rtp_stats`，
+  儲存各遊戲下注/派彩總額與局數（`findTopByGameTypeOrderByCalculatedAtDesc` 供查最新一筆）。
+- `service.RtpStatsService`：
+  - `@Scheduled`（預設 cron `0 0 * * * *`，可由 `game.rtp.cron` 覆寫）每小時統計各遊戲（SLOT/BACCARAT）
+    **近 10,000 局**已結算對局的 `total_bet / total_win / round_count`，各寫入一筆歷史快照。
+  - `latestStats()`：取各遊戲最新一筆並算實際 RTP（`total_win / total_bet`，四捨五入 4 位）。
+- `controller.RtpController`：`GET /api/v1/game/rtp` 回傳各遊戲最新 RTP 統計，供 Admin 監控偏離。
+- `config.SchedulingConfig`（`@EnableScheduling`，獨立 config 不影響 @WebMvcTest 切片）、`dto.RtpStatView`。
+- `GameRoundRepository.aggregateRecent`：原生查詢以子查詢取最近 N 局再彙總（`COALESCE`/`LIMIT`，
+  PostgreSQL 與測試用 H2 皆相容）。
+
+### Added（測試）
+- `RtpStatsServiceTest`（Mockito）：RTP 計算（1760/10000=0.176、無下注=0）、彙總寫入、空彙總寫零、
+  雙遊戲各寫一筆、最新統計映射並略過無資料遊戲。
+- `RtpControllerTest`（@WebMvcTest）：`GET /rtp` 端點。
+
+**為什麼**：交付組員B 最後一項（T-037）。讓營運可監控各遊戲實際 RTP 是否偏離設計值（老虎機設計約
+17.7%、百家樂依押注），近萬局的滑動樣本兼顧時效與統計意義；歷史快照便於趨勢分析。
+
+**如何驗證**：以 JDK 21 `javac`（含 Lombok）**完整編譯 game-service main（62 class）與 test 全通過**，
+並以 JUnit Platform **實際執行 81 個單元測試全綠**（含 `RtpStatsServiceTest`）。原生彙總查詢的實際 DB
+執行、`@Scheduled`/`@WebMvcTest`/`@SpringBootTest` 待團隊 `mvn -pl backend/game-service test`（H2）。
+
+---
+
 ## [feat] — 2026-06-03 — RNG 公平性驗證 API（T-036）
 
 ### Added
