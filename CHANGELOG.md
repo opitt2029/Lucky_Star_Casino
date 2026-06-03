@@ -5,6 +5,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-03 — 百家樂遊戲邏輯（T-034）
+
+### Added
+- `com.luckystar.game.baccarat.BaccaratGameService`：標準百家樂（Punto Banco）純函式引擎。
+  - `deal(RandomStream)`：以 Provably Fair RNG（T-030）確定性發牌（無限靴模型，每張先抽
+    `nextInt(13)` 牌面、再抽 `nextInt(4)` 花色），相同三元組必得相同牌局。
+  - `play(CardSource)`：核心發牌/補牌邏輯——閒1/莊1/閒2/莊2、天牌（8/9）停牌、閒 0~5 補、
+    莊家依標準補牌表（`bankerDraws`）決定，比點定勝負。
+  - `settle(outcome, bets)`：三押注區（莊/閒/和）派彩——閒 1:1、**莊 1:1 扣 5% 傭金**、和 8:1，
+    和局時押莊/閒退回本金（push），押錯派 0。
+- `Card`（record，點數 A=1/2~9 面值/10·J·Q·K=0、含顯示）、`BaccaratResult`（PLAYER/BANKER/TIE）、
+  `BaccaratOutcome`、`BaccaratSettlement`（純資料）。
+- `docs/baccarat-rules.md`：規則文件（點數、發牌、補牌表、派彩/傭金、無限靴設計取捨）。
+
+### Added（測試）
+- `BaccaratGameServiceTest`：牌值/點數取個位、天牌停牌、閒家補牌、莊家補牌規則表（逐格）、
+  派彩（莊傭金 195、和 8:1、和局 push、押錯/非和押 TIE 派 0）、相同三元組可重算（Provably Fair）。
+
+**為什麼**：交付組員B 第二款遊戲的核心邏輯（T-034），與老虎機共用 RNG 引擎並維持可驗證公平。
+邏輯與派彩為純函式、與帳務/Kafka/Session 解耦，便於單元測試；對外 API（T-035）另行串接。
+百家樂採無限靴（牌面等機率、可重複），簡化實作且維持公平可驗證，取捨記於規則文件。
+
+**如何驗證**：本機無 Maven。已驗證項：以 JDK 21 `javac` 將 `baccarat` + `rng` 套件對 `.m2`
+既有 spring-context 6.1.14 jar **編譯通過並實際執行** smoke 驅動，14 項全過——含莊贏傭金
+（押 100 派 195）、和局 8:1（派 900）、和局押莊/閒 push、天牌不補、莊家補牌表逐格、相同三元組
+重算一致。JUnit 測試（`BaccaratGameServiceTest`）待團隊 `mvn -pl backend/game-service test` 執行。
+
+---
+
 ## [feat] — 2026-06-03 — Redis 遊戲 Session 與兩階段 commit-ahead 老虎機（T-033）
 
 ### Added（Session 管理）
