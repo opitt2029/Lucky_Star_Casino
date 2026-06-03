@@ -16,8 +16,9 @@ import lombok.NoArgsConstructor;
  *   <li>結算後轉為 {@link GameSessionState#SETTLED}，玩家可在 TTL 內取回 serverSeed 驗證本局公平性。</li>
  * </ul>
  *
- * <p>以 JSON 字串序列化後存入 Redis（見 {@link GameSessionService}）。欄位刻意與
- * {@code game_rounds} 對齊，方便結算時落地對局紀錄。
+ * <p>以 Redis Hash（每欄位一個 field）存入（見 {@link GameSessionService}）。欄位刻意與
+ * {@code game_rounds} 對齊，方便結算時落地對局紀錄。老虎機用單一 {@code betAmount}；
+ * 百家樂多區押注額外用 {@code betPlayer / betBanker / betTie}，{@code betAmount} 存三區總額。
  */
 @Data
 @Builder
@@ -34,8 +35,17 @@ public class GameSession {
     /** 遊戲類型，SLOT / BACCARAT。 */
     private String gameType;
 
-    /** 下注金額（星幣）。 */
+    /** 下注金額（星幣）；百家樂為三押注區總額。 */
     private Long betAmount;
+
+    /** 百家樂：押閒金額（其他遊戲為 null）。 */
+    private Long betPlayer;
+
+    /** 百家樂：押莊金額（其他遊戲為 null）。 */
+    private Long betBanker;
+
+    /** 百家樂：押和金額（其他遊戲為 null）。 */
+    private Long betTie;
 
     /** 保密 server seed；結算前不對外揭露。 */
     private String serverSeed;

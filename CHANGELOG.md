@@ -5,6 +5,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-03 — 百家樂遊戲 API（T-035）
+
+### Added
+- `service.BaccaratService` + `controller.BaccaratController`：百家樂兩階段 commit-ahead API。
+  - `POST /api/v1/game/baccarat/bet`：一局多區押注（player/banker/tie），驗證三區總額 `[100, 5000]`、
+    扣下注總額（`bac-bet-<roundId>`）、產生並承諾 `serverSeedHash`、建 STARTED Session；不揭露 serverSeed。
+  - `POST /api/v1/game/baccarat/{roundId}/result`：載入 Session → RNG 發牌 → 各區結算派彩 →
+    命中則 credit（`bac-win-<roundId>`）→ 寫對局（roundId 去重）→ 揭露 serverSeed（SETTLED）→ 發 `game.result`。
+- `dto.BaccaratBetRequest` / `BaccaratBetResponse`（不含 serverSeed）/ `BaccaratResultResponse`。
+- `GameResultEventPublisher.publishBaccaratResult`：發布百家樂結算事件（best-effort）。
+
+### Changed
+- `session.GameSession` + `GameSessionService`：新增 `betPlayer / betBanker / betTie` 欄位（Hash），
+  承載百家樂多區押注；老虎機仍用單一 `betAmount`，向後相容（null 欄位略過）。
+
+### Added（測試）
+- `BaccaratServiceTest`（Mockito）：下注扣總額/建 Session/不洩 serverSeed、總額上下限與餘額不足守衛、
+  結算派彩（莊贏 195）/揭露 serverSeed/標記 SETTLED、全押錯不 credit、Session 逾時 404、結算冪等。
+- `BaccaratControllerTest`（@WebMvcTest）：/bet 與 /{id}/result 端點（含 400 驗證、404）。
+
+**為什麼**：交付百家樂對外玩法（T-035），沿用 T-033 的 commit-ahead Session 與 T-034 的純邏輯引擎，
+與老虎機一致：下注時扣款並承諾雜湊、結算時揭露並派彩，帳務冪等、對局可重算驗證。
+
+**如何驗證**：本機無 Maven，但已下載 Lombok 以 JDK 21 `javac` **完整編譯 game-service main（50 class）
+與 test（13 檔）全數通過**（含全部 Lombok 標註檔），並以 JUnit Platform **實際執行 70 個單元測試全綠**
+（含 `BaccaratServiceTest`、`GameSessionServiceTest`、`SlotServiceTest` 等 Mockito 測試與純邏輯測試）。
+`@WebMvcTest` / `@SpringBootTest`（需完整 Spring context）已編譯，待團隊 `mvn -pl backend/game-service test`。
+
+---
+
 ## [feat] — 2026-06-03 — 百家樂遊戲邏輯（T-034）
 
 ### Added

@@ -37,6 +37,9 @@ public class GameSessionService {
     private static final String F_PLAYER_ID = "playerId";
     private static final String F_GAME_TYPE = "gameType";
     private static final String F_BET_AMOUNT = "betAmount";
+    private static final String F_BET_PLAYER = "betPlayer";
+    private static final String F_BET_BANKER = "betBanker";
+    private static final String F_BET_TIE = "betTie";
     private static final String F_SERVER_SEED = "serverSeed";
     private static final String F_SERVER_SEED_HASH = "serverSeedHash";
     private static final String F_CLIENT_SEED = "clientSeed";
@@ -149,6 +152,9 @@ public class GameSessionService {
         putIfNotNull(h, F_PLAYER_ID, s.getPlayerId());
         putIfNotNull(h, F_GAME_TYPE, s.getGameType());
         putIfNotNull(h, F_BET_AMOUNT, s.getBetAmount());
+        putIfNotNull(h, F_BET_PLAYER, s.getBetPlayer());
+        putIfNotNull(h, F_BET_BANKER, s.getBetBanker());
+        putIfNotNull(h, F_BET_TIE, s.getBetTie());
         putIfNotNull(h, F_SERVER_SEED, s.getServerSeed());
         putIfNotNull(h, F_SERVER_SEED_HASH, s.getServerSeedHash());
         putIfNotNull(h, F_CLIENT_SEED, s.getClientSeed());
@@ -168,6 +174,9 @@ public class GameSessionService {
                 .playerId(parseLong(h.get(F_PLAYER_ID)))
                 .gameType(h.get(F_GAME_TYPE))
                 .betAmount(parseLong(h.get(F_BET_AMOUNT)))
+                .betPlayer(parseLong(h.get(F_BET_PLAYER)))
+                .betBanker(parseLong(h.get(F_BET_BANKER)))
+                .betTie(parseLong(h.get(F_BET_TIE)))
                 .serverSeed(h.get(F_SERVER_SEED))
                 .serverSeedHash(h.get(F_SERVER_SEED_HASH))
                 .clientSeed(h.get(F_CLIENT_SEED))
