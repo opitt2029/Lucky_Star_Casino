@@ -13,6 +13,13 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    /** 對局 Session 不存在/已逾時 → 404。 */
+    @ExceptionHandler(RoundNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ApiResponse<Void> handleRoundNotFound(RoundNotFoundException ex) {
+        return ApiResponse.error(ex.getMessage());
+    }
+
     /** 餘額不足 → 422（與 wallet-service 對齊）。 */
     @ExceptionHandler(InsufficientBalanceException.class)
     @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)

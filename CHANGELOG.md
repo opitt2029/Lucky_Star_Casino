@@ -5,6 +5,55 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-03 — Redis 遊戲 Session 與兩階段 commit-ahead 老虎機（T-033）
+
+### Added（Session 管理）
+- `com.luckystar.game.session.GameSessionState`：Session 狀態列舉 `STARTED` / `SETTLED`，
+  對齊 `game_rounds.status` 的 CHECK 約束。
+- `com.luckystar.game.session.GameSession`：對局 Session 模型（roundId / playerId / gameType /
+  betAmount / serverSeed / serverSeedHash / clientSeed / nonce / state / createdAt）。
+- `com.luckystar.game.session.GameSessionService`：Provably Fair commit-reveal 的局內狀態暫存。
+  - 依 **architecture.md §6** 以 Redis **Hash** 儲存（每欄位一個 hash field），Key 格式
+    `game:session:{playerId}:{roundId}`，**TTL 30 分鐘**（可由設定 `game.session.ttl` 覆寫，預設 `PT30M`）。
+  - `start()`（開局，狀態強制 STARTED、補 createdAt、`putAll` + `expire`）、`find()`（由 Hash 還原；
+    空 Hash/毀損值視同不存在不拋例外）、`markSettled()`（只更新 `state`/`serverSeed`/`nonce` 並重置 TTL）、
+    `delete()`。比照 member-service `TokenRedisService` 使用 `StringRedisTemplate`（改用 `opsForHash`）。
+
+### Added（SlotService 兩階段 commit-ahead 串接）
+- `SlotService.prepareRound()`：開局——產生 serverSeed 並承諾 `serverSeedHash`，把保密種子與下注額
+  暫存於 Redis Session（STARTED）；**不扣款、不揭露 serverSeed**。
+- `SlotService.settle()`：結算——以 Session 種子扣款 → RNG → 派彩 → 寫對局 → `markSettled` 揭露
+  serverSeed；下注額以開局綁定者為準。結果由 seed 確定性推導、帳務走冪等鍵、對局以 roundId 去重，
+  故重試安全（已落地則跳過寫庫/發事件）。
+- `SlotController`：新增 `POST /api/v1/game/slot/round`（開局）與 `POST .../round/{roundId}/settle`（結算）。
+- `dto.PrepareRoundRequest` / `dto.PrepareRoundResponse`（回應刻意不含 serverSeed）；
+  `exception.RoundNotFoundException` → `GlobalExceptionHandler` 對應 **404**。
+
+### Changed
+- `SlotService` 抽出共用 `settleInternal()`（debit→RNG→credit→寫對局去重→發事件），由單次 `spin()`
+  與 commit-ahead `settle()` 共用；新增 `GameSessionService` 依賴。
+- 既有單次 `POST /spin` 行為不變（相容前端 mockApi 一次呼叫，不使用 Session）。
+
+### Added（測試）
+- `GameSessionServiceTest`（純 Mockito）：Hash 欄位/Key/TTL 寫入斷言、必填守衛、欄位還原、
+  空 Hash 與毀損值回 empty、結算只更新異動欄位並重置 TTL、delete 委派。
+- `SlotServiceTest`：新增 prepareRound（建 STARTED Session、不扣款）、settle（揭露 serverSeed、
+  標記 SETTLED、確定性冪等鍵）、settle 找不到 Session→404 例外、settle 冪等（已落地不重寫）等案例；
+  既有單次 spin 案例補上「不觸碰 Session」斷言。
+- `SlotControllerTest`：新增 `/round` 與 `/round/{id}/settle` 端點測試（含 404、缺 header 400）。
+
+**為什麼**：補齊 T-030~T-032 預留的「開局前先承諾 serverSeedHash、結算後才揭露 serverSeed」
+commit-ahead 流程——這是 Provably Fair 的信任核心：伺服器在玩家下注前即鎖定本局結果且事後無法竄改。
+Session 以 Redis Hash（符合架構 §6）暫存、TTL 30 分鐘自動清除。保留既有單次 `/spin` 確保前端不需改動。
+
+**如何驗證**：本機無 Maven（沿用前述限制）。已驗證項：以 JDK 21 `javac` 將 Hash 版
+`GameSessionService`（去 Lombok 等價 shim）對 `.m2` 既有 spring-data-redis 3.3.5 / spring-context
+6.1.14 jar 編譯通過，確認 `opsForHash().putAll/entries`、`redisTemplate.expire(key, Duration)`、
+`hasKey`/`delete`、`@Value` 的 `Duration` 注入皆正確。Lombok 標註檔、`SlotService`/控制器與所有
+JUnit 測試待團隊 `mvn -pl backend/game-service test` 執行。
+
+---
+
 ## [feat] — 2026-06-02 — 老虎機遊戲邏輯與下注 API（T-031、T-032）
 
 ### Added（T-031 老虎機遊戲邏輯）
