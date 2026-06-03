@@ -5,6 +5,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-03 — RNG 公平性驗證 API（T-036）
+
+### Added
+- `service.VerificationService` + `controller.VerificationController`：
+  `GET /api/v1/game/verify/{roundId}`（可選 query `serverSeed`）。玩家可獨立驗證某局是否遭竄改：
+  - **承諾相符**：`SHA-256(serverSeed) == serverSeedHash`（用玩家提供或對局已揭露的 serverSeed）。
+  - **結果一致**：以 `(serverSeed, clientSeed, nonce)` 重跑遊戲引擎（SLOT→`SlotMachine`、BACCARAT→
+    `BaccaratGameService`），盤面/牌局與派彩須與 `game_rounds.result_data` 相符。
+  - 回傳 `commitmentValid / resultMatches / valid` 與重算結果、既有紀錄、說明文字；唯讀不涉帳務。
+  - 對局不存在 → 404（`RoundNotFoundException`）。
+- `dto.VerificationResponse`。
+
+### Added（測試）
+- `VerificationServiceTest`（用真實確定性引擎）：老虎機/百家樂合法局重算通過、提供錯誤 serverSeed →
+  承諾不符、result_data 被竄改（winAmount）→ 結果不符、對局不存在 → 404。
+- `VerificationControllerTest`（@WebMvcTest）：GET 端點、帶 serverSeed、404。
+
+**為什麼**：交付 Provably Fair 的閉環——玩家可在不信任伺服器的前提下，獨立重算並比對任一局結果，
+確認下注前已鎖定的 serverSeedHash 與事後揭露的 serverSeed 一致、且結果由 seed 確定性產生未遭竄改。
+
+**如何驗證**：以 JDK 21 `javac`（含 Lombok）**完整編譯 game-service main（55 class）與 test（18 檔）通過**，
+並以 JUnit Platform **實際執行 76 個單元測試全綠**（含 `VerificationServiceTest` 以真實引擎重算驗證、
+竄改情境）。`@WebMvcTest`/`@SpringBootTest` 已編譯，待團隊 `mvn -pl backend/game-service test`。
+
+---
+
 ## [feat] — 2026-06-03 — 百家樂遊戲 API（T-035）
 
 ### Added
