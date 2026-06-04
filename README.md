@@ -143,7 +143,7 @@ npm run dev
 
 | Topic | 發布者 | 消費者 |
 |-------|--------|--------|
-| `member.registered` | Member Service | Wallet Service（開戶）、Member Service（新手禮） |
+| `member.registered` | Member Service | Wallet Service（開戶）、Member Service（新手禮）、Rank Service（快取 username） |
 | `wallet.debit` | Wallet Service（事件：已扣款） | Rank Service |
 | `wallet.credit.request` | Member Service（指令：請入帳，簽到/新手禮） | Wallet Service |
 | `wallet.credit` | Wallet Service（事件：已入帳） | Rank Service |
