@@ -9,6 +9,7 @@ set -euo pipefail
 # wallet.debit           - EVENT: a debit (spend) HAS been applied to a wallet
 # wallet.credit.request  - COMMAND: please credit a wallet (published by member checkin / new-gift / etc.)
 # wallet.credit          - EVENT: a credit (deposit/win) HAS been applied to a wallet (published by wallet-service)
+# friend.relationship.updated - Fired with a player's complete friend list after accepted relationships change
 # game.result            - Fired when a game round concludes with an outcome
 # rank.update            - Fired when a player's leaderboard ranking changes
 # notification.push      - Fired to trigger a push notification to a user
@@ -20,6 +21,7 @@ set -euo pipefail
 # wallet.debit.DLT           - Failed debit events
 # wallet.credit.DLT          - Failed credit events
 # wallet.credit.request.DLT  - Failed credit-request commands (e.g. bad payload, wallet not found)
+# friend.relationship.updated.DLT - Failed friend relationship update events
 # =============================================================================
 
 echo "Creating Kafka topics..."
@@ -29,6 +31,7 @@ topics=(
   "wallet.debit"
   "wallet.credit.request"
   "wallet.credit"
+  "friend.relationship.updated"
   "game.result"
   "rank.update"
   "notification.push"
@@ -47,6 +50,7 @@ dlt_topics=(
   "wallet.debit.DLT"
   "wallet.credit.DLT"
   "wallet.credit.request.DLT"
+  "friend.relationship.updated.DLT"
 )
 
 for topic in "${dlt_topics[@]}"; do

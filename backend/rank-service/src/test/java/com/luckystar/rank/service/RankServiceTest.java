@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.DefaultTypedTuple;
@@ -15,6 +16,9 @@ import org.springframework.data.redis.core.ZSetOperations;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -84,6 +88,52 @@ class RankServiceTest {
         assertThat(response.get(0)).isEqualTo(new RankEntryResponse(7L, 1L, 9000L));
         assertThat(response.get(1)).isEqualTo(new RankEntryResponse(42L, 2L, 1500L));
         assertThat(response.get(2)).isEqualTo(new RankEntryResponse(9L, 3L, 1000L));
+    }
+
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void rebuildFriendRank_replacesFriendOnlyZSetAndSets24HourTtl() {
+        RankService rankService = buildService();
+        when(zSetOperations.score(RankService.GLOBAL_COINS_KEY, "2")).thenReturn(500.0);
+        when(zSetOperations.score(RankService.GLOBAL_COINS_KEY, "3")).thenReturn(null);
+
+        rankService.rebuildFriendRank(1L, List.of(2L, 3L, 2L, 1L));
+
+        verify(redisTemplate).delete("rank:friend:1");
+        ArgumentCaptor<Set> tuplesCaptor = ArgumentCaptor.forClass(Set.class);
+        verify(zSetOperations).add(eq("rank:friend:1"), tuplesCaptor.capture());
+        Set<ZSetOperations.TypedTuple<String>> tuples = tuplesCaptor.getValue();
+        assertThat(tuples).extracting(ZSetOperations.TypedTuple::getValue)
+                .containsExactlyInAnyOrder("2", "3");
+        assertThat(tuples).extracting(ZSetOperations.TypedTuple::getScore)
+                .containsExactlyInAnyOrder(500.0, 0.0);
+        verify(redisTemplate).expire("rank:friend:1", RankService.FRIEND_RANK_TTL);
+    }
+
+    @Test
+    void rebuildFriendRank_noFriends_removesOldRankWithoutCreatingEmptyZSet() {
+        RankService rankService = buildService();
+
+        rankService.rebuildFriendRank(1L, List.of());
+
+        verify(redisTemplate).delete("rank:friend:1");
+        verify(zSetOperations, never()).add(eq("rank:friend:1"), anySet());
+        verify(redisTemplate, never()).expire("rank:friend:1", RankService.FRIEND_RANK_TTL);
+    }
+
+    @Test
+    void getTopFriendCoins_readsTop20() {
+        RankService rankService = buildService();
+        Set<ZSetOperations.TypedTuple<String>> tuples = new LinkedHashSet<>();
+        tuples.add(new DefaultTypedTuple<>("2", 500.0));
+        tuples.add(new DefaultTypedTuple<>("3", 100.0));
+        when(zSetOperations.reverseRangeWithScores("rank:friend:1", 0, 19)).thenReturn(tuples);
+
+        List<RankEntryResponse> response = rankService.getTopFriendCoins(1L);
+
+        assertThat(response).containsExactly(
+                new RankEntryResponse(2L, 1L, 500L),
+                new RankEntryResponse(3L, 2L, 100L));
     }
 
     private RankService buildService() {
