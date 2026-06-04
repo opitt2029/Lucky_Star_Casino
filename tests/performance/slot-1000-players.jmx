@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="T-090 Slot 1000 Players Load Test" enabled="true">
+      <stringProp name="TestPlan.comments">1000 concurrent players place slot bets for 60 seconds. Each iteration repeats the same idempotency key and verifies wallet balance is non-negative.</stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.tearDown_on_shutdown">true</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="Test Variables" enabled="true">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+      <ConfigTestElement guiclass="HttpDefaultsGui" testclass="ConfigTestElement" testname="Gateway HTTP Defaults" enabled="true">
+        <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+          <collectionProp name="Arguments.arguments"/>
+        </elementProp>
+        <stringProp name="HTTPSampler.domain">${__P(host,localhost)}</stringProp>
+        <stringProp name="HTTPSampler.port">${__P(port,8080)}</stringProp>
+        <stringProp name="HTTPSampler.protocol">${__P(protocol,http)}</stringProp>
+        <stringProp name="HTTPSampler.contentEncoding">UTF-8</stringProp>
+        <stringProp name="HTTPSampler.path"/>
+        <stringProp name="HTTPSampler.connect_timeout">${__P(connect_timeout_ms,2000)}</stringProp>
+        <stringProp name="HTTPSampler.response_timeout">${__P(response_timeout_ms,5000)}</stringProp>
+      </ConfigTestElement>
+      <hashTree/>
+      <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Authenticated JSON Headers" enabled="true">
+        <collectionProp name="HeaderManager.headers">
+          <elementProp name="" elementType="Header">
+            <stringProp name="Header.name">Accept</stringProp>
+            <stringProp name="Header.value">application/json</stringProp>
+          </elementProp>
+          <elementProp name="" elementType="Header">
+            <stringProp name="Header.name">Content-Type</stringProp>
+            <stringProp name="Header.value">application/json</stringProp>
+          </elementProp>
+          <elementProp name="" elementType="Header">
+            <stringProp name="Header.name">Authorization</stringProp>
+            <stringProp name="Header.value">Bearer ${accessToken}</stringProp>
+          </elementProp>
+        </collectionProp>
+      </HeaderManager>
+      <hashTree/>
+      <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="1000 Funded Player Credentials" enabled="true">
+        <stringProp name="delimiter">,</stringProp>
+        <stringProp name="fileEncoding">UTF-8</stringProp>
+        <stringProp name="filename">${__P(players_csv,tests/performance/players.csv)}</stringProp>
+        <boolProp name="ignoreFirstLine">true</boolProp>
+        <boolProp name="quotedData">true</boolProp>
+        <boolProp name="recycle">false</boolProp>
+        <stringProp name="shareMode">shareMode.all</stringProp>
+        <boolProp name="stopThread">true</boolProp>
+        <stringProp name="variableNames">playerId,accessToken</stringProp>
+      </CSVDataSet>
+      <hashTree/>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="1000 Concurrent Slot Players" enabled="true">
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Continuous Bets" enabled="true">
+          <boolProp name="LoopController.continue_forever">true</boolProp>
+          <stringProp name="LoopController.loops">-1</stringProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">${__P(threads,1000)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">${__P(ramp_up_seconds,1)}</stringProp>
+        <boolProp name="ThreadGroup.scheduler">true</boolProp>
+        <stringProp name="ThreadGroup.duration">${__P(duration_seconds,60)}</stringProp>
+        <stringProp name="ThreadGroup.delay">0</stringProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+      </ThreadGroup>
+      <hashTree>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="01 Primary Slot Spin" enabled="true">
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="Spin Body" enabled="true">
+            <collectionProp name="Arguments.arguments">
+              <elementProp name="" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                <stringProp name="Argument.value"><![CDATA[{"betAmount":${__P(bet_amount,10)},"clientSeed":"${clientSeed}","idempotencyKey":"${idempotencyKey}"}]]></stringProp>
+                <stringProp name="Argument.metadata">=</stringProp>
+              </elementProp>
+            </collectionProp>
+          </elementProp>
+          <stringProp name="HTTPSampler.path">${__P(spin_path,/api/v1/game/spin)}</stringProp>
+          <stringProp name="HTTPSampler.method">POST</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+          <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Create Unique Bet Identity" enabled="true">
+            <stringProp name="cacheKey">t090-create-bet-identity</stringProp>
+            <stringProp name="filename"/>
+            <stringProp name="parameters"/>
+            <stringProp name="script"><![CDATA[
+def sequence = (vars.get('threadSequence') ?: '0').toLong() + 1
+vars.put('threadSequence', sequence.toString())
+def playerId = vars.get('playerId')
+def suffix = "${ctx.getThreadNum()}-${sequence}-${System.currentTimeMillis()}"
+vars.put('idempotencyKey', "t090-slot-${playerId}-${suffix}")
+vars.put('clientSeed', "t090-${playerId}-${suffix}")
+]]></stringProp>
+            <stringProp name="scriptLanguage">groovy</stringProp>
+          </JSR223PreProcessor>
+          <hashTree/>
+          <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Primary Spin Must Return 2xx" enabled="true">
+            <collectionProp name="Asserion.test_strings">
+              <stringProp name="2xx">2\d\d</stringProp>
+            </collectionProp>
+            <stringProp name="Assertion.custom_message">Primary slot spin must return 2xx; 4xx/5xx are test failures.</stringProp>
+            <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+            <boolProp name="Assertion.assume_success">false</boolProp>
+            <intProp name="Assertion.test_type">1</intProp>
+          </ResponseAssertion>
+          <hashTree/>
+          <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="Capture Primary Identity And Reject Negative Balance" enabled="true">
+            <stringProp name="cacheKey">t090-primary-assertion</stringProp>
+            <stringProp name="filename"/>
+            <stringProp name="parameters"/>
+            <stringProp name="script"><![CDATA[
+import groovy.json.JsonSlurper
+
+if (prev.getResponseCode()?.startsWith('5')) {
+    AssertionResult.setFailure(true)
+    AssertionResult.setFailureMessage("5xx response from primary spin: ${prev.getResponseCode()}")
+    return
+}
+
+try {
+    def json = new JsonSlurper().parseText(prev.getResponseDataAsString())
+    def root = json?.data != null ? json.data : json
+    def identity = root?.roundId ?: root?.transactionId ?: root?.id
+    if (identity == null) {
+        AssertionResult.setFailure(true)
+        AssertionResult.setFailureMessage('Primary spin response must expose roundId, transactionId, or id for idempotency verification.')
+        return
+    }
+    vars.put('primaryIdentity', identity.toString())
+
+    def balance = root?.wallet?.balance
+    if (balance == null) balance = root?.balanceAfter
+    if (balance == null) balance = root?.balance
+    if (balance != null && new BigDecimal(balance.toString()) < 0) {
+        AssertionResult.setFailure(true)
+        AssertionResult.setFailureMessage("Negative balance returned by primary spin: ${balance}")
+    }
+} catch (Exception exception) {
+    AssertionResult.setFailure(true)
+    AssertionResult.setFailureMessage("Primary spin response is not valid JSON: ${exception.message}")
+}
+]]></stringProp>
+            <stringProp name="scriptLanguage">groovy</stringProp>
+          </JSR223Assertion>
+          <hashTree/>
+        </hashTree>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="02 Duplicate Slot Spin Same Idempotency Key" enabled="true">
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="Duplicate Spin Body" enabled="true">
+            <collectionProp name="Arguments.arguments">
+              <elementProp name="" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                <stringProp name="Argument.value"><![CDATA[{"betAmount":${__P(bet_amount,10)},"clientSeed":"${clientSeed}","idempotencyKey":"${idempotencyKey}"}]]></stringProp>
+                <stringProp name="Argument.metadata">=</stringProp>
+              </elementProp>
+            </collectionProp>
+          </elementProp>
+          <stringProp name="HTTPSampler.path">${__P(spin_path,/api/v1/game/spin)}</stringProp>
+          <stringProp name="HTTPSampler.method">POST</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+          <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Duplicate Spin Must Return 2xx" enabled="true">
+            <collectionProp name="Asserion.test_strings">
+              <stringProp name="2xx">2\d\d</stringProp>
+            </collectionProp>
+            <stringProp name="Assertion.custom_message">Duplicate slot spin must return 2xx and must not become a 5xx.</stringProp>
+            <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+            <boolProp name="Assertion.assume_success">false</boolProp>
+            <intProp name="Assertion.test_type">1</intProp>
+          </ResponseAssertion>
+          <hashTree/>
+          <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="Verify Duplicate Is Idempotent" enabled="true">
+            <stringProp name="cacheKey">t090-duplicate-assertion</stringProp>
+            <stringProp name="filename"/>
+            <stringProp name="parameters"/>
+            <stringProp name="script"><![CDATA[
+import groovy.json.JsonSlurper
+
+if (prev.getResponseCode()?.startsWith('5')) {
+    AssertionResult.setFailure(true)
+    AssertionResult.setFailureMessage("5xx response from duplicate spin: ${prev.getResponseCode()}")
+    return
+}
+
+try {
+    def json = new JsonSlurper().parseText(prev.getResponseDataAsString())
+    def root = json?.data != null ? json.data : json
+    def identity = root?.roundId ?: root?.transactionId ?: root?.id
+    def explicitlyIdempotent = root?.idempotent == true
+    def sameIdentity = identity != null && identity.toString() == vars.get('primaryIdentity')
+    if (!explicitlyIdempotent && !sameIdentity) {
+        AssertionResult.setFailure(true)
+        AssertionResult.setFailureMessage('Idempotency verification failed: duplicate response must set idempotent=true or return the same round/transaction identity.')
+    }
+
+    def balance = root?.wallet?.balance
+    if (balance == null) balance = root?.balanceAfter
+    if (balance == null) balance = root?.balance
+    if (balance != null && new BigDecimal(balance.toString()) < 0) {
+        AssertionResult.setFailure(true)
+        AssertionResult.setFailureMessage("Negative balance returned by duplicate spin: ${balance}")
+    }
+} catch (Exception exception) {
+    AssertionResult.setFailure(true)
+    AssertionResult.setFailureMessage("Duplicate spin response is not valid JSON: ${exception.message}")
+}
+]]></stringProp>
+            <stringProp name="scriptLanguage">groovy</stringProp>
+          </JSR223Assertion>
+          <hashTree/>
+        </hashTree>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="03 Wallet Balance Must Stay Non-Negative" enabled="true">
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="Wallet Query Arguments" enabled="true">
+            <collectionProp name="Arguments.arguments"/>
+          </elementProp>
+          <stringProp name="HTTPSampler.path">${__P(balance_path,/api/v1/wallet/balance)}</stringProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="One Bet Pair Per Player Per Second" enabled="true">
+            <stringProp name="ConstantTimer.delay">${__P(pacing_ms,1000)}</stringProp>
+          </ConstantTimer>
+          <hashTree/>
+          <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Balance Query Must Return 2xx" enabled="true">
+            <collectionProp name="Asserion.test_strings">
+              <stringProp name="2xx">2\d\d</stringProp>
+            </collectionProp>
+            <stringProp name="Assertion.custom_message">Wallet balance query must return 2xx.</stringProp>
+            <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+            <boolProp name="Assertion.assume_success">false</boolProp>
+            <intProp name="Assertion.test_type">1</intProp>
+          </ResponseAssertion>
+          <hashTree/>
+          <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="Reject Overdrawn Wallet" enabled="true">
+            <stringProp name="cacheKey">t090-wallet-balance-assertion</stringProp>
+            <stringProp name="filename"/>
+            <stringProp name="parameters"/>
+            <stringProp name="script"><![CDATA[
+import groovy.json.JsonSlurper
+
+if (prev.getResponseCode()?.startsWith('5')) {
+    AssertionResult.setFailure(true)
+    AssertionResult.setFailureMessage("5xx response from wallet balance query: ${prev.getResponseCode()}")
+    return
+}
+
+try {
+    def json = new JsonSlurper().parseText(prev.getResponseDataAsString())
+    def root = json?.data != null ? json.data : json
+    def balance = root?.balance
+    def availableBalance = root?.availableBalance
+    if (balance == null || availableBalance == null) {
+        AssertionResult.setFailure(true)
+        AssertionResult.setFailureMessage('Wallet balance response must expose balance and availableBalance.')
+        return
+    }
+    if (new BigDecimal(balance.toString()) < 0 || new BigDecimal(availableBalance.toString()) < 0) {
+        AssertionResult.setFailure(true)
+        AssertionResult.setFailureMessage("Overdraw detected: balance=${balance}, availableBalance=${availableBalance}")
+    }
+} catch (Exception exception) {
+    AssertionResult.setFailure(true)
+    AssertionResult.setFailureMessage("Wallet balance response is not valid JSON: ${exception.message}")
+}
+]]></stringProp>
+            <stringProp name="scriptLanguage">groovy</stringProp>
+          </JSR223Assertion>
+          <hashTree/>
+        </hashTree>
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

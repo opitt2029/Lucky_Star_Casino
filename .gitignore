@@ -72,3 +72,7 @@ docker-data/
 # =========================
 coverage/
 .cache/
+
+# JMeter pressure-test runtime data
+tests/performance/players.csv
+tests/performance/results/

@@ -5,6 +5,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [test] — 2026-06-04 — Add T-090 JMeter slot pressure-test plan
+
+### Added
+- `tests/performance/slot-1000-players.jmx`: standard JMeter 5.6.3 scenario for 1,000 concurrent players over 60 seconds, including primary slot bets, same-key retries, and wallet overdraw assertions.
+- `tests/performance/run-slot-load-test.ps1`: validates the 1,000-player credential dataset, runs JMeter non-interactively, and generates the HTML dashboard and acceptance report.
+- `tests/performance/analyze-jtl.mjs`: enforces P99 `< 500 ms`, zero 5xx, zero failed requests/assertions, correct idempotency behavior, and zero overdraw assertions.
+- `docs/performance/T-090-load-test-report.md`: documents the scenario, execution procedure, SQL reconciliation, acceptance gates, and current blocked execution status.
+- `tests/infra/jmeter.test.js`: statically verifies the committed pressure-test contract.
+
+### Changed
+- `.gitignore`: excludes funded player credentials and generated JMeter result directories.
+- `AGENTS.md` and `AUDIT_REPORT.md`: document the T-090 deliverables and the current dependency on T-032 and a runnable pressure-test environment.
+
+### Why
+- T-090 requires a reproducible 1,000-player slot pressure test that catches overdraw, broken idempotency, P99 regression, and 5xx responses without relying on GUI-only JMeter listeners or fabricated measurements.
+
+### Verified
+- JMX parsed as valid XML with one Thread Group and three HTTP samplers.
+- PowerShell runner parsed as valid PowerShell.
+- Synthetic JTL verification: analyzer returned PASS for compliant samples and a non-zero FAIL result for P99/5xx violations.
+- `node --test tests/infra/*.test.js`: 116 tests passed, 0 failures.
+- Real pressure-test metrics were not produced because T-032 is not implemented, JMeter is not installed, Docker is not running, and 1,000 funded player credentials are unavailable.
+
 ## [feat] — 2026-06-04 — Implement leaderboard query APIs
 
 ### Added
