@@ -4,13 +4,16 @@ import com.luckystar.rank.dto.RankEntryResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.data.redis.core.DefaultTypedTuple;
+import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
@@ -23,6 +26,7 @@ public class RankService {
     public static final String FRIEND_COINS_KEY_PREFIX = "rank:friend:";
     public static final int FRIEND_TOP_LIMIT = 20;
     public static final Duration FRIEND_RANK_TTL = Duration.ofHours(24);
+    public static final String PLAYER_USERNAME_KEY = "rank:player:usernames";
 
     private final StringRedisTemplate redisTemplate;
 
@@ -40,6 +44,16 @@ public class RankService {
         redisTemplate.opsForZSet().add(GLOBAL_COINS_KEY, playerId.toString(), currentCoins.doubleValue());
     }
 
+    public void updatePlayerUsername(Long playerId, String username) {
+        Objects.requireNonNull(playerId, "playerId is required");
+        Objects.requireNonNull(username, "username is required");
+        if (username.isBlank()) {
+            throw new IllegalArgumentException("username is required");
+        }
+
+        redisTemplate.opsForHash().put(PLAYER_USERNAME_KEY, playerId.toString(), username);
+    }
+
     public Optional<RankEntryResponse> getGlobalRank(Long playerId) {
         Objects.requireNonNull(playerId, "playerId is required");
 
@@ -51,7 +65,13 @@ public class RankService {
             return Optional.empty();
         }
 
-        return Optional.of(new RankEntryResponse(playerId, zeroBasedRank + 1, score.longValue()));
+        HashOperations<String, String, String> hashOperations = redisTemplate.opsForHash();
+        String username = hashOperations.get(PLAYER_USERNAME_KEY, playerId.toString());
+        return Optional.of(new RankEntryResponse(
+                playerId,
+                username,
+                zeroBasedRank + 1,
+                score.longValue()));
     }
 
     public List<RankEntryResponse> getTopGlobalCoins() {
@@ -110,16 +130,43 @@ public class RankService {
             return Collections.emptyList();
         }
 
-        List<RankEntryResponse> result = new ArrayList<>(tuples.size());
+        List<RankScore> scores = new ArrayList<>(tuples.size());
         long rank = 1;
         for (ZSetOperations.TypedTuple<String> tuple : tuples) {
             String value = tuple.getValue();
             Double score = tuple.getScore();
             if (value != null && score != null) {
-                result.add(new RankEntryResponse(Long.valueOf(value), rank, score.longValue()));
+                scores.add(new RankScore(Long.valueOf(value), rank, score.longValue()));
             }
             rank++;
         }
+
+        Map<Long, String> usernames = readUsernames(scores);
+        return scores.stream()
+                .map(score -> new RankEntryResponse(
+                        score.playerId(),
+                        usernames.get(score.playerId()),
+                        score.rank(),
+                        score.score()))
+                .toList();
+    }
+
+    private Map<Long, String> readUsernames(List<RankScore> scores) {
+        HashOperations<String, String, String> hashOperations = redisTemplate.opsForHash();
+        List<String> playerIds = scores.stream()
+                .map(score -> score.playerId().toString())
+                .toList();
+        List<String> usernames = hashOperations.multiGet(PLAYER_USERNAME_KEY, playerIds);
+        if (usernames == null) {
+            return Collections.emptyMap();
+        }
+
+        Map<Long, String> result = new LinkedHashMap<>();
+        for (int index = 0; index < scores.size(); index++) {
+            result.put(scores.get(index).playerId(), usernames.get(index));
+        }
         return result;
     }
+
+    private record RankScore(Long playerId, long rank, long score) {}
 }

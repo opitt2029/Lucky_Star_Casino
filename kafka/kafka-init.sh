@@ -18,6 +18,7 @@ set -euo pipefail
 #          兩者分離以避免「自己發、自己收」迴圈，並與 wallet.debit(事件) 語意對稱。
 #
 # Dead Letter Topics (DLT) — receive events that failed processing after retries
+# member.registered.DLT       - Failed member registration events
 # wallet.debit.DLT           - Failed debit events
 # wallet.credit.DLT          - Failed credit events
 # wallet.credit.request.DLT  - Failed credit-request commands (e.g. bad payload, wallet not found)
@@ -47,6 +48,7 @@ for topic in "${topics[@]}"; do
 done
 
 dlt_topics=(
+  "member.registered.DLT"
   "wallet.debit.DLT"
   "wallet.credit.DLT"
   "wallet.credit.request.DLT"

@@ -34,6 +34,7 @@ const EXPECTED_TOPICS = [
 // Dead Letter Topics（處理失敗後的備援 topic）
 const EXPECTED_DLT_TOPICS = [
   'friend.relationship.updated.DLT',
+  'member.registered.DLT',
   'wallet.debit.DLT',          // 扣款失敗事件
   'wallet.credit.DLT',         // 加款失敗事件
   'wallet.credit.request.DLT', // 入帳指令失敗（ADR-002）

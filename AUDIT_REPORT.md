@@ -401,9 +401,9 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
 |---|:--:|---|:--:|---|
-| T-040 | P0 | Redis ZSet 全服排行榜 | ❌ | rank-service 僅有 Application.java |
-| T-041 | P0 | 好友排行榜 | ❌ | 同上 |
-| T-042 | P0 | 排行榜查詢 API | ❌ | 同上 |
+| T-040 | P0 | Redis ZSet 全服排行榜 | ✅ | `rank:global:coins` + wallet.credit/debit consumer |
+| T-041 | P0 | 好友排行榜 | ✅ | `rank:friend:{playerId}` + friend.relationship.updated consumer |
+| T-042 | P0 | 排行榜查詢 API | ✅ | `/api/v1/rank/global`、`/api/v1/rank/friends` + username read model |
 | T-043 | P1 | 每週排行榜重置排程 | ❌ | 同上 |
 | T-044 | P1 | 每日持幣快照任務 | ❌ | 同上 |
 | T-045 | P2 | 今日贏幣王排行榜 | ❌ | 同上 |

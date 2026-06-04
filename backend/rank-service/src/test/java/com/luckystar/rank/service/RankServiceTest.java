@@ -11,6 +11,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.DefaultTypedTuple;
+import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 
@@ -19,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -31,6 +33,9 @@ class RankServiceTest {
 
     @Mock
     ZSetOperations<String, String> zSetOperations;
+
+    @Mock
+    HashOperations<String, String, String> hashOperations;
 
     @Test
     void updatePlayerCoins_zaddsCurrentCoinBalance() {
@@ -51,16 +56,28 @@ class RankServiceTest {
     }
 
     @Test
+    void updatePlayerUsername_writesRedisHash() {
+        when(redisTemplate.<String, String>opsForHash()).thenReturn(hashOperations);
+        RankService rankService = new RankService(redisTemplate);
+
+        rankService.updatePlayerUsername(42L, "alice");
+
+        verify(hashOperations).put(RankService.PLAYER_USERNAME_KEY, "42", "alice");
+    }
+
+    @Test
     void getGlobalRank_usesReverseRankAndReturnsOneBasedRank() {
         RankService rankService = buildService();
         when(zSetOperations.reverseRank(RankService.GLOBAL_COINS_KEY, "42")).thenReturn(2L);
         when(zSetOperations.score(RankService.GLOBAL_COINS_KEY, "42")).thenReturn(1500.0);
+        when(hashOperations.get(RankService.PLAYER_USERNAME_KEY, "42")).thenReturn("alice");
 
         Optional<RankEntryResponse> response = rankService.getGlobalRank(42L);
 
         assertThat(response).isPresent();
+        assertThat(response.get().username()).isEqualTo("alice");
         assertThat(response.get().rank()).isEqualTo(3L);
-        assertThat(response.get().coins()).isEqualTo(1500L);
+        assertThat(response.get().score()).isEqualTo(1500L);
     }
 
     @Test
@@ -81,13 +98,15 @@ class RankServiceTest {
         tuples.add(new DefaultTypedTuple<>("9", 1000.0));
         when(zSetOperations.reverseRangeWithScores(RankService.GLOBAL_COINS_KEY, 0, 99))
                 .thenReturn(tuples);
+        when(hashOperations.multiGet(RankService.PLAYER_USERNAME_KEY, List.of("7", "42", "9")))
+                .thenReturn(List.of("nova", "alice", "mika"));
 
         List<RankEntryResponse> response = rankService.getTopGlobalCoins();
 
         assertThat(response).hasSize(3);
-        assertThat(response.get(0)).isEqualTo(new RankEntryResponse(7L, 1L, 9000L));
-        assertThat(response.get(1)).isEqualTo(new RankEntryResponse(42L, 2L, 1500L));
-        assertThat(response.get(2)).isEqualTo(new RankEntryResponse(9L, 3L, 1000L));
+        assertThat(response.get(0)).isEqualTo(new RankEntryResponse(7L, "nova", 1L, 9000L));
+        assertThat(response.get(1)).isEqualTo(new RankEntryResponse(42L, "alice", 2L, 1500L));
+        assertThat(response.get(2)).isEqualTo(new RankEntryResponse(9L, "mika", 3L, 1000L));
     }
 
     @Test
@@ -128,16 +147,19 @@ class RankServiceTest {
         tuples.add(new DefaultTypedTuple<>("2", 500.0));
         tuples.add(new DefaultTypedTuple<>("3", 100.0));
         when(zSetOperations.reverseRangeWithScores("rank:friend:1", 0, 19)).thenReturn(tuples);
+        when(hashOperations.multiGet(RankService.PLAYER_USERNAME_KEY, List.of("2", "3")))
+                .thenReturn(List.of("bob", "carol"));
 
         List<RankEntryResponse> response = rankService.getTopFriendCoins(1L);
 
         assertThat(response).containsExactly(
-                new RankEntryResponse(2L, 1L, 500L),
-                new RankEntryResponse(3L, 2L, 100L));
+                new RankEntryResponse(2L, "bob", 1L, 500L),
+                new RankEntryResponse(3L, "carol", 2L, 100L));
     }
 
     private RankService buildService() {
         when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
+        lenient().when(redisTemplate.<String, String>opsForHash()).thenReturn(hashOperations);
         return new RankService(redisTemplate);
     }
 }

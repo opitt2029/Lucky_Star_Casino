@@ -5,6 +5,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-04 — Implement leaderboard query APIs
+
+### Added
+- `GET /api/v1/rank/global`: returns the global top 100 with `playerId`, `username`, `rank`, and `score`.
+- `GET /api/v1/rank/friends`: reads the authenticated player from `X-User-Id` and returns their friend leaderboard.
+- `MemberRegisteredConsumer`: consumes `member.registered` and stores usernames in the `rank:player:usernames` Redis Hash.
+- MockMvc API contract tests and unit tests for username caching and leaderboard enrichment.
+
+### Changed
+- `RankEntryResponse`: replaces the internal `coins` field with the public API field `score` and adds `username`.
+- Existing `/api/v1/rank/global/top` and `/api/v1/rank/global/{playerId}` endpoints remain available with the enriched response contract.
+- Removed `/api/v1/rank/friend/{playerId}/top`; friend leaderboard queries now use the authenticated `X-User-Id` through `/api/v1/rank/friends`.
+- `kafka/kafka-init.sh` and `tests/infra/kafka.test.js`: pre-create `member.registered.DLT` for consumers using the shared retry/DLT handler.
+- `AGENTS.md`, `AUDIT_REPORT.md`, `README.md`, and `docs/architecture.md`: document T-042 completion and the username read model.
+
+### Why
+- T-042 requires stable public leaderboard endpoints that include usernames without making synchronous per-row calls to Member Service.
+
+### Verified
+- `mvn -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/rank-service test`: Gateway 21, Member 70, Wallet 142, and Rank 25 tests passed, 0 failures.
+- `mvn -pl backend/rank-service test`: final Rank API/security suite 26 tests passed, 0 failures.
+- `node --test tests/infra/*.test.js`: 107 tests passed, 0 failures.
+
 ## [feat] — 2026-06-04 — Implement friend leaderboard rebuild and top-20 API
 
 ### Added

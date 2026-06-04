@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -19,7 +20,7 @@ public class RankController {
         this.rankService = rankService;
     }
 
-    @GetMapping("/global/top")
+    @GetMapping({"/global", "/global/top"})
     public List<RankEntryResponse> getGlobalTop100() {
         return rankService.getTopGlobalCoins();
     }
@@ -31,8 +32,9 @@ public class RankController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    @GetMapping("/friend/{playerId}/top")
-    public List<RankEntryResponse> getFriendTop20(@PathVariable Long playerId) {
+    @GetMapping("/friends")
+    public List<RankEntryResponse> getFriendsLeaderboard(
+            @RequestHeader("X-User-Id") Long playerId) {
         return rankService.getTopFriendCoins(playerId);
     }
 }
