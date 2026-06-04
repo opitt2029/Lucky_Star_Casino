@@ -5,6 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-04 — Implement friend leaderboard rebuild and top-20 API
+
+### Added
+- `backend/member-service/.../FriendRelationshipUpdatedEvent.java` and `FriendshipService.java`: publish both players' complete accepted-friend lists through the transactional outbox after friendship acceptance or deletion.
+- `backend/rank-service/.../FriendRelationshipUpdatedConsumer.java`: consume `friend.relationship.updated` and rebuild `rank:friend:{playerId}` only after validating the event.
+- `backend/rank-service/.../RankService.java`: rebuild friend-only Redis ZSets from global coin scores, apply a 24-hour TTL, and query the top 20.
+- `GET /api/v1/rank/friend/{playerId}/top`: return a player's friend leaderboard.
+- Unit tests for friendship event publishing, friend-rank rebuilding, Kafka consumer ack behavior, and the friend leaderboard API.
+
+### Changed
+- `kafka/kafka-init.sh` and `tests/infra/kafka.test.js`: add `friend.relationship.updated` and `friend.relationship.updated.DLT` with synchronized topic-count assertions.
+- `AGENTS.md`, `README.md`, and `docs/architecture.md`: document Rank Service completion and the complete-friend-list event contract.
+
+### Why
+- T-041 requires friend rankings to contain only accepted friends and to be rebuilt when relationships change; publishing the complete friend list lets Rank Service replace stale ZSet membership without directly querying Member Service.
+
+### Verified
+- `mvn -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/rank-service test`: all four modules passed (Member 70, Wallet 142, Rank 18), 0 failures.
+- `node --test tests/infra/*.test.js`: 106 tests passed, 0 failures.
+
 ## [feat] - 2026-06-03 - Implement Rank Service global coins leaderboard
 
 ### Added

@@ -147,6 +147,7 @@ npm run dev
 | `wallet.debit` | Wallet Service（事件：已扣款） | Rank Service |
 | `wallet.credit.request` | Member Service（指令：請入帳，簽到/新手禮） | Wallet Service |
 | `wallet.credit` | Wallet Service（事件：已入帳） | Rank Service |
+| `friend.relationship.updated` | Member Service（事件：好友完整清單已更新） | Rank Service |
 | `game.result` | Game Service | Notification Service |
 | `rank.update` | Rank Service | Notification Service |
 | `notification.push` | 多個 Service | Notification Service |

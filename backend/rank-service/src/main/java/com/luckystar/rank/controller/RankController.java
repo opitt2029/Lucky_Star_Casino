@@ -30,4 +30,9 @@ public class RankController {
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
+
+    @GetMapping("/friend/{playerId}/top")
+    public List<RankEntryResponse> getFriendTop20(@PathVariable Long playerId) {
+        return rankService.getTopFriendCoins(playerId);
+    }
 }
