@@ -21,6 +21,7 @@ const kafkaScript = readFileSync(resolve(ROOT, 'kafka/kafka-init.sh'), 'utf-8');
 
 // 一般業務 topics
 const EXPECTED_TOPICS = [
+  'friend.relationship.updated',
   'member.registered',     // 會員註冊完成事件
   'wallet.debit',          // 錢包扣款事件（事件：已扣款）
   'wallet.credit.request', // 入帳指令（請入帳，member 發；ADR-002）
@@ -32,6 +33,8 @@ const EXPECTED_TOPICS = [
 
 // Dead Letter Topics（處理失敗後的備援 topic）
 const EXPECTED_DLT_TOPICS = [
+  'friend.relationship.updated.DLT',
+  'member.registered.DLT',
   'wallet.debit.DLT',          // 扣款失敗事件
   'wallet.credit.DLT',         // 加款失敗事件
   'wallet.credit.request.DLT', // 入帳指令失敗（ADR-002）

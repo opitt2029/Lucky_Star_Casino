@@ -8,6 +8,7 @@ import com.luckystar.wallet.exception.GlobalExceptionHandler;
 import com.luckystar.wallet.exception.InsufficientDiamondException;
 import com.luckystar.wallet.service.DiamondExchangeService;
 import com.luckystar.wallet.service.DiamondRedeemService;
+import com.luckystar.wallet.service.DiamondWalletService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +33,7 @@ class DiamondControllerExchangeTest {
 
     @Mock DiamondRedeemService diamondRedeemService;
     @Mock DiamondExchangeService diamondExchangeService;
+    @Mock DiamondWalletService diamondWalletService;
 
     @InjectMocks DiamondController diamondController;
 

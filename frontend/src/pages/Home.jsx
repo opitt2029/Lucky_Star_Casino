@@ -40,7 +40,7 @@ function UserProfileChip({ player, onClick }) {
         )}
       </span>
       <span className="min-w-0">
-        <span className="gold-muted block text-[10px] font-black uppercase">Player</span>
+        <span className="gold-muted block text-[10px] font-black uppercase">Member</span>
         <span className="block truncate text-sm font-black text-yellow-100">{memberLabel}</span>
       </span>
     </Link>
@@ -53,13 +53,13 @@ function GuestProfileChip({ onClick }) {
       type="button"
       onClick={onClick}
       className="luxury-panel-soft flex max-w-[220px] shrink-0 items-center gap-2 rounded px-3 py-2 text-left transition hover:border-red-300/70"
-      aria-label="未登入，點擊顯示登入提示"
+      aria-label="尚未登入，點擊查看登入提示"
     >
       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-red-300/40 bg-red-950/80 text-sm font-black text-red-200">
         ?
       </span>
       <span className="min-w-0">
-        <span className="block text-[10px] font-black uppercase text-red-200/70">Guest</span>
+        <span className="block text-[10px] font-black uppercase text-red-200/70">Visitor</span>
         <span className="block truncate text-sm font-black text-red-100">未登入</span>
       </span>
     </button>
@@ -108,7 +108,7 @@ function HomeHeader({ scrolled, progress }) {
             <>
               <GuestProfileChip onClick={() => setGuestNoticeOpen(true)} />
               {guestNoticeOpen && (
-                <span className="shrink-0 text-xs font-black text-red-300">請先登入</span>
+                <span className="shrink-0 text-xs font-black text-red-300">登入後即可使用</span>
               )}
             </>
           )}
@@ -118,7 +118,7 @@ function HomeHeader({ scrolled, progress }) {
           <button
             type="button"
             onClick={() => setMenuOpen((open) => !open)}
-            className="red-gold-button grid h-10 w-10 place-items-center rounded"
+            className="red-gold-button grid h-11 w-11 place-items-center rounded"
             aria-label="開啟會員選單"
             aria-expanded={menuOpen}
           >
@@ -130,7 +130,7 @@ function HomeHeader({ scrolled, progress }) {
           </button>
 
           {menuOpen && (
-            <div className="luxury-panel absolute right-0 top-12 w-56 rounded p-2 shadow-2xl">
+            <div className="luxury-panel absolute right-0 top-14 w-56 max-w-[calc(100vw-2rem)] rounded p-2 shadow-2xl">
               {sections.map((section) => (
                 <a
                   key={section.id}
@@ -148,7 +148,7 @@ function HomeHeader({ scrolled, progress }) {
                   <GuestProfileChip onClick={() => setGuestNoticeOpen(true)} />
                   {guestNoticeOpen && (
                     <p className="mt-2 rounded px-3 py-2 text-sm font-black text-red-300">
-                      請先登入
+                      登入後即可使用會員功能
                     </p>
                   )}
                 </>
@@ -270,14 +270,14 @@ export default function Home() {
             <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Lucky Star Casino</p>
             <h1 className="brand-title mt-4 max-w-4xl text-5xl font-black tracking-tight sm:text-7xl">幸運星幣城</h1>
             <p className="mt-6 max-w-2xl text-base font-bold leading-8 text-yellow-100/78">
-              從首頁進入會員、遊戲大全與賭場商城。登入後即可選擇遊戲、累積籌碼，並在商城兌換禮品。
+              使用模擬星幣體驗老虎機與百家樂，登入後可管理會員資料、兌換鑽石與查看遊戲紀錄。禮品商城可先瀏覽，確認喜歡的獎品再兌換。
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link to={isAuthenticated ? '/games' : '/member'} className="gold-button rounded px-6 py-3 text-sm font-black transition">
                 {isAuthenticated ? '查看遊戲大全' : '登入後開始'}
               </Link>
               <a href="#games" className="red-gold-button rounded px-6 py-3 text-sm font-black transition">
-                瀏覽網站結構
+                先看有哪些遊戲
               </a>
             </div>
           </div>
@@ -290,10 +290,10 @@ export default function Home() {
           <DecorativeAsset assetKey="homeGames" className="scroll-visual min-h-[360px]" />
           <div className="scroll-copy grid content-center gap-5">
             <div>
-              <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Game Directory</p>
-              <h2 className="brand-title mt-3 text-4xl font-black tracking-tight sm:text-5xl">遊戲大全作為所有遊戲入口</h2>
+              <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Game Lobby</p>
+              <h2 className="brand-title mt-3 text-4xl font-black tracking-tight sm:text-5xl">從遊戲大廳挑一局開始</h2>
               <p className="mt-4 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
-                未登入使用者會先導向會員頁。登入後可從遊戲大全進入每個遊戲網頁，遊玩結果會更新籌碼。
+                目前提供老虎機與百家樂。每局都會用星幣下注，結算結果會直接反映在你的星幣餘額。
               </p>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
@@ -316,14 +316,14 @@ export default function Home() {
       <section id="member" className="scroll-section flex items-center px-4 py-24 sm:px-6 lg:px-8">
         <div className="scroll-section-grid mx-auto grid w-full max-w-7xl items-center gap-8 lg:grid-cols-[1fr_0.72fr]">
           <div className="scroll-copy">
-            <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Member Gate</p>
-            <h2 className="brand-title mt-3 text-4xl font-black tracking-tight sm:text-5xl">會員頁負責登入、註冊與遊戲門禁</h2>
+            <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Member Access</p>
+            <h2 className="brand-title mt-3 text-4xl font-black tracking-tight sm:text-5xl">登入後開始完整體驗</h2>
             <p className="mt-4 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
-              遊戲大全、遊戲網頁與賭場商城都需要登入。尚未登入時會導回會員頁，完成登入後再進入遊戲流程。
+              建立帳號或登入後，就能進入遊戲、使用鑽石錢包、查看會員中心與好友狀態。尚未登入時，我們會帶你先完成登入。
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link to="/member" className="gold-button rounded px-6 py-3 text-sm font-black transition">
-                前往會員頁
+                登入或註冊
               </Link>
               <Link to={isAuthenticated ? '/profile' : '/member'} className="red-gold-button rounded px-6 py-3 text-sm font-black transition">
                 會員中心
@@ -339,16 +339,16 @@ export default function Home() {
           <DecorativeAsset assetKey="shopHero" className="scroll-visual min-h-[360px]" />
           <div className="scroll-copy">
             <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Casino Shop</p>
-            <h2 className="brand-title mt-3 text-4xl font-black tracking-tight sm:text-5xl">賭場商城承接遊戲贏得的籌碼</h2>
+            <h2 className="brand-title mt-3 text-4xl font-black tracking-tight sm:text-5xl">用鑽石換星幣，再兌換禮品</h2>
             <p className="mt-4 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
-              商城頁已預留禮品素材與兌換流程，後續可以接上實際庫存、出貨狀態或活動 API。
+              輸入序號可取得鑽石，鑽石能依固定比例換成星幣；星幣可用於遊戲下注，也能在禮品商城兌換目前提供的獎品。
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link to={isAuthenticated ? '/shop' : '/member'} className="gold-button rounded px-6 py-3 text-sm font-black transition">
-                進入賭場商城
+              <Link to={isAuthenticated ? '/diamond' : '/member'} className="gold-button rounded px-6 py-3 text-sm font-black transition">
+                進入鑽石錢包
               </Link>
-              <Link to={isAuthenticated ? '/games' : '/member'} className="red-gold-button rounded px-6 py-3 text-sm font-black transition">
-                先去贏籌碼
+              <Link to="/shop" className="red-gold-button rounded px-6 py-3 text-sm font-black transition">
+                瀏覽禮品商城
               </Link>
             </div>
           </div>

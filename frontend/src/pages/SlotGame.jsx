@@ -29,7 +29,7 @@ export default function SlotGame() {
   const lastPayout = result?.game === 'slot' ? result.payout : null
   const lastMultiplier = result?.game === 'slot' ? result.multiplier : null
   const payoutCaption =
-    lastMultiplier === null ? '等待本局結果' : lastMultiplier > 0 ? `中獎倍率 ${lastMultiplier}x` : '本局未中獎'
+    lastMultiplier === null ? '開始一局後顯示結果' : lastMultiplier > 0 ? `中獎倍率 ${lastMultiplier}x` : '本局未中獎'
   const roundStatus = loading || visualLock ? 'spinning' : status
   const hasLineWin = winningCells.length > 0
 
@@ -52,7 +52,7 @@ export default function SlotGame() {
         <aside className="grid gap-4 content-start">
           <GameRuleCard
             title="星幣老虎機規則"
-            subtitle="查看下注、命中線與倍率派彩。"
+            subtitle="了解如何下注、判定中獎與計算派彩。"
             rules={slotRules}
             payouts={slotPayouts}
           />
@@ -65,7 +65,7 @@ export default function SlotGame() {
           />
 
           <div className="luxury-panel-soft rounded p-4">
-            <p className="gold-muted text-xs font-black uppercase tracking-[0.25em]">Bet Control</p>
+            <p className="gold-muted text-xs font-black uppercase tracking-[0.25em]">Bet</p>
             <h3 className="brand-title mt-1 text-xl font-black">下注面板</h3>
             <div className="mt-3 grid grid-cols-2 gap-2">
               {betOptions.map((option) => (
@@ -87,7 +87,7 @@ export default function SlotGame() {
           </div>
 
           <div className="luxury-panel-soft rounded p-4">
-            <p className="gold-muted text-xs font-black uppercase tracking-[0.25em]">Round</p>
+            <p className="gold-muted text-xs font-black uppercase tracking-[0.25em]">Round Status</p>
             <div className="mt-3 grid gap-3">
               <div className="flex items-center justify-between rounded border border-yellow-200/15 bg-red-950/70 px-3 py-3">
                 <span className="text-sm font-bold text-yellow-100/62">狀態</span>
@@ -97,13 +97,13 @@ export default function SlotGame() {
                     loading || visualLock ? 'slot-signal--active' : status === 'result' ? 'slot-signal--ready' : 'slot-signal--idle',
                   ].join(' ')}
                 >
-                  {roundStatus}
+                  {roundStatus === 'spinning' ? '轉動中' : roundStatus === 'result' ? '已結算' : '待開始'}
                 </span>
               </div>
               <div className="flex items-center justify-between rounded border border-yellow-200/15 bg-red-950/70 px-3 py-3">
                 <span className="text-sm font-bold text-yellow-100/62">中線命中</span>
                 <span className={['slot-signal', hasLineWin ? 'slot-signal--win' : 'slot-signal--idle'].join(' ')}>
-                  {hasLineWin ? 'YES' : 'NO'}
+                  {hasLineWin ? '命中' : '未命中'}
                 </span>
               </div>
             </div>

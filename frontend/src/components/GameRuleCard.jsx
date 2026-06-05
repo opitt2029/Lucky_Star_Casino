@@ -27,7 +27,7 @@ export default function GameRuleCard({ title, subtitle, rules, payouts = [] }) {
         <span className="flex items-center justify-between gap-3">
           <span>
             <span className="gold-muted block text-xs font-black uppercase tracking-[0.25em]">
-              Game Guide
+              Guide
             </span>
             <span className="brand-title mt-1 block text-xl font-black">遊戲規則</span>
           </span>
@@ -55,7 +55,7 @@ export default function GameRuleCard({ title, subtitle, rules, payouts = [] }) {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="gold-muted text-xs font-black uppercase tracking-[0.25em]">
-                  Rule Book
+                  Rules
                 </p>
                 <h2 id={titleId} className="brand-title mt-1 text-2xl font-black">
                   {title}

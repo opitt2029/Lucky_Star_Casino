@@ -1,14 +1,17 @@
 package com.luckystar.wallet.controller;
 
 import com.luckystar.wallet.common.ApiResponse;
+import com.luckystar.wallet.dto.DiamondBalanceResponse;
 import com.luckystar.wallet.dto.DiamondExchangeRequest;
 import com.luckystar.wallet.dto.DiamondExchangeResponse;
 import com.luckystar.wallet.dto.DiamondRedeemRequest;
 import com.luckystar.wallet.dto.DiamondRedeemResponse;
 import com.luckystar.wallet.service.DiamondExchangeService;
 import com.luckystar.wallet.service.DiamondRedeemService;
+import com.luckystar.wallet.service.DiamondWalletService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -25,11 +28,39 @@ public class DiamondController {
 
     private final DiamondRedeemService diamondRedeemService;
     private final DiamondExchangeService diamondExchangeService;
+    private final DiamondWalletService diamondWalletService;
 
     public DiamondController(DiamondRedeemService diamondRedeemService,
-                             DiamondExchangeService diamondExchangeService) {
+                             DiamondExchangeService diamondExchangeService,
+                             DiamondWalletService diamondWalletService) {
         this.diamondRedeemService = diamondRedeemService;
         this.diamondExchangeService = diamondExchangeService;
+        this.diamondWalletService = diamondWalletService;
+    }
+
+    /**
+     * 查詢鑽石餘額（T-104）。回傳玩家目前鑽石餘額與固定兌換匯率（1 鑽石 = 20 星幣）。
+     */
+    @GetMapping("/balance")
+    public ResponseEntity<ApiResponse<DiamondBalanceResponse>> balance(
+            @RequestHeader(value = "X-User-Id", required = false) String playerIdStr) {
+
+        if (playerIdStr == null || playerIdStr.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Missing X-User-Id header"));
+        }
+
+        Long playerId;
+        try {
+            playerId = Long.parseLong(playerIdStr);
+        } catch (NumberFormatException e) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Invalid X-User-Id header"));
+        }
+
+        long balance = diamondWalletService.getBalance(playerId);
+        return ResponseEntity.ok(ApiResponse.ok(
+                DiamondBalanceResponse.builder().balance(balance).build()));
     }
 
     /**

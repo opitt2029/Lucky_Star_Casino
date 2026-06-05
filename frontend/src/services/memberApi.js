@@ -18,9 +18,14 @@ function mapProfile(data) {
   }
 }
 
-// 從 axios 錯誤中取出後端回傳的錯誤訊息
+const friendlyErrorMap = {
+  'Network Error': '連線失敗，請稍後再試',
+}
+
+// 從 axios 錯誤中取出後端回傳的錯誤訊息，並轉成使用者看得懂的說法
 function extractError(error) {
-  return error.response?.data?.message || error.message
+  const message = error.response?.data?.message || error.message
+  return friendlyErrorMap[message] || message
 }
 
 export const memberApi = {

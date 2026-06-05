@@ -6,6 +6,8 @@ const initialState = {
   roundId: null,
   status: 'idle', // 'idle' | 'betting' | 'spinning' | 'result'
   result: null,
+  latestResult: null,
+  resultHistory: [],
   slotGrid: [
     ['🍒', '🍋', '🔔'],
     ['⭐', '7️⃣', '🍒'],
@@ -14,7 +16,7 @@ const initialState = {
   winningCells: [],
   baccaratRound: null,
   notifications: [],
-  connectionStatus: 'idle',
+  connectionStatus: 'DISCONNECTED',
   reconnectAttempt: 0,
   loading: false,
   error: null,
@@ -55,6 +57,8 @@ const gameSlice = createSlice({
     },
     setResult(state, action) {
       state.result = action.payload
+      state.latestResult = action.payload
+      state.resultHistory = [action.payload, ...state.resultHistory].slice(0, 20)
       state.status = 'result'
       if (action.payload?.game === 'slot') {
         state.slotGrid = action.payload.grid ?? state.slotGrid
@@ -63,6 +67,36 @@ const gameSlice = createSlice({
       if (action.payload?.game === 'baccarat') {
         state.baccaratRound = action.payload
       }
+    },
+    updateGameResult(state, action) {
+      const payload = action.payload
+      const gameKey = payload.game || payload.gameId || null
+      const normalizedResult = {
+        ...payload,
+        game: gameKey,
+        receivedAt: payload.receivedAt || new Date().toISOString(),
+      }
+
+      state.currentGame = gameKey ?? state.currentGame
+      state.result = normalizedResult
+      state.latestResult = normalizedResult
+      state.resultHistory = [normalizedResult, ...state.resultHistory].slice(0, 20)
+      state.status = 'result'
+
+      if (gameKey === 'slot') {
+        state.slotGrid = payload.grid ?? state.slotGrid
+        state.winningCells = payload.winningCells ?? state.winningCells
+      }
+      if (gameKey === 'baccarat') {
+        state.baccaratRound = normalizedResult
+      }
+    },
+    clearGameResult(state) {
+      state.result = null
+      state.latestResult = null
+      state.resultHistory = []
+      state.status = 'idle'
+      state.winningCells = []
     },
     setGameError(state, action) {
       state.error = action.payload
@@ -81,6 +115,7 @@ const gameSlice = createSlice({
     resetGame(state) {
       state.status = 'idle'
       state.result = null
+      state.latestResult = null
       state.error = null
       state.roundId = null
       state.winningCells = []
@@ -134,6 +169,8 @@ export const {
   setBettingStatus,
   setSpinningStatus,
   setResult,
+  updateGameResult,
+  clearGameResult,
   setGameError,
   setConnectionStatus,
   pushNotification,

@@ -7,6 +7,7 @@ import com.luckystar.wallet.exception.CardNotFoundException;
 import com.luckystar.wallet.exception.DiamondWalletNotFoundException;
 import com.luckystar.wallet.exception.GlobalExceptionHandler;
 import com.luckystar.wallet.service.DiamondRedeemService;
+import com.luckystar.wallet.service.DiamondWalletService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,8 +29,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ExtendWith(MockitoExtension.class)
 class DiamondControllerTest {
 
-    @Mock
-    DiamondRedeemService diamondRedeemService;
+    @Mock DiamondRedeemService diamondRedeemService;
+    @Mock DiamondWalletService diamondWalletService;
 
     @InjectMocks
     DiamondController diamondController;

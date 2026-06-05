@@ -402,9 +402,9 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
 |---|:--:|---|:--:|---|
-| T-040 | P0 | Redis ZSet 全服排行榜 | ❌ | rank-service 僅有 Application.java |
-| T-041 | P0 | 好友排行榜 | ❌ | 同上 |
-| T-042 | P0 | 排行榜查詢 API | ❌ | 同上 |
+| T-040 | P0 | Redis ZSet 全服排行榜 | ✅ | `rank:global:coins` + wallet.credit/debit consumer |
+| T-041 | P0 | 好友排行榜 | ✅ | `rank:friend:{playerId}` + friend.relationship.updated consumer |
+| T-042 | P0 | 排行榜查詢 API | ✅ | `/api/v1/rank/global`、`/api/v1/rank/friends` + username read model |
 | T-043 | P1 | 每週排行榜重置排程 | ❌ | 同上 |
 | T-044 | P1 | 每日持幣快照任務 | ❌ | 同上 |
 | T-045 | P2 | 今日贏幣王排行榜 | ❌ | 同上 |
@@ -440,6 +440,15 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 > ⚠️ 前端已備妥 `useWebSocket.js` / `RealtimeBridge.jsx`，但**後端 notification-service 整個服務尚未建立**，即時推播無法運作。
 
+#### 後端串接 TODO（2026-06-02 新增）
+
+- [ ] 建立 `notification-service`（或明確決定整合到既有服務），加入 Spring WebSocket/STOMP 依賴與 `@EnableWebSocketMessageBroker` 設定。
+- [ ] 提供 WebSocket endpoint：`/ws`，並支援 SockJS；前端目前會連 `VITE_WS_URL`，預設為 `/ws`。
+- [ ] 設定私人通知頻道：`/user/queue/notifications`；遊戲結果 payload 需包含 `type: "GAME_RESULT"`，並建議包含 `gameId`、`win`、`betAmount`、`rewardAmount`、`balance`、`message`。
+- [ ] 建立 Kafka → WebSocket 橋接：消費 `game.result` / `notification.push` / `rank.update`，再用 `SimpMessagingTemplate.convertAndSendToUser(...)` 或 topic broadcast 推送。
+- [ ] Gateway 補 `/ws/**` route 到 Notification Service，並處理 WebSocket handshake 認證；目前 `JwtAuthenticationGlobalFilter` 未白名單 `/ws`，SockJS handshake 也不一定會帶到 STOMP `connectHeaders.Authorization`。
+- [ ] 實作完成後用真實後端驗證：登入 → 進入遊戲頁 → 後端推送 `GAME_RESULT` → 前端通知中心新增訊息、`gameSlice.latestResult` / `resultHistory` 更新。
+
 ### A.9 前端（組員E）
 
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
@@ -461,7 +470,7 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
 |---|:--:|---|:--:|---|
-| T-090 | P0 | JMeter 高併發壓測腳本 | ❌ | 未見 .jmx 腳本 |
+| T-090 | P0 | JMeter 高併發壓測腳本 | ⚠️ | JMX、執行器、分析器與報告已完成；實測阻塞於 T-032、JMeter/環境與 1,000 組玩家憑證 |
 | T-091 | P0 | 帳務一致性對帳腳本 | ❌ | 未見對帳 SQL |
 | T-092 | P1 | Swagger UI API 文件 | ❌ | 各服務 pom.xml 無 springdoc-openapi 依賴 |
 | T-093 | P0 | End-to-End 整合測試 | ❌ | 多數後端服務未實作，無法執行完整流程 |
