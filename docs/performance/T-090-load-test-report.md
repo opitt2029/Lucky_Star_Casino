@@ -2,14 +2,15 @@
 
 ## Status
 
-**NOT EXECUTED as of 2026-06-04.**
+**NOT EXECUTED as of 2026-06-05.**
 
-The pressure-test plan and automated acceptance report tooling are complete, but producing real performance measurements is currently blocked by:
+The pressure-test plan and automated acceptance report tooling are complete. T-032 is now implemented (`backend/game-service`: `SlotController` / `SlotService`), so it is no longer a blocker. Producing real performance measurements is still blocked by:
 
-- T-032 `POST /api/v1/game/spin` is not implemented; Game Service still contains only its application bootstrap.
 - Apache JMeter is not installed in the current environment.
 - Docker Desktop daemon is not running, so the complete local service topology cannot be started.
 - A funded credential file containing 1,000 distinct players is not available.
+
+**Contract drift to reconcile before execution:** the implemented endpoint differs from the contract this report originally assumed. The real endpoint is `POST /api/v1/game/slot/spin`; the request body is `{ "bet": <100..5000>, "clientSeed": "..." }`; and the idempotency key is derived server-side (`slot-bet-<roundId>` / `slot-win-<roundId>`) rather than supplied by the client. The JMX plan (`tests/performance/slot-1000-players.jmx`) and the "Assumed T-032 Contract" section below must be aligned to this real contract before the load test is run.
 
 No P99, throughput, or error-rate values are fabricated in this report.
 
@@ -44,7 +45,9 @@ The duplicate request must either return `idempotent=true` or return the same `r
 
 ## Assumed T-032 Contract
 
-Until T-032 is implemented, the JMX uses the following planned contract:
+> ⚠️ Outdated: this is the contract the JMX was originally drafted against. T-032 is now implemented with a different shape (see the "Contract drift" note under Status). Update this section and the JMX before execution.
+
+The JMX currently uses the following planned contract:
 
 ```http
 POST /api/v1/game/spin
