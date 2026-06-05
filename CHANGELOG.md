@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [docs] — 2026-06-05 — Sync task progress status across docs
+
+### Changed
+- `docs/幸運星幣城_工作分配表.xlsx`（狀態欄）：T-030/T-031/T-032/T-033（老虎機 RNG / 滾輪邏輯 / `POST /api/v1/game/slot/spin` / Redis Session）、T-041/T-042（排行榜）標記為 ✅ 已完成；T-090 標記為 ⚠️ 部分完成。反映 PR #57~#62 已合併之實作。
+- `docs/performance/T-090-load-test-report.md`：移除已過時的「T-032 未實作」blocker；標註實際端點為 `POST /api/v1/game/slot/spin`、冪等鍵由伺服器端生成（`slot-bet-<roundId>`），與報告原假設契約不同，jmx 與假設契約段落待對齊後方可實測。其餘 blocker（JMeter 未安裝、Docker 未啟動、無 1,000 玩家憑證）仍成立，報告維持 NOT EXECUTED。
+- `AGENTS.md`：註10「服務完成度」更新 game 不再是空殼（T-030~T-033 已實作）；註12 更正 T-032 已完成、端點與冪等鍵，保留實測前置要求。
+
+### Why
+- 工作分配表為任務進度的單一真相來源，與 T-090 報告、AGENTS.md 地雷註記均落後於最近合併的實作，造成新進 AI / 組員誤判 game-service 仍為空殼。
+
+### Verified
+- 解壓 xlsx 重讀，狀態欄與變更一致；其餘 cell / 樣式 / 工作表未動。
+- T-090 報告 Status 與 game-service 實作（`SlotController` / `SlotService`）一致；報告未虛構任何 P99 / 吞吐數據。
+
 ## [test] — 2026-06-04 — Add T-090 JMeter slot pressure-test plan
 
 ### Added

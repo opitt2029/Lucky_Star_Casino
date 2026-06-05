@@ -39,9 +39,9 @@
 7. **改 Kafka topic 要同步改 infra 測試**：`kafka/kafka-init.sh` 增刪 topic 後，更新 `tests/infra/kafka.test.js` 的 topic 清單與數量斷言，否則 CI 紅。
 8. **帳務操作=冪等 + 樂觀鎖**：`wallet_transactions.idempotency_key` UNIQUE 防重複、`wallets.version`（`@Version`）防超扣。所有扣款/入帳都要遵循此模式。
 9. **`gem-prompt` 技能**（Claude Code）：產生後端實作提示詞，會先讀真實專案檔。開新後端任務可先用它。
-10. **服務完成度**：member / gateway / wallet 已實作；rank 已完成 T-040~T-042 排行榜核心；**game / admin 仍是空殼**；**notification 服務尚未建立**。動工前先看 AUDIT_REPORT 附錄 A 與 CHANGELOG 確認。
+10. **服務完成度**：member / gateway / wallet 已實作；rank 已完成 T-040~T-042 排行榜核心；game 已完成 T-030~T-033 老虎機核心（Provably Fair RNG / 滾輪邏輯 / `POST /api/v1/game/slot/spin` / Redis Session commit-ahead），百家樂（T-034~T-036）尚未實作；**admin 仍是空殼**；**notification 服務尚未建立**。動工前先看 AUDIT_REPORT 附錄 A 與 CHANGELOG 確認。
 11. **`friend.relationship.updated` 是完整好友清單事件**：member 在好友接受/刪除後，為雙方各發布 `{ playerId, friendIds }`；rank 依完整清單重建 `rank:friend:{playerId}`，不要改成只帶單筆新增/刪除的增量事件。
-12. **T-090 壓測腳本依賴 T-032**：`tests/performance/slot-1000-players.jmx` 已建立，但實測前必須先完成 `POST /api/v1/game/spin`、準備 1,000 組已入金玩家 JWT，並啟動完整服務拓撲；沒有實測資料時不可填寫虛構 P99。
+12. **T-090 壓測腳本實測前置**：`tests/performance/slot-1000-players.jmx` 已建立，T-032 老虎機 API 已完成（實際端點 `POST /api/v1/game/slot/spin`，冪等鍵由伺服器端生成、非 client 傳入）。但實測前仍須**對齊 jmx 與報告假設契約**、準備 1,000 組已入金玩家 JWT 並啟動完整服務拓撲；沒有實測資料時不可填寫虛構 P99。詳見 `docs/performance/T-090-load-test-report.md`。
 
 ---
 
