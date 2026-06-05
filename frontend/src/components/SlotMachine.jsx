@@ -15,6 +15,14 @@ const defaultSymbols = ['🍒', '🍋', '🔔', '⭐', '7️⃣']
 const reelDurations = [1800, 2200, 2600]
 const reelLoops = [5, 6, 7]
 
+function getResponsiveSymbolHeight(compact) {
+  if (compact) return 52
+  if (typeof window === 'undefined') return 170
+  if (window.matchMedia('(max-width: 480px)').matches) return 96
+  if (window.matchMedia('(max-width: 768px)').matches) return 128
+  return 170
+}
+
 function getColumns(grid) {
   return [0, 1, 2].map((colIndex) => grid.map((row) => row[colIndex]))
 }
@@ -43,7 +51,10 @@ export default function SlotMachine({
   symbols = defaultSymbols,
   symbolHeight: symbolHeightProp,
 }) {
-  const symbolHeight = symbolHeightProp ?? (compact ? 52 : 170)
+  const [responsiveSymbolHeight, setResponsiveSymbolHeight] = useState(() =>
+    getResponsiveSymbolHeight(compact)
+  )
+  const symbolHeight = symbolHeightProp ?? responsiveSymbolHeight
   const fallbackGrid = useMemo(() => buildFallbackGrid(symbols), [symbols])
   const [displayGrid, setDisplayGrid] = useState(grid || fallbackGrid)
   const [reelTracks, setReelTracks] = useState(() => getColumns(grid || fallbackGrid).map(buildStaticTrack))
@@ -60,6 +71,18 @@ export default function SlotMachine({
   useEffect(() => {
     return () => abortRef.current?.abort()
   }, [])
+
+  useEffect(() => {
+    if (symbolHeightProp) return undefined
+
+    const handleResize = () => {
+      setResponsiveSymbolHeight(getResponsiveSymbolHeight(compact))
+    }
+
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [compact, symbolHeightProp])
 
   useEffect(() => {
     if (phase !== 'idle' || !grid || sameGrid(grid, handledGridRef.current)) return

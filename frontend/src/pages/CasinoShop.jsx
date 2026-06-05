@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { Link } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import DecorativeAsset from '../components/DecorativeAsset'
 import MetricCard from '../components/MetricCard'
@@ -17,13 +18,13 @@ function ShopItem({ item, balance, onRedeem }) {
         <h3 className="brand-title mt-2 text-2xl font-black">{item.title}</h3>
         <p className="mt-2 text-sm font-bold leading-6 text-yellow-100/64">{item.caption}</p>
       </div>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="gold-text text-lg font-black">{item.cost.toLocaleString()} 星幣</p>
         <button
           type="button"
           onClick={() => onRedeem(item)}
           disabled={disabled}
-          className="gold-button rounded px-4 py-2 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-50"
+          className="gold-button min-w-24 rounded px-4 py-2 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-50"
         >
           兌換
         </button>
@@ -41,12 +42,12 @@ export default function CasinoShop() {
 
   const handleRedeem = (item) => {
     if (balance < item.cost) {
-      setNotice('星幣不足，先去遊戲大全累積更多籌碼。')
+    setNotice('星幣不足，請先到鑽石錢包兌換星幣。')
       return
     }
 
     dispatch(setBalance({ balance: balance - item.cost, frozenAmount }))
-    setNotice(`已兌換 ${item.title}，後續可接出貨或背包 API。`)
+    setNotice(`已兌換 ${item.title}，星幣已從餘額扣除。`)
   }
 
   return (
@@ -56,12 +57,14 @@ export default function CasinoShop() {
           <div>
             <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Casino Shop</p>
             <h2 className="brand-title mt-3 text-4xl font-black tracking-tight sm:text-5xl">
-              賭場商城
+              禮品商城
             </h2>
             <p className="mt-4 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
-              使用遊戲中贏得的星幣兌換禮品。禮品圖、商城主視覺與每個素材槽都集中在 theme
-              檔案中設定。
+              使用星幣兌換目前提供的禮品；若星幣不足，可先到鑽石錢包用鑽石兌換星幣。
             </p>
+            <Link to="/diamond" className="gold-button mt-5 inline-flex rounded px-5 py-3 text-sm font-black transition">
+              前往鑽石錢包
+            </Link>
           </div>
           <DecorativeAsset assetKey="shopHero" className="min-h-[320px]" />
         </div>
@@ -71,7 +74,7 @@ export default function CasinoShop() {
           <MetricCard
             label="凍結星幣"
             value={frozenAmount.toLocaleString()}
-            caption="保留給未結算流程"
+            caption="暫時保留的星幣"
           />
           <MetricCard
             label="商城總值"

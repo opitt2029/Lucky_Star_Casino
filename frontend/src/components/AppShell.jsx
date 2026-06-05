@@ -5,14 +5,16 @@ import ErrorBoundary from './ErrorBoundary'
 import { fetchProfile, logoutMember } from '../store/slices/authSlice'
 import { clearNotifications } from '../store/slices/gameSlice'
 import { fetchRanks } from '../store/slices/rankSlice'
-import { dailyCheckIn, fetchWallet } from '../store/slices/walletSlice'
+import { fetchDiamondBalance, resetDiamond } from '../store/slices/diamondSlice'
+import { dailyCheckIn, fetchWallet, resetWallet } from '../store/slices/walletSlice'
 import { getBackgroundStyle } from '../theme/backgroundTheme'
 import CoinRain from './CoinRain'
 
 const navItems = [
   { to: '/', label: '首頁' },
   { to: '/games', label: '遊戲大全' },
-  { to: '/shop', label: '賭場商城' },
+  { to: '/diamond', label: '鑽石錢包' },
+  { to: '/shop', label: '禮品商城' },
   { to: '/rank', label: '排行榜' },
   { to: '/transactions', label: '交易紀錄' },
   { to: '/profile', label: '會員中心' },
@@ -94,11 +96,13 @@ export default function AppShell({ children }) {
   const [checkInModalOpen, setCheckInModalOpen] = useState(false)
   const [checkInDates, setCheckInDates] = useState([])
   const [checkInDatesReady, setCheckInDatesReady] = useState(false)
+  const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
   const player = useSelector((state) => state.auth.player)
   const wallet = useSelector((state) => state.wallet)
+  const diamond = useSelector((state) => state.diamond)
   const balance = wallet.balance
   const notifications = useSelector((state) => state.game.notifications)
-  const playerName = player?.nickname || player?.username || 'Demo Player'
+  const playerName = player?.nickname || player?.username || (isAuthenticated ? 'Demo Player' : '訪客')
   const canShowAvatar = player?.avatarUrl && !avatarFailed
   const todayKey = getTaipeiDateKey()
   const currentMonthKey = todayKey.slice(0, 7)
@@ -113,9 +117,12 @@ export default function AppShell({ children }) {
   const checkInDismissLabel = hasCheckedInToday || wallet.checkIn.message ? '關閉' : '稍後'
 
   useEffect(() => {
-    dispatch(fetchWallet())
+    if (isAuthenticated) {
+      dispatch(fetchWallet())
+      dispatch(fetchDiamondBalance())
+    }
     dispatch(fetchRanks())
-  }, [dispatch])
+  }, [dispatch, isAuthenticated])
 
   useEffect(() => {
     setAvatarFailed(false)
@@ -159,7 +166,15 @@ export default function AppShell({ children }) {
   }, [])
 
   const handleLogout = () => {
-    dispatch(logoutMember()).finally(() => navigate('/member'))
+    dispatch(logoutMember()).finally(() => {
+      dispatch(resetWallet())
+      dispatch(resetDiamond())
+      navigate('/member')
+    })
+  }
+
+  const handleLogin = () => {
+    navigate('/member?mode=login')
   }
 
   const handleDailyCheckIn = async () => {
@@ -215,7 +230,11 @@ export default function AppShell({ children }) {
                 <span className="min-w-0 truncate font-black">{playerName}</span>
               </div>
               <div className="luxury-panel-soft rounded px-4 py-2">
-                <span className="gold-muted block text-[11px] font-bold uppercase">籌碼</span>
+                <span className="gold-muted block text-[11px] font-bold uppercase">Diamond</span>
+                <span className="font-black">{diamond.diamondBalance.toLocaleString()}</span>
+              </div>
+              <div className="luxury-panel-soft rounded px-4 py-2">
+                <span className="gold-muted block text-[11px] font-bold uppercase">Star Coin</span>
                 <span className="font-black">{balance.toLocaleString()}</span>
               </div>
               <div className="relative">
@@ -236,13 +255,13 @@ export default function AppShell({ children }) {
                   )}
                 </button>
                 {noticeOpen && (
-                  <div className="luxury-panel absolute right-0 top-14 z-40 w-80 rounded p-3 shadow-2xl">
+                  <div className="luxury-panel absolute right-0 top-14 z-40 w-80 max-w-[calc(100vw-2rem)] rounded p-3 shadow-2xl">
                     <div className="flex items-center justify-between">
                       <p className="gold-text text-sm font-black">通知中心</p>
                       <button
                         type="button"
                         onClick={() => dispatch(clearNotifications())}
-                        className="red-gold-button rounded px-2 py-1 text-xs font-bold"
+                    className="red-gold-button rounded px-2 py-1 text-xs font-bold"
                       >
                         清空
                       </button>
@@ -254,7 +273,7 @@ export default function AppShell({ children }) {
                         notifications.map((item) => (
                           <div key={item.id || item.createdAt} className="rounded border border-yellow-200/15 bg-red-950/70 p-3">
                             <p className="text-sm font-black text-yellow-100">{item.title || '系統通知'}</p>
-                            <p className="mt-1 text-xs leading-5 text-yellow-100/64">{item.message || '已收到新的即時事件'}</p>
+                            <p className="mt-1 text-xs leading-5 text-yellow-100/64">{item.message || '你有一則新通知'}</p>
                           </div>
                         ))
                       )}
@@ -262,17 +281,27 @@ export default function AppShell({ children }) {
                   </div>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="red-gold-button rounded px-4 py-2 text-sm font-bold transition"
-              >
-                登出
-              </button>
+              {isAuthenticated ? (
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="red-gold-button rounded px-4 py-2 text-sm font-bold transition"
+                >
+                  登出
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleLogin}
+                  className="red-gold-button rounded px-4 py-2 text-sm font-bold transition"
+                >
+                  登入
+                </button>
+              )}
             </div>
           </div>
 
-          <nav className="flex gap-2 overflow-x-auto pb-1">
+          <nav className="flex flex-wrap gap-2 pb-1">
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
@@ -294,7 +323,7 @@ export default function AppShell({ children }) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+      <main className="mx-auto max-w-7xl px-4 pb-36 pt-6 sm:px-6 md:pb-6 lg:px-8">{children}</main>
 
       {checkInModalOpen && (
         <section

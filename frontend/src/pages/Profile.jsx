@@ -3,8 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import AppShell from '../components/AppShell'
 import MetricCard from '../components/MetricCard'
 import { fetchProfile, updateProfile } from '../store/slices/authSlice'
-import { mockApi } from '../services/mockApi'
-import { dailyCheckIn, setBalance } from '../store/slices/walletSlice'
+import { dailyCheckIn } from '../store/slices/walletSlice'
 import {
   getSocialBindings,
   setSocialBinding,
@@ -39,7 +38,7 @@ const avatarPresets = [
 function readAssetAsDataUrl(src) {
   return fetch(src)
     .then((response) => {
-      if (!response.ok) throw new Error('Avatar asset failed to load')
+      if (!response.ok) throw new Error('頭像圖片載入失敗')
       return response.blob()
     })
     .then(
@@ -106,9 +105,6 @@ export default function Profile() {
   const authError = useSelector((state) => state.auth.error)
   const wallet = useSelector((state) => state.wallet)
   const [form, setForm] = useState({ nickname: '', avatarUrl: '' })
-  const [friends, setFriends] = useState([])
-  const [friendName, setFriendName] = useState('')
-  const [giftAmount, setGiftAmount] = useState(500)
   const [notice, setNotice] = useState('')
   const [avatarPreviewError, setAvatarPreviewError] = useState(false)
   const [socialBindings, setSocialBindings] = useState({})
@@ -138,7 +134,6 @@ export default function Profile() {
 
   useEffect(() => {
     dispatch(fetchProfile())
-    mockApi.getFriends().then(setFriends)
   }, [dispatch])
 
   useEffect(() => {
@@ -232,47 +227,14 @@ export default function Profile() {
     }
   }
 
-  const handleAddFriend = async (event) => {
-    event.preventDefault()
-    try {
-      const nextFriends = await mockApi.addFriend(friendName)
-      setFriends(nextFriends)
-      setFriendName('')
-      setNotice('好友已加入')
-    } catch (error) {
-      setNotice(error.message)
-    }
-  }
-
-  const handleRemoveFriend = async (friendId) => {
-    try {
-      const nextFriends = await mockApi.removeFriend(friendId)
-      setFriends(nextFriends)
-      setNotice('好友已刪除')
-    } catch (error) {
-      setNotice(error.message)
-    }
-  }
-
-  const handleGift = async (friendId) => {
-    try {
-      const result = await mockApi.giftCoins({ friendId, amount: Number(giftAmount) })
-      dispatch(setBalance(result.wallet))
-      setFriends(result.friends)
-      setNotice(`已贈送 ${Number(giftAmount).toLocaleString()} 星幣`)
-    } catch (error) {
-      setNotice(error.message)
-    }
-  }
-
   return (
     <AppShell>
       <section className="grid gap-4 lg:grid-cols-[0.75fr_0.25fr]">
         <form onSubmit={handleSave} className="luxury-panel rounded p-6">
           <p className="gold-muted text-xs font-black uppercase tracking-[0.3em]">Profile</p>
           <h2 className="brand-title mt-3 text-3xl font-black">會員中心</h2>
-          <div className="mt-6 grid gap-5 lg:grid-cols-[180px_1fr]">
-            <div className="grid content-start gap-3">
+          <div className="mt-6 grid gap-5 md:grid-cols-[160px_1fr] lg:grid-cols-[180px_1fr]">
+            <div className="grid w-full max-w-[180px] content-start gap-3 justify-self-center md:max-w-none md:justify-self-auto">
               <div className="aspect-square overflow-hidden rounded border border-yellow-200/20 bg-red-950/70">
                 {form.avatarUrl && !avatarPreviewError ? (
                   <img
@@ -357,12 +319,12 @@ export default function Profile() {
 
         <aside className="grid gap-4 content-start">
           <MetricCard
-            label="可用籌碼"
+            label="可用星幣"
             value={wallet.balance.toLocaleString()}
             tone="light"
           />
           <MetricCard
-            label="凍結籌碼"
+            label="凍結星幣"
             value={wallet.frozenAmount.toLocaleString()}
             caption="下注中保留"
           />
@@ -496,7 +458,7 @@ export default function Profile() {
             <h2 className="brand-title mt-1 text-2xl font-black">第三方帳戶綁定</h2>
           </div>
           <p className="max-w-xl text-sm font-bold leading-6 text-yellow-100/62">
-            綁定後可在登入頁選擇 LINE、Google 或 Apple 入口；目前以前端偏好設定保存綁定狀態。
+            綁定後即可使用 LINE、Google 或 Apple 作為登入方式；目前綁定狀態會先保存在這台裝置。
           </p>
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-3">
@@ -532,71 +494,6 @@ export default function Profile() {
         </div>
       </section>
 
-      <section className="luxury-panel-soft mt-6 rounded p-6">
-        <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
-          <div>
-            <p className="gold-muted text-xs font-black uppercase tracking-[0.3em]">Friends</p>
-            <h2 className="brand-title mt-1 text-2xl font-black">好友列表</h2>
-          </div>
-          <form onSubmit={handleAddFriend} className="flex gap-2">
-            <input
-              className="min-h-11 rounded border border-yellow-200/15 bg-red-950/70 px-4 text-sm font-bold text-white outline-none focus:border-yellow-200"
-              placeholder="輸入好友帳號"
-              value={friendName}
-              onChange={(event) => setFriendName(event.target.value)}
-              required
-            />
-            <button
-              type="submit"
-              className="gold-button rounded px-4 py-2 text-sm font-black transition"
-            >
-              加好友
-            </button>
-          </form>
-        </div>
-
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
-          {friends.map((friend) => (
-            <div key={friend.id} className="rounded border border-yellow-200/15 bg-red-950/70 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-lg font-black text-yellow-100">{friend.nickname}</p>
-                  <p className="gold-muted text-sm font-bold">{friend.username}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleRemoveFriend(friend.id)}
-                  className="red-gold-button rounded px-3 py-2 text-sm font-bold"
-                >
-                  刪除
-                </button>
-              </div>
-              <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
-                <input
-                  type="number"
-                  min="100"
-                  step="100"
-                  className="min-h-11 rounded border border-yellow-200/15 bg-red-950/80 px-3 text-sm font-bold text-white outline-none focus:border-yellow-200"
-                  value={giftAmount}
-                  onChange={(event) => setGiftAmount(event.target.value)}
-                />
-                <button
-                  type="button"
-                  onClick={() => handleGift(friend.id)}
-                  className="gold-button rounded px-4 py-2 text-sm font-black transition"
-                >
-                  贈送
-                </button>
-              </div>
-            </div>
-          ))}
-          {friends.length === 0 && (
-            <p className="rounded border border-yellow-200/15 bg-red-950/70 p-5 text-sm font-bold text-yellow-100/56">
-              目前尚無好友
-            </p>
-          )}
-        </div>
-      </section>
     </AppShell>
   )
 }

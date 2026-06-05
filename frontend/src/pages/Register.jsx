@@ -52,7 +52,7 @@ export default function Register() {
       <CoinRain />
       <div className="w-full max-w-xl rounded border border-white/10 bg-zinc-900 p-6">
         <p className="text-xs font-black uppercase tracking-[0.3em] text-zinc-500">Register</p>
-        <h1 className="mt-3 text-3xl font-black">建立會員基底</h1>
+        <h1 className="mt-3 text-3xl font-black">建立會員帳號</h1>
         <form onSubmit={handleSubmit} className="mt-6 grid gap-4">
           <label className="grid gap-2 text-sm font-bold text-zinc-300">
             帳號
