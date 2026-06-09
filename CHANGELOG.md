@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [docs] — 2026-06-09 — Sync game-service T-030~T-037 completion across docs
+
+### Changed
+- `AGENTS.md`（註10「服務完成度」）：game-service 由「已完成 T-030~T-033 老虎機核心、百家樂 T-034~T-036 尚未實作」更正為「已完成 T-030~T-037 全部」（老虎機核心 / Redis Session 兩階段 commit-ahead / 百家樂邏輯+API / RNG 公平性驗證 API / 遊戲 RTP 統計）。
+- `AUDIT_REPORT.md` 附錄 A.4：T-033/T-034/T-035/T-036/T-037 狀態由 ❌ 改為 ✅，盤點依據改填實際實作檔與提交（`7f5d513`、`6d9aae5`、`0910d29`、`710b1a8`、`d860154`）；表格下方說明改為「game-service 已全數完成」。
+- `AUDIT_REPORT.md` 附錄 A.12：進度統計 ✅ 24→29、❌ 42→37（移動 5 項，總計仍 78），占比重算；模組概覽將 Game Service 由「尚未起步」移至「完成度高」，結論調整為僅 admin / notification 仍空白。
+
+### Why
+- 文件落後於已合併的程式碼：game-service（組員B 範圍 T-030~T-037）八項任務已全部實作並合併至 `develop`，但 AGENTS.md / AUDIT_REPORT 仍描述百家樂、Redis Session、公平性驗證、RTP 統計為未實作，導致進度誤判（game-service 被誤認為半成品）。
+
+### Verified
+- 以 game-service 工作樹實際檔案佐證：`baccarat/`、`session/`、`controller/{Baccarat,Verification,Rtp}Controller.java`、`service/{Baccarat,Verification,RtpStats}Service.java`、`entity/GameRtpStat.java` 皆存在且為完整實作（非空殼），並各帶測試類。
+- `git log -- <path>` 確認 T-033~T-037 的功能提交（`7f5d513`/`6d9aae5`/`0910d29`/`710b1a8`/`d860154`）已在 develop 歷史中。
+- 純文件變更，不影響任何程式碼行為。
+
 ## [docs] — 2026-06-05 — Sync task progress status across docs
 
 ### Changed
