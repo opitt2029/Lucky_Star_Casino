@@ -389,14 +389,13 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | T-030 | P0 | Provably Fair RNG 引擎 | ✅ | `rng.ProvablyFairRng`/`RandomStream`：commit-reveal + `SHA-256(serverSeed:clientSeed:nonce:block)`，純邏輯單元測試通過 |
 | T-031 | P0 | 老虎機遊戲邏輯 | ✅ | `slot.SlotMachine`/`SlotSymbol`：3x3 中線三連，符號決定倍率，確定性可驗證；RTP≈17.7% |
 | T-032 | P0 | 老虎機遊戲 API | ✅ | `POST /api/v1/game/slot/spin`：扣款(debit)→RNG→派彩(credit)→寫 `game_rounds`→發 `game.result`；`WalletClient` 走內部 API + 冪等鍵 |
-| T-033 | P0 | Redis 遊戲 Session 管理 | ❌ | 尚未實作（T-032 採每局即時揭露 seed；開局前承諾的完整流程待此任務） |
-| T-034 | P1 | 百家樂遊戲邏輯 | ❌ | 同上 |
-| T-035 | P1 | 百家樂遊戲 API | ❌ | 同上 |
-| T-036 | P1 | RNG 公平性驗證 API | ❌ | 同上 |
-| T-037 | P2 | 遊戲 RTP 統計 | ❌ | 同上 |
+| T-033 | P0 | Redis 遊戲 Session 管理 | ✅ | `session/GameSessionService`（兩階段 commit-ahead）、`GameSession`/`GameSessionState`，含單元測試（commit 7f5d513） |
+| T-034 | P1 | 百家樂遊戲邏輯 | ✅ | `baccarat/BaccaratGameService`/`Card`/`BaccaratOutcome`/`BaccaratResult`/`BaccaratSettlement`，含單元測試（commit 6d9aae5） |
+| T-035 | P1 | 百家樂遊戲 API | ✅ | `BaccaratController` + `service/BaccaratService`：`/bet`、`/result`，含 controller/service 測試（commit 0910d29） |
+| T-036 | P1 | RNG 公平性驗證 API | ✅ | `VerificationController` + `VerificationService`，含測試（commit 710b1a8） |
+| T-037 | P2 | 遊戲 RTP 統計 | ✅ | `RtpController` + `RtpStatsService` + `entity/GameRtpStat`（排程 + API），含測試（commit d860154） |
 
-> 🟡 **game-service 已啟動實作**：RNG 引擎（T-030）、老虎機邏輯（T-031）、下注 API（T-032）已完成；
-> 百家樂（T-034/035）、Redis Session（T-033）、公平性驗證 API（T-036）、RTP 統計（T-037）尚未實作。
+> ✅ **game-service 已全數完成（T-030~T-037）**：RNG 引擎、老虎機邏輯與下注 API、Redis Session 兩階段 commit-ahead、百家樂邏輯與 API、RNG 公平性驗證 API、遊戲 RTP 統計皆已實作並合併至 develop，各帶單元/契約測試。
 
 ### A.5 Rank Service（組員D）
 
@@ -497,16 +496,18 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 | 狀態 | 任務數 | 占比 |
 |---|:--:|:--:|
-| ✅ 已完成 | 24 | ~31% |
+| ✅ 已完成 | 29 | ~37% |
 | ⚠️ 部分完成 | 11 | ~14% |
-| ❌ 未開始 | 42 | ~54% |
+| ❌ 未開始 | 37 | ~47% |
 | ❓ 待確認 | 1 | ~1% |
 | **總計** | **78** | 100% |
 
+> 註：本次（2026-06-09）將 T-033~T-037 由 ❌ 改為 ✅（game-service 全數完成），故 ✅ 由 24→29、❌ 由 42→37。
+
 **按模組完成度概覽：**
 
-- ✅ **完成度高**：全域基礎建設、Member Service、Gateway（地基與大門已蓋好）
-- ⚠️ **進行中**：Wallet Service（開戶/查餘額/扣款 OK，但入帳/流水/贈送/補助未完）、前端（UI 多已備但真實串接待補）
-- ❌ **尚未起步**：Game Service、Rank Service、Admin Service、Notification Service、鑽石系統、測試/壓測/收尾文件
+- ✅ **完成度高**：全域基礎建設、Member Service、Gateway、**Game Service（T-030~T-037 全完成）**、Rank Service（排行榜核心 T-040~T-042）
+- ⚠️ **進行中**：Wallet Service（開戶/查餘額/扣款/入帳/流水/贈送 OK，破產補助/DLT 後台未完）、前端（UI 多已備但真實串接待補）
+- ❌ **尚未起步**：Admin Service、Notification Service、鑽石系統、部分測試/壓測/收尾文件
 
-> **結論**：目前完成的部分集中在「認證與帳號」這條主線；**賭場真正的營利核心（遊戲對局、派彩入帳、排行榜、後台、即時推播）幾乎都還沒開始**。後端有 4 個服務（game/rank/admin/notification）等同空白。
+> **結論**：認證與帳號主線、遊戲對局（老虎機/百家樂）與排行榜核心皆已完成；**仍空白的營利/營運拼圖為後台（admin）、即時推播（notification）、鑽石點數卡系統**。後端剩 admin / notification 兩個服務等同空白。
