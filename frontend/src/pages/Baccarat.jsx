@@ -4,16 +4,8 @@ import AppShell from '../components/AppShell'
 import GameRuleCard from '../components/GameRuleCard'
 import MetricCard from '../components/MetricCard'
 import { setBalance } from '../store/slices/walletSlice'
-import {
-  BET_LABELS,
-  BET_ODDS,
-  BET_TYPES,
-  calculateBaccaratScore,
-  calculatePayout,
-  createDeck,
-  determineWinner,
-  drawCard,
-} from '../utils/baccaratGame'
+import { betBaccarat } from '../store/slices/gameSlice'
+import { BET_LABELS, BET_ODDS, BET_TYPES } from '../utils/baccaratGame'
 
 const initialCards = []
 const suitSymbols = {
@@ -23,11 +15,28 @@ const suitSymbols = {
   club: '♣',
 }
 const redSuits = new Set(['heart', 'diamond'])
+
+// 後端回傳卡牌為顯示字串（如 "A♠"、"10♦"），前端 CardView 需要 { rank, suit } 物件。
+// 此函式同時相容：後端帶花色字串、mock 的裸 rank 字串、以及既有 { rank, suit } 物件。
+const SUIT_BY_SYMBOL = { '♠': 'spade', '♥': 'heart', '♦': 'diamond', '♣': 'club' }
+function parseCard(card) {
+  if (!card) return null
+  if (typeof card === 'object') return card
+  const str = String(card)
+  const suit = SUIT_BY_SYMBOL[str.slice(-1)]
+  return suit ? { rank: str.slice(0, -1), suit } : { rank: str, suit: 'spade' }
+}
+
+// 後端 winner 為 player/banker/tie（gameApi 已轉小寫），頁面用 Player/Banker/Tie。
+function capitalizeWinner(winner) {
+  if (!winner) return ''
+  return winner.charAt(0).toUpperCase() + winner.slice(1).toLowerCase()
+}
 const chipDenominations = [100, 200, 500, 1000, 3000, 5000, 7000, 10000]
 const baccaratRules = [
   '先選擇閒家、莊家或和局，再輸入下注金額或用面額快速選擇。',
   'A 計 1 點，2 到 9 依牌面計點，10、J、Q、K 計 0 點；兩張牌總和只取個位數。',
-  '目前前端版由閒家與莊家各發兩張牌，點數高者勝出，兩邊同分為和局。',
+  '由伺服器為閒家與莊家各發兩張牌，點數高者勝出，兩邊同分為和局。',
   '押中會依賠率計算本局獲利，未押中則損失下注金額，結果會即時反映在可用星幣。',
 ]
 const baccaratPayouts = [
@@ -150,7 +159,7 @@ export default function Baccarat() {
           : 'baccarat-result-panel--win'
         : 'baccarat-result-panel--loss'
 
-  const handleDeal = () => {
+  const handleDeal = async () => {
     if (!selectedBet) {
       setResultMessage('請先選擇下注項目。')
       setRoundProfit(null)
@@ -172,22 +181,21 @@ export default function Baccarat() {
     setPlayerScore(null)
     setBankerScore(null)
 
-    window.setTimeout(() => {
-      const deck = createDeck()
-      const nextPlayerCards = [drawCard(deck), drawCard(deck)]
-      const nextBankerCards = [drawCard(deck), drawCard(deck)]
-      const nextPlayerScore = calculateBaccaratScore(nextPlayerCards)
-      const nextBankerScore = calculateBaccaratScore(nextBankerCards)
-      const nextWinner = determineWinner(nextPlayerScore, nextBankerScore)
-      const profit = calculatePayout(selectedBet, nextWinner, numericBetAmount)
+    try {
+      // 呼叫 game-service（T-034/035）：閒/莊/和擇一押注 → 後端扣款、發牌、派彩。
+      const result = await dispatch(
+        betBaccarat({ area: selectedBet.toLowerCase(), amount: numericBetAmount })
+      ).unwrap()
+
+      const nextWinner = capitalizeWinner(result.winner)
+      // 後端 payout 含本金；本局淨損益 = 派彩 − 下注額（輸時 payout=0 → −下注額；和局退本金 → 0）。
+      const profit = (result.payout ?? 0) - numericBetAmount
       const hit = profit >= 0
 
-      // TODO: 未來改為呼叫 POST /api/game/baccarat/play，request body: { userId, betType, betAmount }。
-      // TODO: 後端 response 預計回傳 playerCards、bankerCards、playerScore、bankerScore、winner、payout、balance，再用 wallet-service 完成實際扣款與派彩。
-      setPlayerCards(nextPlayerCards)
-      setBankerCards(nextBankerCards)
-      setPlayerScore(nextPlayerScore)
-      setBankerScore(nextBankerScore)
+      setPlayerCards((result.playerCards || []).map(parseCard))
+      setBankerCards((result.bankerCards || []).map(parseCard))
+      setPlayerScore(result.playerPoints ?? null)
+      setBankerScore(result.bankerPoints ?? null)
       setWinner(nextWinner)
       setRoundProfit(profit)
       setRoundBet({ selectedBet, amount: numericBetAmount })
@@ -196,13 +204,15 @@ export default function Baccarat() {
           ? `命中 ${BET_LABELS[nextWinner]}，本局獲利 ${formatCoins(profit)} 星幣。`
           : `${BET_LABELS[nextWinner]} 勝出，未命中下注，損失 ${formatCoins(numericBetAmount)} 星幣。`
       )
-      dispatch(
-        setBalance({
-          balance: Math.max(balance + profit, 0),
-        })
-      )
+      if (result.wallet) {
+        dispatch(setBalance(result.wallet))
+      }
+    } catch (error) {
+      setResultMessage(typeof error === 'string' ? error : '本局結算失敗，請稍後再試。')
+      setRoundProfit(null)
+    } finally {
       setIsDealing(false)
-    }, 720)
+    }
   }
 
   const handleSelectAmount = (amount) => {
@@ -393,11 +403,11 @@ export default function Baccarat() {
 
             <div className="baccarat-api-panel">
               <p>Round Note</p>
-              <h3>目前以本機牌局結算</h3>
+              <h3>由 game-service 伺服器結算</h3>
               <div>
-                <span>發牌後會立即顯示勝方、點數與本局獲利。</span>
-                <span>星幣餘額會依目前畫面的結算結果更新。</span>
-                <span>正式伺服器結算開放後，畫面會保留同樣操作方式。</span>
+                <span>發牌與派彩由後端 Provably Fair 引擎運算（T-034/035）。</span>
+                <span>星幣餘額為 wallet-service 實際扣款/派彩後的結果。</span>
+                <span>每局可用 roundId 透過驗證 API 核對結果是否遭竄改。</span>
               </div>
             </div>
           </aside>
