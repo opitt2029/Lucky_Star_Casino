@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-09 — 前端老虎機/百家樂改打真實 game-service
+
+### Added
+- `frontend/src/services/gameApi.js`：新增遊戲 API 封裝層（比照 `walletApi`/`memberApi` 的 `useMockApi` 開關）。`spinSlot` 打 `POST /api/v1/game/slot/spin`；`baccaratBet` 將前端單區 `{area, amount}` 轉接為後端兩階段契約（`POST /baccarat/bet` → `POST /baccarat/{roundId}/result`）並合併回前端期望形狀。
+
+### Changed
+- `frontend/src/store/slices/gameSlice.js`：`spinSlot`/`betBaccarat` thunk 由**無條件呼叫 `mockApi`** 改為呼叫 `gameApi`，使其受 `VITE_USE_MOCK_API` 開關控制（先前即使設 `false` 仍永遠走假資料）。
+
+### Why
+- game-service（T-030~T-037）後端已實作並可運作，但前端遊戲 slice 寫死 `mockApi`，導致老虎機/百家樂永遠不會打後端、餘額不會真的變動。此修正讓前端在 `VITE_USE_MOCK_API=false` 時真正串接 game-service（T-083 老虎機串接缺口）。
+
+### Verified
+- 端到端（docker compose 全套 + member/wallet/game/gateway + 前端 dev server，`VITE_USE_MOCK_API=false`）：模擬前端 `spinSlot(bet=100)` → 餘額由 1000 扣為 900，後端真實扣款；Vite HMR 重載 `gameSlice.js` 無編譯錯誤。
+- 注意：百家樂頁 `Baccarat.jsx` 仍有自身本機卡牌邏輯（含 line 186 TODO）、尚未改用 `betBaccarat` thunk，故其 UI 串接待後續另作（T-087）；本次僅打通 service 層與老虎機。
+
 ## [docs] — 2026-06-05 — Sync task progress status across docs
 
 ### Changed
