@@ -5,6 +5,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [chore] — 2026-06-10 — 本機部署：一鍵啟動腳本與前端 mock 開關修正
+
+### Added
+- `start-backend.ps1`（專案根目錄）：一鍵啟動後端。載入根 `.env` 後，為 member/wallet/game/gateway 各開一個終端機視窗依序啟動；`-WithInfra` 連基礎設施一起起、`-IncludeRank`/`-IncludeAdmin` 選配。消除三個常見坑：忘了把 `.env` 載入 shell、漏起 game-service、手開一堆終端機。
+
+### Fixed
+- `frontend/.env.development`：補上 `VITE_USE_MOCK_API=false`。此開關原本只在被 gitignore 的 `frontend/.env.local`，導致他人 clone 或換機器時前端退回 mock 假資料、不會真正串接後端。移到進版控的 `.env.development` 後，所有人 dev 預設都打真實後端（個人仍可在 `.env.local` 覆蓋為 `true`）。
+
+### Changed
+- `DEPLOY.md`：更新過時內容——§1 後端表將 game/rank 由「骨架」改為實際依賴；§4 啟動範例與順序補上 game-service、加上 `start-backend.ps1` 懶人包；§5 補前端 `VITE_USE_MOCK_API` 說明；§8「目前已知狀況」更新為 game/rank 已實作、admin/notification 未實作（日期 2026-05-29 → 2026-06-10）。
+
+### Why
+- 目標是讓任何人 clone 後能在本機把整套正確跑起來、且前端真正串接後端。`.env.development` 缺 mock 開關是「別人用就退回假資料」的隱性地雷；`DEPLOY.md` 漏了已實作的 game-service 會讓人誤判遊戲串接壞掉；一鍵腳本降低多服務啟動的人為失誤。
+
+### Verified
+- `start-backend.ps1`：以 PowerShell AST `ParseFile` 驗證語法無誤；`.env` 解析邏輯乾跑（只解析、不啟動服務）正確讀到 41 個變數，含 `JWT_SECRET` / `INTERNAL_SECRET` / `CORS_ALLOWED_ORIGINS` / 各 `*_SERVICE_URL`。
+- 未改動 `src`，前端 `npm run lint` 不受影響（前次已通過）。
+
+## [fix] — 2026-06-10 — 修正百家樂前後端串接三處問題（餘額同步 / 下注上限 / 錯誤訊息）
+
+### Fixed
+- `frontend/src/pages/Baccarat.jsx`：**百家樂輸局餘額不同步**。後端 `BaccaratService.settle` 在 `totalPayout==0`（純輸）時回應不含 `wallet`，而下注已於 `/bet` 階段扣款、`BaccaratBetResponse` 亦不帶 `wallet`；原前端 `if (result.wallet)` 會跳過更新，導致玩家輸錢後當前頁餘額顯示不動（須切頁才被 `AppShell` 的 `fetchWallet` 修正）。改為輸局（無 `wallet`）時 `dispatch(fetchWallet())` 主動向 wallet-service 取最新餘額。
+
+### Changed
+- `frontend/src/pages/Baccarat.jsx`：**下注金額對齊後端契約**。面額快選移除 7,000 / 10,000（後端單區 `@Max(5000)`、`BaccaratService` 總額限 `100~5000`）；金額輸入框改 `min=100`、`max=5000`；`canDeal` 與送出前驗證改檢查 `100 ≤ amount ≤ 5000`（越界改顯示明確提示，而非送出後被 400 退回）；規則文案補上下注範圍。
+- `frontend/src/store/slices/gameSlice.js`：`spinSlot` / `betBaccarat` thunk 的錯誤改用 `extractError(error)` 取後端 `response.data.message`（先前用 axios `error.message`，餘額不足/下注超限/對局逾時會顯示「Request failed with status code 422」之類英文）。與 `walletSlice` / `diamondApi` 既有作法一致。
+
+### Why
+- 老虎機在單一回應總是回傳最新 `wallet`，百家樂卻採兩階段、輸局回應不帶 `wallet`，造成餘額顯示與實際扣款不一致；前端下注面額/輸入上限與遊戲錯誤訊息亦未對齊後端契約，使用者會踩到無說明的失敗。三者皆為前端串接缺口，一併修正（不動後端）。
+
+### Verified
+- `npm --prefix frontend run lint`：通過（`eslint src` 無錯誤）。
+- 端到端（待起完整後端拓撲實測）：押一區開對家（輸）→ 餘額即時下降；面額已無 7,000/10,000、輸入超過 5,000 由前端攔下；故意餘額不足 → 顯示後端中文「星幣餘額不足」。老虎機 regression：spin 餘額正常。
+
 ## [feat] — 2026-06-09 — 前端老虎機/百家樂改打真實 game-service（T-083/T-087）
 
 ### Added
