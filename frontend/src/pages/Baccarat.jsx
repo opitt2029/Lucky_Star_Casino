@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import AppShell from '../components/AppShell'
 import GameRuleCard from '../components/GameRuleCard'
 import MetricCard from '../components/MetricCard'
-import { setBalance } from '../store/slices/walletSlice'
+import { fetchWallet, setBalance } from '../store/slices/walletSlice'
 import { betBaccarat } from '../store/slices/gameSlice'
 import { BET_LABELS, BET_ODDS, BET_TYPES } from '../utils/baccaratGame'
 
@@ -32,9 +32,12 @@ function capitalizeWinner(winner) {
   if (!winner) return ''
   return winner.charAt(0).toUpperCase() + winner.slice(1).toLowerCase()
 }
-const chipDenominations = [100, 200, 500, 1000, 3000, 5000, 7000, 10000]
+// 後端百家樂單區 @Max(5000)、總額限 100~5000；面額與下注上下限需對齊，避免送出即被 400 退回。
+const MIN_BET = 100
+const MAX_BET = 5000
+const chipDenominations = [100, 200, 500, 1000, 2000, 3000, 5000]
 const baccaratRules = [
-  '先選擇閒家、莊家或和局，再輸入下注金額或用面額快速選擇。',
+  '先選擇閒家、莊家或和局，再輸入下注金額（每區 100 ~ 5,000 星幣）或用面額快速選擇。',
   'A 計 1 點，2 到 9 依牌面計點，10、J、Q、K 計 0 點；兩張牌總和只取個位數。',
   '由伺服器為閒家與莊家各發兩張牌，點數高者勝出，兩邊同分為和局。',
   '押中會依賠率計算本局獲利，未押中則損失下注金額，結果會即時反映在可用星幣。',
@@ -137,7 +140,11 @@ export default function Baccarat() {
 
   const numericBetAmount = useMemo(() => Number(betAmount), [betAmount])
   const canDeal =
-    selectedBet && Number.isFinite(numericBetAmount) && numericBetAmount > 0 && !isDealing
+    selectedBet &&
+    Number.isFinite(numericBetAmount) &&
+    numericBetAmount >= MIN_BET &&
+    numericBetAmount <= MAX_BET &&
+    !isDealing
   const winnerLabel = winner ? BET_LABELS[winner] : '-'
   const selectedBetLabel = selectedBet ? BET_LABELS[selectedBet] : '尚未選擇'
   const sidebarProfitValue =
@@ -166,8 +173,8 @@ export default function Baccarat() {
       return
     }
 
-    if (!Number.isFinite(numericBetAmount) || numericBetAmount <= 0) {
-      setResultMessage('下注金額必須大於 0。')
+    if (!Number.isFinite(numericBetAmount) || numericBetAmount < MIN_BET || numericBetAmount > MAX_BET) {
+      setResultMessage(`下注金額需介於 ${MIN_BET.toLocaleString()} ~ ${MAX_BET.toLocaleString()} 星幣。`)
       setRoundProfit(null)
       return
     }
@@ -206,6 +213,9 @@ export default function Baccarat() {
       )
       if (result.wallet) {
         dispatch(setBalance(result.wallet))
+      } else {
+        // 輸局時後端結算回應不含 wallet（下注已於 /bet 階段扣款），主動向 wallet-service 取最新餘額
+        dispatch(fetchWallet())
       }
     } catch (error) {
       setResultMessage(typeof error === 'string' ? error : '本局結算失敗，請稍後再試。')
@@ -288,7 +298,8 @@ export default function Baccarat() {
                       <div className="baccarat-amount-picker">
                         <input
                           type="number"
-                          min="1"
+                          min={MIN_BET}
+                          max={MAX_BET}
                           step="1"
                           value={betAmount}
                           onChange={(event) => setBetAmount(event.target.value)}

@@ -1,5 +1,6 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import { gameApi } from '../../services/gameApi'
+import { extractError } from '../../services/memberApi'
 
 const initialState = {
   currentGame: null,
@@ -26,7 +27,7 @@ export const spinSlot = createAsyncThunk('game/spinSlot', async (payload, { reje
   try {
     return await gameApi.spinSlot(payload)
   } catch (error) {
-    return rejectWithValue(error.message)
+    return rejectWithValue(extractError(error))
   }
 })
 
@@ -34,7 +35,7 @@ export const betBaccarat = createAsyncThunk('game/betBaccarat', async (payload, 
   try {
     return await gameApi.baccaratBet(payload)
   } catch (error) {
-    return rejectWithValue(error.message)
+    return rejectWithValue(extractError(error))
   }
 })
 
