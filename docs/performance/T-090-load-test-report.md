@@ -92,21 +92,13 @@ The runner produces:
 
 ## Database Reconciliation
 
-After the run, execute these PostgreSQL checks in addition to JMeter assertions:
+After the run, execute the T-091 PostgreSQL reconciliation in addition to JMeter assertions:
 
-```sql
-SELECT COUNT(*) AS overdrawn_wallets
-FROM wallets
-WHERE balance < 0 OR frozen_amount < 0 OR frozen_amount > balance;
-
-SELECT idempotency_key, COUNT(*) AS duplicate_count
-FROM wallet_transactions
-WHERE idempotency_key LIKE 't090-slot-%'
-GROUP BY idempotency_key
-HAVING COUNT(*) > 1;
+```powershell
+.\tests\performance\run-accounting-reconciliation.ps1
 ```
 
-Both queries must return zero violations. If the Game Service transforms the client idempotency key, the reconciliation query must be adjusted to the final T-032 key format.
+The runner executes `tests/performance/accounting-reconciliation.sql` and fails the run if any check reports violations. It verifies that `wallets.balance` matches the signed `wallet_transactions` ledger, no wallet is negative, all `frozen_amount` values are zero, transaction chains are contiguous, and non-null idempotency keys remain unique.
 
 ## Current Acceptance Result
 

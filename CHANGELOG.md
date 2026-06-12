@@ -5,6 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [test] — 2026-06-12 — Add T-091 accounting reconciliation checks
+
+### Added
+- `tests/performance/accounting-reconciliation.sql`: PostgreSQL reconciliation query for wallet balance totals, latest ledger balance, transaction deltas, transaction chains, negative balances, frozen balances, orphan transactions, and duplicate non-null idempotency keys.
+- `tests/performance/run-accounting-reconciliation.ps1`: `psql --csv` runner that writes CSV/Markdown reports and exits non-zero when any reconciliation check reports violations.
+- `tests/infra/accounting-reconciliation.test.js`: static contract tests for the SQL and runner.
+
+### Changed
+- `docs/performance/T-090-load-test-report.md`: points the post-load-test database reconciliation step to the T-091 runner.
+- `AUDIT_REPORT.md`: marks T-091 as complete with the delivered SQL and automation script.
+- `docs/幸運星幣城_工作分配表.xlsx`: marks T-091 as complete in the overview, responsibility, sprint, and visual Gantt sheets.
+
+### Why
+- T-091 needs a repeatable post-pressure-test gate that verifies the ledger did not overdraw, that frozen balances are cleared, and that `wallets.balance` still agrees with the transaction history.
+
+### Verified
+- PowerShell parser check for `tests/performance/run-accounting-reconciliation.ps1`: passed.
+- Synthetic `psql --csv` verification: runner returned PASS with zero violations and failed non-zero when one check reported a violation; both runs wrote CSV and Markdown reports.
+- `node --test tests/infra/*.test.js`: 121 tests passed, 0 failures.
+
 ## [docs] — 2026-06-12 — 新增專題提案書（可直接轉 PDF：邊界 1cm、頁尾頁碼、白底）
 
 ### Added
