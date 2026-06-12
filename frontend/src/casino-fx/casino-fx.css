@@ -1,0 +1,302 @@
+/* casino-fx 共用特效樣式：金幣噴發 / 墜落雨 / 毛筆字大字報 / 吉兆氛圍 / 幸運值條 / 全服喜報 */
+
+.fx-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* ---- 金幣噴發 ---- */
+
+.fx-gold-burst__coin {
+  position: absolute;
+  left: var(--burst-x);
+  top: var(--burst-y);
+  width: var(--burst-size);
+  height: var(--burst-size);
+  margin-left: calc(var(--burst-size) / -2);
+  margin-top: calc(var(--burst-size) / -2);
+  animation: fx-burst var(--burst-duration) cubic-bezier(0.16, 0.6, 0.45, 1) var(--burst-delay) both;
+  filter: drop-shadow(0 0 6px rgba(248, 213, 106, 0.65));
+}
+
+@keyframes fx-burst {
+  0% {
+    transform: translate(0, 0) scale(0.4) rotate(0deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  55% {
+    transform: translate(var(--burst-dx), var(--burst-dy)) scale(1) rotate(calc(var(--burst-spin) * 240deg));
+    opacity: 1;
+  }
+  100% {
+    transform: translate(calc(var(--burst-dx) * 1.25), calc(var(--burst-dy) + 220px)) scale(0.9)
+      rotate(calc(var(--burst-spin) * 480deg));
+    opacity: 0;
+  }
+}
+
+/* ---- 墜落雨（金幣雨 / 紅包雨） ---- */
+
+.fx-rain__drop {
+  position: absolute;
+  top: -8vh;
+  left: var(--rain-left);
+  width: var(--rain-size);
+  height: var(--rain-size);
+  animation: fx-rain-fall var(--rain-duration) cubic-bezier(0.3, 0.1, 0.85, 1) var(--rain-delay) both;
+  filter: drop-shadow(0 0 8px rgba(248, 213, 106, 0.5));
+}
+
+@keyframes fx-rain-fall {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--rain-drift), 116vh) rotate(calc(var(--rain-spin) * 520deg));
+    opacity: 0.95;
+  }
+}
+
+/* ---- 毛筆字大字報 ---- */
+
+.fx-brush-banner {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.fx-brush-banner__text {
+  position: relative;
+  font-family: 'DFKai-SB', 'KaiTi', 'BiauKai', 'Noto Serif TC', serif;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: #ffeaa0;
+  background: linear-gradient(178deg, #fff6c8 14%, #f8d56a 42%, #c98908 78%, #ffeaa0 96%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 2px rgba(122, 6, 14, 0.85);
+  text-shadow: 0 0 38px rgba(248, 213, 106, 0.55);
+  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.55));
+  animation: fx-banner-pop 0.62s cubic-bezier(0.18, 1.4, 0.4, 1) both;
+}
+
+.fx-brush-banner--level-1 .fx-brush-banner__text {
+  font-size: clamp(56px, 9vw, 110px);
+}
+
+.fx-brush-banner--level-2 .fx-brush-banner__text {
+  font-size: clamp(76px, 13vw, 170px);
+}
+
+.fx-brush-banner--level-3 .fx-brush-banner__text {
+  font-size: clamp(96px, 19vw, 250px);
+  animation: fx-banner-pop 0.62s cubic-bezier(0.18, 1.4, 0.4, 1) both,
+    fx-banner-quake 0.5s ease-in-out 0.62s 3;
+}
+
+.fx-brush-banner__sheen {
+  position: absolute;
+  inset: 18% 0;
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    rgba(255, 246, 200, 0.55) 48%,
+    rgba(255, 246, 200, 0.85) 50%,
+    rgba(255, 246, 200, 0.55) 52%,
+    transparent 70%
+  );
+  mix-blend-mode: screen;
+  transform: translateX(-110%);
+  animation: fx-banner-sheen 1.1s cubic-bezier(0.4, 0, 0.2, 1) 0.35s both;
+}
+
+@keyframes fx-banner-pop {
+  0% {
+    transform: scale(2.6) rotate(-6deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(0.94) rotate(1.2deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes fx-banner-quake {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-6px, 4px); }
+  50% { transform: translate(5px, -5px); }
+  75% { transform: translate(-4px, -3px); }
+}
+
+@keyframes fx-banner-sheen {
+  to {
+    transform: translateX(110%);
+  }
+}
+
+/* ---- 吉兆氛圍（紫氣金光） ---- */
+
+.fx-lucky-aura {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1.6s ease;
+  background:
+    radial-gradient(circle at 50% 110%, rgba(248, 213, 106, 0.22), transparent 46%),
+    radial-gradient(circle at 18% 16%, rgba(140, 70, 220, 0.26), transparent 44%),
+    radial-gradient(circle at 84% 22%, rgba(170, 90, 255, 0.2), transparent 42%);
+  mix-blend-mode: screen;
+}
+
+.fx-lucky-aura--active {
+  opacity: 1;
+  animation: fx-aura-breathe 3.4s ease-in-out infinite;
+}
+
+@keyframes fx-aura-breathe {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.35); }
+}
+
+/* ---- 幸運值蓄力條 ---- */
+
+.fx-fortune-meter {
+  border: 1px solid rgba(248, 213, 106, 0.25);
+  background: rgba(45, 5, 8, 0.84);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.fx-fortune-meter__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(255, 234, 160, 0.72);
+}
+
+.fx-fortune-meter__head strong {
+  color: #ffeaa0;
+  font-size: 13px;
+}
+
+.fx-fortune-meter__track {
+  margin-top: 8px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(248, 213, 106, 0.18);
+  overflow: hidden;
+}
+
+.fx-fortune-meter__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #a56408, #f8d56a 55%, #ffeaa0);
+  box-shadow: 0 0 12px rgba(248, 213, 106, 0.65);
+  transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.fx-fortune-meter--full .fx-fortune-meter__fill {
+  animation: fx-fortune-pulse 0.9s ease-in-out infinite;
+}
+
+.fx-fortune-meter--full {
+  border-color: rgba(255, 234, 160, 0.7);
+  box-shadow: 0 0 18px rgba(248, 213, 106, 0.35);
+}
+
+@keyframes fx-fortune-pulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.6); }
+}
+
+/* ---- 全服喜報滾動條 ---- */
+
+.fx-ticker {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(92vw, 720px);
+  padding: 7px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(248, 213, 106, 0.5);
+  background: linear-gradient(180deg, rgba(70, 4, 8, 0.94), rgba(28, 2, 4, 0.94));
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.5), inset 0 0 18px rgba(248, 213, 106, 0.12);
+  pointer-events: none;
+  animation: fx-ticker-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.fx-ticker--big {
+  border-color: rgba(255, 234, 160, 0.9);
+  box-shadow: 0 6px 26px rgba(201, 13, 24, 0.55), 0 0 30px rgba(248, 213, 106, 0.4);
+  animation: fx-ticker-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both,
+    fx-ticker-glow 1.1s ease-in-out 0.5s infinite;
+}
+
+.fx-ticker__icon {
+  font-size: 16px;
+}
+
+.fx-ticker__viewport {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.fx-ticker__text {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 800;
+  color: #ffeaa0;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  animation: fx-ticker-scroll 6s linear 0.4s both;
+}
+
+.fx-ticker--big .fx-ticker__text {
+  animation-duration: 7.4s;
+}
+
+@keyframes fx-ticker-in {
+  from {
+    transform: translateX(-50%) translateY(-150%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fx-ticker-glow {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.4); }
+}
+
+@keyframes fx-ticker-scroll {
+  0%, 12% { transform: translateX(0); }
+  88%, 100% { transform: translateX(min(0px, calc(min(92vw, 720px) - 100% - 60px))); }
+}

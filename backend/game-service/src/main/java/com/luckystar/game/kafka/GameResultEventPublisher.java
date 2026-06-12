@@ -52,6 +52,31 @@ public class GameResultEventPublisher {
     }
 
     /**
+     * 發布捕魚機場次彙總結果。一場（buy-in → 結算）發一筆，payout/bet 取場內子彈彙總，
+     * 與 {@link #publishSlotResult} 同 topic、best-effort。
+     */
+    public void publishFishingResult(GameRound round, Long totalShots) {
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("roundId", round.getRoundId());
+            payload.put("playerId", round.getPlayerId());
+            payload.put("gameType", round.getGameType());
+            payload.put("bet", round.getBetAmount());
+            payload.put("payout", round.getWinAmount());
+            payload.put("totalShots", totalShots);
+            payload.put("win", round.getWinAmount() != null && round.getBetAmount() != null
+                    && round.getWinAmount() > round.getBetAmount());
+            payload.put("settledAt", round.getSettledAt() == null ? null : round.getSettledAt().toString());
+
+            String json = objectMapper.writeValueAsString(payload);
+            kafkaTemplate.send(TOPIC, String.valueOf(round.getPlayerId()), json);
+        } catch (Exception ex) {
+            log.warn("發布 game.result（fishing）失敗（best-effort，已忽略）roundId={}: {}",
+                    round.getRoundId(), ex.toString());
+        }
+    }
+
+    /**
      * 發布百家樂結算結果（T-035）。語意與 {@link #publishSlotResult} 一致，best-effort。
      */
     public void publishBaccaratResult(GameRound round, BaccaratOutcome outcome) {

@@ -1,12 +1,17 @@
+import Art from '../casino-fx/assets/Art'
+import { SLOT_SYMBOL_ASSET } from '../casino-fx/assets/registry'
+
 export const visibleRows = 3
 export const paylineRow = 1
 
+// 後端契約仍是 emoji 字串（SlotSymbol.display），視覺上由 SLOT_SYMBOL_ASSET
+// 映射成華人財富意象（元寶/銅錢/紅包/福/金龍）；caption 同步改中文彩頭名。
 const symbolMeta = {
-  '🍒': { label: '🍒', caption: 'Cherry', tone: 'slot-symbol-seven' },
-  '🍋': { label: '🍋', caption: 'Lemon', tone: 'slot-symbol-card' },
-  '🔔': { label: '🔔', caption: 'Bell', tone: 'slot-symbol-bar' },
-  '⭐': { label: '⭐', caption: 'Star', tone: 'slot-symbol-star' },
-  '7️⃣': { label: '7️⃣', caption: 'Lucky', tone: 'slot-symbol-seven' },
+  '🍒': { label: '🍒', caption: '金元寶', tone: 'slot-symbol-seven' },
+  '🍋': { label: '🍋', caption: '銅錢', tone: 'slot-symbol-card' },
+  '🔔': { label: '🔔', caption: '紅包', tone: 'slot-symbol-bar' },
+  '⭐': { label: '⭐', caption: '福字', tone: 'slot-symbol-star' },
+  '7️⃣': { label: '7️⃣', caption: '金龍', tone: 'slot-symbol-seven' },
   '7': { label: '7', caption: 'Lucky', tone: 'slot-symbol-seven' },
   BAR: { label: 'BAR', caption: 'Triple', tone: 'slot-symbol-bar' },
   STAR: { label: 'STAR', caption: 'Bonus', tone: 'slot-symbol-star' },
@@ -173,7 +178,8 @@ function SymbolTile({ symbol, compact = false, isWinning = false, ghost = false 
   const meta = typeof symbol === 'string' ? symbolMeta[symbol] || { label: symbol, caption: 'Prize', tone: 'slot-symbol-card' } : symbol
   const imageSrc = getSymbolImageSrc(symbol)
   const isImageSymbol = Boolean(imageSrc)
-  const isEmojiSymbol = typeof symbol === 'string' && /\p{Extended_Pictographic}|\uFE0F/u.test(symbol)
+  const richAssetId = typeof symbol === 'string' ? SLOT_SYMBOL_ASSET[symbol] : null
+  const isEmojiSymbol = !richAssetId && typeof symbol === 'string' && /\p{Extended_Pictographic}|\uFE0F/u.test(symbol)
 
   return (
     <div
@@ -187,7 +193,14 @@ function SymbolTile({ symbol, compact = false, isWinning = false, ghost = false 
         ghost ? 'slot-symbol-tile--ghost' : '',
       ].join(' ')}
     >
-      {imageSrc ? (
+      {richAssetId ? (
+        <>
+          <span className="slot-symbol-art slot-symbol-art--rich" aria-hidden="true">
+            <Art id={richAssetId} />
+          </span>
+          {!compact && <span className="slot-symbol-caption">{meta.caption || 'Prize'}</span>}
+        </>
+      ) : imageSrc ? (
         <img className="slot-symbol-image" src={imageSrc} alt={meta.label || 'slot symbol'} draggable="false" />
       ) : (
         <>
