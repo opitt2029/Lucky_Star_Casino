@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] -- 2026-06-12 -- Add T-044 daily rank snapshots
+
+### Added
+- `backend/rank-service/.../scheduler/DailyRankSnapshotScheduler.java`: schedules daily coin balance snapshots every day at 00:00 in `Asia/Taipei`.
+- `backend/rank-service/.../service/DailyRankSnapshotService.java`: stores previous-day wallet balances in `rank_daily_snapshots` and skips players already snapshotted for that date.
+- `backend/rank-service/.../entity/RankDailySnapshot.java` and `repository/RankDailySnapshotRepository.java`: JPA mapping and read model lookup for the daily snapshot table.
+- Unit tests for scheduler cron/zone and daily snapshot creation, duplicate skipping, empty saves, and invalid wallet row filtering.
+
+### Why
+- T-044 needs durable daily player coin balance snapshots so historical rank queries such as "yesterday's rank" do not depend on volatile Redis data.
+
+### Verified
+- `mvn -pl backend/rank-service test`: 44 tests passed, 0 failures.
+
 ## [feat] -- 2026-06-12 -- Add T-043 weekly rank reset
 
 ### Added
