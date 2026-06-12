@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -166,10 +167,15 @@ public class SlotService {
 
         // 4) 寫對局紀錄（已結算）；以 roundId 去重，重試不重複插入（unique 約束保護）。
         if (roundRepository.findByRoundId(roundId).isEmpty()) {
-            GameRound round = buildRound(roundId, playerId, bet, serverSeed, serverSeedHash, clientSeed, outcome);
-            roundRepository.save(round);
-            // 5) 發布 game.result（best-effort）。僅在首次落地時發布，避免重試重複事件。
-            eventPublisher.publishSlotResult(round, outcome);
+            try {
+                GameRound round = buildRound(roundId, playerId, bet, serverSeed, serverSeedHash, clientSeed, outcome);
+                roundRepository.save(round);
+                // 5) 發布 game.result（best-effort）。僅在首次落地時發布，避免重試重複事件。
+                eventPublisher.publishSlotResult(round, outcome);
+            } catch (DataIntegrityViolationException e) {
+                // 並發結算同時通過去重檢查，unique 約束擋下第二筆 → 視同已結算，不讓重試者收到 500
+                log.info("slot round concurrently settled by another request, skip roundId={}", roundId);
+            }
         } else {
             log.info("slot round already settled, skip persist/publish roundId={}", roundId);
         }
