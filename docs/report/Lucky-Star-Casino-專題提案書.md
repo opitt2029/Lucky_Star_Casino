@@ -1,0 +1,499 @@
+# 幸運星幣城（Lucky Star Casino）— 專題提案書
+
+> 文件日期：2026-06-12 ｜ 專題期間：2026-05-29 ～ 2026-07-03（約兩個月）
+> 任務與分工之單一真相來源：`docs/幸運星幣城_工作分配表.xlsx`（T-000～T-107，共 78 項）
+> 同名 `.html` 以瀏覽器開啟 → 列印 → 另存 PDF（A4、邊界 1cm、頁尾自動加頁碼）。
+
+---
+
+## 目錄
+
+- [組內共識聲明](#組內共識聲明)
+- [4-1 題目與動機](#4-1-題目與動機)
+- [4-2 受眾客群分析](#4-2-受眾客群分析)
+- [4-3 網站架構圖](#4-3-網站架構圖)
+- [4-4 網站版面配置圖（草稿）](#4-4-網站版面配置圖草稿)
+- [4-5 網站開發使用技術及工具](#4-5-網站開發使用技術及工具)
+- [4-6 組員工作分配](#4-6-組員工作分配)
+- [4-7 組員工作預定完成日](#4-7-組員工作預定完成日)
+- [工作項目清單與主管確認機制](#工作項目清單與主管確認機制)
+
+---
+
+## 組內共識聲明
+
+全組已就以下四項達成共識，並以 `docs/幸運星幣城_工作分配表.xlsx` 作為任務與分工的**單一真相來源**，任何變更須經組內討論後更新該表：
+
+| 共識項目 | 內容 |
+|---|---|
+| **題目** | 「幸運星幣城」— 線上模擬幣娛樂城（無真實金流），含老虎機、百家樂兩款遊戲與會員、錢包、排行榜等周邊系統 |
+| **功能範圍** | 會員系統（註冊/登入/好友/簽到）、星幣與鑽石雙錢包、Provably Fair 遊戲引擎、全服/好友排行榜、後台管理、即時推播 |
+| **開發工具** | 後端 Java 21 + Spring Boot 微服務、前端 React 18、資料庫 PostgreSQL + MySQL（CQRS）、Redis、Kafka；版本控管 GitHub（feature 分支 → PR → develop，至少 1 人 review） |
+| **分工方式** | 依模組垂直切分：組長A（會員/Gateway/文件）、組員B（遊戲引擎）、組員C（錢包/鑽石）、組員D（排行/後台/推播/DevOps）、組員E（前端）；跨模組事項（DB Schema、整合測試）全員共同參與 |
+
+---
+
+## 4-1 題目與動機
+
+### 題目
+
+**幸運星幣城（Lucky Star Casino）** — 一個使用「模擬幣」的線上娛樂城網站。玩家以免費取得的星幣遊玩老虎機與百家樂，可簽到領幣、與好友互贈、競逐排行榜；全程**無真實金錢交易**。
+
+### 動機
+
+1. **工程深度**：賭場遊戲是「帳務正確性」要求最嚴苛的題材之一——同一秒內大量下注/派彩，不能多扣一塊也不能少派一塊。本題目讓我們實際演練：冪等鍵防重複、樂觀鎖防超扣、CQRS 讀寫分離、Kafka 事件驅動、分散式交易補償等業界真實課題。
+2. **公平性挑戰**：實作 Provably Fair（可驗證公平）RNG——先承諾種子雜湊、開獎後揭露種子，玩家可自行驗算結果未被竄改，比一般 CRUD 專題更具技術獨特性。
+3. **完整產品閉環**：從註冊、入金（鑽石→星幣）、遊玩、社交（好友/排行）、到後台監控，涵蓋一個線上服務完整的生命週期，適合微服務架構切分與五人團隊平行開發。
+4. **就業銜接**：所用技術棧（Spring Boot 微服務、Kafka、Redis、React）與業界後端/全端職缺高度重疊，產出可直接作為作品集。
+
+---
+
+## 4-2 受眾客群分析
+
+### 產業背景：社交博弈（Social Casino）
+
+本題目對標的產業為**社交博弈遊戲**——以虛擬代幣遊玩賭場類遊戲、不可兌換真錢的休閒娛樂類別（代表產品：Zynga Poker、Slotomania、神來也麻將）。此產業的核心商業邏輯不是「賭」，而是**留存與社交**：每日簽到拉回訪、好友互贈與排行榜製造社交黏著、代幣購買（本專題以免費點數卡模擬）構成營收。我們的功能設計即是針對此產業公式的完整復刻：
+
+| 產業留存手段 | 本專題對應功能 |
+|---|---|
+| 每日登入獎勵 | 每日簽到 + 連續 7/14/21/30 天里程碑加碼 |
+| 社交黏著 | 好友系統、好友星幣互贈、好友排行榜 |
+| 競爭驅動 | 全服 TOP100 排行榜、即時排名推播 |
+| 防流失機制 | 破產補助金（輸光後可領取救濟） |
+| 信任建立 | Provably Fair 開獎驗證（玩家可自驗公平性） |
+
+### 目標族群（要做給誰用）
+
+**主要族群：18 歲以上的休閒手遊玩家**（註冊強制出生日期 + 滿 18 歲驗證）。
+
+| Persona | 輪廓 | 需求 | 對應功能 |
+|---|---|---|---|
+| 上班族小陳（25-40 歲） | 通勤與午休的零碎時間想「小賭怡情」但不想花真錢 | 快速開一局、輸了沒壓力 | 老虎機單局 3 秒結算、破產補助、免費簽到幣 |
+| 競技型玩家阿凱（18-30 歲） | 玩什麼都要排名，會為了榜首每天上線 | 看得到名次與差距 | 全服 TOP100、我的名次、贏幣即時更新排名 |
+| 揪團型玩家美美（20-35 歲） | 跟朋友一起玩才有趣，喜歡互送禮物 | 跟好友比、互相支援 | 好友榜、好友星幣贈送、社群帳號登入（規劃中） |
+
+**次要受眾**：修課教師與業界面試官——透過 RNG 驗證頁、RTP 統計 API 與架構文件，展示工程品質。
+
+---
+
+## 4-3 網站架構圖
+
+```mermaid
+flowchart LR
+    FE["React 前端<br/>:5173"] -->|"REST + JWT"| GW["Gateway<br/>:8080"]
+    FE -.->|"WebSocket STOMP"| GW
+
+    GW --> MEM["Member<br/>:8081 會員"]
+    GW --> WAL["Wallet<br/>:8082 錢包"]
+    GW --> GAME["Game<br/>:8083 遊戲"]
+    GW --> RANK["Rank<br/>:8084 排行"]
+    GW --> ADM["Admin<br/>:8086 後台"]
+
+    GAME -->|"內部扣款/派彩 API"| WAL
+
+    MEM --- MYSQL[("MySQL<br/>會員/好友/簽到/讀庫")]
+    WAL --- PG[("PostgreSQL<br/>錢包/帳務寫庫")]
+    GAME --- PG
+    RANK --- REDIS[("Redis<br/>token/session/排行 ZSet")]
+    GW --- REDIS
+
+    MEM ==>|"註冊/入帳指令/好友事件"| KAFKA{{"Kafka 事件匯流排"}}
+    WAL ==>|"已扣款/已入帳事件"| KAFKA
+    GAME ==>|"遊戲結果事件"| KAFKA
+    KAFKA ==> WAL
+    KAFKA ==> RANK
+    KAFKA ==> NOTI["Notification<br/>推播（規劃中）"]
+```
+
+**頁面導覽結構**：
+
+```mermaid
+flowchart TB
+    HOME["/ 首頁"] --> MEMBER["/member 登入·註冊"]
+    HOME --> SHOP["/shop 禮品商城"]
+    MEMBER --> LOBBY["/games 遊戲大廳"]
+    LOBBY --> SLOT["/game/slot 老虎機"]
+    LOBBY --> BAC["/game/baccarat 百家樂"]
+    LOBBY --> DIA["/diamond 鑽石錢包"]
+    LOBBY --> RANKP["/rank 排行榜"]
+    LOBBY --> PROF["/profile 會員中心"]
+    LOBBY --> TX["/transactions 交易紀錄"]
+    LOBBY --> CHK["/check-in 每日簽到"]
+```
+
+---
+
+## 4-4 網站版面配置圖（草稿）
+
+> 每頁先列灰階線框草稿（規劃版面），其下附目前實作的完成畫面（紅框標註為功能說明）。草稿由組員E 繪製、組長A 審閱定稿（見 4-6）。
+
+### (1) 首頁
+
+<svg viewBox="0 0 640 330" xmlns="http://www.w3.org/2000/svg" style="max-width:640px;font-family:sans-serif">
+<rect x="2" y="2" width="636" height="326" fill="#fff" stroke="#888"/>
+<rect x="2" y="2" width="636" height="36" fill="#eee" stroke="#888"/>
+<text x="14" y="25" font-size="12" fill="#444">LOGO 幸運星幣城</text>
+<rect x="330" y="10" width="200" height="20" fill="#ddd" stroke="#999"/><text x="340" y="24" font-size="10" fill="#555">導覽：介紹｜遊戲｜會員｜商城</text>
+<rect x="550" y="10" width="76" height="20" fill="#ccc" stroke="#999"/><text x="558" y="24" font-size="10" fill="#555">會員登入</text>
+<rect x="14" y="50" width="370" height="120" fill="#f7f7f7" stroke="#999"/>
+<text x="26" y="80" font-size="16" fill="#333">主視覺大標題</text>
+<text x="26" y="100" font-size="10" fill="#666">平台介紹文字……</text>
+<rect x="26" y="120" width="110" height="24" fill="#ccc" stroke="#999"/><text x="36" y="136" font-size="10" fill="#555">查看遊戲大全</text>
+<rect x="146" y="120" width="110" height="24" fill="#eee" stroke="#999"/><text x="152" y="136" font-size="10" fill="#555">先看有哪些遊戲</text>
+<rect x="400" y="50" width="226" height="120" fill="#e5e5e5" stroke="#999"/><text x="480" y="115" font-size="11" fill="#777">主視覺圖</text>
+<rect x="14" y="184" width="200" height="130" fill="#f0f0f0" stroke="#999"/><text x="48" y="250" font-size="11" fill="#666">遊戲介紹區<tspan x="48" dy="14">卡片 → /game/*</tspan></text>
+<rect x="222" y="184" width="200" height="130" fill="#f0f0f0" stroke="#999"/><text x="262" y="250" font-size="11" fill="#666">會員區<tspan x="262" dy="14">登入｜會員中心</tspan></text>
+<rect x="430" y="184" width="196" height="130" fill="#f0f0f0" stroke="#999"/><text x="466" y="250" font-size="11" fill="#666">商城區<tspan x="466" dy="14">鑽石錢包｜禮品</tspan></text>
+</svg>
+
+完成畫面：
+
+![首頁主視覺](assets/home.png)
+![首頁遊戲介紹區](assets/home-games.png)
+
+### (2) 登入／註冊頁
+
+<svg viewBox="0 0 640 300" xmlns="http://www.w3.org/2000/svg" style="max-width:640px;font-family:sans-serif">
+<rect x="2" y="2" width="636" height="296" fill="#fff" stroke="#888"/>
+<rect x="2" y="2" width="636" height="32" fill="#eee" stroke="#888"/><text x="14" y="22" font-size="11" fill="#444">LOGO</text>
+<rect x="540" y="8" width="84" height="18" fill="#ddd" stroke="#999"/><text x="556" y="21" font-size="10" fill="#555">回首頁</text>
+<rect x="14" y="46" width="330" height="238" fill="#f7f7f7" stroke="#999"/>
+<text x="28" y="76" font-size="14" fill="#333">說明標題與文案</text>
+<rect x="28" y="96" width="300" height="170" fill="#e5e5e5" stroke="#999"/><text x="140" y="185" font-size="11" fill="#777">形象圖</text>
+<rect x="360" y="46" width="266" height="238" fill="#fafafa" stroke="#999"/>
+<rect x="374" y="58" width="80" height="22" fill="#ccc" stroke="#999"/><text x="396" y="73" font-size="10" fill="#555">登入</text>
+<rect x="460" y="58" width="80" height="22" fill="#eee" stroke="#999"/><text x="482" y="73" font-size="10" fill="#555">註冊</text>
+<rect x="374" y="94" width="238" height="22" fill="#fff" stroke="#999"/><text x="382" y="109" font-size="10" fill="#999">帳號</text>
+<rect x="374" y="124" width="238" height="22" fill="#fff" stroke="#999"/><text x="382" y="139" font-size="10" fill="#999">密碼</text>
+<rect x="374" y="154" width="74" height="20" fill="#eee" stroke="#999"/><text x="390" y="168" font-size="9" fill="#666">LINE</text>
+<rect x="456" y="154" width="74" height="20" fill="#eee" stroke="#999"/><text x="466" y="168" font-size="9" fill="#666">Google</text>
+<rect x="538" y="154" width="74" height="20" fill="#eee" stroke="#999"/><text x="552" y="168" font-size="9" fill="#666">Apple</text>
+<rect x="374" y="186" width="238" height="26" fill="#ccc" stroke="#999"/><text x="476" y="204" font-size="11" fill="#444">登入</text>
+<text x="374" y="236" font-size="9" fill="#888">註冊模式：帳號／暱稱／Email／密碼／生日／18 歲同意勾選</text>
+</svg>
+
+完成畫面：
+
+![登入頁](assets/member-login.png)
+
+### (3) 遊戲大廳
+
+<svg viewBox="0 0 640 320" xmlns="http://www.w3.org/2000/svg" style="max-width:640px;font-family:sans-serif">
+<rect x="2" y="2" width="636" height="316" fill="#fff" stroke="#888"/>
+<rect x="2" y="2" width="636" height="48" fill="#eee" stroke="#888"/>
+<text x="14" y="22" font-size="11" fill="#444">LOGO</text>
+<rect x="300" y="8" width="70" height="16" fill="#ddd" stroke="#999"/><text x="306" y="20" font-size="9" fill="#555">玩家暱稱</text>
+<rect x="376" y="8" width="60" height="16" fill="#ddd" stroke="#999"/><text x="382" y="20" font-size="9" fill="#555">鑽石</text>
+<rect x="442" y="8" width="60" height="16" fill="#ddd" stroke="#999"/><text x="448" y="20" font-size="9" fill="#555">星幣</text>
+<rect x="508" y="8" width="40" height="16" fill="#ddd" stroke="#999"/><text x="514" y="20" font-size="9" fill="#555">通知</text>
+<rect x="554" y="8" width="40" height="16" fill="#ccc" stroke="#999"/><text x="560" y="20" font-size="9" fill="#555">登出</text>
+<rect x="14" y="28" width="430" height="16" fill="#ddd" stroke="#999"/><text x="20" y="40" font-size="9" fill="#555">導覽：首頁｜遊戲大全｜鑽石錢包｜禮品商城｜排行榜｜交易紀錄｜會員中心</text>
+<rect x="14" y="60" width="400" height="120" fill="#f7f7f7" stroke="#999"/>
+<text x="28" y="92" font-size="14" fill="#333">遊戲大全（標題與說明）</text>
+<rect x="28" y="140" width="110" height="24" fill="#ccc" stroke="#999"/><text x="38" y="156" font-size="10" fill="#555">前往禮品商城</text>
+<rect x="146" y="140" width="110" height="24" fill="#ccc" stroke="#999"/><text x="156" y="156" font-size="10" fill="#555">鑽石兌換星幣</text>
+<rect x="428" y="60" width="198" height="56" fill="#f0f0f0" stroke="#999"/><text x="446" y="92" font-size="10" fill="#666">指標卡：目前星幣</text>
+<rect x="428" y="124" width="198" height="56" fill="#f0f0f0" stroke="#999"/><text x="446" y="156" font-size="10" fill="#666">指標卡：可玩遊戲數</text>
+<rect x="14" y="192" width="302" height="116" fill="#e9e9e9" stroke="#999"/><text x="110" y="246" font-size="12" fill="#555">老虎機卡片<tspan x="120" dy="16" font-size="9">進入遊戲 →</tspan></text>
+<rect x="324" y="192" width="302" height="116" fill="#e9e9e9" stroke="#999"/><text x="420" y="246" font-size="12" fill="#555">百家樂卡片<tspan x="430" dy="16" font-size="9">進入遊戲 →</tspan></text>
+</svg>
+
+完成畫面：
+
+![遊戲大廳](assets/lobby.png)
+
+### (4) 老虎機
+
+<svg viewBox="0 0 640 320" xmlns="http://www.w3.org/2000/svg" style="max-width:640px;font-family:sans-serif">
+<rect x="2" y="2" width="636" height="316" fill="#fff" stroke="#888"/>
+<rect x="2" y="2" width="636" height="28" fill="#eee" stroke="#888"/><text x="14" y="20" font-size="10" fill="#444">共用頂欄（同大廳）</text>
+<rect x="14" y="42" width="400" height="262" fill="#f7f7f7" stroke="#999"/>
+<text x="28" y="64" font-size="12" fill="#333">星幣老虎機（標題＋累積彩金）</text>
+<g fill="#e0e0e0" stroke="#999">
+<rect x="60" y="80" width="90" height="56"/><rect x="160" y="80" width="90" height="56"/><rect x="260" y="80" width="90" height="56"/>
+<rect x="60" y="142" width="90" height="56"/><rect x="160" y="142" width="90" height="56"/><rect x="260" y="142" width="90" height="56"/>
+<rect x="60" y="204" width="90" height="56"/><rect x="160" y="204" width="90" height="56"/><rect x="260" y="204" width="90" height="56"/>
+</g>
+<text x="170" y="176" font-size="10" fill="#777">3×3 轉輪（中線判定）</text>
+<rect x="150" y="272" width="110" height="26" fill="#ccc" stroke="#999"/><text x="186" y="290" font-size="12" fill="#444">SPIN</text>
+<rect x="428" y="42" width="198" height="70" fill="#f0f0f0" stroke="#999"/><text x="442" y="70" font-size="10" fill="#666">規則卡：派彩 2x/3x/5x/8x</text>
+<rect x="428" y="118" width="198" height="40" fill="#f0f0f0" stroke="#999"/><text x="442" y="142" font-size="10" fill="#666">可用星幣／本局下注</text>
+<rect x="428" y="164" width="198" height="70" fill="#f0f0f0" stroke="#999"/><text x="442" y="186" font-size="10" fill="#666">下注面板</text>
+<g fill="#ddd" stroke="#999"><rect x="442" y="196" width="40" height="18"/><rect x="488" y="196" width="40" height="18"/><rect x="534" y="196" width="40" height="18"/><rect x="442" y="218" width="40" height="14"/></g>
+<text x="448" y="209" font-size="8" fill="#555">100</text><text x="494" y="209" font-size="8" fill="#555">500</text><text x="538" y="209" font-size="8" fill="#555">1000</text><text x="448" y="229" font-size="8" fill="#555">MAX</text>
+<rect x="428" y="240" width="198" height="64" fill="#f0f0f0" stroke="#999"/><text x="442" y="266" font-size="10" fill="#666">局況：狀態／中線命中</text>
+</svg>
+
+完成畫面：
+
+![老虎機](assets/slot.png)
+
+### (5) 百家樂
+
+<svg viewBox="0 0 640 330" xmlns="http://www.w3.org/2000/svg" style="max-width:640px;font-family:sans-serif">
+<rect x="2" y="2" width="636" height="326" fill="#fff" stroke="#888"/>
+<rect x="2" y="2" width="636" height="28" fill="#eee" stroke="#888"/><text x="14" y="20" font-size="10" fill="#444">共用頂欄</text>
+<rect x="14" y="42" width="420" height="120" fill="#f7f7f7" stroke="#999"/>
+<rect x="30" y="58" width="160" height="90" fill="#eaeaea" stroke="#999"/><text x="70" y="80" font-size="11" fill="#555">閒家 Player</text>
+<rect x="46" y="92" width="40" height="48" fill="#ddd" stroke="#999"/><rect x="96" y="92" width="40" height="48" fill="#ddd" stroke="#999"/>
+<circle cx="224" cy="104" r="20" fill="#e0e0e0" stroke="#999"/><text x="215" y="108" font-size="10" fill="#555">VS</text>
+<rect x="258" y="58" width="160" height="90" fill="#eaeaea" stroke="#999"/><text x="298" y="80" font-size="11" fill="#555">莊家 Banker</text>
+<rect x="274" y="92" width="40" height="48" fill="#ddd" stroke="#999"/><rect x="324" y="92" width="40" height="48" fill="#ddd" stroke="#999"/>
+<rect x="14" y="172" width="420" height="80" fill="#f0f0f0" stroke="#999"/><text x="26" y="190" font-size="11" fill="#555">下注區</text>
+<g fill="#ddd" stroke="#999"><rect x="26" y="198" width="120" height="40"/><rect x="156" y="198" width="120" height="40"/><rect x="286" y="198" width="120" height="40"/></g>
+<text x="50" y="222" font-size="10" fill="#555">閒 1x</text><text x="178" y="222" font-size="10" fill="#555">莊 0.95x</text><text x="312" y="222" font-size="10" fill="#555">和 8x</text>
+<rect x="14" y="260" width="270" height="50" fill="#f0f0f0" stroke="#999"/><text x="26" y="280" font-size="10" fill="#555">金額輸入＋面額選擇</text>
+<rect x="294" y="260" width="140" height="50" fill="#ccc" stroke="#999"/><text x="332" y="290" font-size="12" fill="#444">開始發牌</text>
+<rect x="448" y="42" width="178" height="130" fill="#f0f0f0" stroke="#999"/><text x="462" y="66" font-size="10" fill="#666">規則卡：點數計算<tspan x="462" dy="14">勝負規則／賠率</tspan></text>
+<rect x="448" y="180" width="178" height="130" fill="#f0f0f0" stroke="#999"/><text x="462" y="206" font-size="10" fill="#666">本局結算：勝方<tspan x="462" dy="14">下注／獲利／點數</tspan></text>
+</svg>
+
+完成畫面：
+
+![百家樂](assets/baccarat.png)
+
+### (6) 鑽石錢包
+
+<svg viewBox="0 0 640 290" xmlns="http://www.w3.org/2000/svg" style="max-width:640px;font-family:sans-serif">
+<rect x="2" y="2" width="636" height="286" fill="#fff" stroke="#888"/>
+<rect x="2" y="2" width="636" height="28" fill="#eee" stroke="#888"/><text x="14" y="20" font-size="10" fill="#444">共用頂欄</text>
+<rect x="14" y="42" width="400" height="110" fill="#f7f7f7" stroke="#999"/>
+<text x="28" y="68" font-size="13" fill="#333">鑽石錢包（標題與說明）</text>
+<g fill="#f0f0f0" stroke="#999"><rect x="28" y="84" width="118" height="52"/><rect x="154" y="84" width="118" height="52"/><rect x="280" y="84" width="118" height="52"/></g>
+<text x="42" y="114" font-size="9" fill="#666">目前鑽石</text><text x="168" y="114" font-size="9" fill="#666">兌換比例 1:20</text><text x="294" y="114" font-size="9" fill="#666">目前星幣</text>
+<rect x="428" y="42" width="198" height="110" fill="#f0f0f0" stroke="#999"/><text x="442" y="74" font-size="10" fill="#666">鑽石餘額大字</text>
+<rect x="442" y="116" width="100" height="22" fill="#ccc" stroke="#999"/><text x="452" y="131" font-size="9" fill="#555">重新同步</text>
+<rect x="14" y="164" width="302" height="112" fill="#fafafa" stroke="#999"/>
+<text x="28" y="186" font-size="11" fill="#555">序號兌換鑽石</text>
+<rect x="28" y="198" width="270" height="22" fill="#fff" stroke="#999"/><text x="36" y="213" font-size="9" fill="#999">輸入序號（TEST123456）</text>
+<rect x="28" y="230" width="110" height="24" fill="#ccc" stroke="#999"/><text x="48" y="246" font-size="10" fill="#555">兌換鑽石</text>
+<rect x="324" y="164" width="302" height="112" fill="#fafafa" stroke="#999"/>
+<text x="338" y="186" font-size="11" fill="#555">鑽石兌換星幣（含可得預覽）</text>
+<rect x="338" y="198" width="270" height="22" fill="#fff" stroke="#999"/><text x="346" y="213" font-size="9" fill="#999">兌換數量</text>
+<rect x="338" y="230" width="110" height="24" fill="#ccc" stroke="#999"/><text x="358" y="246" font-size="10" fill="#555">兌換星幣</text>
+</svg>
+
+完成畫面：
+
+![鑽石錢包](assets/diamond.png)
+
+### (7) 排行榜
+
+<svg viewBox="0 0 640 280" xmlns="http://www.w3.org/2000/svg" style="max-width:640px;font-family:sans-serif">
+<rect x="2" y="2" width="636" height="276" fill="#fff" stroke="#888"/>
+<rect x="2" y="2" width="636" height="28" fill="#eee" stroke="#888"/><text x="14" y="20" font-size="10" fill="#444">共用頂欄</text>
+<rect x="14" y="42" width="420" height="44" fill="#f7f7f7" stroke="#999"/>
+<rect x="26" y="52" width="100" height="24" fill="#ccc" stroke="#999"/><text x="36" y="68" font-size="9" fill="#555">全服 TOP100</text>
+<rect x="132" y="52" width="80" height="24" fill="#eee" stroke="#999"/><text x="148" y="68" font-size="9" fill="#555">好友榜</text>
+<rect x="240" y="52" width="180" height="24" fill="#fff" stroke="#999"/><text x="248" y="68" font-size="9" fill="#999">搜尋名次…</text>
+<rect x="14" y="94" width="420" height="150" fill="#fafafa" stroke="#999"/>
+<text x="26" y="114" font-size="10" fill="#555">排名｜玩家｜分數｜趨勢（表格，預設 20 筆）</text>
+<g fill="#eee" stroke="#bbb"><rect x="26" y="124" width="396" height="18"/><rect x="26" y="146" width="396" height="18"/><rect x="26" y="168" width="396" height="18"/><rect x="26" y="190" width="396" height="18"/></g>
+<rect x="170" y="216" width="110" height="22" fill="#ccc" stroke="#999"/><text x="190" y="231" font-size="9" fill="#555">顯示更多</text>
+<g fill="#f0f0f0" stroke="#999"><rect x="448" y="42" width="178" height="60"/><rect x="448" y="110" width="178" height="60"/><rect x="448" y="178" width="178" height="60"/></g>
+<text x="462" y="76" font-size="10" fill="#666">榜首分數</text><text x="462" y="144" font-size="10" fill="#666">我的名次</text><text x="462" y="212" font-size="10" fill="#666">榜單筆數</text>
+</svg>
+
+完成畫面：
+
+![排行榜](assets/rank.png)
+
+### (8) 會員中心
+
+<svg viewBox="0 0 640 300" xmlns="http://www.w3.org/2000/svg" style="max-width:640px;font-family:sans-serif">
+<rect x="2" y="2" width="636" height="296" fill="#fff" stroke="#888"/>
+<rect x="2" y="2" width="636" height="28" fill="#eee" stroke="#888"/><text x="14" y="20" font-size="10" fill="#444">共用頂欄</text>
+<rect x="14" y="42" width="420" height="160" fill="#f7f7f7" stroke="#999"/>
+<rect x="28" y="58" width="96" height="96" fill="#e0e0e0" stroke="#999"/><text x="48" y="110" font-size="9" fill="#777">頭像</text>
+<rect x="28" y="160" width="96" height="22" fill="#ccc" stroke="#999"/><text x="40" y="175" font-size="9" fill="#555">上傳頭像</text>
+<rect x="140" y="58" width="280" height="22" fill="#fff" stroke="#999"/><text x="148" y="73" font-size="9" fill="#999">玩家 ID（唯讀）</text>
+<rect x="140" y="88" width="280" height="22" fill="#fff" stroke="#999"/><text x="148" y="103" font-size="9" fill="#999">暱稱</text>
+<text x="140" y="130" font-size="9" fill="#666">快速頭像 ×6：</text>
+<g fill="#ddd" stroke="#999"><rect x="140" y="136" width="28" height="28"/><rect x="174" y="136" width="28" height="28"/><rect x="208" y="136" width="28" height="28"/><rect x="242" y="136" width="28" height="28"/><rect x="276" y="136" width="28" height="28"/><rect x="310" y="136" width="28" height="28"/></g>
+<rect x="140" y="172" width="100" height="24" fill="#ccc" stroke="#999"/><text x="156" y="188" font-size="10" fill="#555">儲存設定</text>
+<g fill="#f0f0f0" stroke="#999"><rect x="448" y="42" width="178" height="46"/><rect x="448" y="96" width="178" height="106"/></g>
+<text x="462" y="70" font-size="10" fill="#666">可用／凍結星幣</text>
+<text x="462" y="120" font-size="10" fill="#666">簽到面板：連續天數<tspan x="462" dy="14">進度條／月曆／立即簽到</tspan></text>
+<rect x="14" y="214" width="612" height="70" fill="#fafafa" stroke="#999"/>
+<text x="28" y="236" font-size="11" fill="#555">第三方帳戶綁定</text>
+<g fill="#eee" stroke="#999"><rect x="28" y="246" width="190" height="28"/><rect x="226" y="246" width="190" height="28"/><rect x="424" y="246" width="190" height="28"/></g>
+<text x="100" y="264" font-size="9" fill="#666">LINE</text><text x="296" y="264" font-size="9" fill="#666">Google</text><text x="498" y="264" font-size="9" fill="#666">Apple</text>
+</svg>
+
+完成畫面：
+
+![會員中心](assets/profile.png)
+
+### (9) 交易紀錄
+
+<svg viewBox="0 0 640 260" xmlns="http://www.w3.org/2000/svg" style="max-width:640px;font-family:sans-serif">
+<rect x="2" y="2" width="636" height="256" fill="#fff" stroke="#888"/>
+<rect x="2" y="2" width="636" height="28" fill="#eee" stroke="#888"/><text x="14" y="20" font-size="10" fill="#444">共用頂欄</text>
+<text x="14" y="56" font-size="13" fill="#333">交易紀錄</text>
+<rect x="520" y="42" width="106" height="22" fill="#ccc" stroke="#999"/><text x="540" y="57" font-size="9" fill="#555">更新紀錄</text>
+<g fill="#fff" stroke="#999"><rect x="14" y="72" width="240" height="22"/><rect x="262" y="72" width="170" height="22"/><rect x="440" y="72" width="170" height="22"/></g>
+<text x="22" y="87" font-size="9" fill="#999">類型：全部/下注/派彩/簽到/任務/贈送</text><text x="270" y="87" font-size="9" fill="#999">開始日期</text><text x="448" y="87" font-size="9" fill="#999">結束日期</text>
+<rect x="14" y="104" width="612" height="116" fill="#fafafa" stroke="#999"/>
+<text x="26" y="122" font-size="10" fill="#555">交易ID｜類型｜金額｜狀態｜時間</text>
+<g fill="#eee" stroke="#bbb"><rect x="26" y="130" width="588" height="16"/><rect x="26" y="150" width="588" height="16"/><rect x="26" y="170" width="588" height="16"/><rect x="26" y="190" width="588" height="16"/></g>
+<text x="14" y="244" font-size="9" fill="#666">第 1 / N 頁，共 M 筆</text>
+<rect x="460" y="230" width="76" height="20" fill="#eee" stroke="#999"/><text x="478" y="244" font-size="9" fill="#555">上一頁</text>
+<rect x="544" y="230" width="76" height="20" fill="#ccc" stroke="#999"/><text x="562" y="244" font-size="9" fill="#555">下一頁</text>
+</svg>
+
+完成畫面：
+
+![交易紀錄](assets/transactions.png)
+
+---
+
+## 4-5 網站開發使用技術及工具
+
+| 分類 | 技術 / 工具 | 用途 |
+|---|---|---|
+| 後端語言/框架 | Java 21、Spring Boot 3.3.5、Spring Cloud Gateway | 六個微服務 + API 閘道（路由/JWT 驗證/限流/熔斷） |
+| 認證 | JJWT 0.12.6、BCrypt | JWT Access/Refresh Token、密碼雜湊 |
+| 前端 | React 18、Vite 5、Redux Toolkit、Tailwind CSS、Axios、STOMP/SockJS | SPA 頁面、全域狀態、API 串接、WebSocket 推播 |
+| 資料庫 | PostgreSQL 16（寫庫）、MySQL 8（讀庫） | CQRS 讀寫分離：帳務強一致寫入 + 高頻查詢分流 |
+| 快取 | Redis 7 | Token/黑名單、遊戲 Session、排行榜 ZSet |
+| 訊息佇列 | Apache Kafka（8 topics + 5 DLT） | 事件驅動跨服務同步、失敗重試與死信 |
+| 容器化 | Docker Compose | 一鍵啟動 MySQL/PostgreSQL/Redis/Kafka/Kafka UI |
+| 建置 | Maven（多模組 monorepo）、npm | 後端/前端建置與相依管理 |
+| 測試 | JUnit 5 + H2（364 個後端測試）、node:test（infra）、JMeter（壓測） | 單元/情境測試、CI 驗證、高併發壓力測試 |
+| 協作 | GitHub（feature 分支 → PR → develop，1+ reviewer）、GitHub Actions CI、CHANGELOG/ADR 文件 | 版本控管、自動化測試門檻、決策紀錄 |
+
+---
+
+## 4-6 組員工作分配
+
+> 原則：依模組垂直切分、每項任務單一負責人（明細見工作分配表 T-000～T-107）；頁面草稿由組員E 繪製、組長A 審閱。
+
+### 模組負責總表
+
+| 組員 | 負責模組 | 範圍說明 |
+|---|---|---|
+| **組長A** | Member Service、Gateway、全域/收尾文件 | 註冊/登入/JWT、好友、簽到、新手禮；Gateway 路由/驗證/限流/熔斷；架構決策（ADR）、README、結業簡報 |
+| **組員B** | RNG Game Service | Provably Fair RNG、老虎機與百家樂邏輯/API、Redis 遊戲 Session、公平性驗證、RTP 統計 |
+| **組員C** | Wallet Service、鑽石系統（API） | 星幣開戶/扣款/派彩/流水、冪等與樂觀鎖、贈幣、破產補助、DLQ；鑽石開戶/序號兌換/鑽石換星幣 |
+| **組員D** | Rank、Admin、Notification、測試/DevOps | 全服/好友排行榜、排程快照；後台帳號管理/報表/GM 工具；WebSocket 推播；Docker、JMeter 壓測、E2E |
+| **組員E** | 前端（全部頁面） | 9 個頁面 + Redux 狀態 + WebSocket 連線 + RWD；版面草稿繪製 |
+| **全員** | 跨模組 | 資料庫 Schema 設計（T-006）、End-to-End 整合測試（T-093） |
+
+### 每頁草稿／每項功能 → 負責人
+
+| 頁面（草稿＋實作） | 草稿 | 前端實作 | 對應後端 API | 後端負責人 |
+|---|---|---|---|---|
+| 首頁 | 組員E（組長A 審閱） | 組員E | —（靜態導覽） | — |
+| 登入/註冊頁 | 組員E（組長A 審閱） | 組員E（T-080） | 註冊/登入/刷新/登出 | 組長A（T-010~T-013） |
+| 遊戲大廳 | 組員E（組長A 審閱） | 組員E（T-082） | 餘額查詢 | 組員C（T-021） |
+| 老虎機頁 | 組員E（組長A 審閱） | 組員E（T-083） | slot spin/round API | 組員B（T-030~T-033） |
+| 百家樂頁 | 組員E（組長A 審閱） | 組員E（T-087） | baccarat bet/result API | 組員B（T-034~T-036） |
+| 鑽石錢包頁 | 組員E（組長A 審閱） | 組員E（T-107） | 鑽石開戶/兌換/餘額 | 組員C（T-101~T-104） |
+| 排行榜頁 | 組員E（組長A 審閱） | 組員E（T-085） | 全服/好友榜查詢 | 組員D（T-040~T-042） |
+| 會員中心頁 | 組員E（組長A 審閱） | 組員E（T-088） | 個資 CRUD/好友/簽到 | 組長A（T-014~T-017） |
+| 交易紀錄頁 | 組員E（組長A 審閱） | 組員E（T-086） | 帳務流水查詢 | 組員C（T-025） |
+
+---
+
+## 4-7 組員工作預定完成日
+
+> Sprint 對照：S0-W1＝05/29、S1-W2＝06/03、S1-W3＝06/07、S2-W4＝06/11、S2-W5＝06/18、S3-W6＝06/25、S3-W7＝06/29、S4-W8＝07/03（皆為 2026 年，取各 Sprint 結束日為預定完成日）。
+> 狀態為 2026-06-12 盤點：✅ 已完成、⚠️ 部分完成、⬜ 未開始、❓ 待確認。
+
+### S0-W1 環境建置（預定 05/29 完成）
+
+| 編號 | 任務 | 負責人 | 預定完成日 | 狀態 |
+|---|---|---|---|---|
+| T-000 | GitHub Repo 與分支策略 | 組長A | 05/29 | ✅ |
+| T-001 | 架構圖定稿與 ADR | 組長A | 05/29 | ✅ |
+| T-002 | Docker Compose 環境 | 組員D | 05/29 | ⚠️ |
+| T-003 | 各 Service 專案初始化 | 組員D | 05/29 | ✅ |
+| T-004 | React 前端初始化 | 組員E | 05/29 | ✅ |
+| T-005 | Kafka Topic 規劃 | 組長A | 05/29 | ✅ |
+| T-006 | DB Schema 初版 + DDL | 全員 | 05/29 | ✅ |
+
+### S1-W2 核心前半（預定 06/03 完成）
+
+| 編號 | 任務 | 負責人 | 預定完成日 | 狀態 |
+|---|---|---|---|---|
+| T-010~T-015 | 會員註冊/登入/JWT/個資/好友 | 組長A | 06/03 | ✅ |
+| T-020、T-021 | 錢包開戶、餘額查詢 | 組員C | 06/03 | ✅ |
+| T-030、T-031 | RNG 演算法、老虎機邏輯 | 組員B | 06/03 | ✅ |
+| T-060 | Gateway 路由設定 | 組長A | 06/03 | ✅ |
+| T-080 | 登入/註冊頁面 | 組員E | 06/03 | ✅ |
+
+### S1-W3 核心後半（預定 06/07 完成）
+
+| 編號 | 任務 | 負責人 | 預定完成日 | 狀態 |
+|---|---|---|---|---|
+| T-016~T-018 | 任務系統/簽到/新手禮 | 組長A | 06/07 | ✅ |
+| T-022~T-024 | 扣款/派彩/冪等機制 | 組員C | 06/07 | ✅ |
+| T-032 | 老虎機 API | 組員B | 06/07 | ✅ |
+| T-040 | 全服排行榜（ZSet） | 組員D | 06/07 | ✅ |
+| T-061 | Gateway JWT 過濾器 | 組長A | 06/07 | ✅ |
+| T-081 | Redux 全域狀態 | 組員E | 06/07 | ✅ |
+
+### S2-W4 業務整合（預定 06/11 完成）
+
+| 編號 | 任務 | 負責人 | 預定完成日 | 狀態 |
+|---|---|---|---|---|
+| T-025~T-027 | 流水查詢/贈幣/破產補助 | 組員C | 06/11 | ✅ |
+| T-033、T-034 | Redis Session、百家樂邏輯 | 組員B | 06/11 | ✅ |
+| T-041、T-042 | 好友榜、排行查詢 API | 組員D | 06/11 | ✅ |
+| T-062、T-063 | 限流、熔斷 | 組長A | 06/11 | ✅ |
+| T-082、T-083 | 大廳、老虎機頁面 | 組員E | 06/11 | ✅ / ⚠️ |
+| T-100~T-102、T-104 | 鑽石 Schema/開戶/序號兌換/餘額 | 組員D / 組員C | 06/11 | ✅ |
+
+### S2-W5 Kafka 串接與擴充（預定 06/18 完成）⬅ 本週
+
+| 編號 | 任務 | 負責人 | 預定完成日 | 狀態 |
+|---|---|---|---|---|
+| T-028 | Kafka DLQ 處理 | 組員C | 06/18 | ✅ |
+| T-035~T-037 | 百家樂 API、公平性驗證、RTP 統計 | 組員B | 06/18 | ✅ |
+| T-043~T-045 | 週榜重置/每日快照/贏幣王 | 組員D | 06/18 | ⬜ |
+| T-050~T-055 | Admin 後台六項 API | 組員D | 06/18 | ⬜ |
+| T-070~T-073 | Notification 推播四項 | 組員D | 06/18 | ⬜ |
+| T-084~T-089 | WebSocket/排行/帳務/百家樂/個資頁、RWD | 組員E | 06/18 | ⚠️（RWD ❓） |
+| T-092 | Swagger API 文件 | 組員D | 06/18 | ⬜ |
+| T-103 | 鑽石兌換星幣 API | 組員C | 06/18 | ✅ |
+| T-105、T-106 | 點數卡後台 API | 組員D | 06/18 | ⬜ |
+| T-107 | 鑽石錢包頁面 | 組員E | 06/18 | ✅ |
+
+### S3 測試週（預定 06/25、06/29 完成）
+
+| 編號 | 任務 | 負責人 | 預定完成日 | 狀態 |
+|---|---|---|---|---|
+| T-090 | JMeter 高併發壓測 | 組員D | 06/25 | ⚠️ |
+| T-091 | 帳務一致性自動驗證 | 組員D | 06/29 | ⬜ |
+
+### S4-W8 收尾（預定 07/03 完成）
+
+| 編號 | 任務 | 負責人 | 預定完成日 | 狀態 |
+|---|---|---|---|---|
+| T-093 | End-to-End 整合測試 | 全員 | 07/03 | ⬜ |
+| T-094 | README 與部署文件 | 組長A | 07/03 | ✅（提前） |
+| T-095 | ADR 文件整理 | 組長A | 07/03 | ⚠️ |
+| T-096 | 結業簡報 | 組長A | 07/03 | ⬜ |
+
+---
+
+## 工作項目清單與主管確認機制
+
+### 兩個月工作項目（條列，對應上表）
+
+1. **第 1 週（05/29 前）**：環境與規範 — Repo/分支策略、架構定稿、Docker 環境、DB Schema、Kafka Topic、前後端專案骨架 ✅
+2. **第 2~3 週（06/07 前）**：核心功能 — 會員/JWT、錢包帳務（冪等+樂觀鎖）、RNG 與老虎機、排行榜底層、Gateway 驗證、登入頁 ✅
+3. **第 4 週（06/11 前）**：業務整合 — 簽到/贈幣/破產補助、Redis Session、百家樂邏輯、好友榜、限流熔斷、大廳/老虎機頁、鑽石系統 ✅
+4. **第 5 週（06/18 前，進行中）**：Kafka 串接與擴充 — 百家樂 API 串接前端、排行排程、Admin 後台、Notification 推播、其餘前端頁面收斂、Swagger
+5. **第 6~7 週（06/29 前）**：測試 — JMeter 1,000 人壓測（P99 < 500ms、零超扣）、帳務一致性自動驗證
+6. **第 8 週（07/03 前）**：收尾 — E2E 整合測試、文件整理、結業簡報
+
+### 向直屬主管確認的機制
+
+| 時機 | 做法 |
+|---|---|
+| **開工初期** | 將本提案書（含工作項目清單、分工、預定完成日）送交直屬主管確認範圍與優先順序，**確認後才動工**；不確定之處主動提問釐清，不自行假設 |
+| **每 Sprint 結束** | 以工作分配表狀態欄（✅/⚠️/⬜）回報進度，demo 可運作成果；落後項目說明原因與調整方案 |
+| **每次合併前** | PR 需至少 1 人 review + CI 綠燈，重大架構決策另寫 ADR 留存 |
+| **遇到阻塞** | 24 小時內未能自行解決即上報，附上已嘗試的方案與建議選項 |
+| **範圍變更** | 任何新增/刪減功能先更新工作分配表並取得主管同意，再排入 Sprint |

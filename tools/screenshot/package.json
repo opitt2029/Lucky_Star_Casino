@@ -1,0 +1,9 @@
+{
+  "name": "report-screenshot-tool",
+  "private": true,
+  "type": "module",
+  "description": "產生報告用的前端標註截圖（使用系統 Edge/Chrome，不下載瀏覽器）",
+  "dependencies": {
+    "playwright-core": "^1.48.0"
+  }
+}

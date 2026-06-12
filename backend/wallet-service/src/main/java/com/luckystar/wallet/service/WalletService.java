@@ -68,8 +68,9 @@ public class WalletService {
                 .orElseThrow(() -> new WalletNotFoundException(
                         "Wallet not found for player: " + request.getPlayerId()));
 
-        // Step 3: balance guard
-        if (wallet.getBalance() < request.getAmount()) {
+        // Step 3: balance guard — 以可用餘額（balance - frozenAmount）為準，凍結中的金額不可再下注
+        long available = wallet.getBalance() - wallet.getFrozenAmount();
+        if (available < request.getAmount()) {
             throw new InsufficientBalanceException("Insufficient balance");
         }
 
@@ -190,6 +191,10 @@ public class WalletService {
         // Step 3b: 選填解凍 — 釋放先前下注凍結的金額；守衛確保凍結金額不會被扣成負數
         long unfreeze = request.getUnfreezeAmount() == null ? 0L : request.getUnfreezeAmount();
         if (unfreeze > 0) {
+            if (unfreeze > wallet.getFrozenAmount()) {
+                log.warn("Unfreeze amount {} exceeds frozenAmount {} for playerId={}, clamping to 0",
+                        unfreeze, wallet.getFrozenAmount(), request.getPlayerId());
+            }
             wallet.setFrozenAmount(Math.max(0L, wallet.getFrozenAmount() - unfreeze));
         }
 
