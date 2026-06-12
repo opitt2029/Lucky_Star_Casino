@@ -470,7 +470,7 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
 |---|:--:|---|:--:|---|
 | T-090 | P0 | JMeter 高併發壓測腳本 | ⚠️ | JMX、執行器、分析器與報告已完成；實測阻塞於 T-032、JMeter/環境與 1,000 組玩家憑證 |
-| T-091 | P0 | 帳務一致性對帳腳本 | ❌ | 未見對帳 SQL |
+| T-091 | P0 | 帳務一致性對帳腳本 | ✅ | `tests/performance/accounting-reconciliation.sql` + `run-accounting-reconciliation.ps1`：壓測後驗證 wallets.balance 與流水加總一致、無負餘額、frozen_amount 歸零 |
 | T-092 | P1 | Swagger UI API 文件 | ❌ | 各服務 pom.xml 無 springdoc-openapi 依賴 |
 | T-093 | P0 | End-to-End 整合測試 | ❌ | 多數後端服務未實作，無法執行完整流程 |
 | T-094 | P0 | README 與部署文件 | ✅ | README.md + DEPLOY.md 皆存在（DEPLOY.md 於 2026-05-29 補上本機部署 SOP） |
