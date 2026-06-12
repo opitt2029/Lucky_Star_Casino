@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Noto+Sans+TC:wght@400;500;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Noto+Sans+TC:wght@400;500;700;800;900&family=Noto+Serif+TC:wght@900&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -606,6 +606,73 @@ video {
   gap: 12px;
   justify-content: center;
   margin-top: 22px;
+}
+
+/* ---- 咪牌（擠牌） ---- */
+
+.baccarat-hero__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.baccarat-squeeze-toggle {
+  border: 1px solid rgba(248, 213, 106, 0.35);
+  background: rgba(45, 5, 8, 0.84);
+  color: rgba(255, 234, 160, 0.78);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 800;
+  transition: all 0.2s ease;
+}
+
+.baccarat-squeeze-toggle:hover {
+  border-color: rgba(255, 234, 160, 0.7);
+  color: #ffeaa0;
+}
+
+.baccarat-squeeze-toggle--on {
+  background: linear-gradient(180deg, #f8d56a, #c98908);
+  color: #4d0207;
+  border-color: rgba(255, 234, 160, 0.9);
+  box-shadow: 0 0 16px rgba(248, 213, 106, 0.4);
+}
+
+.baccarat-squeeze {
+  position: relative;
+  display: block;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.baccarat-squeeze:active {
+  cursor: grabbing;
+}
+
+.baccarat-squeeze__face {
+  position: absolute;
+  inset: 0;
+  transition: clip-path 0.08s linear;
+}
+
+.baccarat-squeeze__hint {
+  position: absolute;
+  left: 50%;
+  bottom: -20px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 800;
+  color: rgba(255, 234, 160, 0.6);
+  animation: fx-aura-breathe 1.6s ease-in-out infinite;
+  pointer-events: none;
 }
 
 .baccarat-card {
@@ -1389,6 +1456,38 @@ video {
   text-shadow:
     0 2px 0 rgba(50, 2, 6, 0.88),
     0 0 18px rgba(255, 234, 160, 0.26);
+}
+
+/* registry 華人意象符號（SVG）：撐滿格位 + 微金光 */
+.slot-symbol-art--rich {
+  height: min(86%, calc(var(--slot-symbol-height, 100px) - 22px));
+  padding: 0 4px;
+}
+
+.slot-symbol-art--rich svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 0 10px rgba(248, 213, 106, 0.35));
+}
+
+/* near-miss anticipation：第三輪慢停時整櫃紅光脈動，配心跳鼓點 */
+.slot-cabinet--anticipation {
+  animation: slot-anticipation-pulse 0.64s ease-in-out infinite;
+}
+
+@keyframes slot-anticipation-pulse {
+  0%, 100% {
+    box-shadow:
+      inset 0 0 0 7px rgba(12, 1, 3, 0.7),
+      inset 0 0 0 11px rgba(255, 234, 160, 0.1),
+      0 0 36px rgba(201, 13, 24, 0.4);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 7px rgba(60, 2, 6, 0.85),
+      inset 0 0 0 11px rgba(255, 120, 90, 0.4),
+      0 0 64px rgba(201, 13, 24, 0.85);
+  }
 }
 
 .slot-symbol-tile--emoji .slot-symbol-art {
