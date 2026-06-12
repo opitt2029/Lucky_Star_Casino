@@ -1,5 +1,6 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
-import { mockApi } from '../../services/mockApi'
+import { gameApi } from '../../services/gameApi'
+import { extractError } from '../../services/memberApi'
 
 const initialState = {
   currentGame: null,
@@ -24,17 +25,17 @@ const initialState = {
 
 export const spinSlot = createAsyncThunk('game/spinSlot', async (payload, { rejectWithValue }) => {
   try {
-    return await mockApi.spinSlot(payload)
+    return await gameApi.spinSlot(payload)
   } catch (error) {
-    return rejectWithValue(error.message)
+    return rejectWithValue(extractError(error))
   }
 })
 
 export const betBaccarat = createAsyncThunk('game/betBaccarat', async (payload, { rejectWithValue }) => {
   try {
-    return await mockApi.baccaratBet(payload)
+    return await gameApi.baccaratBet(payload)
   } catch (error) {
-    return rejectWithValue(error.message)
+    return rejectWithValue(extractError(error))
   }
 })
 
