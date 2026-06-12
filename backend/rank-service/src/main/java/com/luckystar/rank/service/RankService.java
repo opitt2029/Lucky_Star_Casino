@@ -1,6 +1,7 @@
 package com.luckystar.rank.service;
 
 import com.luckystar.rank.dto.RankEntryResponse;
+import com.luckystar.rank.dto.PlayerCoinBalance;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -81,6 +82,30 @@ public class RankService {
     public List<RankEntryResponse> getTopGlobalCoins(int limit) {
         int boundedLimit = Math.max(0, Math.min(limit, GLOBAL_TOP_LIMIT));
         return readTopRank(GLOBAL_COINS_KEY, boundedLimit);
+    }
+
+    public void clearGlobalCoinsRank() {
+        redisTemplate.delete(GLOBAL_COINS_KEY);
+    }
+
+    public int rebuildGlobalCoinsRank(List<PlayerCoinBalance> balances) {
+        Objects.requireNonNull(balances, "balances is required");
+
+        redisTemplate.delete(GLOBAL_COINS_KEY);
+        Set<ZSetOperations.TypedTuple<String>> tuples = balances.stream()
+                .filter(Objects::nonNull)
+                .filter(balance -> balance.playerId() != null)
+                .filter(balance -> balance.balance() != null && balance.balance() >= 0)
+                .map(balance -> new DefaultTypedTuple<>(
+                        balance.playerId().toString(),
+                        balance.balance().doubleValue()))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (tuples.isEmpty()) {
+            return 0;
+        }
+
+        redisTemplate.opsForZSet().add(GLOBAL_COINS_KEY, tuples);
+        return tuples.size();
     }
 
     public void rebuildFriendRank(Long playerId, List<Long> friendIds) {
