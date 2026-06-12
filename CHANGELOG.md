@@ -24,6 +24,46 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Verified
 - `mvn -pl backend/game-service test` → 全綠（既有 + RtpStats 更新共 20 個測試類、0 失敗）。fishing 專屬單元測試（FishSpecies 重放/FishingService 冪等與射速/Controller WebMvc）於下一階段補齊。
+## [feat] -- 2026-06-12 -- Add T-043 weekly rank reset
+
+### Added
+- `backend/rank-service/.../scheduler/WeeklyRankResetScheduler.java`: schedules the weekly reset every Monday at 00:00 in `Asia/Taipei`.
+- `backend/rank-service/.../service/WeeklyRankResetService.java`: snapshots the weekly champion to `rank_history`, rebuilds `rank:global:coins` from `wallets.balance`, and publishes TOP3 notifications.
+- `backend/rank-service/.../entity/RankHistory.java` and `repository/RankHistoryRepository.java`: JPA mapping and duplicate snapshot guard for champion history.
+- `backend/rank-service/.../repository/WalletBalanceReadRepository.java`: reads current PostgreSQL wallet balances for the weekly ZSet recompute.
+- `backend/rank-service/.../kafka/NotificationPushPublisher.java` and `NotificationPushEvent.java`: publishes weekly TOP3 notifications to Kafka topic `notification.push`.
+- Unit tests for weekly reset orchestration, scheduler cron/zone, Kafka notification payloads, and Redis ZSet clearing.
+
+### Changed
+- `backend/rank-service/.../RankServiceApplication.java`: enables Spring scheduling for rank-service.
+- `backend/rank-service/.../service/RankService.java`: adds `clearGlobalCoinsRank()` for weekly reset cleanup.
+- `AUDIT_REPORT.md` and `docs/幸運星幣城_工作分配表.xlsx`: mark T-043 as complete.
+
+### Why
+- T-043 requires an automated weekly leaderboard closeout that persists the champion, notifies last week's TOP3, and refreshes the global Redis ZSet from the authoritative wallet balances.
+
+### Verified
+- `mvn -pl backend/rank-service test`: 38 tests passed, 0 failures.
+
+## [test] — 2026-06-12 — Add T-091 accounting reconciliation checks
+
+### Added
+- `tests/performance/accounting-reconciliation.sql`: PostgreSQL reconciliation query for wallet balance totals, latest ledger balance, transaction deltas, transaction chains, negative balances, frozen balances, orphan transactions, and duplicate non-null idempotency keys.
+- `tests/performance/run-accounting-reconciliation.ps1`: `psql --csv` runner that writes CSV/Markdown reports and exits non-zero when any reconciliation check reports violations.
+- `tests/infra/accounting-reconciliation.test.js`: static contract tests for the SQL and runner.
+
+### Changed
+- `docs/performance/T-090-load-test-report.md`: points the post-load-test database reconciliation step to the T-091 runner.
+- `AUDIT_REPORT.md`: marks T-091 as complete with the delivered SQL and automation script.
+- `docs/幸運星幣城_工作分配表.xlsx`: marks T-091 as complete in the overview, responsibility, sprint, and visual Gantt sheets.
+
+### Why
+- T-091 needs a repeatable post-pressure-test gate that verifies the ledger did not overdraw, that frozen balances are cleared, and that `wallets.balance` still agrees with the transaction history.
+
+### Verified
+- PowerShell parser check for `tests/performance/run-accounting-reconciliation.ps1`: passed.
+- Synthetic `psql --csv` verification: runner returned PASS with zero violations and failed non-zero when one check reported a violation; both runs wrote CSV and Markdown reports.
+- `node --test tests/infra/*.test.js`: 121 tests passed, 0 failures.
 
 ## [docs] — 2026-06-12 — 新增專題提案書（可直接轉 PDF：邊界 1cm、頁尾頁碼、白底）
 

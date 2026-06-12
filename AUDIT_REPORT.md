@@ -404,7 +404,7 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | T-040 | P0 | Redis ZSet 全服排行榜 | ✅ | `rank:global:coins` + wallet.credit/debit consumer |
 | T-041 | P0 | 好友排行榜 | ✅ | `rank:friend:{playerId}` + friend.relationship.updated consumer |
 | T-042 | P0 | 排行榜查詢 API | ✅ | `/api/v1/rank/global`、`/api/v1/rank/friends` + username read model |
-| T-043 | P1 | 每週排行榜重置排程 | ❌ | 同上 |
+| T-043 | P1 | 每週排行榜重置排程 | ✅ | `@Scheduled(cron="0 0 0 * * MON", zone="Asia/Taipei")` + `rank_history` 冠軍快照 + `wallets.balance` 重建 ZSet + `notification.push` TOP3 通知 |
 | T-044 | P1 | 每日持幣快照任務 | ❌ | 同上 |
 | T-045 | P2 | 今日贏幣王排行榜 | ❌ | 同上 |
 
@@ -470,7 +470,7 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
 |---|:--:|---|:--:|---|
 | T-090 | P0 | JMeter 高併發壓測腳本 | ⚠️ | JMX、執行器、分析器與報告已完成；實測阻塞於 T-032、JMeter/環境與 1,000 組玩家憑證 |
-| T-091 | P0 | 帳務一致性對帳腳本 | ❌ | 未見對帳 SQL |
+| T-091 | P0 | 帳務一致性對帳腳本 | ✅ | `tests/performance/accounting-reconciliation.sql` + `run-accounting-reconciliation.ps1`：壓測後驗證 wallets.balance 與流水加總一致、無負餘額、frozen_amount 歸零 |
 | T-092 | P1 | Swagger UI API 文件 | ❌ | 各服務 pom.xml 無 springdoc-openapi 依賴 |
 | T-093 | P0 | End-to-End 整合測試 | ❌ | 多數後端服務未實作，無法執行完整流程 |
 | T-094 | P0 | README 與部署文件 | ✅ | README.md + DEPLOY.md 皆存在（DEPLOY.md 於 2026-05-29 補上本機部署 SOP） |
@@ -506,7 +506,7 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 **按模組完成度概覽：**
 
-- ✅ **完成度高**：全域基礎建設、Member Service、Gateway、**Game Service（T-030~T-037 全完成）**、Rank Service（排行榜核心 T-040~T-042）
+- ✅ **完成度高**：全域基礎建設、Member Service、Gateway、**Game Service（T-030~T-037 全完成）**、Rank Service（排行榜核心 T-040~T-043）
 - ⚠️ **進行中**：Wallet Service（開戶/查餘額/扣款/入帳/流水/贈送 OK，破產補助/DLT 後台未完）、前端（UI 多已備但真實串接待補）
 - ❌ **尚未起步**：Admin Service、Notification Service、鑽石系統、部分測試/壓測/收尾文件
 

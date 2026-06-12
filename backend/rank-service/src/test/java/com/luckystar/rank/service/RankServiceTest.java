@@ -1,6 +1,7 @@
 package com.luckystar.rank.service;
 
 import com.luckystar.rank.dto.RankEntryResponse;
+import com.luckystar.rank.dto.PlayerCoinBalance;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -107,6 +108,50 @@ class RankServiceTest {
         assertThat(response.get(0)).isEqualTo(new RankEntryResponse(7L, "nova", 1L, 9000L));
         assertThat(response.get(1)).isEqualTo(new RankEntryResponse(42L, "alice", 2L, 1500L));
         assertThat(response.get(2)).isEqualTo(new RankEntryResponse(9L, "mika", 3L, 1000L));
+    }
+
+    @Test
+    void clearGlobalCoinsRank_deletesGlobalZSet() {
+        RankService rankService = new RankService(redisTemplate);
+
+        rankService.clearGlobalCoinsRank();
+
+        verify(redisTemplate).delete(RankService.GLOBAL_COINS_KEY);
+    }
+
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void rebuildGlobalCoinsRank_replacesZSetWithWalletBalances() {
+        RankService rankService = buildService();
+
+        int rebuilt = rankService.rebuildGlobalCoinsRank(List.of(
+                new PlayerCoinBalance(7L, 9000L),
+                new PlayerCoinBalance(42L, 1500L),
+                new PlayerCoinBalance(9L, 1000L)));
+
+        verify(redisTemplate).delete(RankService.GLOBAL_COINS_KEY);
+        ArgumentCaptor<Set> tuplesCaptor = ArgumentCaptor.forClass(Set.class);
+        verify(zSetOperations).add(eq(RankService.GLOBAL_COINS_KEY), tuplesCaptor.capture());
+        Set<ZSetOperations.TypedTuple<String>> tuples = tuplesCaptor.getValue();
+        assertThat(tuples).extracting(ZSetOperations.TypedTuple::getValue)
+                .containsExactlyInAnyOrder("7", "42", "9");
+        assertThat(tuples).extracting(ZSetOperations.TypedTuple::getScore)
+                .containsExactlyInAnyOrder(9000.0, 1500.0, 1000.0);
+        assertThat(rebuilt).isEqualTo(3);
+    }
+
+    @Test
+    void rebuildGlobalCoinsRank_filtersInvalidBalancesAndDoesNotCreateEmptyZSet() {
+        RankService rankService = new RankService(redisTemplate);
+
+        int rebuilt = rankService.rebuildGlobalCoinsRank(List.of(
+                new PlayerCoinBalance(null, 1000L),
+                new PlayerCoinBalance(7L, null),
+                new PlayerCoinBalance(42L, -1L)));
+
+        verify(redisTemplate).delete(RankService.GLOBAL_COINS_KEY);
+        verify(zSetOperations, never()).add(eq(RankService.GLOBAL_COINS_KEY), anySet());
+        assertThat(rebuilt).isEqualTo(0);
     }
 
     @Test
