@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -171,9 +172,14 @@ public class BaccaratService {
 
         // 寫對局（以 roundId 去重，重試不重複插入）。
         if (roundRepository.findByRoundId(roundId).isEmpty()) {
-            GameRound round = buildRound(session, outcome, settlement);
-            roundRepository.save(round);
-            eventPublisher.publishBaccaratResult(round, outcome);
+            try {
+                GameRound round = buildRound(session, outcome, settlement);
+                roundRepository.save(round);
+                eventPublisher.publishBaccaratResult(round, outcome);
+            } catch (DataIntegrityViolationException e) {
+                // 並發結算同時通過去重檢查，unique 約束擋下第二筆 → 視同已結算，不讓重試者收到 500
+                log.info("baccarat round concurrently settled by another request, skip roundId={}", roundId);
+            }
         } else {
             log.info("baccarat round already settled, skip persist/publish roundId={}", roundId);
         }
