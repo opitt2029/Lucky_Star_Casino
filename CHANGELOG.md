@@ -54,6 +54,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - 以 game-service 工作樹實際檔案佐證：`baccarat/`、`session/`、`controller/{Baccarat,Verification,Rtp}Controller.java`、`service/{Baccarat,Verification,RtpStats}Service.java`、`entity/GameRtpStat.java` 皆存在且為完整實作（非空殼），並各帶測試類。
 - `git log -- <path>` 確認 T-033~T-037 的功能提交（`7f5d513`/`6d9aae5`/`0910d29`/`710b1a8`/`d860154`）已在 develop 歷史中。
 - 純文件變更，不影響任何程式碼行為。
+## [fix] — 2026-06-09 — wallet-service 內部密鑰過濾器只保護 /internal/**
+
+### Fixed
+- `backend/wallet-service/.../security/InternalSecretFilter.java`：`shouldNotFilter()` 由「只放行 `/actuator/`」改為「只攔截 `/internal/**`」。先前過濾器要求**所有非 actuator 路徑**都帶 `X-Internal-Secret`，但 gateway 轉發玩家請求時只注入 `X-User-Id`/`X-User-Role`、不帶內部密鑰，導致玩家端 `/api/v1/wallet/**`（餘額/帳務/贈送/破產補助）全部回 401。
+
+### Why
+- 內部密鑰過濾器的職責應僅限於服務間端點（`/internal/**`，如 game-service 打的 debit/credit）。玩家端錢包 API 由 gateway 驗證 JWT 後以 `X-User-Id` 轉發，本就不應再要求 `X-Internal-Secret`。此修正讓玩家經 gateway 的錢包查詢恢復正常，且不影響內部端點仍受密鑰保護。
+
+### Verified
+- 端到端實測（docker compose 全套 + member/wallet/game/gateway）：修正前 `GET /api/v1/wallet/balance` 回 **401**；修正並重啟 wallet 後回 **200**，`POST /api/v1/wallet/bankruptcy-aid` 亦回 200（+1000 星幣）。
+- 老虎機 `POST /api/v1/game/slot/spin`（走 `/internal/**` 派彩）在修正前後皆正常，確認內部端點保護未被破壞。
 
 ## [docs] — 2026-06-05 — Sync task progress status across docs
 
