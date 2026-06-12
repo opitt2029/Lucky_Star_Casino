@@ -27,7 +27,7 @@ public class RtpStatsService {
     static final int SAMPLE_SIZE = 10_000;
 
     /** 目前支援統計的遊戲類型。 */
-    private static final List<String> GAME_TYPES = List.of("SLOT", "BACCARAT");
+    private static final List<String> GAME_TYPES = List.of("SLOT", "BACCARAT", "FISHING");
 
     private final GameRoundRepository roundRepository;
     private final GameRtpStatRepository rtpStatRepository;

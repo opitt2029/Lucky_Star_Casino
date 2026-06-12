@@ -73,17 +73,19 @@ class RtpStatsServiceTest {
     }
 
     @Test
-    @DisplayName("recalculateAll：SLOT 與 BACCARAT 各寫一筆")
-    void recalculateAll_bothGames() {
+    @DisplayName("recalculateAll：SLOT、BACCARAT、FISHING 各寫一筆")
+    void recalculateAll_allGames() {
         when(roundRepository.aggregateRecent(eq("SLOT"), eq(10000)))
                 .thenReturn(Collections.singletonList(new Object[] {500L, 90L, 5L}));
         when(roundRepository.aggregateRecent(eq("BACCARAT"), eq(10000)))
                 .thenReturn(Collections.singletonList(new Object[] {300L, 285L, 3L}));
+        when(roundRepository.aggregateRecent(eq("FISHING"), eq(10000)))
+                .thenReturn(Collections.singletonList(new Object[] {2000L, 1840L, 2L}));
 
         List<GameRtpStat> saved = service.recalculateAll();
 
-        assertEquals(2, saved.size());
-        verify(rtpStatRepository, times(2)).save(any(GameRtpStat.class));
+        assertEquals(3, saved.size());
+        verify(rtpStatRepository, times(3)).save(any(GameRtpStat.class));
     }
 
     @Test

@@ -5,6 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-12 — 捕魚機後端（game-service fishing 模組：buy-in 制 + 批次結算）
+
+### Added
+- `backend/game-service/.../fishing/FishSpecies.java`：11 魚種賠率表（錦鯉 2x ～ 龍王 200x、搖錢樹隨機 10-50x），目標 RTP 0.92，命中機率 = RTP / 倍率，每發子彈期望回報恆等、無套利漏洞；`resolvePayout()` 以 `RandomStream` 確定性判定，可由 serverSeed+clientSeed+nonce(=shotSeq) 重放驗證。
+- `backend/game-service/.../fishing/FishingSession.java`、`FishingSessionStore.java`：場次狀態存 Redis Hash（key `game:fishing:session:{playerId}`、TTL 24h），含局內餘額/炮台等級/lastShotSeq/雙 seed；預留 `roomId`/`seatIndex` 欄位供多人同台擴充。
+- `backend/game-service/.../service/FishingService.java`：核心流程 —— `start` 一次性冪等扣款 buy-in（鍵 `fishing-buyin-{sessionId}`；已有進行中場次回 `resumed=true` 不重複扣款）；`shots` 批次射擊只動 Redis 局內餘額（驗證 shotSeq 嚴格遞增、betPerShot 等於炮台固定注額、射速 8 發/秒 + 15 發突發緩衝、單批 ≤30 發）；`end` 冪等 credit 剩餘局內餘額回 wallet（鍵 `fishing-end-{sessionId}`）、寫 `GameRound`（roundId=sessionId 去重）、揭露 serverSeed、發 `game.result` 事件；`@Scheduled` 每 60s 掃描閒置 >10 分鐘場次自動結算（防「斷線錢不見」）。
+- `backend/game-service/.../controller/FishingController.java`：`POST /api/v1/game/fishing/session/start`、`GET /session/active`（斷線重連恢復）、`POST /{sessionId}/shots`、`POST /{sessionId}/end`、`GET /{sessionId}/verify-shot`（結算後逐發公平性驗證）。
+- DTO 七支：`FishingStartRequest` / `FishingSessionView`（含魚表）/ `FishingShotsRequest`（@Valid 巢狀）/ `FishingShotsResponse` / `FishingEndResponse` / `FishingShotVerifyResponse`。
+
+### Changed
+- `GameResultEventPublisher`：新增 `publishFishingResult()`（同 topic `game.result`、best-effort，**不動 Kafka topic 清單**，infra 測試免改）。
+- `RtpStatsService`：`GAME_TYPES` 加入 `FISHING`，捕魚場次彙總（totalBet/totalPayout）併入每小時 RTP 統計。
+- `RtpStatsServiceTest`：`recalculateAll` 測試由 2 遊戲改為 3 遊戲斷言。
+
+### Why
+- 捕魚是高頻射擊，不可能逐發打 wallet：採 buy-in 制 + Redis 局內餘額 + 批次結算，wallet 互動只有開場扣款與結算入帳各一次，嚴守冪等鍵模式（AGENTS.md 地雷 #8）。Provably Fair 保留：「差點贏」等體驗全在前端表現層演出，不操控後端結果。
+
+### Verified
+- `mvn -pl backend/game-service test` → 全綠（既有 + RtpStats 更新共 20 個測試類、0 失敗）。fishing 專屬單元測試（FishSpecies 重放/FishingService 冪等與射速/Controller WebMvc）於下一階段補齊。
+
 ## [docs] — 2026-06-12 — 新增專題提案書（可直接轉 PDF：邊界 1cm、頁尾頁碼、白底）
 
 ### Added
