@@ -5,6 +5,66 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [docs] — 2026-06-12 — 新增專題提案書（可直接轉 PDF：邊界 1cm、頁尾頁碼、白底）
+
+### Added
+- `docs/report/Lucky-Star-Casino-專題提案書.md` + 同名 `.html` / `.pdf`：依課程/試用期要求撰寫 —— 組內共識聲明、4-1 題目與動機、4-2 受眾客群分析（社交博弈產業 + 3 組 persona）、4-3 網站架構圖（Mermaid）、4-4 版面配置圖（9 張灰階 SVG 線框 + 完成畫面對照）、4-5 技術工具、4-6 組員工作分配（沿用組長A/組員B~E 代號，無個資）、4-7 預定完成日（依工作分配表 Sprint S0-W1 05/29 ～ S4-W8 07/03 對日期）、工作項目清單與主管確認機制。
+- `tools/screenshot/make-pdf.mjs`、`check-pdf.mjs`：headless Edge 輸出 PDF 與 pdf.js 頁面預覽驗證工具。
+
+### Changed
+- `tools/screenshot/build-html.mjs`：模板參數化，新增 plain 模板（白底無主題樣式、`@page { size:A4; margin:1cm; @bottom-center: counter(page) }` 頁尾頁碼）；提案書納入建置清單。
+
+### Why
+- 課程提案需求：固定格式（邊界 1cm、頁碼、白底）、含 4-1~4-7 指定章節；分工與日期一律以 `docs/幸運星幣城_工作分配表.xlsx`（78 項任務）為單一真相來源解析產出，不引入個人 Email/電話。
+
+### Verified
+- `node tools/screenshot/make-pdf.mjs` 產出 24 頁 PDF；以 pdf.js 渲染第 2/6/7 頁人工確認：頁尾置中頁碼、1cm 邊界、SVG 線框與截圖正常、白底無多餘樣式。
+
+## [fix] — 2026-06-12 — 全專案除錯體檢：修復 wallet/game 三項風險 + 產出總體檢報告
+
+### Fixed
+- `backend/wallet-service/.../service/WalletService.java`（debit Step 3）：扣款守衛由 `balance < amount` 改為以**可用餘額**（`balance - frozenAmount`）判斷，凍結中的金額不可再下注。目前全專案尚無凍結寫入路徑（frozenAmount 恆為 0），行為相容、屬防禦性修復。
+- `backend/wallet-service/.../service/WalletService.java`（credit Step 3b）：解凍金額大於 frozenAmount 時補 `log.warn`（原本被 `Math.max(0,…)` 靜默吞掉，帳務異常無從追查）。
+- `backend/game-service/.../service/SlotService.java`、`BaccaratService.java`（結算寫對局）：`findByRoundId()` 去重檢查與 `save()` 之間補 `catch DataIntegrityViolationException` — 並發重試結算時第二個請求原會撞 UNIQUE 約束收到 500，現視同已被另一請求結算、正常回應（帳務本就以冪等鍵保護；wallet-service 同模式原本就有此處理，game-service 漏了）。
+
+### Added
+- `docs/report/Lucky-Star-Casino-總體檢報告.md` + 同名 `.html`：含目錄之全專案總體檢報告 —— 系統架構/Git CI/六大業務流程 Mermaid 圖、16 張前端頁面標註截圖（紅框+編號+API 對照）、除錯報告（已修復 3 項、待處理問題依嚴重度分級、誤報澄清 4 項）。HTML 版瀏覽器開啟即可列印轉 PDF。
+- `docs/report/Lucky-Star-Casino-開發與流程報告.md`、`Lucky-Star-Casino-前端功能導覽.md` + 同名 `.html`：由總報告拆出的兩本分冊（單一來源：總報告 .md，由 `build-split.mjs` 重產）。
+- `docs/report/assets/*.png`：16 張標註截圖（mock API 模式擷取）。首頁因採內部捲動容器 + scroll 漸顯動畫（`--section-reveal`），整頁截圖下方區塊會是空白，故改為逐區塊捲動後分拍 4 張（intro/games/member/shop）。
+- `tools/screenshot/`：截圖工具（`capture.mjs` 標註截圖、`build-split.mjs` 拆分分冊、`build-html.mjs` 由 MD 產 HTML、`check-html.mjs` 驗證渲染），使用 playwright-core + 系統 Edge，可重複執行。
+
+### Why
+- 全代碼掃描後逐項驗證疑點：三項屬實風險直接修復（debit 凍結守衛、並發結算 500、解凍靜默吞錯），其餘整理進報告供排程處理；另依需求產出可轉 PDF 的工作流程與前端功能文件。
+
+### Verified
+- `mvn -pl backend/wallet-service,backend/game-service test` → BUILD SUCCESS（wallet 142 / game 106 測試全綠）。
+- `node tools/screenshot/check-html.mjs` → HTML 報告 8 張 Mermaid 全部渲染、0 破圖、無 console error。
+
+## [docs] — 2026-06-09 — Sync game-service T-030~T-037 completion across docs
+
+### Changed
+- `AGENTS.md`（註10「服務完成度」）：game-service 由「已完成 T-030~T-033 老虎機核心、百家樂 T-034~T-036 尚未實作」更正為「已完成 T-030~T-037 全部」（老虎機核心 / Redis Session 兩階段 commit-ahead / 百家樂邏輯+API / RNG 公平性驗證 API / 遊戲 RTP 統計）。
+- `AUDIT_REPORT.md` 附錄 A.4：T-033/T-034/T-035/T-036/T-037 狀態由 ❌ 改為 ✅，盤點依據改填實際實作檔與提交（`7f5d513`、`6d9aae5`、`0910d29`、`710b1a8`、`d860154`）；表格下方說明改為「game-service 已全數完成」。
+- `AUDIT_REPORT.md` 附錄 A.12：進度統計 ✅ 24→29、❌ 42→37（移動 5 項，總計仍 78），占比重算；模組概覽將 Game Service 由「尚未起步」移至「完成度高」，結論調整為僅 admin / notification 仍空白。
+
+### Why
+- 文件落後於已合併的程式碼：game-service（組員B 範圍 T-030~T-037）八項任務已全部實作並合併至 `develop`，但 AGENTS.md / AUDIT_REPORT 仍描述百家樂、Redis Session、公平性驗證、RTP 統計為未實作，導致進度誤判（game-service 被誤認為半成品）。
+
+### Verified
+- 以 game-service 工作樹實際檔案佐證：`baccarat/`、`session/`、`controller/{Baccarat,Verification,Rtp}Controller.java`、`service/{Baccarat,Verification,RtpStats}Service.java`、`entity/GameRtpStat.java` 皆存在且為完整實作（非空殼），並各帶測試類。
+- `git log -- <path>` 確認 T-033~T-037 的功能提交（`7f5d513`/`6d9aae5`/`0910d29`/`710b1a8`/`d860154`）已在 develop 歷史中。
+- 純文件變更，不影響任何程式碼行為。
+## [fix] — 2026-06-09 — wallet-service 內部密鑰過濾器只保護 /internal/**
+
+### Fixed
+- `backend/wallet-service/.../security/InternalSecretFilter.java`：`shouldNotFilter()` 由「只放行 `/actuator/`」改為「只攔截 `/internal/**`」。先前過濾器要求**所有非 actuator 路徑**都帶 `X-Internal-Secret`，但 gateway 轉發玩家請求時只注入 `X-User-Id`/`X-User-Role`、不帶內部密鑰，導致玩家端 `/api/v1/wallet/**`（餘額/帳務/贈送/破產補助）全部回 401。
+
+### Why
+- 內部密鑰過濾器的職責應僅限於服務間端點（`/internal/**`，如 game-service 打的 debit/credit）。玩家端錢包 API 由 gateway 驗證 JWT 後以 `X-User-Id` 轉發，本就不應再要求 `X-Internal-Secret`。此修正讓玩家經 gateway 的錢包查詢恢復正常，且不影響內部端點仍受密鑰保護。
+
+### Verified
+- 端到端實測（docker compose 全套 + member/wallet/game/gateway）：修正前 `GET /api/v1/wallet/balance` 回 **401**；修正並重啟 wallet 後回 **200**，`POST /api/v1/wallet/bankruptcy-aid` 亦回 200（+1000 星幣）。
+- 老虎機 `POST /api/v1/game/slot/spin`（走 `/internal/**` 派彩）在修正前後皆正常，確認內部端點保護未被破壞。
 ## [chore] — 2026-06-10 — 本機部署：一鍵啟動腳本與前端 mock 開關修正
 
 ### Added
