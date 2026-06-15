@@ -36,6 +36,12 @@ spring:
       minimum-idle: 1
       connection-timeout: 30000
 
+  # Redis：玩家停用使用者級封鎖標記（disabled:player:{id}）
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
   # Kafka
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}

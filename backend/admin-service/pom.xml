@@ -68,6 +68,12 @@
             <artifactId>spring-kafka</artifactId>
         </dependency>
 
+        <!-- Redis: 玩家停用使用者級封鎖標記（disabled:player:{id}，由 gateway 強制；T-051） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
         <!-- Actuator -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
