@@ -7,9 +7,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.HashOperations;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -83,20 +84,20 @@ public class FishingSessionStore {
     /**
      * 列出所有捕魚 Session 的玩家 ID（閒置回收排程用）。
      *
-     * <p>v1 以 {@code KEYS} 掃描——捕魚同時在線場次量級小（每玩家最多一個 key），
-     * 上雲大流量後應改 SCAN 游標分批。
+     * <p>以 {@code SCAN} 游標分批掃描（非阻塞），避免 {@code KEYS} 在 key 量大時阻塞整個 Redis。
+     * 每位玩家最多一個 key，掃描結果即在線場次清單。
      */
     public List<Long> listPlayerIds() {
-        Set<String> keys = redisTemplate.keys(KEY_PREFIX + "*");
         List<Long> playerIds = new ArrayList<>();
-        if (keys == null) {
-            return playerIds;
-        }
-        for (String key : keys) {
-            try {
-                playerIds.add(Long.parseLong(key.substring(KEY_PREFIX.length())));
-            } catch (NumberFormatException ignored) {
-                // 非預期格式的 key，跳過
+        ScanOptions options = ScanOptions.scanOptions().match(KEY_PREFIX + "*").count(256).build();
+        try (Cursor<String> cursor = redisTemplate.scan(options)) {
+            while (cursor.hasNext()) {
+                String key = cursor.next();
+                try {
+                    playerIds.add(Long.parseLong(key.substring(KEY_PREFIX.length())));
+                } catch (NumberFormatException ignored) {
+                    // 非預期格式的 key，跳過
+                }
             }
         }
         return playerIds;

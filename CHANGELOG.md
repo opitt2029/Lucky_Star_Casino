@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [fix] — 2026-06-15 — game-service 捕魚機閒置回收：Redis KEYS→SCAN + 排程韌性
+
+### Changed
+- `fishing/FishingSessionStore.listPlayerIds()`：列舉在線捕魚場次由 Redis `KEYS` 改為 **`SCAN` 游標分批**（`ScanOptions.match(KEY_PREFIX+"*").count(256)`，try-with-resources 關閉 `Cursor`）。`KEYS` 為 O(N) 阻塞指令，key 量大時會卡住整個 Redis 實例；`SCAN` 非阻塞、分批回傳。移除未使用的 `java.util.Set` import。
+- `service/FishingService.sweepIdleSessions()`：把 `sessionStore.listPlayerIds()` 包入 try/catch。原本若 Redis 不可用，`listPlayerIds()` 在 per-player 迴圈**之前**拋出，整批掃描以未捕捉例外結束、排程每分鐘噴 ERROR；改為記 WARN 後略過本輪（下一輪自動重試，帳務冪等不受影響）。
+
+### Why
+- code review 發現的兩個地雷：`KEYS` 在生產環境的阻塞風險（程式碼原註解已自承「上雲前應改 SCAN」），以及排程對 Redis 抖動不具韌性導致 log 噪音。皆為捕魚機（見工作分配表 T-038）閒置回收路徑。
+
+### Verified
+- `mvn -pl backend/game-service test`：106 pass / 0 fail（BUILD SUCCESS）。
+
+### Docs
+- `docs/幸運星幣城_工作分配表.xlsx`：新增 **T-038 捕魚機遊戲實作（邏輯 + Session + API）**（RNG Game Service / 組員B / S2-W5 / ✅ 已完成）至全部 4 個分頁；此功能先前已實作但未登錄於追蹤表（SSOT）。同步修正各分頁小計/總計公式與 視覺化甘特圖 組員B 合計（51h、9 項）。
+
 ## [feat] — 2026-06-15 — T-070/T-071/T-072：notification-service 即時推播（WebSocket/STOMP + Kafka 橋接）
 
 ### Added
