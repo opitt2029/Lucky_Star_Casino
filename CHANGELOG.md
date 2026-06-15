@@ -5,6 +5,108 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-15 — T-105/T-106：鑽石點數卡後台 API（批量生成 + 列表查詢）
+
+### Added
+- `controller/AdminDiamondController`：
+  - `POST /admin/diamond/cards`（`@PreAuthorize("hasRole('ADMIN')")`）：批量生成點數卡，body `{count, faceValue}`，回傳序號陣列供匯出。
+  - `GET /admin/diamond/cards?page=&size=&status=all|redeemed|unredeemed`：分頁列表 + 兌換狀態過濾，欄位含 card_code/face_value/is_redeemed/redeemed_by/redeemed_at。
+- `service/DiamondCardService`：序號格式 `XXXX-XXXX-XXXX-XXXX`（UUID 取 16 碼 hex 大寫分 4 段），同批去重 + `existsByCardCode` 避開既有序號（card_code UNIQUE），`saveAll` 寫入。
+- `mysql.entity.DiamondCard` + `mysql.repository.DiamondCardRepository`（admin 的 @Primary MySQL 源）。
+- DTO：`GenerateCardsRequest`（count 1..1000、faceValue 正）、`GenerateCardsResponse`、`DiamondCardView`、`CardStatusFilter`。
+- 單元測試：生成數量/格式/唯一/撞號重產、三種 status 過濾、生成驗證 400。
+
+### Why
+- `diamond_cards` 在 **MySQL**，而 admin-service 的 `@Primary` 資料源即 MySQL（見 DataSourceConfig），故直接以 admin 既有 MySQL EMF 讀寫，不需新增資料源（修正計畫「admin 主源是 PostgreSQL」之誤判）。卡片生成為後台固有職責（非寫他服務私有資料）。
+
+### Verified
+- `mvn -pl backend/admin-service test`：52 pass / 0 fail。
+
+## [feat] — 2026-06-15 — T-051/T-052/T-053：Admin 管理/報表 API（玩家管理 + 星幣流通量 + RTP 監控）
+
+### Added
+- **T-051 玩家帳號管理**：
+  - `controller/AdminPlayerController`：`GET /admin/players`（分頁 + 帳號/暱稱關鍵字）、`GET /admin/players/{id}`（跨庫彙整：member 基本資料 + wallet 餘額 + 近 20 筆帳務 + 近 20 局對局）、`PATCH /admin/players/{id}/status`（停用/啟用）。
+  - `service/AdminPlayerService` + 唯讀 read model：`mysql.entity.{MemberRead,WalletTransactionRead}`、`postgres.entity.{WalletRead,GameRoundRead}` 與對應 repository（admin 只讀、不寫他服務庫）。
+  - `service/PlayerBanService`：停用寫 Redis `disabled:player:{id}`、啟用刪除。
+  - `gateway` `JwtAuthenticationGlobalFilter`：新增使用者級封鎖檢查（`disabled:player:{sub}`），與 jti 黑名單一起 fail-closed → 命中即 401，使被停用玩家既有 token **立刻失效**。
+- **T-052 星幣流通量報表**：`GET /admin/reports/coin-flow?dimension=day|week|month&from=&to=`，`service/CoinFlowReportService` 讀 MySQL `wallet_transactions`、依 type 分發放(CREDIT/BONUS)/消耗(DEBIT)、Java 依維度彙整時間序列（DB 方言中立、易測）。
+- **T-053 RTP 監控**：`GET /admin/reports/rtp?game=&from=&to=`，`service/RtpReportService` 讀 PostgreSQL `game_rtp_stats`（game T-037 排程產出，admin 不重算），比對設計 RTP（`admin.rtp.design.*` 可設定，預設 slot 0.95 / baccarat 0.98），偏差絕對值 > 門檻（預設 0.05）標 `ABNORMAL`。
+- `controller/AdminReportController`（兩報表端點）、`controller/AdminExceptionHandler`（不合法參數 → 400）、相關 DTO 與單元測試（玩家列表/搜尋/詳情/停用封鎖、各維度彙整、RTP 偏差邊界 5%/>5%）。
+
+### Changed
+- `backend/admin-service/pom.xml` + `application.yml`：新增 spring-data-redis（玩家封鎖）。
+- read model 實體 no-arg 建構子改 public（供跨套件測試建構）。
+
+### Why
+- T-051 停用「即時失效」：既有黑名單是 per-JTI，admin 無從取得玩家 jti；且 admin 不應直接寫 member 庫。故採**使用者級封鎖 + gateway 強制**（gateway 是所有玩家請求唯一閘口，一處改動即全服務生效）。member 庫 `status` 持久化待 member-service 提供 internal API（跨組待辦）。
+- 報表走**直接讀庫**（admin 已掛 MySQL 讀庫 + PostgreSQL）：符合計畫「讀庫查詢」「RTP 不在 admin 重算」原則，免跨服務 HTTP。
+
+### Verified
+- `mvn -pl backend/admin-service test`：43 pass / 0 fail。
+- `mvn -pl backend/gateway-service test`：21 pass / 0 fail（含 JWT filter 既有案例，封鎖檢查未破壞 fail-closed 行為）。
+
+## [feat] — 2026-06-15 — T-050：Admin 後台 JWT 認證地基（角色區分 + Spring Security）
+
+### Added
+- admin-service 認證地基（套件 `com.luckystar.admin`）：
+  - `security/AdminRole`（`SUPER_ADMIN` / `OPERATOR`）、`security/AdminJwtUtil`（JJWT 0.12.6，獨立 secret、token 帶 `role` + `scope=admin`）、`security/AdminJwtAuthFilter`（驗章後授予 `ROLE_ADMIN` + `ROLE_<角色>`）。
+  - `config/SecurityConfig`：`/admin/auth/**` 放行、`/admin/**` 需 `ROLE_ADMIN`、`@EnableMethodSecurity` 開啟 `@PreAuthorize`、未認證回 401（自訂 entry point）、角色不足回 403。
+  - `postgres/entity/AdminUser` + `postgres/repository/AdminUserRepository`（PostgreSQL 寫端）。
+  - `dto/LoginRequest`、`dto/LoginResponse`、`service/AdminAuthService`（BCrypt 驗密碼 → 簽 token）、`controller/AdminAuthController`（`POST /admin/auth/login`）。
+  - `config/AdminUserSeeder`：啟動播種預設 `SUPER_ADMIN`（帳密由 `ADMIN_SEED_*` 提供，BCrypt 雜湊，table 空時才建）。
+- `database/postgres/init.sql` + `migration/V1__init_schema.sql`：新增 `admin_users` 表（username UNIQUE、role CHECK SUPER_ADMIN/OPERATOR、BCrypt password_hash）。
+- `.env.example`：新增 `ADMIN_JWT_SECRET`、`ADMIN_JWT_EXPIRY_MS`、`ADMIN_SEED_*`。
+- 測試（19 個）：`AdminJwtUtilTest`（玩家 token/缺 scope/亂碼 → 拒）、`AdminAuthServiceTest`（成功/錯密碼/未知/停用）、`AdminAuthControllerTest`（200/401/400）、`AdminSecurityIntegrationTest`（無 token 401、玩家 token 401、OPERATOR 200、OPERATOR 存取 super-only 403、SUPER_ADMIN 200、登入 e2e）。
+
+### Changed
+- `backend/admin-service/pom.xml`：加 JJWT（api/impl/jackson）、validation、H2（test）、surefire `jpa.ddl-auto=create` 與 `jpa.dialect.*=H2Dialect`。
+- `config/DataSourceConfig`：`hibernate.hbm2ddl.auto` 與 `hibernate.dialect` 改讀 system property（預設維持正式方言/validate），讓測試能以 H2Dialect + create 在 H2 建表並 INSERT（H2 不支援 PG/MySQL 方言的 `insert...returning`）。
+- `application.yml`：移除無用的 `spring.security.user`，新增 `admin.jwt.*` 與 `admin.seed.*`。
+
+### Why
+- T-050 是所有 Admin/鑽石後台 API（T-051~T-055、T-105、T-106）的前置。採**獨立 ADMIN_JWT_SECRET** 與玩家 token 隔離（AGENTS §地雷）；角色用 `ROLE_ADMIN` 把關 `/admin/**`、`@PreAuthorize("hasRole('SUPER_ADMIN')")` 把關 GM 級敏感操作。
+- 方言改 system property：admin 因 seeder 啟動即 INSERT，PostgreSQLDialect 的 `insert...returning` 在 H2 會語法錯誤；測試改 H2Dialect 為業界慣例，且 prod 設定零變動。
+
+### Verified
+- `mvn -pl backend/admin-service test`：19 pass / 0 fail。
+
+## [feat] — 2026-06-15 — T-041/T-042：好友排行榜納入本人 + 新增「查自己好友名次」API
+
+### Added
+- `RankService.getFriendRank(playerId)`：以 `ZREVRANK` 取得玩家在好友榜的當前名次（好友榜已含本人）；不在榜回 `Optional.empty()`。
+- `GET /api/v1/rank/friends/me`（`X-User-Id` header）：回傳玩家自己在好友榜的名次，不在榜回 404；缺 header 回 400。
+- 單元測試：`RankServiceTest` 補 `getFriendRank` happy path + 不在榜；`RankControllerTest` 補 `/friends/me` 200/404/400 三案例。
+
+### Changed
+- `RankService.rebuildFriendRank`：好友榜 ZSet（`rank:friend:{playerId}`）由「僅含好友」改為「**好友 + 玩家本人**」，讓玩家即使不在好友前 20 名也能查到自己名次（T-041 step2 / T-042 step3）。仍維持去重、無好友時不建空 ZSet、24h TTL 不變。
+- `RankServiceTest.rebuildFriendRank_*`：對應更新斷言為含本人（"1","2","3"）。
+
+### Why
+- 計畫 T-041 step2 要求好友榜「好友 + 自己」、T-042 step3 要求「friends 榜也補自己名次」，原實作的 friends-only ZSet 無法滿足「查自己在好友圈名次」。經確認採「納入自己」方案（符合常見好友榜 UX：玩家能看到自己位置）。
+- 頭像欄位：計畫 T-042 要求回傳含頭像，但 `MemberRegisteredEvent` 目前僅帶 `username`，rank 端無頭像資料來源。依 AGENTS §地雷「不跨服務同步呼叫」，**暫不加頭像欄位，記錄為跨組待辦**（待 member 端於註冊事件補頭像後再落地）。
+
+### Verified
+- `mvn -pl backend/rank-service test`：49 pass / 0 fail（RankServiceTest 14、RankControllerTest 7）。
+
+## [feat] — 2026-06-15 — T-002：Docker Compose 環境收尾，Kafka 改 KRaft（移除 Zookeeper）、MySQL 對齊 8.4
+
+### Changed
+- `docker-compose.yml`：Kafka 由 Zookeeper 模式改為 **KRaft 模式**（`KAFKA_PROCESS_ROLES=broker,controller`、`KAFKA_CONTROLLER_QUORUM_VOTERS=1@lucky-star-kafka:29093`、新增 `CONTROLLER` listener、`CLUSTER_ID` 由 `${KAFKA_CLUSTER_ID}` 注入），broker+controller 單節點合一。MySQL image 由 `8.0` 對齊規格 `8.4`。
+- `.env.example`：移除 `ZOOKEEPER_PORT`，新增 `KAFKA_CLUSTER_ID`（固定值避免重建 volume 後 id 不一致）。
+- `tests/infra/docker-compose.test.js`：移除「應包含 zookeeper 服務」斷言，改為斷言「無 zookeeper 服務 + 具備 `KAFKA_PROCESS_ROLES`/`KAFKA_CONTROLLER_QUORUM_VOTERS`」確保維持 KRaft。
+- 文件同步：`DEPLOY.md`、`README.md`、`docs/architecture.md`、`docs/PROJECT_BASE_EXPLANATION.md` 移除 Zookeeper、改述 KRaft，MySQL 版本標示 8.4。
+
+### Removed
+- `docker-compose.yml`：`zookeeper` service 與其 `lucky_zookeeper_data`/`lucky_zookeeper_log` volume；Kafka 資料 volume 由 `lucky_kafka_zk_data` 改名為 `lucky_kafka_data`。
+
+### Why
+- 規格（`docs/Stage/01-phase0-env.md` 與 AUDIT_REPORT T-002）要求 Kafka 採 KRaft、無 Zookeeper；原 compose 偏離規格。KRaft 簡化拓撲、少一個容器與協調層，並對齊 7.6.1 官方建議。MySQL 對齊 8.4 與 README/DEPLOY 規格一致。
+
+### Verified
+- `docker compose config --quiet`：通過（含 `${KAFKA_CLUSTER_ID}` 等變數插值無誤）。
+- `node --test tests/infra/*.test.js`：121 pass / 0 fail（含更新後的 compose KRaft 斷言與 kafka-init topic 斷言）。
+
 ## [fix] — 2026-06-15 — 捕魚機對局無法持久化（game_type 約束缺 FISHING）+ 全功能實機 smoke test 腳本
 
 ### Fixed

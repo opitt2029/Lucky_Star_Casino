@@ -348,7 +348,7 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 |---|---|:--:|---|:--:|---|
 | T-000 | 組長A | P0 | GitHub Repo 與分支策略 | ✅ | README.md / CONTRIBUTING.md / .github/pull_request_template.md 皆存在 |
 | T-001 | 組長A | P0 | 架構圖與 ADR | ✅ | docs/architecture.md、docs/adr/ADR-001.md 存在 |
-| T-002 | 組員D | P0 | Docker Compose 環境 | ⚠️ | docker-compose.yml 存在且完整，但**使用 Zookeeper 而非規格要求的 KRaft 模式**（規格偏離，需確認決策） |
+| T-002 | 組員D | P0 | Docker Compose 環境 | ✅ | 已改 Kafka KRaft（移除 Zookeeper）、MySQL 對齊 8.4、Kafka volume 改 `lucky_kafka_data`；`docker compose config` + infra 測試通過（2026-06-15） |
 | T-003 | 組員D | P0 | 各 Service Spring Boot 初始化 | ✅ | 6 個服務模組皆能獨立啟動（pom.xml 已掛模組） |
 | T-004 | 組員E | P0 | React 前端初始化 | ✅ | frontend/ 為 Vite + React，含 Redux/Router/Tailwind/Axios |
 | T-005 | 組長A | P0 | Kafka Topic 規劃 | ✅ | kafka/kafka-init.sh 存在 |
@@ -402,8 +402,8 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
 |---|:--:|---|:--:|---|
 | T-040 | P0 | Redis ZSet 全服排行榜 | ✅ | `rank:global:coins` + wallet.credit/debit consumer |
-| T-041 | P0 | 好友排行榜 | ✅ | `rank:friend:{playerId}` + friend.relationship.updated consumer |
-| T-042 | P0 | 排行榜查詢 API | ✅ | `/api/v1/rank/global`、`/api/v1/rank/friends` + username read model |
+| T-041 | P0 | 好友排行榜 | ✅ | `rank:friend:{playerId}`（含好友 + 本人）+ friend.relationship.updated consumer + 24h TTL |
+| T-042 | P0 | 排行榜查詢 API | ✅ | `/global`、`/global/{id}`、`/friends`、`/friends/me`（自己好友名次）+ username read model；**頭像欄位待 member 端發布頭像後補（跨組待辦）** |
 | T-043 | P1 | 每週排行榜重置排程 | ✅ | `@Scheduled(cron="0 0 0 * * MON", zone="Asia/Taipei")` + `rank_history` 冠軍快照 + `wallets.balance` 重建 ZSet + `notification.push` TOP3 通知 |
 | T-044 | P1 | 每日持幣快照任務 | ✅ | `@Scheduled(cron="0 0 0 * * *", zone="Asia/Taipei")` + `rank_daily_snapshots` 前一日持幣量快照 |
 | T-045 | P2 | 今日贏幣王排行榜 | ❌ | 同上 |
@@ -412,10 +412,10 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
 |---|:--:|---|:--:|---|
-| T-050 | P1 | Admin JWT 認證（角色區分） | ❌ | admin-service 僅有 DataSourceConfig / PostgresJpaConfig 骨架 |
-| T-051 | P1 | 玩家帳號管理 API | ❌ | 同上 |
-| T-052 | P1 | 星幣流通量報表 API | ❌ | 同上 |
-| T-053 | P1 | 遊戲 RTP 監控儀表板 API | ❌ | 同上 |
+| T-050 | P1 | Admin JWT 認證（角色區分） | ✅ | 獨立 ADMIN_JWT_SECRET + SUPER_ADMIN/OPERATOR 角色 + Spring Security（/admin/** 需 ROLE_ADMIN、@PreAuthorize）+ `POST /admin/auth/login` + admin_users 表 + seeder；19 test pass（含 401/403 驗收，2026-06-15） |
+| T-051 | P1 | 玩家帳號管理 API | ✅ | `/admin/players` 列表(分頁+關鍵字)、`/{id}` 詳情(跨庫彙整 member/wallet/game)、`PATCH /{id}/status` 停用→Redis `disabled:player:{id}`，gateway 全域 filter 強制即時失效；member.status DB 持久化待 member internal API（跨組待辦） |
+| T-052 | P1 | 星幣流通量報表 API | ✅ | `GET /admin/reports/coin-flow?dimension=day\|week\|month&from=&to=`，讀 MySQL wallet_transactions、Java 彙整發放/消耗/淨流通 |
+| T-053 | P1 | 遊戲 RTP 監控儀表板 API | ✅ | `GET /admin/reports/rtp?game=&from=&to=`，讀 PostgreSQL game_rtp_stats 比對設計 RTP，偏差>5% 標 ABNORMAL |
 | T-054 | P2 | 異常玩家偵測機制 | ❌ | 同上 |
 | T-055 | P2 | 手動發放星幣 API（GM 工具） | ❌ | 同上 |
 
@@ -486,8 +486,8 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | T-102 | 組員C | P0 | 點數卡序號兌換鑽石 API | ❌ | 無實作 |
 | T-103 | 組員C | P0 | 鑽石兌換星幣 API | ❌ | 無實作 |
 | T-104 | 組員C | P0 | 查詢鑽石餘額 API | ❌ | 無實作 |
-| T-105 | 組員D | P1 | 批量生成點數卡序號 API | ❌ | 無實作 |
-| T-106 | 組員D | P1 | 查詢點數卡列表 API | ❌ | 無實作 |
+| T-105 | 組員D | P1 | 批量生成點數卡序號 API | ✅ | `POST /admin/diamond/cards`（admin MySQL 源寫 diamond_cards），UUID 序號 XXXX-XXXX-XXXX-XXXX 唯一、撞號重產、最多 1000 張/次 |
+| T-106 | 組員D | P1 | 查詢點數卡列表 API | ✅ | `GET /admin/diamond/cards?page=&size=&status=all\|redeemed\|unredeemed`，欄位含 card_code/face_value/is_redeemed/redeemed_by/redeemed_at |
 | T-107 | 組員E | P1 | 鑽石錢包頁面（前端） | ❌ | 無 Diamond.jsx / diamondSlice.js |
 
 > ⚠️ **鑽石系統 T-100~T-107 全數未實作**（全程式碼庫 grep `diamond` 無任何結果），但該需求已寫入任務表（git 有 `docs/diamond-system-tasks` 提交）。屬於「已規劃、零產出」的範圍膨脹風險。

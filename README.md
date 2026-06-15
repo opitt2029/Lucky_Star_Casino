@@ -59,7 +59,7 @@
 | 資料庫 | 用途 | Port |
 |--------|------|------|
 | PostgreSQL 16 | 帳務核心（wallets、wallet_transactions） | 5433 |
-| MySQL 8.0 | 查詢讀庫（members、遊戲紀錄、CQRS） | 3307 |
+| MySQL 8.4 | 查詢讀庫（members、遊戲紀錄、CQRS） | 3307 |
 
 > Port 使用非預設值（5433 / 3307）以避免與本機已安裝的資料庫衝突。
 
@@ -67,7 +67,7 @@
 | 技術 | 用途 |
 |------|------|
 | Docker + Docker Compose | 容器化與一鍵啟動 |
-| Zookeeper | Kafka broker 協調（S0-W1 指定版本） |
+| Kafka 7.6.1（KRaft） | 事件匯流排（KRaft 模式，broker+controller 合一，無 Zookeeper） |
 | Kafka UI | Kafka Topic 可視化管理 |
 | Flyway | 資料庫版本管理（Migration） |
 
@@ -160,7 +160,7 @@ npm run dev
 
 - **Healthcheck**：MySQL、PostgreSQL、Redis、Kafka 皆已內建健康檢查，確保依賴啟動順序正確。
 - **Kafka 自動初始化**：所有 Topic 由 `kafka-init` 容器在啟動時自動建立，`Exited (0)` 狀態為正常。
-- **資料庫初始化**：`database/mysql/` 與 `database/postgres/` 內的 `.sql` 腳本**僅在 Volume 第一次建立時執行**。MySQL 8.0 使用 `lucky_mysql80_data` volume，Kafka Zookeeper 模式使用 `lucky_kafka_zk_data` volume，避免和舊版資料目錄混用。
+- **資料庫初始化**：`database/mysql/` 與 `database/postgres/` 內的 `.sql` 腳本**僅在 Volume 第一次建立時執行**。MySQL 8.4 使用 `lucky_mysql80_data` volume，Kafka KRaft 模式使用 `lucky_kafka_data` volume，避免和舊版資料目錄混用。
 
 ---
 

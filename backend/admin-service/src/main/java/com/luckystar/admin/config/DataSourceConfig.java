@@ -52,9 +52,12 @@ public class DataSourceConfig {
             EntityManagerFactoryBuilder builder,
             @Qualifier("mysqlDataSource") DataSource dataSource) {
         Map<String, Object> props = new HashMap<>();
-        props.put("hibernate.dialect", "org.hibernate.dialect.MySQLDialect");
-        // Admin 僅讀現成 schema，固定 validate
-        props.put("hibernate.hbm2ddl.auto", "validate");
+        // 正式環境用 MySQLDialect；測試可用 system property 改 H2Dialect（H2 不支援 PG/MySQL 方言的
+        // insert ... returning 等語法）。預設維持正式方言，prod 不受影響。
+        props.put("hibernate.dialect", System.getProperty("jpa.dialect.mysql", "org.hibernate.dialect.MySQLDialect"));
+        // Admin 僅讀現成 schema，正式環境固定 validate；測試（surefire jpa.ddl-auto=create）
+        // 需在 H2 自動建表，故與寫端共用同一組態來源（system property → env → 預設 validate）。
+        props.put("hibernate.hbm2ddl.auto", System.getProperty("jpa.ddl-auto", System.getenv().getOrDefault("JPA_DDL_AUTO", "validate")));
         return builder
                 .dataSource(dataSource)
                 .packages("com.luckystar.admin.mysql.entity")
@@ -85,8 +88,9 @@ public class DataSourceConfig {
             EntityManagerFactoryBuilder builder,
             @Qualifier("postgresDataSource") DataSource dataSource) {
         Map<String, Object> props = new HashMap<>();
-        props.put("hibernate.dialect", "org.hibernate.dialect.PostgreSQLDialect");
-        props.put("hibernate.hbm2ddl.auto", System.getenv().getOrDefault("JPA_DDL_AUTO", "validate"));
+        // 正式環境用 PostgreSQLDialect；測試可用 system property 改 H2Dialect。
+        props.put("hibernate.dialect", System.getProperty("jpa.dialect.postgres", "org.hibernate.dialect.PostgreSQLDialect"));
+        props.put("hibernate.hbm2ddl.auto", System.getProperty("jpa.ddl-auto", System.getenv().getOrDefault("JPA_DDL_AUTO", "validate")));
         return builder
                 .dataSource(dataSource)
                 .packages("com.luckystar.admin.postgres.entity")

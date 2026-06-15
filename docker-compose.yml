@@ -1,6 +1,6 @@
 services:
   mysql:
-    image: mysql:8.0
+    image: mysql:8.4
     container_name: lucky-star-mysql
     restart: always
     environment:
@@ -56,41 +56,23 @@ services:
     networks:
       - lucky-network
 
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.6.1
-    container_name: lucky-star-zookeeper
-    restart: always
-    ports:
-      - "${ZOOKEEPER_PORT}:2181"
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    healthcheck:
-      test: ["CMD-SHELL", "echo srvr | nc -w 2 localhost 2181 | grep Mode"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    volumes:
-      - lucky_zookeeper_data:/var/lib/zookeeper/data
-      - lucky_zookeeper_log:/var/lib/zookeeper/log
-    networks:
-      - lucky-network
-
   kafka:
     image: confluentinc/cp-kafka:7.6.1
     container_name: lucky-star-kafka
     restart: always
-    depends_on:
-      zookeeper:
-        condition: service_healthy
     ports:
       - "${KAFKA_PORT}:9092"
     environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: lucky-star-zookeeper:2181
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      # ── KRaft 模式（無 Zookeeper）：broker + controller 合一單節點 ──
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@lucky-star-kafka:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # 固定 cluster id，避免每次重建 volume 後 id 不一致導致啟動失敗
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID}
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://lucky-star-kafka:29092,PLAINTEXT_HOST://localhost:${KAFKA_PORT}
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
@@ -98,7 +80,7 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_LOG_DIRS: /var/lib/kafka/data
     volumes:
-      - lucky_kafka_zk_data:/var/lib/kafka/data
+      - lucky_kafka_data:/var/lib/kafka/data
     healthcheck:
       test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
       interval: 10s
@@ -137,9 +119,7 @@ services:
 volumes:
   lucky_mysql80_data:
   lucky_postgres_data:
-  lucky_zookeeper_data:
-  lucky_zookeeper_log:
-  lucky_kafka_zk_data:
+  lucky_kafka_data:
 
 networks:
   lucky-network:
