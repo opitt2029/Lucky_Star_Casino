@@ -52,4 +52,56 @@ export const gameApi = {
       wallet: r.wallet,
     }
   },
+
+  // ---- 捕魚機（buy-in 制 + 批次射擊 + 結算）----
+  // 玩家身分由 gateway 注入 X-User-Id；前端只需帶 access token（api.js 已處理）。
+
+  // GET /session/active → 進行中場次（斷線重連恢復）；無場次回 null。
+  async fishingActive() {
+    if (useMockApi) {
+      return mockApi.fishingActive()
+    }
+    const res = await api.get('/api/v1/game/fishing/session/active')
+    return res.data.data ?? null
+  },
+
+  // POST /session/start → buy-in 開場（冪等扣款；已有場次則 resumed=true 續玩）。
+  async fishingStart({ buyIn, cannonLevel, clientSeed }) {
+    if (useMockApi) {
+      return mockApi.fishingStart({ buyIn, cannonLevel, clientSeed })
+    }
+    const res = await api.post('/api/v1/game/fishing/session/start', { buyIn, cannonLevel, clientSeed })
+    return res.data.data
+  },
+
+  // POST /{sessionId}/shots → 批次射擊（只動局內餘額）。
+  async fishingShots({ sessionId, shots }) {
+    if (useMockApi) {
+      return mockApi.fishingShots({ sessionId, shots })
+    }
+    const res = await api.post(`/api/v1/game/fishing/${sessionId}/shots`, { shots })
+    return res.data.data
+  },
+
+  // POST /{sessionId}/end → 結算（剩餘局內餘額 credit 回 wallet、揭露 serverSeed）。
+  async fishingEnd({ sessionId }) {
+    if (useMockApi) {
+      return mockApi.fishingEnd({ sessionId })
+    }
+    const res = await api.post(`/api/v1/game/fishing/${sessionId}/end`)
+    return res.data.data
+  },
+
+  // GET /{sessionId}/verify-shot → 結算後逐發公平性驗證（公開端點，無需登入）。
+  // 回傳 { sessionId, shotSeq, fishType, betPerShot, commitmentValid, hit, payout,
+  //        serverSeed, serverSeedHash, clientSeed, message }。
+  async fishingVerifyShot({ sessionId, shotSeq, fishType, betPerShot }) {
+    if (useMockApi) {
+      return mockApi.fishingVerifyShot({ sessionId, shotSeq, fishType, betPerShot })
+    }
+    const res = await api.get(`/api/v1/game/fishing/${sessionId}/verify-shot`, {
+      params: { shotSeq, fishType, betPerShot },
+    })
+    return res.data.data
+  },
 }
