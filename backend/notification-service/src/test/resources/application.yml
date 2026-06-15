@@ -1,0 +1,9 @@
+# 測試設定：固定 jwt.secret（≥32 bytes，HS256 需求）、Kafka listener 不自動啟動（不連外部 broker）。
+jwt:
+  secret: test-notification-jwt-secret-please-change-0123456789
+
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+    listener:
+      auto-startup: false

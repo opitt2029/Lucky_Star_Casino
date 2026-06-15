@@ -1,8 +1,13 @@
-# Phase 4 — 鑽石後台 API（P1）
+# Phase 4 — 鑽石後台 API（P1）✅ 已完成（2026-06-15）
 
 > 含任務：T-105（批量生成點數卡）、T-106（點數卡列表/狀態）
 > 前置：T-050（Admin Security）✅ + T-100（鑽石 Schema）✅。
 > 為何同 Phase：兩者同操作 `diamond_cards` 表（MySQL），集中做。
+>
+> **完成摘要**：兩任務皆已實作於 admin-service（`AdminDiamondController` / `DiamondCardService` / `mysql.entity.DiamondCard` 等）。
+> ⚠️ 計畫中「admin 主源是 PostgreSQL」之假設**有誤**：admin 的 `@Primary` 源即 MySQL（見 `DataSourceConfig`），
+> 故直接以既有 MySQL EMF（`mysqlTransactionManager`）讀寫 `diamond_cards`，**未新增資料源**。
+> 驗證：`mvn -pl backend/admin-service test` → 52 pass / 0 fail。詳見 CHANGELOG（2026-06-15 T-105/T-106）。
 
 ---
 

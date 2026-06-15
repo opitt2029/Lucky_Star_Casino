@@ -5,6 +5,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-15 — T-070/T-071/T-072：notification-service 即時推播（WebSocket/STOMP + Kafka 橋接）
+
+### Added
+- **新服務 `backend/notification-service`**（port 8087，套件 `com.luckystar.notification`，已掛入父 `pom.xml` modules）。純事件→WebSocket 橋接，**無資料庫**（故不引入 JPA/H2）。
+- **T-070 WebSocket STOMP Server**：
+  - `config/WebSocketConfig`（`@EnableWebSocketMessageBroker`）：STOMP 端點 `/ws`（含 SockJS fallback + 原生 WS），simple broker `/topic`（公共廣播）+ `/queue`（私人，配 `/user`），應用前綴 `/app`。
+  - **連線鑑權**：`security/StompAuthChannelInterceptor` 攔 STOMP CONNECT，讀 `Authorization: Bearer <token>`，`security/PlayerJwtVerifier` 以 member 同把 `jwt.secret`（HS256）驗章，成功則以 playerId（JWT subject）作為連線 `Principal` 名稱 → `/user/` 私人路由才送得到指定玩家；驗章失敗拋例外（broker 回 STOMP ERROR 斷線）。
+- **T-071 Kafka→WS 橋接**：`kafka/NotificationConsumer` 消費 `notification.push`（契約 `NotificationPushEvent`：targetPlayerId/type/title/message/payload），有 targetPlayerId → `convertAndSendToUser(playerId, "/queue/notifications", …)`；無 → 廣播 `/topic/notifications`。
+- **T-072 遊戲結果推播**：`kafka/GameResultConsumer` 消費 `game.result`（契約 `GameResultEvent`，`@JsonIgnoreProperties(ignoreUnknown=true)` 容忍各遊戲額外欄位），組 `{type:GAME_RESULT, roundId, gameType, bet, payout, win, settledAt}` 推到玩家私人佇列，前端免輪詢即得結算結果。
+- 測試（16 pass）：contextLoads、JWT 驗章（有效/過期/錯簽/空）、兩 consumer 路由與壞訊息丟棄、**STOMP 整合測試**（有效 JWT 連線→訂閱→收私人推播 round-trip、缺/錯 JWT 連線被拒）。
+
+### Changed
+- `backend/notification-service/application.yml`：Kafka consumer `group-id=notification-service-group`、`auto-offset-reset=latest`、`listener.ack-mode=MANUAL_IMMEDIATE`（listener 內 try/catch，壞訊息記錄後照 ack 丟棄，不重試卡住 consumer）。
+
+### Why
+- 完成 Phase 5（AGENTS.md §地雷 10 標示「notification 服務尚未建立」）。採私人佇列 `/user/{playerId}/queue/notifications` 需鑑權階段把 principal 綁成 playerId，否則 `/user/` 推不到指定玩家（§地雷對應）。
+- `game.result` / `notification.push` topic **已存在於** `kafka/kafka-init.sh`，故未動 infra 與 `tests/infra/kafka.test.js`。本服務 best-effort 推播、可容忍遺失，故不設 DLT。
+- `game.result` 事件不含 `balanceAfter`（game-service 未發），故推播改用實際可得欄位（bet/payout/win），未杜撰餘額。
+
+### Verified
+- `mvn -pl backend/notification-service test`：16 pass / 0 fail。
+- `node --test tests/infra/*.test.js`：121 pass / 0 fail（infra 未變動，回歸確認）。
+
 ## [feat] — 2026-06-15 — T-105/T-106：鑽石點數卡後台 API（批量生成 + 列表查詢）
 
 ### Added
