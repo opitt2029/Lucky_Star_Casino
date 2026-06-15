@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -42,6 +43,20 @@ public class RankController {
     public ResponseEntity<RankEntryResponse> getMyFriendRank(
             @RequestHeader("X-User-Id") Long playerId) {
         return rankService.getFriendRank(playerId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/daily/winnings")
+    public List<RankEntryResponse> getDailyWinnings(
+            @RequestParam(defaultValue = "100") int limit) {
+        return rankService.getTopDailyWinnings(limit);
+    }
+
+    @GetMapping("/daily/winnings/me")
+    public ResponseEntity<RankEntryResponse> getMyDailyWinnings(
+            @RequestHeader("X-User-Id") Long playerId) {
+        return rankService.getDailyWinningsRank(playerId)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }

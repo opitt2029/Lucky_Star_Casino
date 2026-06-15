@@ -94,4 +94,54 @@ class RankControllerTest {
         mockMvc.perform(get("/api/v1/rank/friends/me"))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void getDailyWinnings_defaultLimitReturnsTop100Contract() throws Exception {
+        when(rankService.getTopDailyWinnings(100)).thenReturn(List.of(
+                new RankEntryResponse(7L, "nova", 1L, 9000L)));
+
+        mockMvc.perform(get("/api/v1/rank/daily/winnings"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].playerId").value(7))
+                .andExpect(jsonPath("$[0].username").value("nova"))
+                .andExpect(jsonPath("$[0].rank").value(1))
+                .andExpect(jsonPath("$[0].score").value(9000));
+    }
+
+    @Test
+    void getDailyWinnings_respectsLimitQueryParam() throws Exception {
+        when(rankService.getTopDailyWinnings(10)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/rank/daily/winnings").param("limit", "10"))
+                .andExpect(status().isOk());
+
+        org.mockito.Mockito.verify(rankService).getTopDailyWinnings(10);
+    }
+
+    @Test
+    void getMyDailyWinnings_returnsSelfRank() throws Exception {
+        when(rankService.getDailyWinningsRank(42L)).thenReturn(java.util.Optional.of(
+                new RankEntryResponse(42L, "alice", 1L, 1500L)));
+
+        mockMvc.perform(get("/api/v1/rank/daily/winnings/me").header("X-User-Id", "42"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.playerId").value(42))
+                .andExpect(jsonPath("$.username").value("alice"))
+                .andExpect(jsonPath("$.rank").value(1))
+                .andExpect(jsonPath("$.score").value(1500));
+    }
+
+    @Test
+    void getMyDailyWinnings_returnsNotFoundWhenNotRanked() throws Exception {
+        when(rankService.getDailyWinningsRank(99L)).thenReturn(java.util.Optional.empty());
+
+        mockMvc.perform(get("/api/v1/rank/daily/winnings/me").header("X-User-Id", "99"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getMyDailyWinnings_missingAuthenticatedPlayerHeader_returnsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/v1/rank/daily/winnings/me"))
+                .andExpect(status().isBadRequest());
+    }
 }

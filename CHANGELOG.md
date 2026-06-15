@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-15 — T-045 / T-073（rank 端）：今日贏幣王排行榜 + 排行榜變動廣播事件
+
+### Added
+- **T-045 今日贏幣王排行榜**（`backend/rank-service`）：
+  - `service/RankService`：ZSet `rank:daily:winnings:{yyyy-MM-dd}`（Asia/Taipei），score = 當日累計**中獎金額**。新增 `addDailyWinnings`（`ZINCRBY`，僅首次寫入時設 48h TTL → 自動隔日重置，免排程）、`getTopDailyWinnings(limit)`（前 N，1-based，username 取自既有 `rank:player:usernames`）、`getDailyWinningsRank(playerId)`。
+  - `kafka/WalletBalanceChangedConsumer`：消費 `wallet.credit` 事件時，當 `subType == "WIN"` 且有 amount → 額外累加當日贏幣榜（global 排行仍依 `balanceAfter` 更新，不受影響）。
+  - `controller/RankController`：`GET /api/v1/rank/daily/winnings?limit=`（預設/上限 100）、`GET /api/v1/rank/daily/winnings/me`（Header `X-User-Id`，200/404）。
+- **T-073 排行榜變動廣播（rank 端）**：
+  - `kafka/RankUpdateEvent`（record：type/entries/updatedAt）+ `kafka/RankUpdatePublisher`（topic `rank.update`，type `GLOBAL_TOP10`，best-effort，比照既有 `NotificationPushPublisher`）。
+  - `RankService.updatePlayerCoins` 更新 global 排行後，**僅當 TOP10（順序敏感）變動且距上次廣播 ≥1s** 才發 `rank.update`（`shouldBroadcast` 節流去抖，volatile 狀態）。
+
+### Why
+- 今日贏幣王取「中獎金額」累加（非餘額），來源選 `wallet.credit` 事件的 `subType=WIN` + amount（§工作分配表 T-045 註記）。日期後綴 key + TTL 自然每日重置，避免額外排程器與競態。
+- `rank.update` topic **已存在**於 `kafka/kafka-init.sh`，故未動 infra 與 `tests/infra/kafka.test.js`。TOP10 變動才廣播 + 1s 節流，避免微小變動狂推（§任務 T-073 要求）。
+
+### Verified
+- `mvn -pl backend/rank-service test`：66 pass / 0 fail（新增 daily-winnings 累加/排序/自己名次、WIN-only 累加、TOP10 變動才廣播、兩端點等案例）。
+
 ## [feat] — 2026-06-15 — T-070/T-071/T-072：notification-service 即時推播（WebSocket/STOMP + Kafka 橋接）
 
 ### Added
