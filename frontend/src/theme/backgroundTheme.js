@@ -25,6 +25,14 @@ export const gameCatalog = [
     meta: '牌桌局',
     assetKey: 'baccaratGame',
   },
+  {
+    id: 'fishing',
+    to: '/game/fishing',
+    title: '捕魚機',
+    caption: 'buy-in 進場，點擊射擊捕魚派彩',
+    meta: '街機局',
+    assetKey: 'fishingGame',
+  },
 ]
 
 export const shopCatalog = [
@@ -99,6 +107,14 @@ export const decorativeAssets = {
     caption: '紅色牌桌與金色星幣呈現經典賭場桌局。',
     overlay:
       'linear-gradient(135deg, rgba(132, 7, 14, 0.26) 0%, rgba(12, 1, 3, 0.8) 100%), radial-gradient(circle at 76% 18%, rgba(248, 213, 106, 0.12), transparent 30%)',
+  },
+  fishingGame: {
+    image: 'casino-game-hall.png',
+    meta: 'Fishing',
+    label: '深海捕魚場',
+    caption: '深海藍光與金幣魚群呈現街機捕魚的爽快節奏。',
+    overlay:
+      'linear-gradient(135deg, rgba(6, 40, 61, 0.62) 0%, rgba(2, 21, 34, 0.86) 100%), radial-gradient(circle at 24% 20%, rgba(120, 220, 255, 0.16), transparent 32%)',
   },
   shopHero: {
     image: 'casino-rewards-showcase.png',

@@ -5,6 +5,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-15 — 捕魚機前端（含音效）：頁面 + 漁場互動 + 接上 casino-fx 捕魚音效/BGM
+
+### Added
+- `frontend/src/pages/Fishing.jsx`：捕魚機主頁。buy-in 進場面板（金額 1,000/3,000/5,000 + 炮台銅/銀/金）、漁場、側欄（可用星幣／局內餘額／本場派彩／收網結算）、結算摘要（揭露 serverSeed）。比照 `SlotGame.jsx` 版面與全螢幕慶祝特效（`GoldBurst`/`CoinRainPro`/`RedEnvelopeRain`/`BrushBanner`/`LuckyAura`/`FortuneMeter`）。
+- `frontend/src/components/FishingArena.jsx` + `Fishing.css`：漁場本體。魚群以 `casino-fx` 既有 `fish-*` SVG（`Art`/`getAsset`）由兩側游入、砲台朝點擊方向旋轉、子彈/命中火花/浮動派彩演出；魚種尺寸/出現權重/游速依倍率分級（小魚高頻、Boss 稀有）。
+- `frontend/src/hooks/useFishingSession.js`：場次生命週期狀態機 —— `session/active` 斷線恢復、`start` buy-in、`fire` 樂觀扣注 + shot 緩衝、批次 flush（滿 10 發或每 700ms、單批 ≤30）、token bucket 射速節流（8 發/秒 + 15 burst，對齊後端避免整批拒絕）、`end` 結算回填 `walletSlice.setBalance`。
+- `frontend/src/services/gameApi.js`：新增 `fishingActive/fishingStart/fishingShots/fishingEnd`（`useMockApi` 分支，真實端點 `/api/v1/game/fishing/*`）。
+- `frontend/src/services/mockApi.js`：新增同名 fishing mock（魚種表對齊後端 `FishSpecies`、`hitProbability = 0.92/倍率`、MONEY_TREE 隨機 10–50x、局內餘額不足整批不受理、結算冪等回填），沿用 `applyWalletChange`，預設離線可玩。
+- **Provably Fair 逐發驗證（補完後端第 5 個端點）**：`gameApi.fishingVerifyShot` 接 `GET /api/v1/game/fishing/{sessionId}/verify-shot`；`useFishingSession` 累積近 50 發已受理紀錄並於結算附入 `settleResult.shots`；`mockApi` 在 `fishingShots` 記逐發、`fishingEnd` 存對局 `db.fishingRounds` 供回放、新增 `fishingVerifyShot`；`Fishing.jsx` 結算頁新增「逐發公平性驗證」面板（逐發呼叫驗證、比對 `commitmentValid` 與重放 hit/payout 是否與紀錄一致）。
+- `frontend/src/components/QuickToolbar.jsx`：快速工具欄新增「捕魚機」直達入口（`/game/fishing`，受保護導流沿用既有 `handleToolClick`）。
+
+### Changed
+- `frontend/src/App.jsx`：新增受保護路由 `/game/fishing`。
+- `frontend/src/theme/backgroundTheme.js`：`gameCatalog` 新增「捕魚機」卡 + `fishingGame` 深海底圖樣式（大廳出現入口）。
+- `frontend/src/pages/Fishing.jsx`：進場 buy-in 加 `play('click')`、收網結算加 `play('net')` 確認音。
+
+### Why
+- 捕魚機後端（game-service fishing 模組）與 casino-fx 捕魚音效配方（`shoot`/`hit`/`net`/`fishCaught`/`fishEscape`/`bossAlarm`/`lockOn`）與 `fishing`/`boss` BGM 主題早已備好，但前端無捕魚頁面，導致這整套音效從未被呼叫。本次補上前端並把音效真正接上：`useBgm('fishing')` 進場、Boss 在場切 `boss` 主題、開火 `shoot`、鎖定 `lockOn`、命中 `hit/net/fishCaught`、高倍捕獲 `winBig/winEpic` + 喜報、高倍逃跑 `fishEscape`、Boss 出現 `bossAlarm`。
+- 後端共有 5 個 fishing 端點，前端原僅接 4 個、漏掉 `verify-shot`：結算頁雖揭露 `serverSeed/clientSeed/serverSeedHash` 卻無從驗證任何一發，Provably Fair 這條線是斷的。本次接上後玩家可在結算頁逐發回放驗證，公平性閉環。
+
+### Verified
+- `npm run lint`：0 error 0 warning。
+- `npm run build`：vite production build 成功。
+- 功能（mock 模式）：進場→開火數發→收網結算→結算頁出現逐發清單→點「驗證」顯示 `✓ 已驗證` 且 hit/payout 與紀錄一致；QuickToolbar「捕魚機」鈕未登入導 login、已登入進 `/game/fishing`。
+- 純前端任務，未動後端/Kafka/infra，後端測試不受影響。
+
 ## [feat] — 2026-06-12 — 捕魚機後端（game-service fishing 模組：buy-in 制 + 批次結算）
 
 ### Added

@@ -20,6 +20,12 @@ const tools = [
     icon: <path d="M6 12h12M12 6v12M7 17l-2 2M17 17l2 2M7 7 5 5M17 7l2-2" />,
   },
   {
+    label: '捕魚機',
+    path: '/game/fishing',
+    protected: true,
+    icon: <path d="M3 12s3-5 9-5 9 5 9 5-3 5-9 5-9-5-9-5Zm9-2v.01M19 9l2-2v10l-2-2" />,
+  },
+  {
     label: '會員中心',
     path: '/profile',
     protected: true,

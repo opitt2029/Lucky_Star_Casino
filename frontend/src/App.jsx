@@ -8,6 +8,7 @@ import Member from './pages/Member'
 import Lobby from './pages/Lobby'
 import SlotGame from './pages/SlotGame'
 import Baccarat from './pages/Baccarat'
+import Fishing from './pages/Fishing'
 import Rank from './pages/Rank'
 import Profile from './pages/Profile'
 import Transactions from './pages/Transactions'
@@ -84,6 +85,14 @@ export default function App() {
             element={
               <PrivateRoute>
                 <Baccarat />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/game/fishing"
+            element={
+              <PrivateRoute>
+                <Fishing />
               </PrivateRoute>
             }
           />
