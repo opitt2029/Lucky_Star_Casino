@@ -486,8 +486,8 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | T-102 | 組員C | P0 | 點數卡序號兌換鑽石 API | ❌ | 無實作 |
 | T-103 | 組員C | P0 | 鑽石兌換星幣 API | ❌ | 無實作 |
 | T-104 | 組員C | P0 | 查詢鑽石餘額 API | ❌ | 無實作 |
-| T-105 | 組員D | P1 | 批量生成點數卡序號 API | ❌ | 無實作 |
-| T-106 | 組員D | P1 | 查詢點數卡列表 API | ❌ | 無實作 |
+| T-105 | 組員D | P1 | 批量生成點數卡序號 API | ✅ | `POST /admin/diamond/cards`（admin MySQL 源寫 diamond_cards），UUID 序號 XXXX-XXXX-XXXX-XXXX 唯一、撞號重產、最多 1000 張/次 |
+| T-106 | 組員D | P1 | 查詢點數卡列表 API | ✅ | `GET /admin/diamond/cards?page=&size=&status=all\|redeemed\|unredeemed`，欄位含 card_code/face_value/is_redeemed/redeemed_by/redeemed_at |
 | T-107 | 組員E | P1 | 鑽石錢包頁面（前端） | ❌ | 無 Diamond.jsx / diamondSlice.js |
 
 > ⚠️ **鑽石系統 T-100~T-107 全數未實作**（全程式碼庫 grep `diamond` 無任何結果），但該需求已寫入任務表（git 有 `docs/diamond-system-tasks` 提交）。屬於「已規劃、零產出」的範圍膨脹風險。

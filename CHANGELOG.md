@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-15 — T-105/T-106：鑽石點數卡後台 API（批量生成 + 列表查詢）
+
+### Added
+- `controller/AdminDiamondController`：
+  - `POST /admin/diamond/cards`（`@PreAuthorize("hasRole('ADMIN')")`）：批量生成點數卡，body `{count, faceValue}`，回傳序號陣列供匯出。
+  - `GET /admin/diamond/cards?page=&size=&status=all|redeemed|unredeemed`：分頁列表 + 兌換狀態過濾，欄位含 card_code/face_value/is_redeemed/redeemed_by/redeemed_at。
+- `service/DiamondCardService`：序號格式 `XXXX-XXXX-XXXX-XXXX`（UUID 取 16 碼 hex 大寫分 4 段），同批去重 + `existsByCardCode` 避開既有序號（card_code UNIQUE），`saveAll` 寫入。
+- `mysql.entity.DiamondCard` + `mysql.repository.DiamondCardRepository`（admin 的 @Primary MySQL 源）。
+- DTO：`GenerateCardsRequest`（count 1..1000、faceValue 正）、`GenerateCardsResponse`、`DiamondCardView`、`CardStatusFilter`。
+- 單元測試：生成數量/格式/唯一/撞號重產、三種 status 過濾、生成驗證 400。
+
+### Why
+- `diamond_cards` 在 **MySQL**，而 admin-service 的 `@Primary` 資料源即 MySQL（見 DataSourceConfig），故直接以 admin 既有 MySQL EMF 讀寫，不需新增資料源（修正計畫「admin 主源是 PostgreSQL」之誤判）。卡片生成為後台固有職責（非寫他服務私有資料）。
+
+### Verified
+- `mvn -pl backend/admin-service test`：52 pass / 0 fail。
+
 ## [feat] — 2026-06-15 — T-051/T-052/T-053：Admin 管理/報表 API（玩家管理 + 星幣流通量 + RTP 監控）
 
 ### Added
