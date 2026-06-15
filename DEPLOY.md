@@ -28,11 +28,10 @@
 
 | 服務 | Port（本機） | 說明 |
 |------|:---:|------|
-| MySQL 8.0 | **3307** | 查詢讀庫（members、CQRS） |
+| MySQL 8.4 | **3307** | 查詢讀庫（members、CQRS） |
 | PostgreSQL 16 | **5433** | 帳務核心（wallets、wallet_transactions） |
 | Redis 7 | 6379 | JWT 黑名單、Session、排行榜 |
-| Zookeeper | 2181 | Kafka 協調 |
-| Kafka | 9092 | 事件匯流排 |
+| Kafka 7.6.1（KRaft） | 9092 | 事件匯流排（KRaft 模式，broker+controller 合一，無 Zookeeper） |
 | Kafka UI | **8085** | Topic 可視化：http://localhost:8085 |
 
 > MySQL / PostgreSQL 刻意用非預設 Port（3307 / 5433），避免和你本機已安裝的資料庫衝突。
@@ -83,7 +82,7 @@ Copy-Item .env.example .env
 docker compose up -d
 ```
 
-這會啟動 MySQL、PostgreSQL、Redis、Zookeeper、Kafka、Kafka UI，並由 `kafka-init` 容器**自動建立所有 Kafka Topic**。
+這會啟動 MySQL、PostgreSQL、Redis、Kafka（KRaft）、Kafka UI，並由 `kafka-init` 容器**自動建立所有 Kafka Topic**。
 
 ### 確認健康狀態
 
@@ -91,7 +90,7 @@ docker compose up -d
 docker compose ps
 ```
 
-- MySQL / PostgreSQL / Redis / Kafka / Zookeeper 應顯示 **healthy** 或 **running**。
+- MySQL / PostgreSQL / Redis / Kafka 應顯示 **healthy** 或 **running**。
 - `kafka-init` 顯示 **Exited (0)** 是**正常**的（它建完 Topic 就會結束）。
 
 ### 資料庫如何初始化？
