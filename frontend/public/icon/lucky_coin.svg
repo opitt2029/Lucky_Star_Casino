@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1254" height="1254" viewBox="0 0 1254 1254" role="img" aria-label="Lucky gold coin badge">
+  <defs>
+    <radialGradient id="goldFace" cx="40%" cy="32%" r="72%">
+      <stop offset="0%" stop-color="#fff7a8"/>
+      <stop offset="22%" stop-color="#ffe66b"/>
+      <stop offset="48%" stop-color="#f6c535"/>
+      <stop offset="72%" stop-color="#d99018"/>
+      <stop offset="100%" stop-color="#8d5908"/>
+    </radialGradient>
+
+    <linearGradient id="outerRim" x1="180" y1="150" x2="1060" y2="1090" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fff18a"/>
+      <stop offset="16%" stop-color="#d99b21"/>
+      <stop offset="34%" stop-color="#fff6a4"/>
+      <stop offset="56%" stop-color="#bd7410"/>
+      <stop offset="78%" stop-color="#ffe56f"/>
+      <stop offset="100%" stop-color="#9c610b"/>
+    </linearGradient>
+
+    <radialGradient id="rimHighlight" cx="30%" cy="24%" r="75%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.58"/>
+      <stop offset="26%" stop-color="#fff3a6" stop-opacity="0.35"/>
+      <stop offset="62%" stop-color="#ffffff" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="coinShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="18" stdDeviation="12" flood-color="#4d3000" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+
+  <!-- transparent background -->
+
+  <!-- coin body -->
+  <circle cx="627" cy="627" r="515" fill="url(#outerRim)" filter="url(#coinShadow)"/>
+  <circle cx="627" cy="627" r="488" fill="#d99a1d" opacity="0.72"/>
+  <circle cx="627" cy="627" r="454" fill="url(#goldFace)"/>
+  <circle cx="627" cy="627" r="515" fill="url(#rimHighlight)"/>
+
+  <!-- decorative rings -->
+  <circle cx="627" cy="627" r="447" fill="none" stroke="#000" stroke-width="17"/>
+  <circle cx="627" cy="627" r="402" fill="none" stroke="#000" stroke-width="15" stroke-linecap="round" stroke-dasharray="42 31"/>
+  <circle cx="627" cy="627" r="369" fill="none" stroke="#000" stroke-width="18"/>
+
+  <!-- stars -->
+  <path fill="#000" d="M627 292l28.8 88.6h93.2l-75.4 54.8 28.8 88.6L627 469.2 551.6 524l28.8-88.6L505 380.6h93.2z"/>
+  <path fill="#000" d="M627 731l28.8 88.6h93.2l-75.4 54.8 28.8 88.6L627 908.2 551.6 963l28.8-88.6L505 819.6h93.2z"/>
+
+  <!-- centered text, intentionally kept inside the inner circle -->
+  <text x="627" y="681"
+        text-anchor="middle"
+        font-family="Arial Black, Impact, Helvetica, sans-serif"
+        font-size="153"
+        font-weight="900"
+        letter-spacing="1"
+        textLength="560"
+        lengthAdjust="spacingAndGlyphs"
+        fill="#000">LUCKY</text>
+</svg>

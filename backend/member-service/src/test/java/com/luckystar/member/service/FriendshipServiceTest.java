@@ -1,6 +1,7 @@
 package com.luckystar.member.service;
 
 import com.luckystar.member.dto.FriendListResponse;
+import com.luckystar.member.dto.FriendRelationshipUpdatedEvent;
 import com.luckystar.member.dto.FriendshipResponse;
 import com.luckystar.member.entity.Friendship;
 import com.luckystar.member.entity.FriendshipStatus;
@@ -30,6 +31,9 @@ class FriendshipServiceTest {
 
     @Mock
     private MemberRepository memberRepository;
+
+    @Mock
+    private OutboxService outboxService;
 
     @InjectMocks
     private FriendshipService friendshipService;
@@ -133,10 +137,20 @@ class FriendshipServiceTest {
         when(friendshipRepository.findById(5L)).thenReturn(Optional.of(f));
         when(friendshipRepository.countAcceptedFriends(2L)).thenReturn(0L);
         when(friendshipRepository.save(any(Friendship.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(friendshipRepository.findAcceptedFriends(1L)).thenReturn(List.of(f));
+        when(friendshipRepository.findAcceptedFriends(2L)).thenReturn(List.of(f));
 
         FriendshipResponse result = friendshipService.acceptFriendRequest(5L, 2L);
 
         assertThat(result.status()).isEqualTo("ACCEPTED");
+        verify(outboxService).save(
+                "friend.relationship.updated",
+                "1",
+                new FriendRelationshipUpdatedEvent(1L, List.of(2L)));
+        verify(outboxService).save(
+                "friend.relationship.updated",
+                "2",
+                new FriendRelationshipUpdatedEvent(2L, List.of(1L)));
     }
 
     // ── rejectFriendRequest ──────────────────────────────────────────────
@@ -176,10 +190,20 @@ class FriendshipServiceTest {
     void deleteFriend_valid_repositoryDeleteCalledOnce() {
         Friendship f = buildFriendship(7L, 1L, 2L, FriendshipStatus.ACCEPTED);
         when(friendshipRepository.findById(7L)).thenReturn(Optional.of(f));
+        when(friendshipRepository.findAcceptedFriends(1L)).thenReturn(List.of());
+        when(friendshipRepository.findAcceptedFriends(2L)).thenReturn(List.of());
 
         friendshipService.deleteFriend(7L, 2L);
 
         verify(friendshipRepository, times(1)).delete(f);
+        verify(outboxService).save(
+                "friend.relationship.updated",
+                "1",
+                new FriendRelationshipUpdatedEvent(1L, List.of()));
+        verify(outboxService).save(
+                "friend.relationship.updated",
+                "2",
+                new FriendRelationshipUpdatedEvent(2L, List.of()));
     }
 
     // ── listFriends ───────────────────────────────────────────────────────

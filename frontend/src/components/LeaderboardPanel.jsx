@@ -30,11 +30,11 @@ export default function LeaderboardPanel({ rows = fallbackRows, myNickname = '',
             ].join(' ')}
           >
             <span className="grid h-8 w-8 place-items-center rounded bg-yellow-200 text-sm font-black text-red-950">{index + 1}</span>
-            <div>
-              <p className={['font-black', isMe ? 'text-red-950' : 'text-yellow-100'].join(' ')}>{nickname}</p>
+            <div className="min-w-0">
+              <p className={['truncate font-black', isMe ? 'text-red-950' : 'text-yellow-100'].join(' ')}>{nickname}</p>
               <p className={['text-xs', isMe ? 'text-red-950/70' : 'text-yellow-100/56'].join(' ')}>今日累積贏分</p>
             </div>
-            <div className="text-right">
+            <div className="min-w-0 text-right">
               <p className={['font-black', isMe ? 'text-red-950' : 'text-yellow-100'].join(' ')}>{row.score.toLocaleString()}</p>
               <p className={['text-xs font-bold', isMe ? 'text-red-950/70' : 'gold-muted'].join(' ')}>{row.trend}</p>
             </div>

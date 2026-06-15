@@ -1,29 +1,88 @@
-import { useEffect, useRef, useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
 import { useDispatch, useSelector } from 'react-redux'
-import { pushNotification, setConnectionStatus } from '../store/slices/gameSlice'
+import {
+  pushNotification,
+  setConnectionStatus,
+  updateGameResult,
+} from '../store/slices/gameSlice'
+
+export const WS_STATUS = {
+  CONNECTING: 'CONNECTING',
+  CONNECTED: 'CONNECTED',
+  DISCONNECTED: 'DISCONNECTED',
+  RECONNECTING: 'RECONNECTING',
+  ERROR: 'ERROR',
+}
+
+const NOTIFICATION_DESTINATION = '/user/queue/notifications'
+const INITIAL_RECONNECT_DELAY = 1000
+const MAX_RECONNECT_DELAY = 30000
+
+function getReconnectDelay(attempt) {
+  return Math.min(MAX_RECONNECT_DELAY, INITIAL_RECONNECT_DELAY * 2 ** Math.max(attempt - 1, 0))
+}
+
+function normalizeSockJsUrl(url) {
+  if (url.startsWith('ws://')) return `http://${url.slice(5)}`
+  if (url.startsWith('wss://')) return `https://${url.slice(6)}`
+  return url
+}
+
+function parseMessageBody(body) {
+  if (!body) return null
+  if (typeof body !== 'string') return body
+  return JSON.parse(body)
+}
+
+function toNotification(payload) {
+  return {
+    id: payload.id || payload.notificationId || `notice-${Date.now()}`,
+    title: payload.title || (payload.type === 'GAME_RESULT' ? '遊戲結果通知' : '系統通知'),
+    message: payload.message || '你有一則新通知',
+    createdAt: payload.createdAt || new Date().toISOString(),
+    ...payload,
+  }
+}
 
 /**
- * WebSocket hook using STOMP over SockJS.
- * Connects when the player is authenticated; disconnects on cleanup.
+ * STOMP over SockJS WebSocket hook.
+ * Owns the user notification subscription and accepts extra topic subscriptions.
  *
  * @param {Object} subscriptions - Map of { destination: handlerFn }
- * @returns {{ publish: (destination, body) => void, status: string, reconnectAttempt: number }}
+ * @returns {{
+ *   publish: (destination: string, body: unknown) => void,
+ *   status: string,
+ *   connected: boolean,
+ *   connecting: boolean,
+ *   disconnected: boolean,
+ *   error: Error | null,
+ *   reconnectAttempt: number
+ * }}
  */
 export function useWebSocket(subscriptions = {}) {
   const dispatch = useDispatch()
-  const clientRef = useRef(null)
-  const attemptRef = useRef(0)
-  const mockTimerRef = useRef(null)
-  const [status, setStatus] = useState('idle')
-  const [reconnectAttempt, setReconnectAttempt] = useState(0)
   const token = useSelector((state) => state.auth.accessToken)
-  const mockWs = import.meta.env.VITE_USE_MOCK_API !== 'false'
   const wsUrl = import.meta.env.VITE_WS_URL || '/ws'
+  const useMockWs = import.meta.env.VITE_USE_MOCK_WS === 'true'
+
+  const clientRef = useRef(null)
+  const reconnectTimerRef = useRef(null)
+  const reconnectAttemptRef = useRef(0)
+  const shouldReconnectRef = useRef(false)
+  const subscriptionsRef = useRef(subscriptions)
+
+  const [status, setStatus] = useState(WS_STATUS.DISCONNECTED)
+  const [error, setError] = useState(null)
+  const [reconnectAttempt, setReconnectAttempt] = useState(0)
+
+  useEffect(() => {
+    subscriptionsRef.current = subscriptions
+  }, [subscriptions])
 
   const updateStatus = useCallback(
-    (nextStatus, nextAttempt = attemptRef.current) => {
+    (nextStatus, nextAttempt = reconnectAttemptRef.current) => {
       setStatus(nextStatus)
       setReconnectAttempt(nextAttempt)
       dispatch(setConnectionStatus({ status: nextStatus, reconnectAttempt: nextAttempt }))
@@ -31,96 +90,168 @@ export function useWebSocket(subscriptions = {}) {
     [dispatch]
   )
 
-  const publish = useCallback((destination, body) => {
-    if (clientRef.current?.connected) {
-      clientRef.current.publish({
-        destination,
-        body: JSON.stringify(body),
-      })
-      return
-    }
+  const handleNotification = useCallback(
+    (payload) => {
+      const notification = toNotification(payload)
+      dispatch(pushNotification(notification))
 
-    if (subscriptions[destination]) {
-      subscriptions[destination](body)
-    }
-  }, [subscriptions])
+      if (payload?.type === 'GAME_RESULT') {
+        dispatch(updateGameResult(payload))
+      }
+    },
+    [dispatch]
+  )
+
+  const publish = useCallback((destination, body) => {
+    if (!clientRef.current?.connected) return
+
+    clientRef.current.publish({
+      destination,
+      body: typeof body === 'string' ? body : JSON.stringify(body),
+    })
+  }, [])
 
   useEffect(() => {
-    if (!token) return
+    if (!token) {
+      shouldReconnectRef.current = false
+      updateStatus(WS_STATUS.DISCONNECTED, 0)
+      return undefined
+    }
 
-    if (mockWs) {
-      updateStatus('connected', 0)
-      mockTimerRef.current = window.setInterval(() => {
-        const notification = {
-          id: `notice-${Date.now()}`,
-          title: '遊戲結果通知',
-          message: '前端模擬 WebSocket：你的最新局數已完成結算',
-          createdAt: new Date().toISOString(),
+    shouldReconnectRef.current = true
+    setError(null)
+
+    const clearReconnectTimer = () => {
+      if (reconnectTimerRef.current) {
+        window.clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
+    }
+
+    const scheduleReconnect = (connect) => {
+      if (!shouldReconnectRef.current || reconnectTimerRef.current) return
+
+      reconnectAttemptRef.current += 1
+      const nextAttempt = reconnectAttemptRef.current
+      updateStatus(WS_STATUS.RECONNECTING, nextAttempt)
+      reconnectTimerRef.current = window.setTimeout(() => {
+        reconnectTimerRef.current = null
+        connect()
+      }, getReconnectDelay(nextAttempt))
+    }
+
+    const subscribeJson = (client, destination, handler) => {
+      return client.subscribe(destination, (message) => {
+        try {
+          handler(parseMessageBody(message.body))
+        } catch (parseError) {
+          setError(parseError)
+          updateStatus(WS_STATUS.ERROR)
         }
-        dispatch(pushNotification(notification))
-        subscriptions['/user/queue/notifications']?.(notification)
-        subscriptions['/topic/rank']?.({
-          items: [
-            {
-              id: 'mock-live-rank',
-              nickname: 'LiveWinner',
-              name: 'LiveWinner',
-              score: 130000 + Math.floor(Math.random() * 5000),
-              trend: '+18%',
-            },
-          ],
+      })
+    }
+
+    const connect = () => {
+      if (!shouldReconnectRef.current || clientRef.current?.active) return
+
+      updateStatus(
+        reconnectAttemptRef.current > 0 ? WS_STATUS.RECONNECTING : WS_STATUS.CONNECTING,
+        reconnectAttemptRef.current
+      )
+
+      const client = new Client({
+        webSocketFactory: () => new SockJS(normalizeSockJsUrl(wsUrl)),
+        connectHeaders: {
+          Authorization: `Bearer ${token}`,
+        },
+        reconnectDelay: 0,
+        onConnect: () => {
+          reconnectAttemptRef.current = 0
+          setError(null)
+          updateStatus(WS_STATUS.CONNECTED, 0)
+
+          subscribeJson(client, NOTIFICATION_DESTINATION, handleNotification)
+
+          Object.entries(subscriptionsRef.current)
+            .filter(([destination]) => destination !== NOTIFICATION_DESTINATION)
+            .forEach(([destination, handler]) => {
+              subscribeJson(client, destination, handler)
+            })
+        },
+        onStompError: (frame) => {
+          const stompError = new Error(frame.headers?.message || 'WebSocket STOMP error')
+          setError(stompError)
+          updateStatus(WS_STATUS.ERROR)
+          client.deactivate().finally(() => scheduleReconnect(connect))
+        },
+        onWebSocketError: (event) => {
+          setError(event instanceof Error ? event : new Error('WebSocket connection failed'))
+          updateStatus(WS_STATUS.ERROR)
+        },
+        onWebSocketClose: () => {
+          clientRef.current = null
+          if (shouldReconnectRef.current) {
+            scheduleReconnect(connect)
+          } else {
+            updateStatus(WS_STATUS.DISCONNECTED, 0)
+          }
+        },
+        onDisconnect: () => {
+          if (!shouldReconnectRef.current) {
+            updateStatus(WS_STATUS.DISCONNECTED, 0)
+          }
+        },
+      })
+
+      clientRef.current = client
+      client.activate()
+    }
+
+    if (useMockWs) {
+      updateStatus(WS_STATUS.CONNECTED, 0)
+      const mockTimer = window.setInterval(() => {
+        handleNotification({
+          id: `notice-${Date.now()}`,
+          type: 'GAME_RESULT',
+          gameId: 'slot',
+          win: Math.random() > 0.45,
+          betAmount: 100,
+          rewardAmount: 500,
+          balance: 1200,
+          message: '你的最新局數已完成結算',
         })
       }, 16000)
 
       return () => {
-        window.clearInterval(mockTimerRef.current)
-        updateStatus('disconnected', 0)
+        shouldReconnectRef.current = false
+        window.clearInterval(mockTimer)
+        reconnectAttemptRef.current = 0
+        updateStatus(WS_STATUS.DISCONNECTED, 0)
       }
     }
 
-    updateStatus('connecting', attemptRef.current)
-    const client = new Client({
-      webSocketFactory: () => new SockJS(wsUrl.replace(/^ws/, 'http')),
-      connectHeaders: {
-        Authorization: `Bearer ${token}`,
-      },
-      reconnectDelay: Math.min(30000, 1000 * 2 ** attemptRef.current),
-      onConnect: () => {
-        attemptRef.current = 0
-        updateStatus('connected', 0)
-        Object.entries(subscriptions).forEach(([destination, handler]) => {
-          client.subscribe(destination, (message) => {
-            try {
-              handler(JSON.parse(message.body))
-            } catch {
-              handler(message.body)
-            }
-          })
-        })
-      },
-      onStompError: () => {
-        attemptRef.current += 1
-        updateStatus('reconnecting', attemptRef.current)
-      },
-      onWebSocketClose: () => {
-        attemptRef.current += 1
-        updateStatus('reconnecting', attemptRef.current)
-      },
-      onDisconnect: () => {
-        updateStatus('disconnected', attemptRef.current)
-      },
-    })
-
-    client.activate()
-    clientRef.current = client
+    connect()
 
     return () => {
-      client.deactivate()
-      updateStatus('disconnected', attemptRef.current)
+      shouldReconnectRef.current = false
+      clearReconnectTimer()
+      reconnectAttemptRef.current = 0
+      const client = clientRef.current
+      clientRef.current = null
+      if (client?.active) {
+        client.deactivate()
+      }
+      updateStatus(WS_STATUS.DISCONNECTED, 0)
     }
-    // subscriptions intentionally excluded — callers should memoize handlers
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, wsUrl, mockWs, updateStatus])
+  }, [handleNotification, token, updateStatus, useMockWs, wsUrl])
 
-  return { publish, status, reconnectAttempt }
+  return {
+    publish,
+    status,
+    connected: status === WS_STATUS.CONNECTED,
+    connecting: status === WS_STATUS.CONNECTING,
+    disconnected: status === WS_STATUS.DISCONNECTED,
+    error,
+    reconnectAttempt,
+  }
 }

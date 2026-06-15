@@ -39,9 +39,9 @@ export default function Login() {
       >
         <div className="max-w-3xl">
           <p className="text-xs font-black uppercase tracking-[0.35em] text-zinc-500">Lucky Star Casino</p>
-          <h1 className="mt-4 text-4xl font-black tracking-tight sm:text-6xl">黑白系遊戲前端工作台</h1>
+          <h1 className="mt-4 text-4xl font-black tracking-tight sm:text-6xl">登入幸運星幣城</h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-zinc-400">
-            React 18、Vite、Tailwind CSS、Redux Toolkit、API 與 WebSocket 基底已整合。測試帳號為 test / test1234。
+            使用測試帳號 test / test1234 可直接進入遊戲大廳，體驗星幣下注、會員中心與禮品商城。
           </p>
         </div>
       </section>
@@ -49,7 +49,7 @@ export default function Login() {
       <section className="flex items-center px-6 py-10 sm:px-10">
         <div className="w-full rounded border border-white/10 bg-zinc-900 p-6">
           <p className="text-xs font-black uppercase tracking-[0.3em] text-zinc-500">Sign In</p>
-          <h2 className="mt-3 text-2xl font-black">登入平台</h2>
+          <h2 className="mt-3 text-2xl font-black">會員登入</h2>
           <form onSubmit={handleSubmit} className="mt-6 grid gap-4">
             <label className="grid gap-2 text-sm font-bold text-zinc-300">
               帳號
@@ -83,7 +83,7 @@ export default function Login() {
               {loading ? '登入中...' : '登入'}
             </button>
             <Link to="/register" className="text-center text-sm font-bold text-zinc-400 transition hover:text-white">
-              建立測試帳號
+              建立新帳號
             </Link>
           </form>
         </div>

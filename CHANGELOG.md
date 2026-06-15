@@ -5,6 +5,256 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [test] — 2026-06-04 — Add T-090 JMeter slot pressure-test plan
+
+### Added
+- `tests/performance/slot-1000-players.jmx`: standard JMeter 5.6.3 scenario for 1,000 concurrent players over 60 seconds, including primary slot bets, same-key retries, and wallet overdraw assertions.
+- `tests/performance/run-slot-load-test.ps1`: validates the 1,000-player credential dataset, runs JMeter non-interactively, and generates the HTML dashboard and acceptance report.
+- `tests/performance/analyze-jtl.mjs`: enforces P99 `< 500 ms`, zero 5xx, zero failed requests/assertions, correct idempotency behavior, and zero overdraw assertions.
+- `docs/performance/T-090-load-test-report.md`: documents the scenario, execution procedure, SQL reconciliation, acceptance gates, and current blocked execution status.
+- `tests/infra/jmeter.test.js`: statically verifies the committed pressure-test contract.
+
+### Changed
+- `.gitignore`: excludes funded player credentials and generated JMeter result directories.
+- `AGENTS.md` and `AUDIT_REPORT.md`: document the T-090 deliverables and the current dependency on T-032 and a runnable pressure-test environment.
+
+### Why
+- T-090 requires a reproducible 1,000-player slot pressure test that catches overdraw, broken idempotency, P99 regression, and 5xx responses without relying on GUI-only JMeter listeners or fabricated measurements.
+
+### Verified
+- JMX parsed as valid XML with one Thread Group and three HTTP samplers.
+- PowerShell runner parsed as valid PowerShell.
+- Synthetic JTL verification: analyzer returned PASS for compliant samples and a non-zero FAIL result for P99/5xx violations.
+- `node --test tests/infra/*.test.js`: 116 tests passed, 0 failures.
+- Real pressure-test metrics were not produced because T-032 is not implemented, JMeter is not installed, Docker is not running, and 1,000 funded player credentials are unavailable.
+
+## [feat] — 2026-06-04 — Implement leaderboard query APIs
+
+### Added
+- `GET /api/v1/rank/global`: returns the global top 100 with `playerId`, `username`, `rank`, and `score`.
+- `GET /api/v1/rank/friends`: reads the authenticated player from `X-User-Id` and returns their friend leaderboard.
+- `MemberRegisteredConsumer`: consumes `member.registered` and stores usernames in the `rank:player:usernames` Redis Hash.
+- MockMvc API contract tests and unit tests for username caching and leaderboard enrichment.
+
+### Changed
+- `RankEntryResponse`: replaces the internal `coins` field with the public API field `score` and adds `username`.
+- Existing `/api/v1/rank/global/top` and `/api/v1/rank/global/{playerId}` endpoints remain available with the enriched response contract.
+- Removed `/api/v1/rank/friend/{playerId}/top`; friend leaderboard queries now use the authenticated `X-User-Id` through `/api/v1/rank/friends`.
+- `kafka/kafka-init.sh` and `tests/infra/kafka.test.js`: pre-create `member.registered.DLT` for consumers using the shared retry/DLT handler.
+- `AGENTS.md`, `AUDIT_REPORT.md`, `README.md`, and `docs/architecture.md`: document T-042 completion and the username read model.
+
+### Why
+- T-042 requires stable public leaderboard endpoints that include usernames without making synchronous per-row calls to Member Service.
+
+### Verified
+- `mvn -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/rank-service test`: Gateway 21, Member 70, Wallet 142, and Rank 25 tests passed, 0 failures.
+- `mvn -pl backend/rank-service test`: final Rank API/security suite 26 tests passed, 0 failures.
+- `node --test tests/infra/*.test.js`: 107 tests passed, 0 failures.
+
+## [feat] — 2026-06-04 — Implement friend leaderboard rebuild and top-20 API
+
+### Added
+- `backend/member-service/.../FriendRelationshipUpdatedEvent.java` and `FriendshipService.java`: publish both players' complete accepted-friend lists through the transactional outbox after friendship acceptance or deletion.
+- `backend/rank-service/.../FriendRelationshipUpdatedConsumer.java`: consume `friend.relationship.updated` and rebuild `rank:friend:{playerId}` only after validating the event.
+- `backend/rank-service/.../RankService.java`: rebuild friend-only Redis ZSets from global coin scores, apply a 24-hour TTL, and query the top 20.
+- `GET /api/v1/rank/friend/{playerId}/top`: return a player's friend leaderboard.
+- Unit tests for friendship event publishing, friend-rank rebuilding, Kafka consumer ack behavior, and the friend leaderboard API.
+
+### Changed
+- `kafka/kafka-init.sh` and `tests/infra/kafka.test.js`: add `friend.relationship.updated` and `friend.relationship.updated.DLT` with synchronized topic-count assertions.
+- `AGENTS.md`, `README.md`, and `docs/architecture.md`: document Rank Service completion and the complete-friend-list event contract.
+
+### Why
+- T-041 requires friend rankings to contain only accepted friends and to be rebuilt when relationships change; publishing the complete friend list lets Rank Service replace stale ZSet membership without directly querying Member Service.
+
+### Verified
+- `mvn -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/rank-service test`: all four modules passed (Member 70, Wallet 142, Rank 18), 0 failures.
+- `node --test tests/infra/*.test.js`: 106 tests passed, 0 failures.
+
+## [feat] - 2026-06-03 - Implement Rank Service global coins leaderboard
+
+### Added
+- `backend/rank-service/src/main/java/com/luckystar/rank/service/RankService.java`: maintains `rank:global:coins` with Redis ZSet `ZADD`, exposes reverse-rank lookup, and reads the top 100 with reverse range.
+- `backend/rank-service/src/main/java/com/luckystar/rank/kafka/WalletBalanceChangedConsumer.java`: consumes `wallet.credit` and `wallet.debit`, updates the leaderboard from `balanceAfter`, and acknowledges Kafka offsets only after Redis update succeeds.
+- `backend/rank-service/src/main/java/com/luckystar/rank/config/KafkaConsumerConfig.java`: enables manual Kafka ack and routes failed wallet events to existing `<topic>.DLT` topics after retry.
+- `backend/rank-service/src/main/java/com/luckystar/rank/controller/RankController.java` and DTOs for `GET /api/v1/rank/global/top` and `GET /api/v1/rank/global/{playerId}`.
+- Unit tests for RankService Redis ZSet behavior and the wallet event Kafka consumer.
+
+### Changed
+- `backend/rank-service/pom.xml`: fixed the module description XML and added H2 test scope dependency.
+- `backend/rank-service/src/test/resources/application.yml`: added H2 test datasource and disabled Kafka listener startup during context tests.
+
+### Why
+- T-040 requires Rank Service to update a global coins leaderboard from wallet balance-change events without consuming `wallet.credit.request`; `balanceAfter` is the authoritative current coin balance from Wallet Service.
+
+### Verified
+- `mvn -pl backend/rank-service test`: 10 tests passed, 0 failures.
+
+## [changed] — 2026-06-02 — 優化前端文案、桌面字級與手機浮動元件
+
+### Changed
+- `frontend/src/pages/Home.jsx`、`Lobby.jsx`、`Member.jsx`、`Login.jsx`、`Register.jsx`：將首頁、遊戲大廳、登入/註冊與會員入口文案改為使用者導向，移除「工作台」「門禁」「網站結構」等偏內部說法。
+- `frontend/src/pages/CasinoShop.jsx`、`Diamond.jsx`、`Profile.jsx`、`Transactions.jsx`、`CheckIn.jsx`：調整商城兌換、鑽石錢包、會員中心、交易紀錄與簽到提示，避免出現 API、技術欄位或過度直譯文字。
+- `frontend/src/pages/SlotGame.jsx`、`Baccarat.jsx`、`components/GameRuleCard.jsx`、`QuickToolbar.jsx`、`ErrorBoundary.jsx`、`hooks/useWebSocket.js`、`theme/backgroundTheme.js`：更新遊戲狀態、規則、工具欄、錯誤頁、通知與商品卡文案，讓提示更自然且符合目前功能現狀。
+- `frontend/src/index.css`：桌面版 `1024px` 以上提高根字級並改善共用按鈕/表單/面板行高，提升主要頁面閱讀舒適度。
+- `frontend/src/components/QuickToolbar.css`、`FriendFloatingPanel.css`：手機版加入 safe-area spacing，快速工具欄維持底部位置，好友清單按鈕固定到 header 右上角並向下展開，避免遮擋 quick tool。
+
+### Why
+- 使用者頁面不應露出工程語言或未完成的串接描述；桌面版原字級偏小，手機版好友清單與快速工具列也需要避免互相遮擋與影響點擊。
+
+### Verified
+- `npm run lint`（frontend）→ passed。
+- `npm run build`（frontend）→ sandbox 內因 Windows 權限無法讀取 Vite config；升權限重跑後 passed。
+
+---
+
+## [feat] — 2026-06-02 — 新增前端鑽石錢包頁面與 Redux 狀態
+
+### Added
+- `frontend/src/pages/Diamond.jsx`：新增 `/diamond` 鑽石錢包頁，包含鑽石餘額卡片、序號兌換鑽石、鑽石兌換星幣、即時換算預覽、loading、成功/錯誤提示與表單驗證。
+- `frontend/src/store/slices/diamondSlice.js`：新增 `diamond` Redux state，管理 `diamondBalance`、`loading`、`error`、`lastRedeemAmount`、成功訊息與餘額同步 thunk。
+- `frontend/src/services/diamondApi.js`：新增 `getDiamondBalance()`、`redeemDiamondCard(card_code)`、`exchangeDiamondToStarCoin(diamondAmount)`，串接 3 支 Diamond API 並沿用既有 axios/auth token 流程。
+
+### Changed
+- `frontend/src/store/index.js`、`frontend/src/App.jsx`：註冊 `diamondSlice`，新增 `/diamond` 受保護路由。
+- `frontend/src/components/AppShell.jsx`、`QuickToolbar.jsx`、`Member.jsx`：新增鑽石錢包入口，登入後同步鑽石餘額，登出時清空鑽石狀態。
+- `frontend/src/pages/Home.jsx`、`Lobby.jsx`、`CasinoShop.jsx`、`Profile.jsx`、`FriendFloatingPanel.jsx`、`theme/backgroundTheme.js`：調整主要貨幣文案，明確區分 Diamond 鑽石為充值/兌換貨幣、Star Coin 星幣為遊戲與禮品消耗貨幣。
+
+### Why
+- 完成 T-107 前端鑽石錢包需求，讓使用者可用點數卡取得 Diamond 鑽石，並依固定比例 `1 Diamond = 20 Star Coins` 兌換星幣，同時避免新增與既有 `walletSlice` 衝突的星幣狀態。
+
+### Verified
+- `npm run lint`（frontend）→ passed。
+- `npm run build`（frontend）→ sandbox 內因 Windows 權限無法讀取 Vite config；升權限重跑後 passed。
+- `Invoke-WebRequest http://127.0.0.1:5173/diamond` → HTTP 200。
+
+---
+
+## [changed] — 2026-06-02 — 重整前端 WebSocket 通知 Hook
+
+### Changed
+- `frontend/src/hooks/useWebSocket.js`：改為 STOMP over SockJS 連線 `/ws`，固定訂閱 `/user/queue/notifications`，以大寫狀態字串回報連線狀態，並加入 1s → 2s → 4s → 8s、上限 30s 的指數退避重連與卸載清理。
+- `frontend/src/store/slices/gameSlice.js`：新增 `latestResult`、`resultHistory`、`updateGameResult`、`clearGameResult`，並將 WebSocket 連線狀態預設為 `DISCONNECTED`。
+- `frontend/src/components/RealtimeBridge.jsx`：保留全站單一即時資料橋接，避免 `/user/queue/notifications` 重複訂閱，遊戲結果 topic 改用 `updateGameResult`。
+- `frontend/src/components/AppShell.jsx`：保留背景即時資料橋接，不在 header 顯示 WebSocket 狀態，避免後端未啟動時把連線狀態暴露在頁面上。
+
+### Why
+- 遊戲頁需要在收到後端 `GAME_RESULT` 使用者通知時即時更新 Redux，同時避免重複連線、快速重連與元件卸載後殘留 timer/client。
+
+### Verified
+- `npm run lint`（frontend）→ passed。
+- `npm run build`（frontend）→ passed；build 需升權重執行以避開 Windows sandbox 讀取 Vite config 權限限制。
+
+---
+
+## [fix] — 2026-06-02 — 修正會員中心 1000px 頭像過大
+
+### Fixed
+- `frontend/src/pages/Profile.jsx`：會員中心頭像/表單區塊改為 `md` 起切雙欄，並在手機單欄時限制頭像欄最大寬度，避免 1000px 左右落在單欄時頭像圖片被 `aspect-square` 撐滿整個表單。
+
+### Why
+- 原本內層 grid 只在 `lg` 以上切雙欄，約 1000px viewport 會退回單欄，造成頭像預覽異常放大。
+
+### Verified
+- `npm run lint`（frontend）→ passed。
+- `npm run build`（frontend）→ passed；build 需升權重執行以避開 Windows sandbox 讀取 Vite config 權限限制。
+
+---
+
+## [changed] — 2026-06-02 — 優化前端主要頁面 RWD
+
+### Changed
+- `frontend/src/index.css`：新增手機/平板觸控尺寸、圖片寬度保護、首頁 scroll section 窄版高度、老虎機面板/滾輪/console 在 480px 與 768px 的縮放規則。
+- `frontend/src/components/SlotMachine.jsx`：老虎機 symbol height 改為依 viewport 動態選擇，手機 96px、平板 128px、桌面 170px，讓動畫位移與視覺尺寸保持同步。
+- `frontend/src/components/QuickToolbar.css` / `FriendFloatingPanel.css`：手機版快速工具列改為底部置中三欄，好友浮動面板調整底部間距，避免互相遮擋。
+- `frontend/src/components/AppShell.jsx` / `Home.jsx`：主內容手機底部預留固定工具列空間，導覽列改可換行，通知/首頁選單加入 viewport 寬度保護。
+- `frontend/src/pages/Transactions.jsx`：交易紀錄手機版改為卡片式顯示，平板與桌面保留表格，避免窄螢幕局部水平捲動。
+- `frontend/src/components/LeaderboardPanel.jsx` / `frontend/src/pages/CasinoShop.jsx`：排行榜長暱稱與商城價格/兌換列加入換行或截斷保護。
+
+### Why
+- 主要頁面需要在 375px、768px、1440px 下維持可讀、可點擊且不產生水平破版；老虎機滾輪尺寸也必須與動畫計算一致，避免手機縮放後錯位。
+
+### Verified
+- `npm run lint`（frontend）→ passed。
+- `npm run build`（frontend）→ passed；build 需升權重執行以避開 Windows sandbox 讀取 Vite config 權限限制。
+- Headless Chrome / Edge 截圖驗證嘗試：兩者在此環境皆因 GPU process fatal 無法產出截圖，已改以 lint/build 與程式碼斷點檢查確認。
+
+---
+
+## [changed] — 2026-06-02 — 更新網站金幣 favicon
+
+### Changed
+- `frontend/public/icon/casino-svgrepo-com.svg`：將原本 SVG icon 改為單純金色金幣造型，中央使用星形壓印，沿用既有 favicon 路徑。
+
+### Why
+- 讓瀏覽器分頁 icon 更直覺呈現星幣/金幣意象，保持小尺寸下的辨識度。
+
+### Verified
+- `npm run build`（frontend）→ sandbox 內因 Windows 權限無法讀取 Vite config；升權重跑後 passed。
+
+---
+
+## [feat] — 2026-06-02 — 新增好友清單浮動面板
+
+### Added
+- `frontend/src/components/FriendFloatingPanel.jsx` / `FriendFloatingPanel.css`：新增右下角紅金主題好友清單入口，已登入時包含綠色在線狀態點、往上展開面板、搜尋欄、全部/線上/離線/遊戲中分類與 8 筆 mock 好友資料。
+- `frontend/src/components/FriendFloatingPanel.jsx` / `FriendFloatingPanel.css`：好友列表項目可點擊切換到好友詳情，顯示頭像、遊戲暱稱、遊戲 ID、狀態、等級、註冊日期與目前遊戲。
+- `frontend/src/components/FriendFloatingPanel.jsx` / `FriendFloatingPanel.css`：好友詳情內新增 mock「贈送星幣」表單，含數量/留言欄位、二次確認、餘額扣除、成功與錯誤提示。
+- `frontend/src/App.jsx`：全域掛載好友清單浮動面板，包含首頁 `/` 在內的全網站都顯示。
+
+### Changed
+- `frontend/src/pages/Profile.jsx`：移除會員中心舊好友列表 UI、好友 mock API 操作與只供該區塊使用的 state/import，保留個人資料、頭像、簽到與第三方綁定功能。
+- `frontend/src/components/FriendFloatingPanel.jsx` / `FriendFloatingPanel.css`：未登入狀態不自動導頁，改以灰色燈號與「未登入」狀態呈現，面板內提供登入入口。
+
+### Why
+- 好友清單改為全站浮動入口，讓首頁、遊戲大廳與其他頁面都有一致入口；未登入時以低干擾狀態列呈現，不打斷瀏覽流程。好友詳情與 mock 贈幣先放在浮動面板內，避免會員中心內維護另一套好友列表 UI，並在後端 API 完成前提供可驗收的前端流程。
+
+### Verified
+- `npm run lint`（frontend）→ passed。
+- `npm run build`（frontend）→ sandbox 內因 Windows 權限無法讀取 Vite config；升權重跑後 passed。
+- Headless Chrome CDP 驗證 → 舊版需求曾驗證 `/shop`、`/games` 展開/搜尋/分類與 390px 手機 viewport；最終版另以 lint/build 驗證全站常駐與未登入灰燈狀態可正常編譯。
+
+---
+
+## [fix] — 2026-06-02 — 快速工具欄文字與提示位置修正
+
+### Fixed
+- `frontend/src/components/QuickToolbar.css`：工具欄按鈕文字改為單行顯示，避免被擠到下一列。
+- `frontend/src/components/QuickToolbar.css` / `QuickToolbar.jsx`：提示訊息改為畫面正中央的自製 prompt 風格提示方塊，不使用瀏覽器 `prompt()`，且不再參與側邊欄排版。
+- `frontend/src/components/QuickToolbar.jsx`：將提示浮層移出帶有 `transform` 的側邊欄容器，避免 fixed 定位被側邊欄截住而偏到畫面右側。
+- `AI 客服` 點擊後沿用中央提示顯示「AI 客服功能即將推出」，避免撐開或改變工具欄尺寸。
+
+### Why
+- 快速工具欄是固定操作入口，按鈕尺寸與文字行高必須穩定；提示訊息應獨立於工具欄 layout，避免互動後 UI 跳動。
+
+### Verified
+- `npm run lint`（frontend）→ passed。
+- `npm run build`（frontend）→ passed。
+
+---
+
+## [feat] — 2026-06-01 — 前端右側快速工具欄
+
+### Added
+- `frontend/src/components/QuickToolbar.jsx` / `QuickToolbar.css`：新增固定於右側的快速工具欄，包含每日簽到、遊戲大廳、遊戲商城、會員中心、AI 客服與 Top。
+- `frontend/src/pages/CheckIn.jsx`：新增 `/check-in` 每日簽到頁面，沿用既有 `dailyCheckIn` / `fetchWallet` / `fetchProfile` 流程。
+
+### Changed
+- `frontend/src/App.jsx`：全域掛載 `QuickToolbar`；新增 `/check-in` 受保護路由；將 `/shop` 改為公開路由；未登入 ProtectedRoute 導向 `/member?mode=login` 並保留 `state.from`。
+- `frontend/src/components/AppShell.jsx`：訪客瀏覽公開商城時不主動抓受保護錢包 API，並顯示登入按鈕；登出後同步清空 wallet state。
+- `frontend/src/pages/Home.jsx`、`frontend/src/pages/Member.jsx`：更新商城可先瀏覽的相關文案與首頁商城連結。
+- `frontend/src/index.css`：關閉 body 橫向 overflow，避免窄螢幕頁面橫向寬度影響 fixed 工具欄定位。
+
+### Why
+- 讓主要頁面都有符合紅金深色賭城風格的快速入口，同時維持既有 Redux auth 判斷與會員頁 redirect 流程。
+- 商城瀏覽不應受登入保護，避免訪客進入 `/shop` 時被路由或 AppShell 的錢包同步流程導回登入。
+
+### Verified
+- `npm run lint`（frontend）→ passed。
+- `npm run build`（frontend）→ passed；第一次在沙盒內因 Vite 讀取 config 被 Windows 權限擋住，升權重跑後成功。
+
+---
+
 ## [feat] — 2026-06-01 — 查詢鑽石餘額 API（T-104）
 
 ### Added

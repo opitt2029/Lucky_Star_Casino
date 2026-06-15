@@ -1,6 +1,7 @@
 package com.luckystar.member.service;
 
 import com.luckystar.member.dto.FriendListResponse;
+import com.luckystar.member.dto.FriendRelationshipUpdatedEvent;
 import com.luckystar.member.dto.FriendshipResponse;
 import com.luckystar.member.entity.Friendship;
 import com.luckystar.member.entity.FriendshipStatus;
@@ -23,9 +24,11 @@ import java.util.stream.Collectors;
 public class FriendshipService {
 
     private static final int FRIEND_LIMIT = 200;
+    private static final String FRIEND_RELATIONSHIP_UPDATED_TOPIC = "friend.relationship.updated";
 
     private final FriendshipRepository friendshipRepository;
     private final MemberRepository memberRepository;
+    private final OutboxService outboxService;
 
     @Transactional
     public FriendshipResponse sendFriendRequest(Long requesterId, Long receiverId) {
@@ -84,7 +87,10 @@ public class FriendshipService {
         }
 
         friendship.setStatus(FriendshipStatus.ACCEPTED);
-        return toResponse(friendshipRepository.save(friendship));
+        Friendship saved = friendshipRepository.save(friendship);
+        friendshipRepository.flush();
+        publishFriendRelationshipUpdated(saved.getRequesterId(), saved.getReceiverId());
+        return toResponse(saved);
     }
 
     @Transactional
@@ -147,6 +153,23 @@ public class FriendshipService {
         }
 
         friendshipRepository.delete(friendship);
+        friendshipRepository.flush();
+        publishFriendRelationshipUpdated(friendship.getRequesterId(), friendship.getReceiverId());
+    }
+
+    private void publishFriendRelationshipUpdated(Long... playerIds) {
+        for (Long playerId : playerIds) {
+            List<Long> friendIds = friendshipRepository.findAcceptedFriends(playerId).stream()
+                    .map(friendship -> friendship.getRequesterId().equals(playerId)
+                            ? friendship.getReceiverId()
+                            : friendship.getRequesterId())
+                    .sorted()
+                    .toList();
+
+            FriendRelationshipUpdatedEvent event =
+                    new FriendRelationshipUpdatedEvent(playerId, friendIds);
+            outboxService.save(FRIEND_RELATIONSHIP_UPDATED_TOPIC, playerId.toString(), event);
+        }
     }
 
     private FriendshipResponse toResponse(Friendship f) {

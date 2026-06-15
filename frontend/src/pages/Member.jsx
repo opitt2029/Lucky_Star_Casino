@@ -5,6 +5,7 @@ import DecorativeAsset from '../components/DecorativeAsset'
 import CoinRain from '../components/CoinRain'
 import { loginMember, registerMember } from '../store/slices/authSlice'
 import { fetchRanks } from '../store/slices/rankSlice'
+import { fetchDiamondBalance } from '../store/slices/diamondSlice'
 import { fetchWallet } from '../store/slices/walletSlice'
 import { getBackgroundStyle } from '../theme/backgroundTheme'
 import { getBirthDateMax, isAdultBirthDate, socialProviders } from '../utils/memberPreferences'
@@ -38,13 +39,13 @@ export default function Member() {
     () =>
       mode === 'register'
         ? {
-            eyebrow: 'Register',
+            eyebrow: 'Create Account',
             title: '建立會員帳號',
             submit: '建立帳號',
             switchText: '已有帳號，前往登入',
           }
         : {
-            eyebrow: 'Sign In',
+            eyebrow: 'Member Login',
             title: '登入會員',
             submit: '登入',
             switchText: '尚未註冊，建立帳號',
@@ -80,6 +81,7 @@ export default function Member() {
 
   const syncAfterAuth = () => {
     dispatch(fetchWallet())
+    dispatch(fetchDiamondBalance())
     dispatch(fetchRanks())
   }
 
@@ -95,7 +97,7 @@ export default function Member() {
   }
 
   const handleSocialLogin = (provider) => {
-    setMemberNotice(`${provider.label} 登入入口已建立，請先用帳密登入後到會員中心完成綁定。`)
+    setMemberNotice(`${provider.label} 登入目前需先綁定帳戶。請先用帳號密碼登入，再到會員中心完成綁定。`)
   }
 
   const handleRegisterSubmit = async (event) => {
@@ -132,11 +134,10 @@ export default function Member() {
               Member Access
             </p>
             <h1 className="brand-title mt-4 max-w-3xl text-4xl font-black tracking-tight sm:text-6xl">
-              會員頁是遊戲入口的門禁
+              登入後開始遊玩
             </h1>
             <p className="mt-5 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
-              註冊或登入後，才能進入遊戲大全、各遊戲網頁與賭場商城。測試帳號 test / test1234
-              已預填，可直接登入檢查流程。
+              登入或建立帳號後，就能進入遊戲大廳、鑽石錢包與會員中心。測試帳號 test / test1234 已預填，可直接體驗目前流程。
             </p>
           </div>
           <DecorativeAsset assetKey="memberHero" className="min-h-[340px]" />
