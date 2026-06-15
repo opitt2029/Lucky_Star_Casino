@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [test] — 2026-06-15 — 捕魚機 e2e（Playwright）：進場 → 開火 → 收網 → 逐發公平性驗證
+
+### Added
+- `frontend/e2e/fishing.spec.js`：Playwright e2e，於 headless Chromium + mock 模式走完整流程 —— mock 測試帳號（`test`/`test1234`）登入 → `/game/fishing` 進場 buy-in → 漁場開火多發 → 收網結算 → 結算頁點「驗證」斷言「✓ 已驗證」。以注入 `animation:none` 凍結魚群動畫（游動的魚是移動目標且游完自動移除），讓點擊穩定；登入頁有兩顆「登入」鈕，鎖定 `form button[type=submit]`。
+- `frontend/playwright.config.js`：`webServer` 以 `vite --mode mock --port 5317` 自動起 dev server，`reuseExistingServer`、失敗留 trace/截圖。
+- `frontend/.env.mock`：e2e 專用模式檔，強制 `VITE_USE_MOCK_API=true`。mode 檔優先序高於 `.env.local` / `.env.development`，可覆蓋其 `false`，使 e2e 離線可跑、CI/任何 clone 可重現。
+- `frontend/.gitignore`：忽略 `test-results/`、`playwright-report/` 等 Playwright 產物。
+
+### Changed
+- `frontend/package.json`：新增 `npm run e2e`（`playwright test`）script 與 `@playwright/test` devDependency。
+
+### Why
+- 捕魚機前端（含 verify-shot 公平性驗證）先前僅有單元層 smoke，缺真實瀏覽器端到端驗證。補 e2e 鎖住「進場→開火→收網→逐發驗證」關鍵路徑，避免日後改動默默打斷 Provably Fair 閉環或結算流程。
+
+### Verified
+- `npm run e2e`：`1 passed`（headless Chromium，約 12.7s）。
+- 純前端測試工具，未動後端/Kafka/infra。
+
 ## [feat] — 2026-06-15 — 捕魚機前端（含音效）：頁面 + 漁場互動 + 接上 casino-fx 捕魚音效/BGM
 
 ### Added
