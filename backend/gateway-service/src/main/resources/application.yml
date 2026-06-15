@@ -32,6 +32,39 @@ spring:
               - X-Requested-With
             allowCredentials: true
       routes:
+        # ── Swagger / OpenAPI 文件聚合（T-092）──────────────────────────────
+        # 各服務 /v3/api-docs 透過 gateway 代理出來，供聚合 Swagger UI（/swagger-ui.html）檢視。
+        # 這些路徑已加入 jwt.whitelist，免 JWT；路徑與業務路由不重疊。
+        - id: openapi-member
+          uri: ${MEMBER_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/v3/api-docs/member
+          filters:
+            - RewritePath=/v3/api-docs/member, /v3/api-docs
+        - id: openapi-wallet
+          uri: ${WALLET_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/v3/api-docs/wallet
+          filters:
+            - RewritePath=/v3/api-docs/wallet, /v3/api-docs
+        - id: openapi-game
+          uri: ${GAME_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/v3/api-docs/game
+          filters:
+            - RewritePath=/v3/api-docs/game, /v3/api-docs
+        - id: openapi-rank
+          uri: ${RANK_SERVICE_URL:http://localhost:8084}
+          predicates:
+            - Path=/v3/api-docs/rank
+          filters:
+            - RewritePath=/v3/api-docs/rank, /v3/api-docs
+        - id: openapi-admin
+          uri: ${ADMIN_SERVICE_URL:http://localhost:8086}
+          predicates:
+            - Path=/v3/api-docs/admin
+          filters:
+            - RewritePath=/v3/api-docs/admin, /v3/api-docs
         # 白名單路徑：免 JWT 驗證（登入/註冊）
         # 套用速率限制防暴力破解：5 req/sec replenish, burst 10
         - id: member-auth
@@ -182,6 +215,30 @@ jwt:
     - /api/v1/auth/
     - /actuator/health
     - /fallback/
+    # Swagger / OpenAPI 文件（T-092）：免 JWT 才能開聚合文件頁與抓各服務 api-docs
+    - /swagger-ui
+    - /v3/api-docs
+    - /webjars
+
+# Swagger 聚合 UI（T-092）：gateway 本身無 REST API（停用自身 api-docs），
+# 僅作為各下游服務文件的聚合入口。瀏覽 http://localhost:8080/swagger-ui.html，
+# 右上下拉切換 member / wallet / game / rank / admin。
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: member-service
+        url: /v3/api-docs/member
+      - name: wallet-service
+        url: /v3/api-docs/wallet
+      - name: game-service
+        url: /v3/api-docs/game
+      - name: rank-service
+        url: /v3/api-docs/rank
+      - name: admin-service
+        url: /v3/api-docs/admin
 
 management:
   endpoints:

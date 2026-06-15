@@ -80,6 +80,12 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- Swagger UI / OpenAPI（T-092；版本由 parent dependencyManagement 管理） -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
+
         <!-- MySQL Driver (ADR-001: 讀取 members 等查詢資料) -->
         <dependency>
             <groupId>com.mysql</groupId>

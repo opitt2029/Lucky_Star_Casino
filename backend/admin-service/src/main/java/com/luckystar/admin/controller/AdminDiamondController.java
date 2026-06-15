@@ -5,6 +5,8 @@ import com.luckystar.admin.dto.DiamondCardView;
 import com.luckystar.admin.dto.GenerateCardsRequest;
 import com.luckystar.admin.dto.GenerateCardsResponse;
 import com.luckystar.admin.service.DiamondCardService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 鑽石點數卡後台 API（T-105 生成 / T-106 列表）。{@code /admin/**} 需 ROLE_ADMIN。
  */
+@Tag(name = "鑽石點數卡", description = "T-105 生成 / T-106 列表")
 @RestController
 @RequestMapping("/admin/diamond/cards")
 public class AdminDiamondController {
@@ -34,6 +37,7 @@ public class AdminDiamondController {
         this.diamondCardService = diamondCardService;
     }
 
+    @Operation(summary = "生成點數卡", description = "批次生成指定面額的鑽石點數卡。")
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<GenerateCardsResponse> generate(@Valid @RequestBody GenerateCardsRequest request) {
@@ -42,6 +46,7 @@ public class AdminDiamondController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    @Operation(summary = "點數卡列表", description = "分頁查詢點數卡，可依 status 篩選（all/unused/used 等）。")
     @GetMapping
     public Page<DiamondCardView> list(
             @RequestParam(defaultValue = "0") int page,

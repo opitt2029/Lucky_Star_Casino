@@ -25,6 +25,8 @@ public class SecurityConfig {
                 sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/**").permitAll()
+                // Swagger UI / OpenAPI 文件（T-092）
+                .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                 .anyRequest().permitAll()
             )
             .addFilterBefore(internalSecretFilter, UsernamePasswordAuthenticationFilter.class);

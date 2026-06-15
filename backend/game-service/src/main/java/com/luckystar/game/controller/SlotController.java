@@ -6,6 +6,8 @@ import com.luckystar.game.dto.PrepareRoundResponse;
 import com.luckystar.game.dto.SpinRequest;
 import com.luckystar.game.dto.SpinResponse;
 import com.luckystar.game.service.SlotService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -32,6 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/game/slot")
 @RequiredArgsConstructor
+@Tag(name = "老虎機", description = "老虎機下注、commit-ahead 兩階段對局")
 public class SlotController {
 
     private final SlotService slotService;
@@ -39,6 +42,7 @@ public class SlotController {
     /**
      * 單次模式：下注並轉動老虎機，於同一回應揭露 serverSeed。
      */
+    @Operation(summary = "單次轉動", description = "下注並轉動老虎機，於同一回應揭露 serverSeed")
     @PostMapping("/spin")
     public ResponseEntity<ApiResponse<SpinResponse>> spin(
             @RequestHeader(value = "X-User-Id", required = false) String playerIdStr,
@@ -55,6 +59,7 @@ public class SlotController {
     /**
      * commit-ahead 第一階段：開局，回傳 serverSeedHash 承諾（不揭露 serverSeed、不扣款）。
      */
+    @Operation(summary = "開局（第一階段）", description = "回傳 serverSeedHash 承諾，不揭露 serverSeed、不扣款")
     @PostMapping("/round")
     public ResponseEntity<ApiResponse<PrepareRoundResponse>> prepareRound(
             @RequestHeader(value = "X-User-Id", required = false) String playerIdStr,
@@ -72,6 +77,7 @@ public class SlotController {
     /**
      * commit-ahead 第二階段：結算指定對局，扣款、轉動、派彩並揭露 serverSeed。
      */
+    @Operation(summary = "結算（第二階段）", description = "扣款、轉動、派彩並揭露 serverSeed")
     @PostMapping("/round/{roundId}/settle")
     public ResponseEntity<ApiResponse<SpinResponse>> settle(
             @RequestHeader(value = "X-User-Id", required = false) String playerIdStr,

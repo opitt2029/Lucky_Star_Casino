@@ -33,6 +33,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/auth/**").permitAll()
                 .requestMatchers("/internal/**").permitAll()
                 .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                // Swagger UI / OpenAPI 文件（T-092）— 放行需在 anyRequest().authenticated() 之前
+                .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                 .anyRequest().authenticated()
             )
             // 兩個 filter 都跑在 UsernamePasswordAuthenticationFilter 之前
