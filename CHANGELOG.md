@@ -5,6 +5,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-15 — T-051/T-052/T-053：Admin 管理/報表 API（玩家管理 + 星幣流通量 + RTP 監控）
+
+### Added
+- **T-051 玩家帳號管理**：
+  - `controller/AdminPlayerController`：`GET /admin/players`（分頁 + 帳號/暱稱關鍵字）、`GET /admin/players/{id}`（跨庫彙整：member 基本資料 + wallet 餘額 + 近 20 筆帳務 + 近 20 局對局）、`PATCH /admin/players/{id}/status`（停用/啟用）。
+  - `service/AdminPlayerService` + 唯讀 read model：`mysql.entity.{MemberRead,WalletTransactionRead}`、`postgres.entity.{WalletRead,GameRoundRead}` 與對應 repository（admin 只讀、不寫他服務庫）。
+  - `service/PlayerBanService`：停用寫 Redis `disabled:player:{id}`、啟用刪除。
+  - `gateway` `JwtAuthenticationGlobalFilter`：新增使用者級封鎖檢查（`disabled:player:{sub}`），與 jti 黑名單一起 fail-closed → 命中即 401，使被停用玩家既有 token **立刻失效**。
+- **T-052 星幣流通量報表**：`GET /admin/reports/coin-flow?dimension=day|week|month&from=&to=`，`service/CoinFlowReportService` 讀 MySQL `wallet_transactions`、依 type 分發放(CREDIT/BONUS)/消耗(DEBIT)、Java 依維度彙整時間序列（DB 方言中立、易測）。
+- **T-053 RTP 監控**：`GET /admin/reports/rtp?game=&from=&to=`，`service/RtpReportService` 讀 PostgreSQL `game_rtp_stats`（game T-037 排程產出，admin 不重算），比對設計 RTP（`admin.rtp.design.*` 可設定，預設 slot 0.95 / baccarat 0.98），偏差絕對值 > 門檻（預設 0.05）標 `ABNORMAL`。
+- `controller/AdminReportController`（兩報表端點）、`controller/AdminExceptionHandler`（不合法參數 → 400）、相關 DTO 與單元測試（玩家列表/搜尋/詳情/停用封鎖、各維度彙整、RTP 偏差邊界 5%/>5%）。
+
+### Changed
+- `backend/admin-service/pom.xml` + `application.yml`：新增 spring-data-redis（玩家封鎖）。
+- read model 實體 no-arg 建構子改 public（供跨套件測試建構）。
+
+### Why
+- T-051 停用「即時失效」：既有黑名單是 per-JTI，admin 無從取得玩家 jti；且 admin 不應直接寫 member 庫。故採**使用者級封鎖 + gateway 強制**（gateway 是所有玩家請求唯一閘口，一處改動即全服務生效）。member 庫 `status` 持久化待 member-service 提供 internal API（跨組待辦）。
+- 報表走**直接讀庫**（admin 已掛 MySQL 讀庫 + PostgreSQL）：符合計畫「讀庫查詢」「RTP 不在 admin 重算」原則，免跨服務 HTTP。
+
+### Verified
+- `mvn -pl backend/admin-service test`：43 pass / 0 fail。
+- `mvn -pl backend/gateway-service test`：21 pass / 0 fail（含 JWT filter 既有案例，封鎖檢查未破壞 fail-closed 行為）。
+
 ## [feat] — 2026-06-15 — T-050：Admin 後台 JWT 認證地基（角色區分 + Spring Security）
 
 ### Added
