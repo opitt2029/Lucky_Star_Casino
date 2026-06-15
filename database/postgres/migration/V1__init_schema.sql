@@ -144,3 +144,22 @@ CREATE TABLE IF NOT EXISTS admin_alerts (
 CREATE INDEX IF NOT EXISTS idx_admin_alerts_player_id   ON admin_alerts (player_id);
 CREATE INDEX IF NOT EXISTS idx_admin_alerts_is_resolved ON admin_alerts (is_resolved);
 CREATE INDEX IF NOT EXISTS idx_admin_alerts_created_at  ON admin_alerts (created_at);
+
+-- -------------------------------------------------------
+-- admin_users：後台管理員帳號（T-050）
+-- role 區分 SUPER_ADMIN / OPERATOR；password_hash 為 BCrypt。
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS admin_users (
+    id            BIGSERIAL     NOT NULL,
+    username      VARCHAR(50)   NOT NULL,
+    password_hash VARCHAR(100)  NOT NULL,
+    role          VARCHAR(20)   NOT NULL,
+    enabled       BOOLEAN       NOT NULL DEFAULT TRUE,
+    created_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_admin_users         PRIMARY KEY (id),
+    CONSTRAINT uq_admin_users_username UNIQUE (username),
+    CONSTRAINT chk_admin_users_role   CHECK (role IN ('SUPER_ADMIN', 'OPERATOR'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_users_username ON admin_users (username);

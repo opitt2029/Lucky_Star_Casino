@@ -50,11 +50,6 @@ spring:
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       enable-auto-commit: false
 
-  # Security（SUPER_ADMIN / OPERATOR 角色）
-  security:
-    user:
-      name: disabled
-
 management:
   endpoints:
     web:
@@ -69,3 +64,17 @@ logging:
     com.luckystar.admin: ${LOG_LEVEL_APP:INFO}
     org.springframework.security: ${LOG_LEVEL_SECURITY:INFO}
     org.hibernate.SQL: ${LOG_LEVEL_SQL:OFF}
+
+# ================================================================
+# 後台 JWT（T-050）：獨立 ADMIN_JWT_SECRET，與玩家 JWT_SECRET 分離。
+# secret 無預設值 —— 缺了即啟動失敗（比照 JWT_SECRET/INTERNAL_SECRET 慣例）。
+# ================================================================
+admin:
+  jwt:
+    secret: ${ADMIN_JWT_SECRET}
+    expiry-ms: ${ADMIN_JWT_EXPIRY_MS:3600000}   # 1 小時
+  # 預設管理員播種（首次啟動建立可登入的 SUPER_ADMIN）
+  seed:
+    enabled: ${ADMIN_SEED_ENABLED:true}
+    username: ${ADMIN_SEED_USERNAME:superadmin}
+    password: ${ADMIN_SEED_PASSWORD:ChangeMe!SuperAdmin123}

@@ -40,6 +40,28 @@
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 
+        <!-- Validation: 登入請求 @Valid -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- JWT: 後台獨立 ADMIN_JWT_SECRET 簽發/驗章（JJWT 0.12.6，版本由 parent 管理） -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
         <!-- Kafka: 發布 notification.push (異常告警) -->
         <dependency>
             <groupId>org.springframework.kafka</groupId>
@@ -82,6 +104,14 @@
             <artifactId>spring-kafka-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- H2: 測試用記憶體資料庫，讓 @SpringBootTest contextLoads 不需外部
+             PostgreSQL/MySQL 即可啟動（比照 wallet-service 雙資料源模式）。僅 test scope。 -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -89,6 +119,22 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <!-- 測試時讓雙資料源 EntityManagerFactory 用 create 模式在 H2 自動建表
+                 （DataSourceConfig 讀 system property jpa.ddl-auto，預設 validate；
+                 測試改 create，正式環境仍由 JPA_DDL_AUTO 環境變數控制，互不影響）。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <jpa.ddl-auto>create</jpa.ddl-auto>
+                        <!-- H2 不支援 PG/MySQL 方言的 insert...returning 等語法，測試改用 H2Dialect -->
+                        <jpa.dialect.postgres>org.hibernate.dialect.H2Dialect</jpa.dialect.postgres>
+                        <jpa.dialect.mysql>org.hibernate.dialect.H2Dialect</jpa.dialect.mysql>
+                    </systemPropertyVariables>
+                </configuration>
             </plugin>
         </plugins>
     </build>

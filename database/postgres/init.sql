@@ -146,6 +146,28 @@ CREATE INDEX IF NOT EXISTS idx_admin_alerts_is_resolved ON admin_alerts (is_reso
 CREATE INDEX IF NOT EXISTS idx_admin_alerts_created_at  ON admin_alerts (created_at);
 
 -- -------------------------------------------------------
+-- admin_users：後台管理員帳號（T-050）
+-- 與玩家帳號完全分離：玩家在 members（MySQL），管理員在此（PostgreSQL）。
+-- role 區分 SUPER_ADMIN / OPERATOR；password_hash 為 BCrypt。
+-- JWT 以獨立 ADMIN_JWT_SECRET 簽發，玩家 token 無法存取 /admin/**。
+-- 預設管理員由 admin-service 啟動時的 seeder 建立（見 AdminUserSeeder），不在此硬編密碼雜湊。
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS admin_users (
+    id            BIGSERIAL     NOT NULL,
+    username      VARCHAR(50)   NOT NULL,
+    password_hash VARCHAR(100)  NOT NULL,   -- BCrypt 雜湊
+    role          VARCHAR(20)   NOT NULL,   -- SUPER_ADMIN / OPERATOR
+    enabled       BOOLEAN       NOT NULL DEFAULT TRUE,
+    created_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_admin_users        PRIMARY KEY (id),
+    CONSTRAINT uq_admin_users_username UNIQUE (username),
+    CONSTRAINT chk_admin_users_role  CHECK (role IN ('SUPER_ADMIN', 'OPERATOR'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_users_username ON admin_users (username);
+
+-- -------------------------------------------------------
 -- diamond_wallets：玩家鑽石錢包主表（T-100）
 -- 鑽石為點數卡兌換而來的硬通貨，與 wallets（星幣）平行、同庫
 -- balance 為鑽石餘額；version 樂觀鎖防止兌換時的並發超扣（T-103）
