@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS game_rounds (
     id               BIGSERIAL    NOT NULL,
     round_id         VARCHAR(100) NOT NULL,   -- UUID，對外唯一識別碼
     player_id        BIGINT       NOT NULL,
-    game_type        VARCHAR(20)  NOT NULL,   -- SLOT / BACCARAT
+    game_type        VARCHAR(20)  NOT NULL,   -- SLOT / BACCARAT / FISHING
     bet_amount       BIGINT,
     win_amount       BIGINT,
     server_seed      VARCHAR(255),            -- 開獎後才揭露（Provably Fair）
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS game_rounds (
     settled_at       TIMESTAMP,
     CONSTRAINT pk_game_rounds   PRIMARY KEY (id),
     CONSTRAINT uq_game_round_id UNIQUE (round_id),
-    CONSTRAINT chk_gr_game_type CHECK (game_type IN ('SLOT', 'BACCARAT')),
+    CONSTRAINT chk_gr_game_type CHECK (game_type IN ('SLOT', 'BACCARAT', 'FISHING')),
     CONSTRAINT chk_gr_status    CHECK (status    IN ('STARTED', 'SETTLED'))
 );
 
@@ -114,13 +114,13 @@ CREATE TABLE IF NOT EXISTS rank_daily_snapshots (
 -- -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS game_rtp_stats (
     id            BIGSERIAL    NOT NULL,
-    game_type     VARCHAR(20)  NOT NULL,   -- SLOT / BACCARAT
+    game_type     VARCHAR(20)  NOT NULL,   -- SLOT / BACCARAT / FISHING
     total_bet     BIGINT       NOT NULL DEFAULT 0,
     total_win     BIGINT       NOT NULL DEFAULT 0,
     round_count   INT          NOT NULL DEFAULT 0,
     calculated_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_game_rtp_stats PRIMARY KEY (id),
-    CONSTRAINT chk_rtp_game_type CHECK (game_type IN ('SLOT', 'BACCARAT'))
+    CONSTRAINT chk_rtp_game_type CHECK (game_type IN ('SLOT', 'BACCARAT', 'FISHING'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_game_rtp_stats_game_type     ON game_rtp_stats (game_type);

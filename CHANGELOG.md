@@ -5,6 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [fix] — 2026-06-15 — 捕魚機對局無法持久化（game_type 約束缺 FISHING）+ 全功能實機 smoke test 腳本
+
+### Fixed
+- **BUG-1 捕魚機對局無法持久化 → verify-shot 永遠 404**：`game_rounds.chk_gr_game_type` 與 `game_rtp_stats.chk_rtp_game_type` 的 CHECK 約束只允許 `SLOT`/`BACCARAT`、**缺 `FISHING`**，捕魚機結算寫 `game_rounds` 被 PostgreSQL 擋下（SQLState 23514）；且 `FishingService.settleInternal` 把約束違反**誤判為並發結算靜默吞掉**，使 `GET /fishing/{id}/verify-shot` 永遠 404、捕魚機 RTP 統計也寫不進。
+  - `database/postgres/init.sql`：`chk_gr_game_type`、`chk_rtp_game_type` 加入 `FISHING`（並更新註解）。
+  - `database/postgres/migration/V5__add_fishing_game_type.sql`（新增）：對既有環境 DROP + ADD 兩個 CHECK 約束。
+  - `backend/game-service/.../service/FishingService.java`：catch `DataIntegrityViolationException` 後重查 `roundRepository.findByRoundId`，唯有對局確已寫入（唯一鍵衝突＝真並發）才忽略，其餘 log error 並重拋，避免再次靜默遮蔽資料問題。
+
+### Added
+- `tests/smoke/smoke.mjs`：end-to-end smoke 腳本（Node 內建 `fetch`，比照 `tests/infra` 風格）。經 gateway:8080 真打 member/wallet/game/rank 全部核心端點，驗證「路由 + JWT + 業務邏輯」整鏈。流程含註冊→登入→profile→refresh、錢包建立(Kafka)→bankruptcy-aid 注資→balance/transactions/checkin/diamond、slot(單次+commit-ahead)/baccarat/fishing(開場→射擊→結算→逐發驗證)/rtp/verify、rank(global/單人/friends)。每檢查記 PASS/FAIL/WARN，有 FAIL 退出碼 1。
+- `tests/smoke/README.md`：前置（docker + 5 服務啟動）與執行說明。
+- `tests/smoke/smoke-report.md`：實機結果報告。
+
+### Why
+- 專案先前無跨服務真實 end-to-end smoke（CI 僅跑 gateway/member/wallet 單測 + infra），故 H2 單測未涵蓋此 PostgreSQL CHECK 約束、CI 全綠仍漏掉捕魚機持久化缺陷。補可重複執行的實機腳本，鎖住「整套服務拓撲下每個功能能不能用」並揪出此 bug。
+
+### Verified
+- 修復後重啟 game-service，`node tests/smoke/smoke.mjs`：`fishing/{id}/end` 對局正常持久化、`verify-shot` 回 200。整體 26 PASS（唯一非綠為 slot/spin 服務剛啟動的冷啟動暫態，暖機後 200；以及連續重跑時 rtp/verify 觸發的 429 限流，皆非 bug）。
+- 前端 `npm run lint`（無錯）、`npm run build`（成功）、`npm run e2e`（1 passed）。
+
 ## [test] — 2026-06-15 — 捕魚機 e2e（Playwright）：進場 → 開火 → 收網 → 逐發公平性驗證
 
 ### Added
