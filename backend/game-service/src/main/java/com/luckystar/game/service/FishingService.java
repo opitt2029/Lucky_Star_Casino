@@ -344,7 +344,15 @@ public class FishingService {
                 roundRepository.save(round);
                 eventPublisher.publishFishingResult(round, session.getTotalShots());
             } catch (DataIntegrityViolationException e) {
-                log.info("fishing session concurrently settled, skip persist sessionId={}", sessionId);
+                // 僅當對局確實已被另一執行緒寫入（round_id 唯一鍵衝突）時，才視為並發結算而忽略；
+                // 其他資料完整性錯誤（如 CHECK 約束違反）不可靜默吞掉，否則會遮蔽 schema/資料問題
+                // （曾因 chk_gr_game_type 缺 FISHING 而被誤判為並發結算、導致對局未持久化、verify-shot 404）。
+                if (roundRepository.findByRoundId(sessionId).isPresent()) {
+                    log.info("fishing session concurrently settled, skip persist sessionId={}", sessionId);
+                } else {
+                    log.error("fishing round persist failed sessionId={}", sessionId, e);
+                    throw e;
+                }
             }
         }
 
