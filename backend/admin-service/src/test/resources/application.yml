@@ -18,6 +18,12 @@ spring:
     password: ""
     driver-class-name: org.h2.Driver
 
+  # 測試時不啟動 @KafkaListener（T-054 新增的消費者），避免 @SpringBootTest context
+  # 嘗試連線不存在的 Kafka 而失敗。production 預設 auto-startup=true（見 listener autoStartup 表達式）。
+  kafka:
+    listener:
+      auto-startup: false
+
 # 後台 JWT / 播種（測試固定值）
 admin:
   jwt:

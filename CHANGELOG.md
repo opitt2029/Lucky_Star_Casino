@@ -5,6 +5,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-15 — T-054 / T-055：異常玩家偵測規則引擎 + GM 手動發放星幣
+
+### Added
+- **T-054 異常玩家偵測**（`backend/admin-service`）：
+  - `kafka/GameResultConsumer`（`game.result`）、`kafka/WalletEventConsumer`（`wallet.credit`/`wallet.debit`）+ 對應 record 事件（`@JsonIgnoreProperties(ignoreUnknown=true)`）；`config/KafkaConsumerConfig` 設 `MANUAL_IMMEDIATE`、壞訊息記錄後照樣 ack 丟棄（不引入 DLT 基建）。
+  - `service/AlertRuleEngine` 三規則：① 單局中獎 > 50,000 → `BIG_WIN`；② 30 分內下注 > 100 次 → `HIGH_FREQUENCY`（Redis `admin:betcount:{playerId}` `INCR` + 首次 TTL 30min）；③ 帳務異動頻率異常（60s 內 > 20 次）→ `ABNORMAL_TRANSFER`（Redis `admin:txncount:{playerId}`）。命中 → 寫 `admin_alerts`（PostgreSQL 寫端）＋ 發 `notification.push`（`targetPlayerId=null` 廣播給管理員前台）。
+  - `postgres/entity/AdminAlert` + repository（`admin_alerts` 表已存在於 init.sql）；`kafka/NotificationPushPublisher` + `NotificationPushEvent`。
+- **T-055 GM 手動發放星幣**：
+  - `controller/GmController`：`POST /admin/gm/grant`（`@PreAuthorize("hasRole('SUPER_ADMIN')")`），body `{playerId, amount, reason}`。
+  - `service/GmRewardService`：**走指令**發 `wallet.credit.request`（`subType=GM_REWARD`、`idempotencyKey=gm-grant-{operator}-{playerId}-{UUID}`），**絕不直接寫 wallet**（ADR-002 §地雷 6）；操作日誌落 `admin_action_logs`（operator 取自 `Authentication.getName()`）。
+  - 新表 `admin_action_logs`（PostgreSQL）：`database/postgres/init.sql` + `migration/V6__add_admin_action_logs.sql`；`postgres/entity/AdminActionLog` + repository。
+
+### Changed
+- `backend/admin-service/src/test/resources/application.yml`：加 `spring.kafka.listener.auto-startup: false`，使既有 `@SpringBootTest` 不因新 `@KafkaListener` 嘗試連 Kafka 而失敗（listener 以 `autoStartup="${spring.kafka.listener.auto-startup:true}"` 綁定，正式環境照常啟動）。
+
+### Why
+- 三規則告警類型對齊既有 `admin_alerts` CHECK（`BIG_WIN`/`HIGH_FREQUENCY`/`ABNORMAL_TRANSFER`），故無需改表。頻率類規則用 Redis 計數 + TTL 滑窗，避免掃描帳務流水。
+- GM 發幣嚴守 ADR-002：admin 只發指令，由 wallet-service 入帳並回 `wallet.credit` 事件；冪等鍵防重複發放。告警 consumer 只「計數」`wallet.credit`/`wallet.debit`（事件），絕不消費 `wallet.credit.request`（指令）以免迴圈（§地雷 6）。
+- 相關 topic（`game.result`/`wallet.credit`/`wallet.debit`/`notification.push`/`wallet.credit.request`）皆已存在，未動 infra。
+
+### Verified
+- `mvn -pl backend/admin-service test`：68 pass / 0 fail（含三規則邊界 49,999/50,001、100/101、20/21；consumer 壞訊息丟棄；GM payload + 日誌；GmController 權限 OPERATOR→403 / SUPER_ADMIN→200）。
+
 ## [feat] — 2026-06-15 — T-045 / T-073（rank 端）：今日贏幣王排行榜 + 排行榜變動廣播事件
 
 ### Added
