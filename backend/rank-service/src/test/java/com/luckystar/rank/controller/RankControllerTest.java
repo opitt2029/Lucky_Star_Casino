@@ -67,4 +67,31 @@ class RankControllerTest {
         mockMvc.perform(get("/api/v1/rank/friend/1/top"))
                 .andExpect(status().isNotFound());
     }
+
+    @Test
+    void getMyFriendRank_returnsSelfRankAmongFriends() throws Exception {
+        when(rankService.getFriendRank(1L)).thenReturn(java.util.Optional.of(
+                new RankEntryResponse(1L, "alice", 2L, 2000L)));
+
+        mockMvc.perform(get("/api/v1/rank/friends/me").header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.playerId").value(1))
+                .andExpect(jsonPath("$.username").value("alice"))
+                .andExpect(jsonPath("$.rank").value(2))
+                .andExpect(jsonPath("$.score").value(2000));
+    }
+
+    @Test
+    void getMyFriendRank_returnsNotFoundWhenPlayerNotInFriendRank() throws Exception {
+        when(rankService.getFriendRank(99L)).thenReturn(java.util.Optional.empty());
+
+        mockMvc.perform(get("/api/v1/rank/friends/me").header("X-User-Id", "99"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getMyFriendRank_missingAuthenticatedPlayerHeader_returnsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/v1/rank/friends/me"))
+                .andExpect(status().isBadRequest());
+    }
 }

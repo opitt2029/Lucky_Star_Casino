@@ -156,8 +156,9 @@ class RankServiceTest {
 
     @Test
     @SuppressWarnings({"rawtypes", "unchecked"})
-    void rebuildFriendRank_replacesFriendOnlyZSetAndSets24HourTtl() {
+    void rebuildFriendRank_includesSelfAndFriendsAndSets24HourTtl() {
         RankService rankService = buildService();
+        when(zSetOperations.score(RankService.GLOBAL_COINS_KEY, "1")).thenReturn(2000.0);
         when(zSetOperations.score(RankService.GLOBAL_COINS_KEY, "2")).thenReturn(500.0);
         when(zSetOperations.score(RankService.GLOBAL_COINS_KEY, "3")).thenReturn(null);
 
@@ -167,10 +168,11 @@ class RankServiceTest {
         ArgumentCaptor<Set> tuplesCaptor = ArgumentCaptor.forClass(Set.class);
         verify(zSetOperations).add(eq("rank:friend:1"), tuplesCaptor.capture());
         Set<ZSetOperations.TypedTuple<String>> tuples = tuplesCaptor.getValue();
+        // 含好友（2、3）與玩家本人（1）；重複與「friendIds 內混入自己」皆去重
         assertThat(tuples).extracting(ZSetOperations.TypedTuple::getValue)
-                .containsExactlyInAnyOrder("2", "3");
+                .containsExactlyInAnyOrder("1", "2", "3");
         assertThat(tuples).extracting(ZSetOperations.TypedTuple::getScore)
-                .containsExactlyInAnyOrder(500.0, 0.0);
+                .containsExactlyInAnyOrder(2000.0, 500.0, 0.0);
         verify(redisTemplate).expire("rank:friend:1", RankService.FRIEND_RANK_TTL);
     }
 
@@ -200,6 +202,27 @@ class RankServiceTest {
         assertThat(response).containsExactly(
                 new RankEntryResponse(2L, "bob", 1L, 500L),
                 new RankEntryResponse(3L, "carol", 2L, 100L));
+    }
+
+    @Test
+    void getFriendRank_usesReverseRankOnFriendKeyAndReturnsOneBasedRank() {
+        RankService rankService = buildService();
+        when(zSetOperations.reverseRank("rank:friend:1", "1")).thenReturn(1L);
+        when(zSetOperations.score("rank:friend:1", "1")).thenReturn(2000.0);
+        when(hashOperations.get(RankService.PLAYER_USERNAME_KEY, "1")).thenReturn("alice");
+
+        Optional<RankEntryResponse> response = rankService.getFriendRank(1L);
+
+        assertThat(response).contains(new RankEntryResponse(1L, "alice", 2L, 2000L));
+    }
+
+    @Test
+    void getFriendRank_returnsEmptyWhenPlayerNotInFriendRank() {
+        RankService rankService = buildService();
+        when(zSetOperations.reverseRank("rank:friend:1", "1")).thenReturn(null);
+        when(zSetOperations.score("rank:friend:1", "1")).thenReturn(null);
+
+        assertThat(rankService.getFriendRank(1L)).isEmpty();
     }
 
     private RankService buildService() {

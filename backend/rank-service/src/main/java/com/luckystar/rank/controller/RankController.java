@@ -37,4 +37,12 @@ public class RankController {
             @RequestHeader("X-User-Id") Long playerId) {
         return rankService.getTopFriendCoins(playerId);
     }
+
+    @GetMapping("/friends/me")
+    public ResponseEntity<RankEntryResponse> getMyFriendRank(
+            @RequestHeader("X-User-Id") Long playerId) {
+        return rankService.getFriendRank(playerId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
 }
