@@ -1,8 +1,16 @@
-# Phase 5 — Notification 服務（P1）
+# Phase 5 — Notification 服務（P1）✅ 已完成（2026-06-15）
 
 > 含任務：T-070（WebSocket STOMP）、T-071（Kafka→WS 橋接）、T-072（遊戲結果推播）
 > ⚠️ notification-service **尚未建立**（AGENTS.md §地雷 10）→ 先建服務骨架。
 > 順序：建骨架 → T-070 → T-071 → T-072。（T-073 在 Phase 6）
+>
+> **完成摘要**：已建立 `backend/notification-service`（port 8087、`com.luckystar.notification`、無 DB），
+> 三任務皆實作完成並 16 tests 綠燈（含 STOMP 連線/鑑權整合測試）。實作差異（與下方計畫對照）：
+> - `game.result` / `notification.push` topic **已存在於** `kafka/kafka-init.sh` → **未動 infra 與 `tests/infra/kafka.test.js`**。
+> - 本服務無資料庫 → **未加 JPA/H2**（§地雷 3 的 H2 規則僅適用有 DB 的服務）。
+> - best-effort 推播、可容忍遺失 → **不設 DLT**；改以「listener 內 try/catch + `MANUAL_IMMEDIATE` ack 丟棄壞訊息」避免卡住 consumer。
+> - `game.result` 事件**不含 `balanceAfter`**（game-service 未發），T-072 推播改用實際欄位 bet/payout/win，未杜撰餘額。
+> 驗證：`mvn -pl backend/notification-service test` → 16 pass / 0 fail。詳見 CHANGELOG（2026-06-15 T-070/T-071/T-072）。
 
 ---
 
