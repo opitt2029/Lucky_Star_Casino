@@ -28,7 +28,8 @@ import java.nio.charset.StandardCharsets;
  *  2. 抽 Authorization: Bearer <token>，缺則 401
  *  3. 驗 JWS 簽章 + exp；失敗則 401
  *  4. 查 Redis 黑名單（key: jwt:blacklist:{jti}）；命中則 401
- *  5. 將 sub、role 透過 X-User-Id / X-User-Role header 轉發給下游
+ *  5. 查 Redis 使用者級封鎖（key: disabled:player:{sub}，後台 T-051 停用玩家）；命中則 401
+ *  6. 將 sub、role 透過 X-User-Id / X-User-Role header 轉發給下游
  */
 @Component
 public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
@@ -36,6 +37,7 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
     private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationGlobalFilter.class);
     private static final String BEARER_PREFIX = "Bearer ";
     private static final String BLACKLIST_KEY_PREFIX = "jwt:blacklist:";
+    private static final String DISABLED_PLAYER_KEY_PREFIX = "disabled:player:";
     private static final String USER_ID_HEADER = "X-User-Id";
     private static final String USER_ROLE_HEADER = "X-User-Role";
     private static final String ADMIN_PATH_PREFIX = "/admin/";
@@ -91,16 +93,21 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
         Mono<Boolean> blacklistCheck = (jti == null)
                 ? Mono.just(Boolean.FALSE)
                 : redis.hasKey(BLACKLIST_KEY_PREFIX + jti);
+        // 使用者級封鎖（後台停用玩家）：admin 寫 disabled:player:{sub}，命中即令該玩家既有 token 失效
+        Mono<Boolean> disabledCheck = (userId == null)
+                ? Mono.just(Boolean.FALSE)
+                : redis.hasKey(DISABLED_PLAYER_KEY_PREFIX + userId);
 
-        return blacklistCheck
-                // Redis 故障 → fail-closed：拒絕請求而非放行，避免黑名單失效導致已撤銷的 token 復活
+        return Mono.zip(blacklistCheck, disabledCheck)
+                .map(checks -> checks.getT1() || checks.getT2())
+                // Redis 故障 → fail-closed：拒絕請求而非放行，避免黑名單/封鎖失效導致已撤銷的 token 復活
                 .onErrorResume(err -> {
-                    log.warn("Redis blacklist check failed, denying request: {}", err.getMessage());
+                    log.warn("Redis revocation check failed, denying request: {}", err.getMessage());
                     return Mono.just(Boolean.TRUE);
                 })
                 .flatMap(blocked -> {
                     if (Boolean.TRUE.equals(blocked)) {
-                        return unauthorized(exchange, "token revoked");
+                        return unauthorized(exchange, "token revoked or user disabled");
                     }
                     String userIdValue = userId == null ? "" : userId;
                     String roleValue = role == null ? "" : role.toString();
