@@ -348,7 +348,7 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 |---|---|:--:|---|:--:|---|
 | T-000 | 組長A | P0 | GitHub Repo 與分支策略 | ✅ | README.md / CONTRIBUTING.md / .github/pull_request_template.md 皆存在 |
 | T-001 | 組長A | P0 | 架構圖與 ADR | ✅ | docs/architecture.md、docs/adr/ADR-001.md 存在 |
-| T-002 | 組員D | P0 | Docker Compose 環境 | ⚠️ | docker-compose.yml 存在且完整，但**使用 Zookeeper 而非規格要求的 KRaft 模式**（規格偏離，需確認決策） |
+| T-002 | 組員D | P0 | Docker Compose 環境 | ✅ | 已改 Kafka KRaft（移除 Zookeeper）、MySQL 對齊 8.4、Kafka volume 改 `lucky_kafka_data`；`docker compose config` + infra 測試通過（2026-06-15） |
 | T-003 | 組員D | P0 | 各 Service Spring Boot 初始化 | ✅ | 6 個服務模組皆能獨立啟動（pom.xml 已掛模組） |
 | T-004 | 組員E | P0 | React 前端初始化 | ✅ | frontend/ 為 Vite + React，含 Redux/Router/Tailwind/Axios |
 | T-005 | 組長A | P0 | Kafka Topic 規劃 | ✅ | kafka/kafka-init.sh 存在 |
@@ -402,8 +402,8 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
 |---|:--:|---|:--:|---|
 | T-040 | P0 | Redis ZSet 全服排行榜 | ✅ | `rank:global:coins` + wallet.credit/debit consumer |
-| T-041 | P0 | 好友排行榜 | ✅ | `rank:friend:{playerId}` + friend.relationship.updated consumer |
-| T-042 | P0 | 排行榜查詢 API | ✅ | `/api/v1/rank/global`、`/api/v1/rank/friends` + username read model |
+| T-041 | P0 | 好友排行榜 | ✅ | `rank:friend:{playerId}`（含好友 + 本人）+ friend.relationship.updated consumer + 24h TTL |
+| T-042 | P0 | 排行榜查詢 API | ✅ | `/global`、`/global/{id}`、`/friends`、`/friends/me`（自己好友名次）+ username read model；**頭像欄位待 member 端發布頭像後補（跨組待辦）** |
 | T-043 | P1 | 每週排行榜重置排程 | ✅ | `@Scheduled(cron="0 0 0 * * MON", zone="Asia/Taipei")` + `rank_history` 冠軍快照 + `wallets.balance` 重建 ZSet + `notification.push` TOP3 通知 |
 | T-044 | P1 | 每日持幣快照任務 | ✅ | `@Scheduled(cron="0 0 0 * * *", zone="Asia/Taipei")` + `rank_daily_snapshots` 前一日持幣量快照 |
 | T-045 | P2 | 今日贏幣王排行榜 | ❌ | 同上 |
@@ -412,7 +412,7 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
 |---|:--:|---|:--:|---|
-| T-050 | P1 | Admin JWT 認證（角色區分） | ❌ | admin-service 僅有 DataSourceConfig / PostgresJpaConfig 骨架 |
+| T-050 | P1 | Admin JWT 認證（角色區分） | ✅ | 獨立 ADMIN_JWT_SECRET + SUPER_ADMIN/OPERATOR 角色 + Spring Security（/admin/** 需 ROLE_ADMIN、@PreAuthorize）+ `POST /admin/auth/login` + admin_users 表 + seeder；19 test pass（含 401/403 驗收，2026-06-15） |
 | T-051 | P1 | 玩家帳號管理 API | ❌ | 同上 |
 | T-052 | P1 | 星幣流通量報表 API | ❌ | 同上 |
 | T-053 | P1 | 遊戲 RTP 監控儀表板 API | ❌ | 同上 |
