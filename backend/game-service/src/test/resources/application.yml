@@ -1,0 +1,42 @@
+# 測試專用設定：用 H2 記憶體資料庫取代 PostgreSQL，讓 @SpringBootTest（contextLoads）
+# 不需外部基礎設施即可啟動（比照 member / wallet 模式）。純 Mockito / @WebMvcTest 不載入完整
+# context，不受此檔影響。本檔在測試 classpath 會覆蓋 src/main 的 application.yml，故需自足。
+server:
+  port: 0
+
+spring:
+  application:
+    name: game-service
+
+  # PostgreSQL → H2（PostgreSQL 相容模式），由實體自動建表
+  datasource:
+    url: jdbc:h2:mem:game_pg;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+
+  # Redis / Kafka 在 contextLoads 不會於啟動時連線（無 @KafkaListener、Redis 連線延遲建立）
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+# 滿足 WalletClientConfig 中 @Value 的必填要求（測試不會真的呼叫 wallet）
+internal:
+  wallet-service:
+    base-url: http://localhost:8082
+    secret: test-secret

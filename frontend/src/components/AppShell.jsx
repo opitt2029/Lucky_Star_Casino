@@ -9,6 +9,8 @@ import { fetchDiamondBalance, resetDiamond } from '../store/slices/diamondSlice'
 import { dailyCheckIn, fetchWallet, resetWallet } from '../store/slices/walletSlice'
 import { getBackgroundStyle } from '../theme/backgroundTheme'
 import CoinRain from './CoinRain'
+import AnnouncementTicker from '../casino-fx/announce/AnnouncementTicker'
+import { startBotFeed } from '../casino-fx/announce/botFeed'
 
 const navItems = [
   { to: '/', label: '首頁' },
@@ -124,6 +126,11 @@ export default function AppShell({ children }) {
     dispatch(fetchRanks())
   }, [dispatch, isAuthenticated])
 
+  // 全服喜報機器人：營造「全服都有人在贏」的氛圍（idempotent，多頁掛載只會啟動一次）。
+  useEffect(() => {
+    startBotFeed()
+  }, [])
+
   useEffect(() => {
     setAvatarFailed(false)
   }, [player?.avatarUrl])
@@ -194,6 +201,7 @@ export default function AppShell({ children }) {
   return (
     <div className="theme-background min-h-screen text-zinc-50" style={getBackgroundStyle('app')}>
       <CoinRain />
+      <AnnouncementTicker />
       <ErrorBoundary>
         <Suspense fallback={null}>
           <RealtimeBridge />

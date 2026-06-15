@@ -1,0 +1,230 @@
+/* 捕魚機漁場樣式：深海背景 + 魚群游動 + 砲台 + 子彈 + 命中演出。 */
+
+.fishing-arena {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  min-height: 420px;
+  height: clamp(420px, 56vh, 620px);
+  cursor: crosshair;
+  background:
+    radial-gradient(120% 80% at 50% -10%, rgba(120, 220, 255, 0.18), transparent 60%),
+    linear-gradient(180deg, #06283d 0%, #052035 45%, #021522 100%);
+  border: 1px solid rgba(248, 213, 106, 0.22);
+  box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.55);
+  touch-action: manipulation;
+  user-select: none;
+}
+
+/* 海底光束與氣泡氛圍 */
+.fishing-arena::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(115deg, rgba(150, 230, 255, 0.05) 0 2px, transparent 2px 60px);
+  opacity: 0.5;
+  pointer-events: none;
+  animation: fishingLight 8s ease-in-out infinite alternate;
+}
+
+@keyframes fishingLight {
+  from { transform: translateX(-3%); opacity: 0.35; }
+  to { transform: translateX(3%); opacity: 0.6; }
+}
+
+/* 魚（游動外層 + 上下擺動內層） */
+.fishing-fish__swim {
+  position: absolute;
+  top: 0;
+  animation-name: fishSwimRTL;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  z-index: 2;
+}
+
+.fishing-fish {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  animation-name: fishBob;
+  animation-duration: 2.6s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.45));
+  transition: transform 0.12s ease;
+}
+
+.fishing-fish__swim--ltr {
+  animation-name: fishSwimLTR;
+}
+
+@keyframes fishSwimRTL {
+  from { left: 100%; }
+  to { left: -200px; }
+}
+
+@keyframes fishSwimLTR {
+  from { left: -200px; }
+  to { left: 100%; }
+}
+
+@keyframes fishBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+
+.fishing-fish__sprite {
+  display: block;
+  transition: transform 0.12s ease;
+}
+
+/* L→R 游動時水平翻轉魚頭朝向 */
+.fishing-fish__sprite--flip { transform: scaleX(-1); }
+
+.fishing-fish:hover .fishing-fish__sprite { transform: scale(1.08); }
+.fishing-fish__sprite--flip:hover { transform: scaleX(-1) scale(1.08); }
+
+.fishing-fish--boss { filter: drop-shadow(0 0 18px rgba(248, 213, 106, 0.6)); }
+
+/* 命中捕獲：放大旋轉淡出 */
+.fishing-fish--caught {
+  animation: fishCaught 0.5s ease-out forwards !important;
+  pointer-events: none;
+}
+
+@keyframes fishCaught {
+  0% { transform: scale(1); opacity: 1; }
+  40% { transform: scale(1.35) rotate(8deg); opacity: 1; }
+  100% { transform: scale(0.2) rotate(-20deg); opacity: 0; }
+}
+
+/* 魚種倍率小標 */
+.fishing-fish__tag {
+  position: absolute;
+  bottom: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: #ffe9a8;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* 砲台 */
+.fishing-cannon {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  width: 96px;
+  height: 96px;
+  transform: translateX(-50%);
+  z-index: 5;
+  pointer-events: none;
+  transition: transform 0.08s ease;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5));
+}
+
+.fishing-cannon__art {
+  transform: rotate(var(--aim, 0deg));
+  transform-origin: 50% 70%;
+  transition: transform 0.08s ease-out;
+}
+
+.fishing-cannon__base {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 120px;
+  height: 26px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(248, 213, 106, 0.45), rgba(120, 80, 20, 0.1) 70%, transparent);
+  z-index: -1;
+}
+
+/* 子彈 */
+.fishing-bullet {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #fff7d6, #f6c453 55%, #c08a14);
+  box-shadow: 0 0 10px rgba(246, 196, 83, 0.9);
+  z-index: 4;
+  pointer-events: none;
+  animation: fishingBullet var(--bullet-dur, 0.32s) linear forwards;
+}
+
+@keyframes fishingBullet {
+  from { transform: translate(0, 0) scale(1); opacity: 1; }
+  to { transform: translate(var(--bullet-dx), var(--bullet-dy)) scale(0.6); opacity: 0.2; }
+}
+
+/* 命中火花 */
+.fishing-spark {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, rgba(255, 240, 200, 0.95), rgba(248, 213, 106, 0.4) 45%, transparent 70%);
+  z-index: 4;
+  pointer-events: none;
+  animation: fishingSpark 0.45s ease-out forwards;
+}
+
+@keyframes fishingSpark {
+  0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0.95; }
+  100% { transform: translate(-50%, -50%) scale(1.6); opacity: 0; }
+}
+
+/* 浮動派彩數字 */
+.fishing-payout-float {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 18px;
+  font-weight: 900;
+  color: #ffe9a8;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
+  z-index: 6;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: fishingPayoutFloat 1s ease-out forwards;
+}
+
+@keyframes fishingPayoutFloat {
+  0% { transform: translate(-50%, -50%) scale(0.6); opacity: 0; }
+  20% { transform: translate(-50%, -90%) scale(1.1); opacity: 1; }
+  100% { transform: translate(-50%, -160%) scale(1); opacity: 0; }
+}
+
+/* 提示橫幅（餘額不足 / 連點過快） */
+.fishing-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: rgba(120, 13, 24, 0.86);
+  border: 1px solid rgba(248, 213, 106, 0.5);
+  color: #ffe9a8;
+  font-size: 13px;
+  font-weight: 800;
+  z-index: 7;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fishing-fish,
+  .fishing-arena::before { animation-duration: 0.001s; animation-iteration-count: 1; }
+}

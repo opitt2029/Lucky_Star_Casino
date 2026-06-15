@@ -46,6 +46,9 @@ public class InternalSecretFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return path.startsWith("/actuator/");
+        // 只保護服務間內部端點（/internal/**）。玩家端路徑（/api/v1/wallet/**）由
+        // gateway 驗證 JWT 後以 X-User-Id 轉發，不應要求 X-Internal-Secret；
+        // /actuator/** 為健康檢查亦放行。
+        return !path.startsWith("/internal/");
     }
 }

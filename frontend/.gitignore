@@ -1,0 +1,5 @@
+# Playwright e2e 產物
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

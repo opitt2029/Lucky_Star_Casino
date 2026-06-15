@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
+import { useSound } from '../casino-fx/sound/useSound'
 import './QuickToolbar.css'
 
 const tools = [
@@ -17,6 +18,12 @@ const tools = [
     path: '/games',
     protected: true,
     icon: <path d="M6 12h12M12 6v12M7 17l-2 2M17 17l2 2M7 7 5 5M17 7l2-2" />,
+  },
+  {
+    label: '捕魚機',
+    path: '/game/fishing',
+    protected: true,
+    icon: <path d="M3 12s3-5 9-5 9 5 9 5-3 5-9 5-9-5-9-5Zm9-2v.01M19 9l2-2v10l-2-2" />,
   },
   {
     label: '會員中心',
@@ -50,6 +57,7 @@ export default function QuickToolbar() {
   const navigate = useNavigate()
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
   const [message, setMessage] = useState('')
+  const { play, settings, toggleSfx, toggleBgm } = useSound()
 
   useEffect(() => {
     if (!message) return undefined
@@ -104,6 +112,44 @@ export default function QuickToolbar() {
               <span>{tool.label}</span>
             </button>
           ))}
+
+          <button
+            type="button"
+            className="quick-toolbar__button"
+            onClick={() => {
+              toggleSfx()
+              play('click')
+            }}
+            aria-pressed={settings.sfxEnabled}
+          >
+            <ToolbarIcon>
+              {settings.sfxEnabled ? (
+                <path d="M4 10v4h4l5 4V6l-5 4H4Zm12-2c1.5 1 2 5 0 8m3-11c3 2.5 3.5 9 0 14" />
+              ) : (
+                <path d="M4 10v4h4l5 4V6l-5 4H4Zm12 0 5 5m0-5-5 5" />
+              )}
+            </ToolbarIcon>
+            <span>{settings.sfxEnabled ? '音效開' : '音效關'}</span>
+          </button>
+
+          <button
+            type="button"
+            className="quick-toolbar__button"
+            onClick={() => {
+              toggleBgm()
+              play('click')
+            }}
+            aria-pressed={settings.bgmEnabled}
+          >
+            <ToolbarIcon>
+              {settings.bgmEnabled ? (
+                <path d="M9 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm0 0V5l10-2v13m0 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z" />
+              ) : (
+                <path d="M9 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm0 0V5l10-2v6M5 3l16 18" />
+              )}
+            </ToolbarIcon>
+            <span>{settings.bgmEnabled ? '音樂開' : '音樂關'}</span>
+          </button>
 
           <button type="button" className="quick-toolbar__button" onClick={handleAiService}>
             <ToolbarIcon>

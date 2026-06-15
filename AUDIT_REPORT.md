@@ -386,16 +386,16 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
 |---|:--:|---|:--:|---|
-| T-030 | P0 | Provably Fair RNG 引擎 | ❌ | game-service 僅有 Application.java |
-| T-031 | P0 | 老虎機遊戲邏輯 | ❌ | 同上 |
-| T-032 | P0 | 老虎機遊戲 API | ❌ | 同上 |
-| T-033 | P0 | Redis 遊戲 Session 管理 | ❌ | 同上 |
-| T-034 | P1 | 百家樂遊戲邏輯 | ❌ | 同上 |
-| T-035 | P1 | 百家樂遊戲 API | ❌ | 同上 |
-| T-036 | P1 | RNG 公平性驗證 API | ❌ | 同上 |
-| T-037 | P2 | 遊戲 RTP 統計 | ❌ | 同上 |
+| T-030 | P0 | Provably Fair RNG 引擎 | ✅ | `rng.ProvablyFairRng`/`RandomStream`：commit-reveal + `SHA-256(serverSeed:clientSeed:nonce:block)`，純邏輯單元測試通過 |
+| T-031 | P0 | 老虎機遊戲邏輯 | ✅ | `slot.SlotMachine`/`SlotSymbol`：3x3 中線三連，符號決定倍率，確定性可驗證；RTP≈17.7% |
+| T-032 | P0 | 老虎機遊戲 API | ✅ | `POST /api/v1/game/slot/spin`：扣款(debit)→RNG→派彩(credit)→寫 `game_rounds`→發 `game.result`；`WalletClient` 走內部 API + 冪等鍵 |
+| T-033 | P0 | Redis 遊戲 Session 管理 | ✅ | `session/GameSessionService`（兩階段 commit-ahead）、`GameSession`/`GameSessionState`，含單元測試（commit 7f5d513） |
+| T-034 | P1 | 百家樂遊戲邏輯 | ✅ | `baccarat/BaccaratGameService`/`Card`/`BaccaratOutcome`/`BaccaratResult`/`BaccaratSettlement`，含單元測試（commit 6d9aae5） |
+| T-035 | P1 | 百家樂遊戲 API | ✅ | `BaccaratController` + `service/BaccaratService`：`/bet`、`/result`，含 controller/service 測試（commit 0910d29） |
+| T-036 | P1 | RNG 公平性驗證 API | ✅ | `VerificationController` + `VerificationService`，含測試（commit 710b1a8） |
+| T-037 | P2 | 遊戲 RTP 統計 | ✅ | `RtpController` + `RtpStatsService` + `entity/GameRtpStat`（排程 + API），含測試（commit d860154） |
 
-> ⚠️ **game-service 完全未開始實作**，僅有 Spring Boot 啟動類。此為賭場核心產品功能，目前缺口最大。
+> ✅ **game-service 已全數完成（T-030~T-037）**：RNG 引擎、老虎機邏輯與下注 API、Redis Session 兩階段 commit-ahead、百家樂邏輯與 API、RNG 公平性驗證 API、遊戲 RTP 統計皆已實作並合併至 develop，各帶單元/契約測試。
 
 ### A.5 Rank Service（組員D）
 
@@ -404,8 +404,8 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | T-040 | P0 | Redis ZSet 全服排行榜 | ✅ | `rank:global:coins` + wallet.credit/debit consumer |
 | T-041 | P0 | 好友排行榜 | ✅ | `rank:friend:{playerId}` + friend.relationship.updated consumer |
 | T-042 | P0 | 排行榜查詢 API | ✅ | `/api/v1/rank/global`、`/api/v1/rank/friends` + username read model |
-| T-043 | P1 | 每週排行榜重置排程 | ❌ | 同上 |
-| T-044 | P1 | 每日持幣快照任務 | ❌ | 同上 |
+| T-043 | P1 | 每週排行榜重置排程 | ✅ | `@Scheduled(cron="0 0 0 * * MON", zone="Asia/Taipei")` + `rank_history` 冠軍快照 + `wallets.balance` 重建 ZSet + `notification.push` TOP3 通知 |
+| T-044 | P1 | 每日持幣快照任務 | ✅ | `@Scheduled(cron="0 0 0 * * *", zone="Asia/Taipei")` + `rank_daily_snapshots` 前一日持幣量快照 |
 | T-045 | P2 | 今日贏幣王排行榜 | ❌ | 同上 |
 
 ### A.6 Admin Service（組員D）
@@ -470,7 +470,7 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
 |---|:--:|---|:--:|---|
 | T-090 | P0 | JMeter 高併發壓測腳本 | ⚠️ | JMX、執行器、分析器與報告已完成；實測阻塞於 T-032、JMeter/環境與 1,000 組玩家憑證 |
-| T-091 | P0 | 帳務一致性對帳腳本 | ❌ | 未見對帳 SQL |
+| T-091 | P0 | 帳務一致性對帳腳本 | ✅ | `tests/performance/accounting-reconciliation.sql` + `run-accounting-reconciliation.ps1`：壓測後驗證 wallets.balance 與流水加總一致、無負餘額、frozen_amount 歸零 |
 | T-092 | P1 | Swagger UI API 文件 | ❌ | 各服務 pom.xml 無 springdoc-openapi 依賴 |
 | T-093 | P0 | End-to-End 整合測試 | ❌ | 多數後端服務未實作，無法執行完整流程 |
 | T-094 | P0 | README 與部署文件 | ✅ | README.md + DEPLOY.md 皆存在（DEPLOY.md 於 2026-05-29 補上本機部署 SOP） |
@@ -496,16 +496,18 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 | 狀態 | 任務數 | 占比 |
 |---|:--:|:--:|
-| ✅ 已完成 | 24 | ~31% |
+| ✅ 已完成 | 29 | ~37% |
 | ⚠️ 部分完成 | 11 | ~14% |
-| ❌ 未開始 | 42 | ~54% |
+| ❌ 未開始 | 37 | ~47% |
 | ❓ 待確認 | 1 | ~1% |
 | **總計** | **78** | 100% |
 
+> 註：本次（2026-06-09）將 T-033~T-037 由 ❌ 改為 ✅（game-service 全數完成），故 ✅ 由 24→29、❌ 由 42→37。
+
 **按模組完成度概覽：**
 
-- ✅ **完成度高**：全域基礎建設、Member Service、Gateway（地基與大門已蓋好）
-- ⚠️ **進行中**：Wallet Service（開戶/查餘額/扣款 OK，但入帳/流水/贈送/補助未完）、前端（UI 多已備但真實串接待補）
-- ❌ **尚未起步**：Game Service、Rank Service、Admin Service、Notification Service、鑽石系統、測試/壓測/收尾文件
+- ✅ **完成度高**：全域基礎建設、Member Service、Gateway、**Game Service（T-030~T-037 全完成）**、Rank Service（排行榜核心 T-040~T-044）
+- ⚠️ **進行中**：Wallet Service（開戶/查餘額/扣款/入帳/流水/贈送 OK，破產補助/DLT 後台未完）、前端（UI 多已備但真實串接待補）
+- ❌ **尚未起步**：Admin Service、Notification Service、鑽石系統、部分測試/壓測/收尾文件
 
-> **結論**：目前完成的部分集中在「認證與帳號」這條主線；**賭場真正的營利核心（遊戲對局、派彩入帳、排行榜、後台、即時推播）幾乎都還沒開始**。後端有 4 個服務（game/rank/admin/notification）等同空白。
+> **結論**：認證與帳號主線、遊戲對局（老虎機/百家樂）與排行榜核心皆已完成；**仍空白的營利/營運拼圖為後台（admin）、即時推播（notification）、鑽石點數卡系統**。後端剩 admin / notification 兩個服務等同空白。
