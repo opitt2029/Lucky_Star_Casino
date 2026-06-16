@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
+import org.springframework.data.redis.core.ReactiveValueOperations;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
@@ -33,12 +34,17 @@ class JwtAuthenticationGlobalFilterTest {
     private final SecretKey key = Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8));
 
     private ReactiveStringRedisTemplate redis;
+    private ReactiveValueOperations<String, String> valueOps;
     private JwtAuthenticationGlobalFilter filter;
 
     @SuppressWarnings("unchecked")
     @BeforeEach
     void setUp() {
         redis = mock(ReactiveStringRedisTemplate.class);
+        valueOps = mock(ReactiveValueOperations.class);
+        // 預設：token:min-iat 查無值（不限制簽發時間）；個別測試可覆寫
+        when(redis.opsForValue()).thenReturn(valueOps);
+        when(valueOps.get(anyString())).thenReturn(Mono.empty());
         JwtProperties props = new JwtProperties(SECRET, List.of("/api/v1/auth/", "/actuator/health"));
         filter = new JwtAuthenticationGlobalFilter(props, redis);
     }
@@ -48,7 +54,19 @@ class JwtAuthenticationGlobalFilterTest {
                 .subject(sub)
                 .claim("role", role)
                 .id(jti)
+                .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expMillisFromNow))
+                .signWith(key)
+                .compact();
+    }
+
+    private String tokenWithIat(String sub, String jti, long iatEpochSec) {
+        return Jwts.builder()
+                .subject(sub)
+                .claim("role", "PLAYER")
+                .id(jti)
+                .issuedAt(new Date(iatEpochSec * 1000))
+                .expiration(new Date(System.currentTimeMillis() + 60_000))
                 .signWith(key)
                 .compact();
     }
@@ -246,6 +264,46 @@ class JwtAuthenticationGlobalFilterTest {
 
         assertThat(captured.get()).isNotNull();
         assertThat(captured.get().getRequest().getHeaders().get("X-User-Role")).containsExactly("PLAYER");
+    }
+
+    @Test
+    void tokenIssuedBeforeMinIat_returns401() {
+        // 停用前簽發的舊 token：min-iat 設在「未來」，token iat 早於它 → 撤銷
+        long now = System.currentTimeMillis() / 1000;
+        when(redis.hasKey(anyString())).thenReturn(Mono.just(false));
+        when(valueOps.get(anyString())).thenReturn(Mono.just(String.valueOf(now + 100_000)));
+        GatewayFilterChain chain = mock(GatewayFilterChain.class);
+
+        MockServerHttpRequest request = MockServerHttpRequest
+                .get("/api/v1/wallet/balance")
+                .header("Authorization", "Bearer " + tokenWithIat("42", "jti-iat-old", now))
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        filter.filter(exchange, chain).block();
+
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        verify(chain, never()).filter(exchange);
+    }
+
+    @Test
+    void tokenIssuedAfterMinIat_isForwarded() {
+        // 啟用後新登入的 token：iat 晚於 min-iat → 放行
+        long now = System.currentTimeMillis() / 1000;
+        when(redis.hasKey(anyString())).thenReturn(Mono.just(false));
+        when(valueOps.get(anyString())).thenReturn(Mono.just(String.valueOf(now - 100_000)));
+        AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+        MockServerHttpRequest request = MockServerHttpRequest
+                .get("/api/v1/wallet/balance")
+                .header("Authorization", "Bearer " + tokenWithIat("42", "jti-iat-new", now))
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        filter.filter(exchange, capturingChain(captured)).block();
+
+        assertThat(captured.get()).isNotNull();
+        assertThat(captured.get().getRequest().getHeaders().get("X-User-Id")).containsExactly("42");
     }
 
     @Test

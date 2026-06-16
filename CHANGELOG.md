@@ -5,6 +5,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [fix] — 2026-06-16 — 後台停用玩家：阻擋停用期間登入 + 啟用後舊 token 不復活
+
+### Fixed
+- **(A) 停用玩家後仍能重新登入並換發新 token**：後台停用只寫 Redis 封鎖（給 gateway），未更新 member DB 的狀態，導致 member 登入檢查不到、停用玩家仍能登入。現 member 登入一併查 Redis `disabled:player:{id}` 封鎖標記，停用期間登入回 `403 Account is disabled`。
+- **(B) 後台「啟用」後，停用前簽發的舊 token 會復活可用**：啟用只刪除 Redis 封鎖 key，未過期的舊 token 立即恢復。現停用時記錄簽發時間下限 `token:min-iat:{id}`，gateway 對該玩家拒絕 `iat` 早於此值的 token；啟用時保留此標記（靠 TTL=7 天自然清除），使停用前的舊 token 永久失效，只有啟用後新登入的 token 可用。
+
+### Changed / Added
+- `admin-service` `PlayerBanService.ban()`：除既有 `disabled:player:{id}` 外，新增寫入 `token:min-iat:{id}=now`（TTL 7 天）並刪除該玩家 `refresh:{id}`（避免停用前的 refresh token 在啟用後換發新 access token 繞過 min-iat）；`unban()` 僅刪封鎖 key、保留 min-iat。
+- `gateway-service` `JwtAuthenticationGlobalFilter`：撤銷檢查新增第三項——讀 `token:min-iat:{sub}`，token `iat` 早於門檻則 401（與既有黑名單、使用者封鎖同走 fail-closed）。
+- `member-service` `TokenRedisService.isPlayerDisabled()` + `AuthService.login()`：登入時加查封鎖標記。
+- 三服務共用 Redis key 命名（`disabled:player:`、`token:min-iat:`、`refresh:`），於各檔註解標明須一致。
+
+### Why
+- 全流程測試「後台停用玩家後 token 失效」時發現兩個語意漏洞：停用中仍可登入、啟用後舊憑證復活。屬使用者帳號封鎖的安全正確性問題。
+
+### How to verify
+- 單元測試：`mvn -pl backend/member-service,backend/gateway-service,backend/admin-service test` 全綠（gateway 新增 2 筆 min-iat 案例、admin `PlayerBanServiceTest` 補上新行為斷言）。
+- 端對端（走 gateway:8080 / admin:8086）：停用後既有 token→401、重新登入→403；啟用後舊 token→401、新登入 token→200。
+
+---
+
 ## [fix] — 2026-06-16 — gateway 補上 `/api/v1/friends/**` 路由
 
 ### Added
