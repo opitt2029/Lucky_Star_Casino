@@ -231,7 +231,15 @@ public class FishingService {
      */
     @Scheduled(fixedDelayString = "${game.fishing.sweep-interval-ms:60000}")
     public void sweepIdleSessions() {
-        for (Long playerId : sessionStore.listPlayerIds()) {
+        List<Long> playerIds;
+        try {
+            playerIds = sessionStore.listPlayerIds();
+        } catch (Exception ex) {
+            // Redis 抖動/不可用時，整批掃描略過本輪即可（下一輪自動重試），不讓排程每分鐘噴 ERROR
+            log.warn("fishing idle sweep: 無法列出 session（Redis 不可用?），略過本輪: {}", ex.toString());
+            return;
+        }
+        for (Long playerId : playerIds) {
             try {
                 Optional<FishingSession> found = sessionStore.find(playerId);
                 if (found.isEmpty() || !found.get().isActive()) {
