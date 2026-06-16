@@ -17,6 +17,10 @@
    - 4.4 [老虎機兩階段 Commit-Ahead](#44-老虎機兩階段-commit-ahead)
    - 4.5 [百家樂下注與結算](#45-百家樂下注與結算)
    - 4.6 [排行榜即時更新與好友榜](#46-排行榜即時更新與好友榜)
+   - 4.7 [鑽石系統（序號生成與兌換）](#47-鑽石系統序號生成與兌換)
+   - 4.8 [破產補助金](#48-破產補助金t-027)
+   - 4.9 [公平性驗證是什麼](#49-公平性驗證是什麼provably-fair黃崇瑜t-036)
+   - 4.10 [Redis 7 的 Token / 黑名單](#410-redis-7-的-token--黑名單)
 5. 前端頁面功能導覽 →（獨立分冊《前端功能導覽》）
 6. [除錯報告（Debugging）](#6-除錯報告debugging)
    - 6.1 [本次已修復的 Bug](#61-本次已修復的-bug)
@@ -277,6 +281,88 @@ flowchart TB
 
 > ⚠️ 約定：`friend.relationship.updated` 帶的是**完整好友清單**，rank 整個重建好友 ZSet，不要改成增量事件（AGENTS.md 地雷 #11）。
 
+### 4.7 鑽石系統（序號生成與兌換）
+
+本平台是**雙錢包**：星幣（遊戲下注用）＋鑽石（入金代幣）。玩家無真實金流，鑽石只能透過「點數卡序號」取得，再換成星幣。整條鏈是：**輸入序號 → 得到該卡面額的鑽石 → 鑽石按 1:20 換星幣**；卡面額不同，最終換得的星幣額度就不同。
+
+**(1) 序號生成（後台，許銘仁，T-105 / T-106）**
+
+- 程式：admin-service `DiamondCardService.generateCards(count, faceValue)`，寫入 MySQL `diamond_cards`（`card_code` UNIQUE）。
+- 序號格式：`XXXX-XXXX-XXXX-XXXX`——取 `UUID` 去掉連字號後的前 16 碼 hex、轉大寫，每 4 碼一段。
+- 唯一性兩道保障：同批以 `LinkedHashSet` 去重 ＋ `existsByCardCode` 避開資料庫既有序號。
+- **不同額度**：每張卡帶 `face_value`（= 可兌換的鑽石數）。後台生成時指定面額，因此可批量產出 100／500／1000 鑽石等不同額度的卡。
+
+**(2) 序號兌換鑽石（T-102，`POST /api/v1/wallet/diamond/redeem`）**
+
+跨資料源操作（序號在 MySQL、鑽石餘額在 PostgreSQL），刻意不引入 XA，改以「先標記、再入帳、失敗補償」串接：
+
+- ① **序號 CAS 標記**（`DiamondCardService.redeemCard`，MySQL 條件式 UPDATE）：原子地把序號標記為已兌換並取回面額。這是防重複兌換的關卡——序號不存在 → 404；已兌換或並發落敗 → 422。
+- ② **鑽石入帳**（`DiamondWalletService.creditDiamond`，PostgreSQL）：面額加進鑽石餘額。
+- ③ **補償**：入帳失敗則回滾序號標記讓玩家重試（`DiamondRedeemService` 協調）。
+
+**(3) 鑽石兌換星幣（T-103，`POST /api/v1/wallet/diamond/exchange`）**
+
+- 比例固定 **1 鑽石 = 20 星幣**（`DiamondExchangeService.EXCHANGE_RATE`）。
+- 整筆在**單一 PostgreSQL 交易**內完成：冪等預檢（key `diamond-exchange:{idempotencyKey}`）→ 鑽石扣款（樂觀鎖）→ 星幣入帳（同交易、子類型 `DIAMOND_EXCHANGE`）。同交易天然原子，星幣入帳失敗時鑽石扣款一起回滾，無需補償。
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant FE as 前端
+    participant W as Wallet
+    participant MY as MySQL（序號）
+    participant PG as PostgreSQL（鑽石/星幣）
+
+    Note over FE,PG: A. 輸入序號換鑽石（跨資料源，先標記後入帳）
+    FE->>W: POST /diamond/redeem { cardCode }
+    W->>MY: CAS 標記序號已兌換 → 取面額（已用/不存在→422/404）
+    W->>PG: 鑽石餘額 += 面額
+    W-->>FE: 已得鑽石（面額越大、得到越多）
+
+    Note over FE,PG: B. 鑽石換星幣（單一交易，1 鑽石 = 20 星幣）
+    FE->>W: POST /diamond/exchange { diamondAmount }
+    W->>PG: 鑽石扣款（樂觀鎖）+ 星幣入帳（同一交易）
+    W-->>FE: 星幣餘額更新（diamondAmount × 20）
+```
+
+### 4.8 破產補助金（T-027）
+
+防流失機制：玩家輸光時可領救濟金，繼續遊玩。後端 `BankruptcyAidService.claim`，對應 `POST /api/v1/wallet/bankruptcy-aid`。
+
+- **資格**：以**總餘額**（非可用餘額）低於 **100** 判定；否則 422。用總餘額是刻意設計——可用餘額 = 總餘額 − 凍結金額，若用可用餘額判定，玩家可把錢凍結在未結算下注上壓低可用餘額來騙補助。
+- **每日一次**：Redis 當日鎖 `SET wallet:bankruptcy-aid:{playerId}:{date} 1 NX`，TTL 到當地（台北）午夜；搶不到代表今天已領 → 422。
+- **入帳**：固定發放 **1,000 星幣**，冪等鍵 `bankruptcy-aid:{playerId}:{date}` 為 DB 第二道防線（Redis 即使被清空，同日也不會重複入帳）。入帳失敗會釋放 Redis 鎖讓玩家重試。
+- **前端（本次新增）**：頭像下拉選單 →「客服說明」→ 破產補助卡片，顯示目前星幣與「領取破產補助」按鈕（餘額 < 100 才可點），串接上述 API、領取後即時更新餘額。畫面與操作教學見《前端功能導覽》§5.14。
+
+### 4.9 公平性驗證是什麼（Provably Fair，黃崇瑜，T-036）
+
+> 對應「黃崇瑜 負責的公平性驗證」。一句話：**讓玩家能自己驗算某一局結果沒有被竄改**。賭場遊戲最怕「莊家偷改開獎」，這套機制用密碼學承諾把公平性變成「任何人都可查核」。
+
+- **核心：commit-reveal 三步**（`ProvablyFairRng`）：
+  1. **commit（開局前）**：伺服器產生保密的 `serverSeed`（32 bytes），對外只公布它的雜湊 `serverSeedHash = SHA-256(serverSeed)`。雜湊先鎖定，事後無法替換種子。
+  2. **play（下注時）**：用 `(serverSeed, clientSeed, nonce)` 三元組推導結果——`clientSeed` 玩家可自帶、`nonce` 逐筆遞增。**相同三元組必產生相同結果**（確定性），這是可驗證的基礎。
+  3. **reveal（結算後）**：揭露 `serverSeed`，玩家即可自行查核。
+- **驗證 API**（`VerificationService`，`GET /api/v1/game/verify/{roundId}?serverSeed=…`）一次判定兩件事：
+  - **承諾相符**：`SHA-256(serverSeed) == serverSeedHash` → 確認種子在下注前就鎖定、沒被事後替換。
+  - **結果一致**：用三元組**重跑遊戲引擎**（老虎機盤面／百家樂牌局與派彩），逐欄與 `game_rounds` 紀錄比對。
+  - 兩者皆過才回 `valid=true`：「本局公平未遭竄改」；任一不過則指出是「承諾不符」或「結果疑遭竄改」。
+- **防時序攻擊**：雜湊比較用 `MessageDigest.isEqual`（常數時間），避免從比較耗時推測內容。
+- **特性**：唯讀、不動帳務；玩家也可不依賴本服務、用相同公式自行重算。
+
+### 4.10 Redis 7 的 Token / 黑名單
+
+> 對應技術表「Redis 7 — Token／黑名單」。Redis 在本系統承擔 Token、遊戲 Session、排行榜 ZSet 三類資料；本節聚焦 Token 與黑名單。
+
+- **Refresh Token**（member-service `TokenRedisService`）：
+  - 登入時把 refresh token 存 `refresh:{memberId}`，TTL 7 天。
+  - `POST /api/v1/auth/refresh` 會比對 Redis 內的 refresh token 才換發新的 access token；登出時刪除。
+- **JWT 黑名單（登出即時撤銷）**：
+  - access token 是**無狀態 JWT**（HMAC-SHA256 簽章 + 15 分到期），伺服器不保存。問題是「登出後到自然到期前」這段時間 token 仍簽章有效，因此需要黑名單**主動撤銷**。
+  - 登出（`AuthService.logout`）把該 token 的 `jti`（JWT ID）寫進黑名單 key `jwt:blacklist:{jti}`，TTL = token 剩餘壽命（到期自動清除、不佔空間）。
+  - **Gateway 每個請求**驗章後查 `jwt:blacklist:{jti}`，命中 → 401；另查 `disabled:player:{sub}`（後台停用玩家）→ 401。
+  - **fail-closed**：Redis 故障時一律拒絕（視同已撤銷），避免黑名單失效讓已登出的 token「復活」。
+- **本次修正**：member 寫入黑名單原用前綴 `blacklist:`，與 gateway 查詢的 `jwt:blacklist:` 不一致，使登出撤銷在 Gateway 端實際未生效；已統一為 `jwt:blacklist:`（見 §6.1 F-4）。
+
 ---
 
 ## 5. 前端頁面功能導覽（標註截圖）
@@ -296,8 +382,9 @@ flowchart TB
 | F-1 | 🔴 高 | `backend/wallet-service/.../WalletService.java` `debit()` | 扣款守衛只檢查 `balance < amount`，**未扣除 frozenAmount**。一旦未來啟用凍結機制，玩家可下注已凍結的金額造成超扣 | 改為以可用餘額（`balance − frozenAmount`）守衛。目前全專案尚無凍結寫入路徑（frozenAmount 恆為 0），行為相容、屬防禦性修復 |
 | F-2 | 🟠 中 | `game-service/.../SlotService.java`、`BaccaratService.java` 結算寫入 | `findByRoundId()` 檢查與 `save()` 之間無防護：**並發重試結算**時兩個請求都通過去重檢查，第二筆觸發 UNIQUE 約束 → 玩家收到 500（wallet-service 同模式有正確處理，此處遺漏） | 補 `catch DataIntegrityViolationException` → 視同已被另一請求結算，正常回應（帳務本就冪等） |
 | F-3 | 🟡 低 | `WalletService.java` `credit()` 解凍 | 解凍金額大於 frozenAmount 時被 `Math.max(0,…)` 靜默吞掉，帳務異常無從追查 | 補 `log.warn` 記錄超額解凍，便於對帳告警 |
+| F-4 | 🔴 高 | `member-service/.../TokenRedisService.java` 與 `gateway-service/.../JwtAuthenticationGlobalFilter.java` | **登出黑名單前綴不一致**：member 登出把 `jti` 寫入 `blacklist:{jti}`，但 Gateway 查的是 `jwt:blacklist:{jti}`。兩者對不上 → 登出後 access token 在自然到期前於 Gateway 端**仍可通行**，撤銷形同未生效 | 將 member 端前綴統一為 `jwt:blacklist:`（與 Gateway 一致；member 自身讀寫共用同一常數故仍一致），並加註解鎖定兩處須同步 |
 
-**驗證**：`mvn -pl backend/wallet-service,backend/game-service test` → **BUILD SUCCESS**（wallet 142 / game 106 測試全綠）。
+**驗證**：`mvn -pl backend/wallet-service,backend/game-service test` → **BUILD SUCCESS**（wallet 142 / game 106 測試全綠）；F-4 經 `mvn -pl backend/member-service test` → **BUILD SUCCESS**（70 測試全綠）。
 
 ### 6.2 已確認待處理問題（依嚴重度）
 

@@ -4,6 +4,7 @@ import walletReducer from './slices/walletSlice'
 import diamondReducer from './slices/diamondSlice'
 import gameReducer from './slices/gameSlice'
 import rankReducer from './slices/rankSlice'
+import uiReducer from './slices/uiSlice'
 
 const store = configureStore({
   reducer: {
@@ -12,6 +13,7 @@ const store = configureStore({
     diamond: diamondReducer,
     game: gameReducer,
     rank: rankReducer,
+    ui: uiReducer,
   },
 })
 

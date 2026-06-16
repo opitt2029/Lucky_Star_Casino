@@ -18,6 +18,7 @@ import Diamond from './pages/Diamond'
 import PageTransition from './components/PageTransition'
 import QuickToolbar from './components/QuickToolbar'
 import FriendFloatingPanel from './components/FriendFloatingPanel'
+import SupportModal from './components/SupportModal'
 
 function PrivateRoute({ children }) {
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
@@ -127,6 +128,7 @@ export default function App() {
       </PageTransition>
       <QuickToolbar />
       <FriendFloatingPanel />
+      <SupportModal />
     </BrowserRouter>
   )
 }

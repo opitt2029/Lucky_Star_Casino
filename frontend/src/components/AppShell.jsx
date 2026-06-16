@@ -7,6 +7,7 @@ import { clearNotifications } from '../store/slices/gameSlice'
 import { fetchRanks } from '../store/slices/rankSlice'
 import { fetchDiamondBalance, resetDiamond } from '../store/slices/diamondSlice'
 import { dailyCheckIn, fetchWallet, resetWallet } from '../store/slices/walletSlice'
+import { openSupport } from '../store/slices/uiSlice'
 import { getBackgroundStyle } from '../theme/backgroundTheme'
 import CoinRain from './CoinRain'
 import AnnouncementTicker from '../casino-fx/announce/AnnouncementTicker'
@@ -26,6 +27,8 @@ const RealtimeBridge = lazy(() => import('./RealtimeBridge'))
 const CHECKIN_DATES_KEY = 'lucky-star-checkin-dates-v1'
 const CHECKIN_AUTO_OPEN_KEY = 'lucky-star-checkin-auto-open-v1'
 const DAILY_CHECKIN_REWARD = 100
+// 破產補助門檻（與後端 BankruptcyAidService.BALANCE_THRESHOLD 一致）：總餘額低於此值才可領取。
+const BANKRUPTCY_AID_THRESHOLD = 100
 const checkInMilestones = [
   { day: 7, bonus: 1000 },
   { day: 14, bonus: 2000 },
@@ -93,6 +96,7 @@ export default function AppShell({ children }) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const [noticeOpen, setNoticeOpen] = useState(false)
+  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
   const [avatarFailed, setAvatarFailed] = useState(false)
   const [checkInModalOpen, setCheckInModalOpen] = useState(false)
@@ -198,6 +202,14 @@ export default function AppShell({ children }) {
     }
   }
 
+  const isBankruptcyEligible = isAuthenticated && balance < BANKRUPTCY_AID_THRESHOLD
+
+  // 開啟客服說明彈窗（彈窗在 App 根層的 SupportModal，由 uiSlice 控制；QuickToolbar 共用同一入口）。
+  const handleOpenSupport = () => {
+    setAvatarMenuOpen(false)
+    dispatch(openSupport())
+  }
+
   return (
     <div className="theme-background min-h-screen text-zinc-50" style={getBackgroundStyle('app')}>
       <CoinRain />
@@ -222,20 +234,45 @@ export default function AppShell({ children }) {
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-sm sm:flex sm:items-center">
-              <div className="gold-button flex min-w-0 items-center gap-3 rounded px-3 py-2">
-                <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full border border-red-950/20 bg-red-950/18 text-sm font-black text-red-950">
-                  {canShowAvatar ? (
-                    <img
-                      src={player.avatarUrl}
-                      alt={`${playerName} 頭像`}
-                      className="h-full w-full object-cover"
-                      onError={() => setAvatarFailed(true)}
-                    />
-                  ) : (
-                    playerName.slice(0, 1).toUpperCase()
-                  )}
-                </span>
-                <span className="min-w-0 truncate font-black">{playerName}</span>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setAvatarMenuOpen((open) => !open)}
+                  className="gold-button flex w-full min-w-0 items-center gap-3 rounded px-3 py-2"
+                  aria-haspopup="menu"
+                  aria-expanded={avatarMenuOpen}
+                >
+                  <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full border border-red-950/20 bg-red-950/18 text-sm font-black text-red-950">
+                    {canShowAvatar ? (
+                      <img
+                        src={player.avatarUrl}
+                        alt={`${playerName} 頭像`}
+                        className="h-full w-full object-cover"
+                        onError={() => setAvatarFailed(true)}
+                      />
+                    ) : (
+                      playerName.slice(0, 1).toUpperCase()
+                    )}
+                  </span>
+                  <span className="min-w-0 truncate font-black">{playerName}</span>
+                </button>
+                {avatarMenuOpen && (
+                  <div className="luxury-panel absolute right-0 top-14 z-40 w-56 max-w-[calc(100vw-2rem)] rounded p-2 shadow-2xl" role="menu">
+                    <button
+                      type="button"
+                      onClick={handleOpenSupport}
+                      className="flex w-full items-center justify-between rounded px-3 py-2 text-left text-sm font-bold text-yellow-100 transition hover:bg-red-950/70"
+                      role="menuitem"
+                    >
+                      <span>客服說明</span>
+                      {isBankruptcyEligible && (
+                        <span className="rounded-full bg-yellow-200 px-2 py-0.5 text-[11px] font-black text-red-950">
+                          可領補助
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="luxury-panel-soft rounded px-4 py-2">
                 <span className="gold-muted block text-[11px] font-bold uppercase">Diamond</span>
@@ -444,6 +481,7 @@ export default function AppShell({ children }) {
           </div>
         </section>
       )}
+
     </div>
   )
 }

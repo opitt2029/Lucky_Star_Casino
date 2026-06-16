@@ -42,4 +42,22 @@ export const walletApi = {
       wallet,
     }
   },
+
+  // POST /api/v1/wallet/bankruptcy-aid → 領取破產補助
+  // 回應含發放金額與入帳前後餘額；再查一次餘額組成 walletSlice 期望的 { wallet } 形狀。
+  async claimBankruptcyAid() {
+    if (useMockApi) {
+      return mockApi.claimBankruptcyAid()
+    }
+
+    const res = await api.post('/api/v1/wallet/bankruptcy-aid')
+    const data = res.data.data
+    const wallet = await walletApi.getBalance()
+    return {
+      amount: data.amount,
+      balanceBefore: data.balanceBefore,
+      balanceAfter: data.balanceAfter,
+      wallet,
+    }
+  },
 }
