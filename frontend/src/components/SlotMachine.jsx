@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { soundEngine } from '../casino-fx/sound/SoundEngine'
+import CountUp from '../casino-fx/fx/CountUp'
 import Reel, {
   animateReel,
   buildReelTrack,
@@ -14,6 +16,8 @@ import './slotMachine.css'
 const defaultSymbols = ['🍒', '🍋', '🔔', '⭐', '7️⃣']
 const reelDurations = [1800, 2200, 2600]
 const reelLoops = [5, 6, 7]
+// near-miss（前兩輪中線同符號）時第三輪額外慢停時間：anticipation 演出的核心。
+const anticipationExtraMs = 900
 
 function getResponsiveSymbolHeight(compact) {
   if (compact) return 52
@@ -48,6 +52,7 @@ export default function SlotMachine({
   winningCells = [],
   spinning: externalSpinning = false,
   onSpin,
+  onSettled,
   symbols = defaultSymbols,
   symbolHeight: symbolHeightProp,
 }) {
@@ -59,6 +64,9 @@ export default function SlotMachine({
   const [displayGrid, setDisplayGrid] = useState(grid || fallbackGrid)
   const [reelTracks, setReelTracks] = useState(() => getColumns(grid || fallbackGrid).map(buildStaticTrack))
   const [phase, setPhase] = useState('idle')
+  const [anticipating, setAnticipating] = useState(false)
+  // Jackpot 氛圍數字：緩慢滾動營造「獎池一直在長大」的期待感（純展示）。
+  const [jackpot, setJackpot] = useState(777000)
   const trackRefs = useRef([])
   const abortRef = useRef(null)
   const handledGridRef = useRef(grid || fallbackGrid)
@@ -70,6 +78,36 @@ export default function SlotMachine({
 
   useEffect(() => {
     return () => abortRef.current?.abort()
+  }, [])
+
+  // 轉動中播放轉輪 tick（隨時間遞減頻率，模擬機械減速）。
+  useEffect(() => {
+    if (phase !== 'spinning') return undefined
+    let elapsed = 0
+    const timer = window.setInterval(() => {
+      elapsed += 90
+      const slowdown = Math.min(elapsed / 2600, 1)
+      if (Math.random() > slowdown * 0.7) {
+        soundEngine.play('reelTick', { volume: 0.5 - slowdown * 0.3, pitch: 1 - slowdown * 0.2 })
+      }
+    }, 90)
+    return () => window.clearInterval(timer)
+  }, [phase])
+
+  // anticipation：第三輪慢停時的心跳鼓點。
+  useEffect(() => {
+    if (!anticipating) return undefined
+    soundEngine.play('heartbeat')
+    const timer = window.setInterval(() => soundEngine.play('heartbeat'), 640)
+    return () => window.clearInterval(timer)
+  }, [anticipating])
+
+  // Jackpot 氛圍滾動：每 2.4 秒微幅成長。
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setJackpot((value) => value + 17 + Math.floor(Math.random() * 120))
+    }, 2400)
+    return () => window.clearInterval(timer)
   }, [])
 
   useEffect(() => {
@@ -99,6 +137,12 @@ export default function SlotMachine({
       abortRef.current = controller
 
       const targetColumns = getColumns(targetGrid)
+      // near-miss 偵測：前兩輪中線同符號 → 第三輪進入 anticipation 慢停演出。
+      // 結果早已由後端 Provably Fair 決定，這裡只是把「差點贏」的張力放大（表現層）。
+      const paylineSymbols = targetColumns.map((column) => column[paylineRow])
+      const isNearMiss = sameSymbol(paylineSymbols[0], paylineSymbols[1])
+      const isLineWin = isNearMiss && sameSymbol(paylineSymbols[1], paylineSymbols[2])
+
       const nextTracks = targetColumns.map((column, colIndex) =>
         buildReelTrack({
           symbols,
@@ -115,24 +159,47 @@ export default function SlotMachine({
       setDisplayGrid(targetGrid)
       setReelTracks(nextTracks)
       setPhase('spinning')
+      soundEngine.play('leverPull')
       await nextFrame()
 
       await Promise.all(
-        nextTracks.map((track, colIndex) =>
-          animateReel({
+        nextTracks.map((track, colIndex) => {
+          const isLastReel = colIndex === nextTracks.length - 1
+          const duration =
+            (reelDurations[colIndex] ?? reelDurations[0]) + (isNearMiss && isLastReel ? anticipationExtraMs : 0)
+
+          if (isNearMiss && isLastReel) {
+            // 前兩輪停定後才點亮 anticipation（紅光 + 心跳）。
+            window.setTimeout(() => {
+              if (!controller.signal.aborted) setAnticipating(true)
+            }, reelDurations[1])
+          }
+
+          return animateReel({
             trackElement: trackRefs.current[colIndex],
             symbols,
             resultSymbol: track.resultSymbol,
             symbolHeight,
             loops: reelLoops[colIndex] ?? reelLoops[0],
-            duration: reelDurations[colIndex] ?? reelDurations[0],
+            duration,
             targetY: track.targetY,
             signal: controller.signal,
+          }).then((completed) => {
+            if (completed) {
+              soundEngine.play('reelStop', { pitch: 1 + colIndex * 0.08 })
+            }
+            return completed
           })
-        )
+        })
       )
 
+      setAnticipating(false)
+
       if (!controller.signal.aborted) {
+        if (isNearMiss && !isLineWin) {
+          // 差一格停下：惋惜短音，刺激「下次一定行」。
+          soundEngine.play('fishEscape', { volume: 0.7 })
+        }
         setPhase('idle')
       }
     },
@@ -152,7 +219,10 @@ export default function SlotMachine({
         )
 
       await runReels(targetGrid)
+      // 轉輪演出全部結束後才通知外層結算（慶祝特效在輪停的瞬間爆發才有衝擊力）。
+      onSettled?.(spinResult)
     } catch {
+      setAnticipating(false)
       setPhase('idle')
     }
   }
@@ -175,7 +245,9 @@ export default function SlotMachine({
         </div>
         <div className="slot-machine__jackpot" aria-label="Jackpot">
           <span>GRAND</span>
-          <strong>777,000</strong>
+          <strong>
+            <CountUp value={jackpot} duration={2000} />
+          </strong>
         </div>
       </div>
 
@@ -185,6 +257,7 @@ export default function SlotMachine({
           compact ? 'slot-cabinet--compact' : '',
           visualBusy ? 'slot-cabinet--spinning' : '',
           phase === 'spinning' ? 'slot-cabinet--settling' : '',
+          anticipating ? 'slot-cabinet--anticipation' : '',
           hasWin && !visualBusy ? 'slot-cabinet--win' : '',
         ].join(' ')}
       >

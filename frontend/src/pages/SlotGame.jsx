@@ -6,6 +6,15 @@ import MetricCard from '../components/MetricCard'
 import SlotMachine from '../components/SlotMachine'
 import { spinSlot } from '../store/slices/gameSlice'
 import { setBalance } from '../store/slices/walletSlice'
+import { soundEngine } from '../casino-fx/sound/SoundEngine'
+import { useBgm } from '../casino-fx/sound/useBgm'
+import GoldBurst from '../casino-fx/fx/GoldBurst'
+import { CoinRainPro, RedEnvelopeRain } from '../casino-fx/fx/FallRain'
+import BrushBanner, { pickBannerForMultiplier } from '../casino-fx/fx/BrushBanner'
+import LuckyAura from '../casino-fx/fx/LuckyAura'
+import FortuneMeter from '../casino-fx/fx/FortuneMeter'
+import { useFortuneMeter } from '../casino-fx/fx/useFortuneMeter'
+import { announcePlayerWin } from '../casino-fx/announce/announceBus'
 
 const betOptions = [100, 500, 1000, 'MAX']
 const slotRules = [
@@ -23,8 +32,17 @@ export default function SlotGame() {
   const dispatch = useDispatch()
   const [selectedBet, setSelectedBet] = useState(100)
   const [visualLock, setVisualLock] = useState(false)
+  // 慶祝特效觸發器（遞增數字觸發一次性特效）
+  const [burstTrigger, setBurstTrigger] = useState(0)
+  const [coinTrigger, setCoinTrigger] = useState(0)
+  const [coinDensity, setCoinDensity] = useState('light')
+  const [envelopeTrigger, setEnvelopeTrigger] = useState(0)
+  const [banner, setBanner] = useState({ trigger: 0, text: '', level: 1 })
   const balance = useSelector((state) => state.wallet.balance)
+  const player = useSelector((state) => state.auth.player)
   const { status, result, loading, error, slotGrid, winningCells } = useSelector((state) => state.game)
+  const fortune = useFortuneMeter('slot')
+  useBgm('slot')
   const resolvedBet = selectedBet === 'MAX' ? Math.max(Math.min(balance, 5000), 100) : selectedBet
   const lastPayout = result?.game === 'slot' ? result.payout : null
   const lastMultiplier = result?.game === 'slot' ? result.multiplier : null
@@ -35,6 +53,7 @@ export default function SlotGame() {
 
   const handleSpinRound = async () => {
     setVisualLock(true)
+    fortune.addCharge(resolvedBet)
     try {
       const spinResult = await dispatch(spinSlot({ bet: resolvedBet })).unwrap()
       dispatch(setBalance(spinResult.wallet))
@@ -44,10 +63,57 @@ export default function SlotGame() {
     }
   }
 
+  // 轉輪演出結束的瞬間引爆慶祝（音效 + 大字報 + 金幣特效，依倍率分級）。
+  // LDW 原則：payout > 0 一律播贏錢音效（即使派彩低於下注，也讓大腦記住「有進帳」）。
+  const handleSettled = (spinResult) => {
+    if (!spinResult || spinResult.game !== 'slot') return
+    const multiplier = spinResult.multiplier ?? 0
+    const payout = spinResult.payout ?? 0
+    const won = payout > 0
+    fortune.reportRound(won)
+    if (!won) return
+
+    const bannerPick = pickBannerForMultiplier(multiplier)
+    setBanner((prev) => ({ trigger: prev.trigger + 1, ...bannerPick }))
+    setBurstTrigger((n) => n + 1)
+
+    if (multiplier >= 8) {
+      // 爆機級：鑼 + 長琶音、遮屏金幣瀑布、紅包雨、全服喜報
+      soundEngine.play('winEpic')
+      setCoinDensity('epic')
+      setCoinTrigger((n) => n + 1)
+      setEnvelopeTrigger((n) => n + 1)
+      announcePlayerWin({
+        playerName: player?.nickname || player?.username,
+        game: 'slot',
+        amount: payout,
+      })
+    } else if (multiplier >= 3) {
+      soundEngine.play('winBig')
+      setCoinDensity('heavy')
+      setCoinTrigger((n) => n + 1)
+    } else {
+      soundEngine.play('winSmall')
+      setCoinDensity('light')
+      setCoinTrigger((n) => n + 1)
+    }
+  }
+
   return (
     <AppShell>
+      <LuckyAura active={fortune.auraActive} />
+      <GoldBurst trigger={burstTrigger} origin={{ x: 38, y: 48 }} />
+      <CoinRainPro trigger={coinTrigger} density={coinDensity} />
+      <RedEnvelopeRain trigger={envelopeTrigger} density="heavy" />
+      <BrushBanner trigger={banner.trigger} text={banner.text} level={banner.level} />
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_280px]">
-        <SlotMachine grid={slotGrid} winningCells={winningCells} spinning={loading} onSpin={handleSpinRound} />
+        <SlotMachine
+          grid={slotGrid}
+          winningCells={winningCells}
+          spinning={loading}
+          onSpin={handleSpinRound}
+          onSettled={handleSettled}
+        />
 
         <aside className="grid gap-4 content-start">
           <GameRuleCard
@@ -63,6 +129,7 @@ export default function SlotGame() {
             value={lastPayout === null ? '-' : lastPayout.toLocaleString()}
             caption={payoutCaption}
           />
+          <FortuneMeter value={fortune.value} />
 
           <div className="luxury-panel-soft rounded p-4">
             <p className="gold-muted text-xs font-black uppercase tracking-[0.25em]">Bet</p>

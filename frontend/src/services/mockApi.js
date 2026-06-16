@@ -3,6 +3,38 @@ const SESSION_KEY = 'lucky-star-session-v1'
 
 const slotSymbols = ['🍒', '🍋', '🔔', '⭐', '7️⃣']
 const MOCK_SLOT_FORCED_WIN_RATE = 0.18
+
+// 捕魚機魚種表（與後端 FishSpecies 對齊）；命中機率 = TARGET_RTP / 倍率。
+const FISHING_TARGET_RTP = 0.92
+const FISHING_MONEY_TREE_MIN = 10
+const FISHING_MONEY_TREE_MAX = 50
+const FISH_SPECIES = [
+  { code: 'KOI', name: '錦鯉', assetId: 'fish-koi', multiplier: 2 },
+  { code: 'GOLDFISH', name: '金魚', assetId: 'fish-goldfish', multiplier: 3 },
+  { code: 'LANTERN', name: '燈籠魚', assetId: 'fish-lantern', multiplier: 5 },
+  { code: 'PUFFER', name: '河豚', assetId: 'fish-puffer', multiplier: 8 },
+  { code: 'ANGELFISH', name: '神仙魚', assetId: 'fish-angelfish', multiplier: 15 },
+  { code: 'DEVIL_RAY', name: '魔鬼魚', assetId: 'fish-devil-ray', multiplier: 25 },
+  { code: 'GOLD_DRAGON', name: '金龍', assetId: 'fish-gold-dragon', multiplier: 60 },
+  { code: 'PIXIU', name: '貔貅', assetId: 'fish-pixiu', multiplier: 88 },
+  { code: 'CAISHEN', name: '財神爺', assetId: 'fish-caishen', multiplier: 100 },
+  { code: 'DRAGON_KING', name: '龍王', assetId: 'fish-dragon-king', multiplier: 200 },
+  { code: 'MONEY_TREE', name: '搖錢樹', assetId: 'fish-money-tree', multiplier: 30 },
+]
+
+function fishTableView() {
+  return FISH_SPECIES.map((fish) => ({
+    code: fish.code,
+    name: fish.name,
+    assetId: fish.assetId,
+    multiplier: fish.multiplier,
+    hitProbability: FISHING_TARGET_RTP / fish.multiplier,
+  }))
+}
+
+function randInt(min, max) {
+  return min + Math.floor(Math.random() * (max - min + 1))
+}
 const baccaratValues = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
 const transactionLabels = {
   bet: '下注',
@@ -488,5 +520,209 @@ export const mockApi = {
     applyWalletChange(db, playerId, -amount, 'gift', `贈送星幣給 ${friend?.nickname || '好友'}`)
     saveDb(db)
     return { wallet: db.wallets[playerId], friends: db.friends[playerId] || [] }
+  },
+
+  // ---- 捕魚機（buy-in 制 + 局內餘額 + 批次結算；對齊 game-service fishing 模組） ----
+
+  async fishingActive() {
+    await wait(200)
+    const db = getDb()
+    const session = (db.fishingSessions || {})[currentPlayerId()]
+    if (!session) return null
+    return {
+      sessionId: session.sessionId,
+      roomId: `solo-${session.sessionId}`,
+      seatIndex: 0,
+      cannonLevel: session.cannonLevel,
+      buyIn: session.buyIn,
+      sessionBalance: session.sessionBalance,
+      totalShots: session.totalShots,
+      lastShotSeq: session.lastShotSeq,
+      serverSeedHash: session.serverSeedHash,
+      clientSeed: session.clientSeed,
+      resumed: true,
+      wallet: null,
+      fishTable: fishTableView(),
+    }
+  },
+
+  async fishingStart({ buyIn, cannonLevel = 1, clientSeed }) {
+    await wait(420)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    db.fishingSessions = db.fishingSessions || {}
+
+    const existing = db.fishingSessions[playerId]
+    if (existing) {
+      // 已有進行中場次：續玩、不重複扣款（比照後端 resumed）。
+      saveDb(db)
+      return {
+        sessionId: existing.sessionId,
+        roomId: `solo-${existing.sessionId}`,
+        seatIndex: 0,
+        cannonLevel: existing.cannonLevel,
+        buyIn: existing.buyIn,
+        sessionBalance: existing.sessionBalance,
+        totalShots: existing.totalShots,
+        lastShotSeq: existing.lastShotSeq,
+        serverSeedHash: existing.serverSeedHash,
+        clientSeed: existing.clientSeed,
+        resumed: true,
+        wallet: db.wallets[playerId],
+        fishTable: fishTableView(),
+      }
+    }
+
+    const wallet = db.wallets[playerId]
+    if (!wallet || wallet.balance < buyIn) throw new Error('星幣餘額不足')
+
+    applyWalletChange(db, playerId, -buyIn, 'bet', '捕魚機 buy-in')
+    const sessionId = `FISH-${Date.now()}`
+    db.fishingSessions[playerId] = {
+      sessionId,
+      cannonLevel,
+      buyIn,
+      sessionBalance: buyIn,
+      totalShots: 0,
+      totalBet: 0,
+      totalPayout: 0,
+      lastShotSeq: 0,
+      clientSeed: clientSeed || `mock-client-${Date.now()}`,
+      serverSeedHash: `mock-hash-${Math.random().toString(36).slice(2, 10)}`,
+    }
+    saveDb(db)
+
+    return {
+      sessionId,
+      roomId: `solo-${sessionId}`,
+      seatIndex: 0,
+      cannonLevel,
+      buyIn,
+      sessionBalance: buyIn,
+      totalShots: 0,
+      lastShotSeq: 0,
+      serverSeedHash: db.fishingSessions[playerId].serverSeedHash,
+      clientSeed: db.fishingSessions[playerId].clientSeed,
+      resumed: false,
+      wallet: db.wallets[playerId],
+      fishTable: fishTableView(),
+    }
+  },
+
+  async fishingShots({ sessionId, shots }) {
+    await wait(160)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const session = (db.fishingSessions || {})[playerId]
+    if (!session || session.sessionId !== sessionId) throw new Error('場次不存在或已結束')
+
+    const results = []
+    for (const shot of shots) {
+      const fish = FISH_SPECIES.find((item) => item.code === shot.fishType)
+      const bet = Number(shot.betPerShot)
+      // 局內餘額不足：該發（含其後同批）整批不受理（比照後端）。
+      if (!fish || session.sessionBalance < bet) {
+        results.push({ shotSeq: shot.shotSeq, accepted: false, hit: false, payout: 0, sessionBalance: session.sessionBalance })
+        continue
+      }
+      session.sessionBalance -= bet
+      session.totalBet += bet
+      session.totalShots += 1
+      session.lastShotSeq = Math.max(session.lastShotSeq, Number(shot.shotSeq))
+
+      const hitProbability = FISHING_TARGET_RTP / fish.multiplier
+      const hit = Math.random() < hitProbability
+      let payout = 0
+      if (hit) {
+        const factor = fish.code === 'MONEY_TREE' ? randInt(FISHING_MONEY_TREE_MIN, FISHING_MONEY_TREE_MAX) : fish.multiplier
+        payout = bet * factor
+        session.sessionBalance += payout
+        session.totalPayout += payout
+      }
+      // 記錄逐發結果供結算後 verify-shot 重放（mock 無真正 RNG 種子，改以對局存檔回放）。
+      session.shotResults = session.shotResults || {}
+      session.shotResults[String(shot.shotSeq)] = { fishType: fish.code, betPerShot: bet, hit, payout }
+      results.push({ shotSeq: shot.shotSeq, accepted: true, hit, payout, sessionBalance: session.sessionBalance })
+    }
+    saveDb(db)
+
+    return {
+      sessionId,
+      results,
+      sessionBalance: session.sessionBalance,
+      totalShots: session.totalShots,
+      lastShotSeq: session.lastShotSeq,
+    }
+  },
+
+  async fishingEnd({ sessionId }) {
+    await wait(360)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const session = (db.fishingSessions || {})[playerId]
+    if (!session || session.sessionId !== sessionId) throw new Error('場次不存在或已結束')
+
+    const credited = session.sessionBalance
+    if (credited > 0) applyWalletChange(db, playerId, credited, 'payout', '捕魚機結算')
+
+    const serverSeed = `mock-server-seed-${session.sessionId}`
+    // 對局存檔（比照後端 game_rounds），供結算後 verify-shot 回放。
+    db.fishingRounds = db.fishingRounds || {}
+    db.fishingRounds[sessionId] = {
+      serverSeed,
+      serverSeedHash: session.serverSeedHash,
+      clientSeed: session.clientSeed,
+      shots: session.shotResults || {},
+    }
+    delete db.fishingSessions[playerId]
+    saveDb(db)
+
+    return {
+      sessionId,
+      buyIn: session.buyIn,
+      totalBet: session.totalBet,
+      totalPayout: session.totalPayout,
+      totalShots: session.totalShots,
+      credited,
+      serverSeed,
+      serverSeedHash: session.serverSeedHash,
+      clientSeed: session.clientSeed,
+      wallet: db.wallets[playerId],
+    }
+  },
+
+  async fishingVerifyShot({ sessionId, shotSeq, fishType, betPerShot }) {
+    await wait(200)
+    const db = getDb()
+    const round = (db.fishingRounds || {})[sessionId]
+    const recorded = round?.shots?.[String(shotSeq)]
+    if (!round || !recorded) {
+      return {
+        sessionId,
+        shotSeq: Number(shotSeq),
+        fishType,
+        betPerShot: Number(betPerShot),
+        commitmentValid: false,
+        hit: false,
+        payout: 0,
+        serverSeed: round?.serverSeed ?? null,
+        serverSeedHash: round?.serverSeedHash ?? null,
+        clientSeed: round?.clientSeed ?? null,
+        message: '查無此對局或該發紀錄，無法驗證。',
+      }
+    }
+    return {
+      sessionId,
+      shotSeq: Number(shotSeq),
+      fishType: recorded.fishType,
+      betPerShot: recorded.betPerShot,
+      commitmentValid: true,
+      hit: recorded.hit,
+      payout: recorded.payout,
+      serverSeed: round.serverSeed,
+      serverSeedHash: round.serverSeedHash,
+      clientSeed: round.clientSeed,
+      message: '承諾相符；mock 重放與紀錄一致。',
+    }
   },
 }

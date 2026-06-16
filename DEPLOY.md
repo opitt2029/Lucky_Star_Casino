@@ -28,11 +28,10 @@
 
 | 服務 | Port（本機） | 說明 |
 |------|:---:|------|
-| MySQL 8.0 | **3307** | 查詢讀庫（members、CQRS） |
+| MySQL 8.4 | **3307** | 查詢讀庫（members、CQRS） |
 | PostgreSQL 16 | **5433** | 帳務核心（wallets、wallet_transactions） |
 | Redis 7 | 6379 | JWT 黑名單、Session、排行榜 |
-| Zookeeper | 2181 | Kafka 協調 |
-| Kafka | 9092 | 事件匯流排 |
+| Kafka 7.6.1（KRaft） | 9092 | 事件匯流排（KRaft 模式，broker+controller 合一，無 Zookeeper） |
 | Kafka UI | **8085** | Topic 可視化：http://localhost:8085 |
 
 > MySQL / PostgreSQL 刻意用非預設 Port（3307 / 5433），避免和你本機已安裝的資料庫衝突。
@@ -44,8 +43,8 @@
 | gateway-service | 8080 | Redis（驗 JWT 黑名單） |
 | member-service | 8081 | MySQL + Redis + Kafka |
 | wallet-service | 8082 | PostgreSQL + Kafka |
-| game-service | 8083 | （骨架，見 §8） |
-| rank-service | 8084 | （骨架，見 §8） |
+| game-service | 8083 | Redis + Kafka + wallet-service（老虎機/百家樂；下注呼叫 wallet 扣款/派彩） |
+| rank-service | 8084 | Redis + Kafka（排行榜；前端目前仍用 mock，可不啟動） |
 | admin-service | 8086 | （骨架，見 §8） |
 
 ### 前端
@@ -83,7 +82,7 @@ Copy-Item .env.example .env
 docker compose up -d
 ```
 
-這會啟動 MySQL、PostgreSQL、Redis、Zookeeper、Kafka、Kafka UI，並由 `kafka-init` 容器**自動建立所有 Kafka Topic**。
+這會啟動 MySQL、PostgreSQL、Redis、Kafka（KRaft）、Kafka UI，並由 `kafka-init` 容器**自動建立所有 Kafka Topic**。
 
 ### 確認健康狀態
 
@@ -91,7 +90,7 @@ docker compose up -d
 docker compose ps
 ```
 
-- MySQL / PostgreSQL / Redis / Kafka / Zookeeper 應顯示 **healthy** 或 **running**。
+- MySQL / PostgreSQL / Redis / Kafka 應顯示 **healthy** 或 **running**。
 - `kafka-init` 顯示 **Exited (0)** 是**正常**的（它建完 Topic 就會結束）。
 
 ### 資料庫如何初始化？
@@ -130,10 +129,11 @@ Get-Content .env | Where-Object { $_ -match '^\s*[^#].*=' } | ForEach-Object {
 每個服務獨立啟動。從**專案根目錄**用 `-pl`（指定模組）最方便：
 
 ```bash
-# 範例：啟動 gateway 與 member（各開一個終端機，記得都要先載入 .env）
-mvn -pl backend/gateway-service spring-boot:run
+# 範例：各開一個終端機，每個都要先載入 .env（見上）
 mvn -pl backend/member-service spring-boot:run
 mvn -pl backend/wallet-service spring-boot:run
+mvn -pl backend/game-service spring-boot:run     # 老虎機/百家樂需要
+mvn -pl backend/gateway-service spring-boot:run
 ```
 
 或進到該服務目錄啟動（效果相同）：
@@ -147,8 +147,10 @@ mvn spring-boot:run
 基礎設施（§3）必須先 healthy，再依下列順序啟動後端，最後啟前端：
 
 ```
-docker compose（infra）→ member-service → wallet-service → gateway-service → 前端
+docker compose（infra）→ member-service → wallet-service → game-service → gateway-service → 前端
 ```
+
+> 💡 **懶人包（Windows）**：根目錄的 `start-backend.ps1` 會自動載入 `.env`，並各開一個視窗依序啟動 member/wallet/game/gateway。執行 `.\start-backend.ps1`，或 `.\start-backend.ps1 -WithInfra` 連基礎設施一起起。前端仍需另開終端機跑 `npm run dev`。
 
 > `JWT_SECRET` 在 **member-service 與 gateway-service 必須完全一致**（gateway 驗證 member 簽發的 token），用同一份 `.env` 即可保證一致。
 
@@ -165,6 +167,8 @@ npm run dev
 瀏覽器開啟 **http://localhost:5173**。
 
 > 前端透過 Gateway（8080）呼叫後端 API；`.env` 的 `CORS_ALLOWED_ORIGINS` 已允許 `http://localhost:5173`。
+>
+> 前端預設 `VITE_USE_MOCK_API=false`（見 `frontend/.env.development`），會打**真實後端**——所以後端要先起好。若只想看 UI、暫不起後端，可在個人的 `frontend/.env.local`（不進版控）設 `VITE_USE_MOCK_API=true` 改用假資料。
 
 ---
 
@@ -205,13 +209,15 @@ docker compose up -d       # 重新建立 Volume → 自動重跑 init.sql
 
 ---
 
-## 8. 目前已知狀況（2026-05-29）
+## 8. 目前已知狀況（2026-06-10）
 
 > 這段反映**當前開發進度**，會隨專案演進變動；完整逐項進度見 [AUDIT_REPORT.md](AUDIT_REPORT.md) 附錄 A 與 [CHANGELOG.md](CHANGELOG.md)。
 
 - ✅ **可正常運作**：基礎設施、member-service、gateway-service、wallet-service（餘額/扣款/入帳）、前端登入/註冊主線。
+- ✅ **game-service 已實作**：老虎機（`POST /api/v1/game/slot/spin`）與百家樂（`/api/v1/game/baccarat/bet` → `/{roundId}/result`）；下注會呼叫 wallet-service 真實扣款/派彩，需 wallet + Redis + Kafka 同時在線。前端遊戲頁已串真實 API。
+- ✅ **rank-service 已實作排行榜**（`/api/v1/rank/*`）；惟前端排行榜目前仍走 mock、尚未串接，故可不啟動。
 - ✅ **簽到/新手禮入帳已串通**（ADR-002）：member 發 `wallet.credit.request` 指令 → wallet 消費入帳。需 Kafka 正常運作；wallet-service 須啟動才會實際加餘額。
-- ⚪ **game / rank / admin / notification 為骨架或未建立**：啟動 game/rank/admin 只會起一個空殼服務（無業務 API）；notification-service 尚未建立。這些屬正常現況，非部署錯誤。
+- ⚪ **admin / notification 仍未實作**：admin-service 為空殼（無業務 API）；notification-service 尚未建立。屬正常現況，非部署錯誤。
 
 ---
 

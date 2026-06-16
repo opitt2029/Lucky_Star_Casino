@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS game_rounds (
     id               BIGSERIAL    NOT NULL,
     round_id         VARCHAR(100) NOT NULL,   -- UUID，對外唯一識別碼
     player_id        BIGINT       NOT NULL,
-    game_type        VARCHAR(20)  NOT NULL,   -- SLOT / BACCARAT
+    game_type        VARCHAR(20)  NOT NULL,   -- SLOT / BACCARAT / FISHING
     bet_amount       BIGINT,
     win_amount       BIGINT,
     server_seed      VARCHAR(255),            -- 開獎後才揭露（Provably Fair）
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS game_rounds (
     settled_at       TIMESTAMP,
     CONSTRAINT pk_game_rounds   PRIMARY KEY (id),
     CONSTRAINT uq_game_round_id UNIQUE (round_id),
-    CONSTRAINT chk_gr_game_type CHECK (game_type IN ('SLOT', 'BACCARAT')),
+    CONSTRAINT chk_gr_game_type CHECK (game_type IN ('SLOT', 'BACCARAT', 'FISHING')),
     CONSTRAINT chk_gr_status    CHECK (status    IN ('STARTED', 'SETTLED'))
 );
 
@@ -114,13 +114,13 @@ CREATE TABLE IF NOT EXISTS rank_daily_snapshots (
 -- -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS game_rtp_stats (
     id            BIGSERIAL    NOT NULL,
-    game_type     VARCHAR(20)  NOT NULL,   -- SLOT / BACCARAT
+    game_type     VARCHAR(20)  NOT NULL,   -- SLOT / BACCARAT / FISHING
     total_bet     BIGINT       NOT NULL DEFAULT 0,
     total_win     BIGINT       NOT NULL DEFAULT 0,
     round_count   INT          NOT NULL DEFAULT 0,
     calculated_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_game_rtp_stats PRIMARY KEY (id),
-    CONSTRAINT chk_rtp_game_type CHECK (game_type IN ('SLOT', 'BACCARAT'))
+    CONSTRAINT chk_rtp_game_type CHECK (game_type IN ('SLOT', 'BACCARAT', 'FISHING'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_game_rtp_stats_game_type     ON game_rtp_stats (game_type);
@@ -144,6 +144,28 @@ CREATE TABLE IF NOT EXISTS admin_alerts (
 CREATE INDEX IF NOT EXISTS idx_admin_alerts_player_id   ON admin_alerts (player_id);
 CREATE INDEX IF NOT EXISTS idx_admin_alerts_is_resolved ON admin_alerts (is_resolved);
 CREATE INDEX IF NOT EXISTS idx_admin_alerts_created_at  ON admin_alerts (created_at);
+
+-- -------------------------------------------------------
+-- admin_users：後台管理員帳號（T-050）
+-- 與玩家帳號完全分離：玩家在 members（MySQL），管理員在此（PostgreSQL）。
+-- role 區分 SUPER_ADMIN / OPERATOR；password_hash 為 BCrypt。
+-- JWT 以獨立 ADMIN_JWT_SECRET 簽發，玩家 token 無法存取 /admin/**。
+-- 預設管理員由 admin-service 啟動時的 seeder 建立（見 AdminUserSeeder），不在此硬編密碼雜湊。
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS admin_users (
+    id            BIGSERIAL     NOT NULL,
+    username      VARCHAR(50)   NOT NULL,
+    password_hash VARCHAR(100)  NOT NULL,   -- BCrypt 雜湊
+    role          VARCHAR(20)   NOT NULL,   -- SUPER_ADMIN / OPERATOR
+    enabled       BOOLEAN       NOT NULL DEFAULT TRUE,
+    created_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_admin_users        PRIMARY KEY (id),
+    CONSTRAINT uq_admin_users_username UNIQUE (username),
+    CONSTRAINT chk_admin_users_role  CHECK (role IN ('SUPER_ADMIN', 'OPERATOR'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_users_username ON admin_users (username);
 
 -- -------------------------------------------------------
 -- diamond_wallets：玩家鑽石錢包主表（T-100）

@@ -46,12 +46,24 @@ describe('docker-compose.yml — 必要服務', () => {
     assert.ok(hasService('redis'), '找不到 redis 服務，請確認 docker-compose.yml 有定義 redis');
   });
 
-  test('應包含 zookeeper 服務', () => {
-    assert.ok(hasService('zookeeper'), '找不到 zookeeper 服務，Kafka 需要 zookeeper 才能運作');
-  });
-
   test('應包含 kafka 服務', () => {
     assert.ok(hasService('kafka'), '找不到 kafka 服務，請確認 docker-compose.yml 有定義 kafka');
+  });
+
+  test('Kafka 應使用 KRaft 模式（不得再有 zookeeper 服務）', () => {
+    // T-002：Kafka 7.6.1 採 KRaft（broker+controller 合一），移除 Zookeeper
+    assert.ok(
+      !hasService('zookeeper'),
+      'KRaft 模式不應再定義 zookeeper 服務（規格要求無 Zookeeper）'
+    );
+    assert.ok(
+      composeContent.includes('KAFKA_PROCESS_ROLES'),
+      'Kafka 應設定 KAFKA_PROCESS_ROLES（KRaft 模式必要設定）'
+    );
+    assert.ok(
+      composeContent.includes('KAFKA_CONTROLLER_QUORUM_VOTERS'),
+      'Kafka 應設定 KAFKA_CONTROLLER_QUORUM_VOTERS（KRaft 模式必要設定）'
+    );
   });
 
   test('應包含 kafka-init 服務（負責建立 topics）', () => {

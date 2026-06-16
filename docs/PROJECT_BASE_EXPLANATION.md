@@ -73,8 +73,7 @@ flowchart LR
 | `mysql` | `lucky-star-mysql` | MySQL 8.4，預留給關聯式業務資料。 |
 | `postgres` | `lucky-star-postgres` | PostgreSQL 16，預留給另一組關聯式資料或服務資料。 |
 | `redis` | `lucky-star-redis` | Redis 7，預留給快取、session、限流、短期狀態。 |
-| `zookeeper` | `lucky-star-zookeeper` | Kafka 依賴的協調服務。 |
-| `kafka` | `lucky-star-kafka` | Kafka broker，負責事件訊息。 |
+| `kafka` | `lucky-star-kafka` | Kafka broker（7.6.1 KRaft 模式，broker+controller 合一，無 Zookeeper），負責事件訊息。 |
 | `kafka-init` | `lucky-star-kafka-init` | 等 Kafka 健康後，自動建立 topics。 |
 | `kafka-ui` | `lucky-star-kafka-ui` | Kafka 管理介面，預設可從 `http://localhost:8085` 查看。 |
 

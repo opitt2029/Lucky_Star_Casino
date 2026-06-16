@@ -25,6 +25,7 @@
         <module>backend/game-service</module>
         <module>backend/rank-service</module>
         <module>backend/admin-service</module>
+        <module>backend/notification-service</module>
     </modules>
 
     <properties>

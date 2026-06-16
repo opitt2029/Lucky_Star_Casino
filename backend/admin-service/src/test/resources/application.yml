@@ -1,0 +1,29 @@
+# 測試專用設定：用 H2 記憶體資料庫取代 MySQL / PostgreSQL，
+# 讓 @SpringBootTest（contextLoads）與整合測試不需外部基礎設施即可啟動。
+# 純 Mockito 單元測試不載入此 context，不受影響。
+# 雙資料源建表由 surefire system property jpa.ddl-auto=create 觸發（見 pom.xml）。
+spring:
+  # MySQL 讀端（@Primary）→ H2。對應 DataSourceConfig 的 spring.datasource.*
+  # 測試用 H2Dialect（見 pom surefire jpa.dialect.*），不需 MODE 相容模式。
+  datasource:
+    jdbc-url: jdbc:h2:mem:admin_mysql;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+
+  # PostgreSQL 寫端（admin_users 等）→ H2。對應 spring.datasource-postgres.*
+  datasource-postgres:
+    jdbc-url: jdbc:h2:mem:admin_pg;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+
+# 後台 JWT / 播種（測試固定值）
+admin:
+  jwt:
+    secret: test-admin-jwt-secret-key-only-for-tests-please-change-1234567890
+    expiry-ms: 3600000
+  seed:
+    enabled: true
+    username: superadmin
+    password: test-admin-pass

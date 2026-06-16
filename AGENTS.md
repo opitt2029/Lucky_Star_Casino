@@ -39,9 +39,9 @@
 7. **改 Kafka topic 要同步改 infra 測試**：`kafka/kafka-init.sh` 增刪 topic 後，更新 `tests/infra/kafka.test.js` 的 topic 清單與數量斷言，否則 CI 紅。
 8. **帳務操作=冪等 + 樂觀鎖**：`wallet_transactions.idempotency_key` UNIQUE 防重複、`wallets.version`（`@Version`）防超扣。所有扣款/入帳都要遵循此模式。
 9. **`gem-prompt` 技能**（Claude Code）：產生後端實作提示詞，會先讀真實專案檔。開新後端任務可先用它。
-10. **服務完成度**：member / gateway / wallet 已實作；rank 已完成 T-040~T-042 排行榜核心；**game / admin 仍是空殼**；**notification 服務尚未建立**。動工前先看 AUDIT_REPORT 附錄 A 與 CHANGELOG 確認。
+10. **服務完成度**：member / gateway / wallet 已實作；rank 已完成 T-040~T-042 排行榜核心；**game 已完成 T-030~T-037 全部**（Provably Fair RNG / 老虎機滾輪邏輯 / `POST /api/v1/game/slot/spin` / Redis Session 兩階段 commit-ahead / 百家樂邏輯+API `/bet`+`/result` / RNG 公平性驗證 API / 遊戲 RTP 統計排程+API）；**admin 已完成 T-050 認證地基**（獨立 `ADMIN_JWT_SECRET`、SUPER_ADMIN/OPERATOR 角色、Spring Security `/admin/**`、`POST /admin/auth/login`、`admin_users` 表 + seeder；業務 API 已完成 T-051/T-052/T-053（玩家管理/星幣流通量/RTP 監控）與 T-105/T-106（鑽石點數卡生成+列表，寫 admin 既有 MySQL 源））；**notification 服務已建立**（port 8087，無 DB，純事件→WebSocket 橋接：T-070 STOMP `/ws`+JWT CONNECT 鑑權、T-071 消費 `notification.push`、T-072 消費 `game.result` 推玩家私人佇列；推播 best-effort 無 DLT）。動工前先看 AUDIT_REPORT 附錄 A 與 CHANGELOG 確認。
 11. **`friend.relationship.updated` 是完整好友清單事件**：member 在好友接受/刪除後，為雙方各發布 `{ playerId, friendIds }`；rank 依完整清單重建 `rank:friend:{playerId}`，不要改成只帶單筆新增/刪除的增量事件。
-12. **T-090 壓測腳本依賴 T-032**：`tests/performance/slot-1000-players.jmx` 已建立，但實測前必須先完成 `POST /api/v1/game/spin`、準備 1,000 組已入金玩家 JWT，並啟動完整服務拓撲；沒有實測資料時不可填寫虛構 P99。
+12. **T-090 壓測腳本實測前置**：`tests/performance/slot-1000-players.jmx` 已建立，T-032 老虎機 API 已完成（實際端點 `POST /api/v1/game/slot/spin`，冪等鍵由伺服器端生成、非 client 傳入）。但實測前仍須**對齊 jmx 與報告假設契約**、準備 1,000 組已入金玩家 JWT 並啟動完整服務拓撲；沒有實測資料時不可填寫虛構 P99。詳見 `docs/performance/T-090-load-test-report.md`。
 
 ---
 
@@ -50,7 +50,7 @@
 ### 技術 / Port
 - 套件根 `com.luckystar`、Java 21、Spring Boot 3.3.5、JJWT 0.12.6
 - DB：PostgreSQL（帳務寫庫）+ MySQL（查詢讀庫）CQRS；Redis（token/session/排行）；Kafka（事件）
-- Port：gateway 8080 / member 8081 / wallet 8082 / game 8083 / rank 8084 / admin 8086；MySQL **3307** / PostgreSQL **5433** / Redis 6379 / Kafka 9092 / Kafka UI 8085
+- Port：gateway 8080 / member 8081 / wallet 8082 / game 8083 / rank 8084 / admin 8086 / notification 8087；MySQL **3307** / PostgreSQL **5433** / Redis 6379 / Kafka 9092 / Kafka UI 8085
 
 ### Git / 提交
 - 分支：`feature/名字-功能描述` → PR → `develop`；`main` 受保護，不直接 commit

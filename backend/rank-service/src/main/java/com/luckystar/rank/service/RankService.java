@@ -1,6 +1,7 @@
 package com.luckystar.rank.service;
 
 import com.luckystar.rank.dto.RankEntryResponse;
+import com.luckystar.rank.dto.PlayerCoinBalance;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -83,6 +84,30 @@ public class RankService {
         return readTopRank(GLOBAL_COINS_KEY, boundedLimit);
     }
 
+    public void clearGlobalCoinsRank() {
+        redisTemplate.delete(GLOBAL_COINS_KEY);
+    }
+
+    public int rebuildGlobalCoinsRank(List<PlayerCoinBalance> balances) {
+        Objects.requireNonNull(balances, "balances is required");
+
+        redisTemplate.delete(GLOBAL_COINS_KEY);
+        Set<ZSetOperations.TypedTuple<String>> tuples = balances.stream()
+                .filter(Objects::nonNull)
+                .filter(balance -> balance.playerId() != null)
+                .filter(balance -> balance.balance() != null && balance.balance() >= 0)
+                .map(balance -> new DefaultTypedTuple<>(
+                        balance.playerId().toString(),
+                        balance.balance().doubleValue()))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (tuples.isEmpty()) {
+            return 0;
+        }
+
+        redisTemplate.opsForZSet().add(GLOBAL_COINS_KEY, tuples);
+        return tuples.size();
+    }
+
     public void rebuildFriendRank(Long playerId, List<Long> friendIds) {
         Objects.requireNonNull(playerId, "playerId is required");
         Objects.requireNonNull(friendIds, "friendIds is required");
@@ -91,18 +116,20 @@ public class RankService {
         ZSetOperations<String, String> zSetOperations = redisTemplate.opsForZSet();
         redisTemplate.delete(key);
 
-        Set<Long> uniqueFriendIds = friendIds.stream()
+        Set<Long> friendCircle = friendIds.stream()
                 .filter(Objects::nonNull)
                 .filter(friendId -> !friendId.equals(playerId))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-        if (uniqueFriendIds.isEmpty()) {
+        if (friendCircle.isEmpty()) {
             return;
         }
+        // 好友榜納入玩家本人，讓玩家能查到自己在好友圈的名次（T-041 step2 / T-042 step3）
+        friendCircle.add(playerId);
 
-        Set<ZSetOperations.TypedTuple<String>> tuples = uniqueFriendIds.stream()
-                .map(friendId -> {
-                    Double score = zSetOperations.score(GLOBAL_COINS_KEY, friendId.toString());
-                    return new DefaultTypedTuple<>(friendId.toString(), score == null ? 0.0 : score);
+        Set<ZSetOperations.TypedTuple<String>> tuples = friendCircle.stream()
+                .map(memberId -> {
+                    Double score = zSetOperations.score(GLOBAL_COINS_KEY, memberId.toString());
+                    return new DefaultTypedTuple<>(memberId.toString(), score == null ? 0.0 : score);
                 })
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
@@ -113,6 +140,31 @@ public class RankService {
     public List<RankEntryResponse> getTopFriendCoins(Long playerId) {
         Objects.requireNonNull(playerId, "playerId is required");
         return readTopRank(friendRankKey(playerId), FRIEND_TOP_LIMIT);
+    }
+
+    /**
+     * 查玩家自己在好友榜的當前名次（T-042 step3）。
+     * 因好友榜含玩家本人，直接用 ZREVRANK 取得；不在榜（無好友圈/已過期）回 empty。
+     */
+    public Optional<RankEntryResponse> getFriendRank(Long playerId) {
+        Objects.requireNonNull(playerId, "playerId is required");
+
+        String key = friendRankKey(playerId);
+        String member = playerId.toString();
+        Long zeroBasedRank = redisTemplate.opsForZSet().reverseRank(key, member);
+        Double score = redisTemplate.opsForZSet().score(key, member);
+
+        if (zeroBasedRank == null || score == null) {
+            return Optional.empty();
+        }
+
+        HashOperations<String, String, String> hashOperations = redisTemplate.opsForHash();
+        String username = hashOperations.get(PLAYER_USERNAME_KEY, member);
+        return Optional.of(new RankEntryResponse(
+                playerId,
+                username,
+                zeroBasedRank + 1,
+                score.longValue()));
     }
 
     private String friendRankKey(Long playerId) {
