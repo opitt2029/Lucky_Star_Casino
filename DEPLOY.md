@@ -150,7 +150,16 @@ mvn spring-boot:run
 docker compose（infra）→ member-service → wallet-service → game-service → gateway-service → 前端
 ```
 
-> 💡 **懶人包（Windows）**：根目錄的 `start-backend.ps1` 會自動載入 `.env`，並各開一個視窗依序啟動 member/wallet/game/gateway。執行 `.\start-backend.ps1`，或 `.\start-backend.ps1 -WithInfra` 連基礎設施一起起。前端仍需另開終端機跑 `npm run dev`。
+> 💡 **懶人包（Windows）**：根目錄有兩種一鍵腳本，擇一即可——
+>
+> - **`start-all.bat`（雙擊即可，推薦給不熟 PowerShell 的人）**：自動載入 `.env`，依序各開一個視窗啟動 member/wallet/game/gateway。
+>   - `start-all.bat`：只起後端（基礎設施需先 `docker compose up -d`）
+>   - `start-all.bat infra`：先起基礎設施再起後端
+>   - `start-all.bat frontend`：後端 + 前端（前端第一次仍要先 `cd frontend && npm install`）
+>   - `start-all.bat infra frontend`：全部一起起
+>   - 對應的 **`stop-all.bat`**：一鍵停掉四個後端（佔用 8080–8083 的行程）；`stop-all.bat infra` 連基礎設施一起 `docker compose down`。
+>   - ⚠️ **這兩個 `.bat` 必須保持純 ASCII（英文）內容**：`cmd.exe` 是用系統舊版字碼頁（如 Big5）逐行解析 `.bat`，若加中文（UTF-8）會讓指令行被拆爛、後端不會啟動。要寫中文說明請寫在本文件或 commit message，不要寫進 `.bat`。
+> - **`start-backend.ps1`（PowerShell）**：等效功能。`.\start-backend.ps1` 或 `.\start-backend.ps1 -WithInfra` 連基礎設施一起起；另有 `-IncludeRank`/`-IncludeAdmin`。前端仍需另開終端機跑 `npm run dev`。
 
 > `JWT_SECRET` 在 **member-service 與 gateway-service 必須完全一致**（gateway 驗證 member 簽發的 token），用同一份 `.env` 即可保證一致。
 
@@ -225,6 +234,7 @@ docker compose up -d       # 重新建立 Volume → 自動重跑 init.sql
 
 ```bash
 # 後端 / 前端：在各自終端機按 Ctrl + C
+# （Windows 懶人包）一鍵停後端：stop-all.bat ；連基礎設施一起停：stop-all.bat infra
 
 # 停止基礎設施（保留資料）
 docker compose down
