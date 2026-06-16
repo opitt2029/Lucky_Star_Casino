@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [chore] — 2026-06-16 — 新增 Windows 一鍵啟動/關閉腳本（start-all.bat / stop-all.bat）
+
+### Added
+- `start-all.bat`：Windows 雙擊即可的一鍵啟動腳本。載入根目錄 `.env` 到本視窗（子視窗繼承，避免「`JWT_SECRET` 缺失啟動失敗」），依序各開一個視窗啟動 member/wallet/game/gateway（gateway 最後）。支援參數 `infra`（先 `docker compose up -d`）、`frontend`（另開視窗跑 `npm run dev`），可組合使用。功能等同既有 `start-backend.ps1`，但提供給不熟 PowerShell 的人雙擊使用。
+- `stop-all.bat`：對應的一鍵關閉腳本。以 PowerShell 找出佔用 8080–8083 的行程並 `Stop-Process`，再依視窗標題 `taskkill` 殘留服務視窗；參數 `infra` 會一併 `docker compose down`。
+
+### Changed
+- `DEPLOY.md` §4 懶人包：補上 `start-all.bat` / `stop-all.bat` 用法與參數說明，並標明「**兩個 `.bat` 必須保持純 ASCII**」的限制；§9 關閉與清理補上 `stop-all.bat`。
+
+### Why
+- 提供比手動各開終端機、逐一載入 `.env` 更省事的本機測試入口。
+- **`.bat` 必須純 ASCII 的原因（踩雷紀錄）**：第一版 `start-all.bat` 用中文註解/訊息並存成 UTF-8，但 `cmd.exe` 是用系統舊版字碼頁（本機為 Big5/cp950）逐行解析 `.bat`，中文位元組導致指令行被誤切（如 `WITH_FRONTEND` 被拆成 `TH_FRONTEND`），`start ... mvn` 那幾行未被執行 → 「雙擊沒反應、後端沒起來」。改為純英文 ASCII 後解析正常。
+
+### Verified
+- 解析：修正後以全新 `cmd` 執行，輸出無 garbled「not recognized」、`.env` 正確載入 43 個變數（`JWT_SECRET`/`CORS_ALLOWED_ORIGINS`/`INTERNAL_SECRET` 皆到位）；檔案確認無 UTF-8 BOM。
+- 端到端：`start-all.bat` 起的 member(8081)/wallet(8082)/game(8083) `actuator/health` 皆 `UP`、gateway(8080) 回 `200`；`stop-all.bat` 正確停掉 8080–8083 四個行程、基礎設施保留。
+
 ## [feat] — 2026-06-16 — T-114 統一客服入口（SupportModal/uiSlice）+ 工作分配表 xlsx 改真名與新增任務
 
 ### Added
