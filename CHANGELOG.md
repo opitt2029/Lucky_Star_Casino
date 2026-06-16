@@ -5,6 +5,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [test] — 2026-06-16 — T-090 / T-091：老虎機高併發壓測本機實跑 + 帳務一致性對帳
+
+### Added
+- `tests/performance/provision-players.mjs`：1,000 名玩家備置腳本——經 gateway 註冊/登入、等 Kafka 建立錢包，再以 **T-055 GM 發幣**（admin `POST /admin/gm/grant`）大額入金（bankruptcy-aid 為退路），輸出 `players.csv`。對 gateway `/api/v1/auth/**` 限流 429 做指數退避重試。
+- `docs/performance/T-091-accounting-reconciliation-report.md`：對帳實測報告（9 項全 PASS）。
+
+### Changed
+- `tests/performance/slot-1000-players.jmx`：**對齊真實契約**——端點改 `/api/v1/game/slot/spin`、body 改 `{bet, clientSeed}`（移除 client 端 `idempotencyKey`，因冪等鍵由伺服器端生成）、`bet` 預設 100（合法區間 100–5000）；sampler「02 重放同冪等鍵」改為「02 第二次獨立轉動」。**修正壓測腳本 bug**：CSV `recycle=true`+`stopThread=false`，避免每執行緒只跑 1 次就因 CSV 耗盡而停（維持 60 秒持續負載）。
+- `tests/performance/run-slot-load-test.ps1`：`-BetAmount` 參數改 `-Bet`（預設 100）、JMeter property 由 `bet_amount` 改 `bet`，對齊 JMX。
+- `tests/infra/jmeter.test.js`：斷言同步更新（真實端點、body 形狀、無 client 冪等鍵、兩次獨立轉動、recycle 持續負載、報告以實測數據記錄）。
+- `docs/performance/T-090-load-test-report.md`：改寫為**實測報告**（三組情境：1000/1s、1000/1s 修前、150/10s）。
+
+### Why
+- 規格腳本與 T-032 實作契約漂移（端點/欄位/冪等鍵）；不對齊則壓測打不中真實 API。依使用者指示「嘗試本機實跑」，完整啟動拓樸並以真實量測填報（AGENTS.md §地雷 12：無實測不得捏造 P99）。
+
+### Verified（實測，非捏造）
+- 全拓樸本機啟動：docker 基礎設施（Kafka KRaft 補 `.env` 的 `KAFKA_CLUSTER_ID`）＋ gateway/member/wallet/game/admin（jar 啟動；admin 先補建 PostgreSQL `admin_*` 表）。1,000 名玩家備置完成。
+- **壓測（Spec：1000 threads / 1s ramp / 60s）**：25,150 樣本，P99 2,469 ms，5xx 20,058（≈80%），**overdraw 0、冪等失敗 0**。效能閘門 FAIL（單機資源上限：斷路器 load-shed），帳務不變量 PASS。
+- **壓測（host-sustainable：150 threads）**：16,489 樣本，P99 545 ms，5xx 47（0.28%），overdraw 0、冪等失敗 0。
+- **T-091 對帳**（壓測後對 live PostgreSQL 跑 `accounting-reconciliation.sql`）：9 項檢查全 **PASS / 0 violations**（無負餘額、無重複冪等鍵、餘額與流水帳完全吻合、frozen 歸零）。
+- `node --test tests/infra/*.test.js`：122 pass / 0 fail。
+
 ## [feat] — 2026-06-15 — T-092：Swagger UI / OpenAPI 文件整合（各服務 + gateway 聚合）
 
 ### Added

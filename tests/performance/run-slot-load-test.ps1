@@ -7,7 +7,7 @@ param(
     [int]$Threads = 1000,
     [int]$DurationSeconds = 60,
     [int]$RampUpSeconds = 1,
-    [int]$BetAmount = 10,
+    [int]$Bet = 100,
     [int]$PacingMs = 1000
 )
 
@@ -47,7 +47,7 @@ New-Item -ItemType Directory -Path $resultDir | Out-Null
     "-Jthreads=$Threads" `
     "-Jduration_seconds=$DurationSeconds" `
     "-Jramp_up_seconds=$RampUpSeconds" `
-    "-Jbet_amount=$BetAmount" `
+    "-Jbet=$Bet" `
     "-Jpacing_ms=$PacingMs" `
     "-Jjmeter.save.saveservice.output_format=csv" `
     "-Jjmeter.save.saveservice.print_field_names=true" `

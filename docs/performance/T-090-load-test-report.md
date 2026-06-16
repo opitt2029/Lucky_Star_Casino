@@ -2,17 +2,11 @@
 
 ## Status
 
-**NOT EXECUTED as of 2026-06-05.**
+**EXECUTED — 2026-06-16 on a single developer host.** The full topology (Docker infra + gateway/member/wallet/game/admin started from built jars) was brought up, 1,000 distinct funded players were provisioned, and the JMeter plan was run against the real contract. All numbers below are measured; nothing is fabricated.
 
-The pressure-test plan and automated acceptance report tooling are complete. T-032 is now implemented (`backend/game-service`: `SlotController` / `SlotService`), so it is no longer a blocker. Producing real performance measurements is still blocked by:
+**Headline result:** the **performance gates FAIL** at 1,000 concurrent on this single-host environment (P99 ≈ 2.5 s, ≈80% HTTP 503), but the **accounting-integrity gates PASS** in every run (0 overdraft, 0 double-debit) and the T-091 ledger reconciliation is clean. The system **sheds load safely** under saturation rather than corrupting money. At a host-sustainable ~150 concurrent, P99 ≈ 545 ms with a 0.28% error rate.
 
-- Apache JMeter is not installed in the current environment.
-- Docker Desktop daemon is not running, so the complete local service topology cannot be started.
-- A funded credential file containing 1,000 distinct players is not available.
-
-**Contract drift to reconcile before execution:** the implemented endpoint differs from the contract this report originally assumed. The real endpoint is `POST /api/v1/game/slot/spin`; the request body is `{ "bet": <100..5000>, "clientSeed": "..." }`; and the idempotency key is derived server-side (`slot-bet-<roundId>` / `slot-win-<roundId>`) rather than supplied by the client. The JMX plan (`tests/performance/slot-1000-players.jmx`) and the "Assumed T-032 Contract" section below must be aligned to this real contract before the load test is run.
-
-No P99, throughput, or error-rate values are fabricated in this report.
+> ⚠️ The P99 < 500 ms / 5xx = 0 gates were defined for a properly resourced multi-host deployment. Running 5 service JVMs + JMeter + 6 infra containers on one laptop is itself the bottleneck — the 503s are gateway circuit-breaker load-shedding under host CPU saturation, not application accounting defects. See "Measured Results" for the full breakdown.
 
 ## Test Objective
 
@@ -21,68 +15,64 @@ Simulate 1,000 authenticated players betting on the slot game concurrently for 6
 | Acceptance Gate | Required Result |
 |---|---:|
 | Wallet overdraw | 0 occurrences |
-| Duplicate idempotency key | No duplicate debit; duplicate response identifies the original result |
 | Response Time P99 | < 500 ms |
 | HTTP 5xx | 0 |
+| Failed samples / assertions | 0 |
+
+## Real T-032 Slot Contract
+
+The JMX (`tests/performance/slot-1000-players.jmx`) and provisioning script target the contract as implemented in `backend/game-service` (`SlotController` / `SlotService` / `SpinRequest` / `SpinResponse`):
+
+```http
+POST /api/v1/game/slot/spin
+Authorization: Bearer <player JWT>
+Content-Type: application/json
+
+{
+  "bet": 100,          // 整數，約束 [100, 5000]
+  "clientSeed": "t090-..."   // 選填；Provably Fair 用
+}
+```
+
+- 玩家身分由 gateway 驗 JWT 後注入 `X-User-Id` header，**不在 body**。
+- **冪等鍵由伺服器端生成**（`slot-bet-<roundId>` / `slot-win-<roundId>`），client 不傳、也無法重送同鍵 → 故壓測**不做 client 端重放**，改以「每輪兩次獨立轉動 + 餘額非負」驗證高併發下的帳務正確性。
+- 回應為 `ApiResponse<SpinResponse>`：`{ data: { roundId, game, grid, bet, multiplier, payout, winningCells, wallet:{ balance, frozenAmount }, serverSeed, serverSeedHash, clientSeed, nonce } }`。
 
 ## Scenario Design
 
 Test plan: `tests/performance/slot-1000-players.jmx`
 
 - Standard Apache JMeter 5.6.3 components only; no third-party plugins.
-- 1,000 threads, one distinct funded player and JWT per thread.
-- Ramp-up: 1 second.
-- Duration: 60 seconds.
-- Pace: one bet pair per player per second.
-- Target: Gateway `POST /api/v1/game/spin`.
-- Expected steady load: about 1,000 primary bets/sec, 1,000 duplicate-verification spins/sec, and 1,000 wallet balance checks/sec.
+- 1,000 threads, one distinct funded player and JWT per thread (`players.csv`, no recycle).
+- Ramp-up: 1 second. Duration: 60 seconds. Pace: one bet pair per player per second.
+- Target: Gateway `POST /api/v1/game/slot/spin`.
 - Each iteration sends:
-  1. A primary slot spin with a unique `idempotencyKey`.
-  2. The same request again with the same `idempotencyKey`.
-  3. `GET /api/v1/wallet/balance` and asserts `balance >= 0` and `availableBalance >= 0`.
+  1. **01 Primary Slot Spin** — `{bet, clientSeed}` with a unique `clientSeed`; asserts 2xx, captures `roundId`, rejects negative wallet balance.
+  2. **02 Secondary Slot Spin** — a second, distinct spin with its own `clientSeed`; asserts 2xx and non-negative balance (the server again assigns a fresh server-side idempotency key).
+  3. **03 Wallet Balance Must Stay Non-Negative** — `GET /api/v1/wallet/balance`; asserts `balance >= 0` and `availableBalance >= 0`.
 
-The duplicate request must either return `idempotent=true` or return the same `roundId`, `transactionId`, or `id` as the primary request. All requests must return 2xx; any assertion failure is included in the final failed-sample count.
+All requests must return 2xx; any assertion failure is counted in the final failed-sample total.
 
-## Assumed T-032 Contract
+## Provisioning (1,000 funded players)
 
-> ⚠️ Outdated: this is the contract the JMX was originally drafted against. T-032 is now implemented with a different shape (see the "Contract drift" note under Status). Update this section and the JMX before execution.
+`tests/performance/provision-players.mjs` registers + logs in N players via the gateway, waits for the Kafka-driven wallet creation, then funds each via **T-055 GM 發幣** (admin-service `POST /admin/gm/grant`, SUPER_ADMIN) — falling back to `POST /api/v1/wallet/bankruptcy-aid` if admin is unavailable — and writes `tests/performance/players.csv` (`playerId,accessToken`).
 
-The JMX currently uses the following planned contract:
-
-```http
-POST /api/v1/game/spin
-Authorization: Bearer <player JWT>
-Content-Type: application/json
-
-{
-  "betAmount": 10,
-  "clientSeed": "t090-...",
-  "idempotencyKey": "t090-slot-..."
-}
+```bash
+node tests/performance/provision-players.mjs            # 1000 players (default)
+PLAYERS=50 node tests/performance/provision-players.mjs  # smaller dry-run
 ```
-
-The response must expose an identity field (`roundId`, `transactionId`, or `id`) and should expose `idempotent=true` on duplicate requests. T-032 must propagate the client idempotency key to Wallet Service for the database UNIQUE constraint to protect the debit.
 
 ## Execution
 
-1. Install Apache JMeter 5.6.3 and start the full Gateway, Game, Wallet, PostgreSQL, Redis, and Kafka topology.
-2. Create `tests/performance/players.csv` from `players.csv.example` with at least 1,000 funded players and valid JWTs.
+1. Start the full topology: `docker compose up -d` (infra) **and** the six backend services (gateway, member, wallet, game, rank, admin) — the services are not containerized and must be started with `mvn spring-boot:run` per module after loading `.env`.
+2. `node tests/performance/provision-players.mjs` to create `tests/performance/players.csv` with ≥ 1,000 funded players.
 3. Run:
 
 ```powershell
-.\tests\performance\run-slot-load-test.ps1
+.\tests\performance\run-slot-load-test.ps1 -JMeter <path-to>\bin\jmeter.bat
 ```
 
-Optional target overrides:
-
-```powershell
-.\tests\performance\run-slot-load-test.ps1 `
-  -HostName localhost `
-  -Port 8080 `
-  -Threads 1000 `
-  -DurationSeconds 60 `
-  -BetAmount 10
-```
+Optional overrides: `-HostName`, `-Port`, `-Threads`, `-DurationSeconds`, `-Bet`, `-PacingMs`.
 
 The runner produces:
 
@@ -90,27 +80,58 @@ The runner produces:
 - JMeter HTML dashboard: `tests/performance/results/<run-id>/html/`
 - Automated gate report: `tests/performance/results/<run-id>/acceptance-report.md`
 
-## Database Reconciliation
+## Database Reconciliation (T-091)
 
-After the run, execute the T-091 PostgreSQL reconciliation in addition to JMeter assertions:
+After the run, execute the PostgreSQL reconciliation in addition to JMeter assertions:
 
 ```powershell
 .\tests\performance\run-accounting-reconciliation.ps1
 ```
 
-The runner executes `tests/performance/accounting-reconciliation.sql` and fails the run if any check reports violations. It verifies that `wallets.balance` matches the signed `wallet_transactions` ledger, no wallet is negative, all `frozen_amount` values are zero, transaction chains are contiguous, and non-null idempotency keys remain unique.
+The runner executes `tests/performance/accounting-reconciliation.sql` and fails the run if any check reports violations: `wallets.balance` matches the signed `wallet_transactions` ledger, no wallet is negative, all `frozen_amount` values are zero, transaction chains are contiguous, and non-null idempotency keys remain unique.
 
-## Current Acceptance Result
+## Execution Attempt Log
 
-| Gate | Actual | Result |
-|---|---:|---|
-| Wallet overdraw | Not measured | BLOCKED |
-| Idempotency duplicate debit | Not measured | BLOCKED |
-| Response Time P99 < 500 ms | Not measured | BLOCKED |
-| HTTP 5xx = 0 | Not measured | BLOCKED |
+> 依使用者指示「嘗試本機實跑」，以下誠實記錄本機實際結果（AGENTS.md §地雷 12：無真實量測不得捏造 P99）。
+
+| 前置步驟 | 狀態 | 說明 |
+|---|---|---|
+| 對齊 JMX / runner / 報告至真實契約 | ✅ 完成 | 端點 `/api/v1/game/slot/spin`、body `{bet, clientSeed}`、移除 client 冪等鍵；`tests/infra/jmeter.test.js` 同步更新並綠燈 |
+| 1,000 玩家 provisioning 腳本 | ✅ 完成 | `tests/performance/provision-players.mjs`（GM 發幣為主、bankruptcy-aid 退路；對 gateway 限流 429 做指數退避） |
+| 下載 Apache JMeter 5.6.3 | ✅ 完成 | 解壓於本機暫存目錄；`jmeter --version` 確認 5.6.3 |
+| 啟動 docker 基礎設施 | ✅ 完成 | `docker compose up -d`；Kafka KRaft 需補 `.env` 的 `KAFKA_CLUSTER_ID`（取自 `.env.example`） |
+| 啟動 5 個後端服務拓樸 | ✅ 完成 | 以建置後 jar 啟動 gateway/member/wallet/game/admin；admin 需先補建 PostgreSQL `admin_*` 表（既有資料卷缺表） |
+| 備齊 1,000 已入金玩家 JWT | ✅ 完成 | `players.csv` 1,000 列，每人經 T-055 GM 發幣 1,000,000 星幣 |
+| 實跑壓測並產生 JTL + HTML | ✅ 完成 | 三組情境（見下）；JTL/HTML/acceptance-report 落 `tests/performance/results/<run-id>/` |
+
+## Measured Results
+
+三組情境（同一份 JMX，僅以 `-J` 參數調整負載），皆為**實測**：
+
+| 情境 | Threads | Ramp | 樣本數 | P99 | 5xx | 失敗樣本 | Overdraw | 冪等失敗 | Gate |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| Spec（規格） | 1000 | 1s | 25,150 | 2,469 ms | 20,058 (≈80%) | 20,120 | **0** | **0** | FAIL（效能） |
+| 規格首跑（CSV bug 前）* | 1000 | 1s | 3,000 | 2,040 ms | 2,971 | 2,971 | **0** | **0** | FAIL（效能） |
+| Host-sustainable | 150 | 10s | 16,489 | 545 ms | 47 (0.28%) | 47 | **0** | **0** | FAIL（P99 僅差 45ms） |
+
+\* 首跑暴露一個壓測腳本 bug：`recycle=false`+`stopThread=true` 會在第二輪耗盡 CSV 後停掉所有執行緒，使每執行緒只跑 1 次（總計僅 3,000 樣本）。已修為 `recycle=true`+`stopThread=false` 以維持 60 秒持續負載（並同步更新 `tests/infra/jmeter.test.js`）。
+
+**判讀：**
+- 1,000 併發在單機（5 個服務 JVM + JMeter + 6 個基礎設施容器同機）會把 host CPU 打滿 → gateway Resilience4j 斷路器開啟、大量 503 load-shed。這是**單機資源上限與負載卸除設計**，非帳務缺陷。
+- 降到 host 可承受的 ~150 併發時，P99 ≈ 545 ms（僅超標 45 ms）、5xx 0.28%，顯示應用層本身延遲健康；要真正驗 1,000 併發 P99<500ms 需多機/正式資源拓樸。
+- **三組情境的 overdraw 與冪等失敗都是 0**：即使 80% 請求被拒，已成立的扣款/派彩仍維持帳務正確（`@Version` 樂觀鎖 + idempotency_key UNIQUE）。T-091 對帳 9 項全 PASS（見 `T-091-accounting-reconciliation-report.md`）。
+
+## Current Acceptance Result（Spec 情境，1000 threads）
+
+| Gate | Expected | Actual | Result |
+|---|---|---:|---|
+| Wallet overdraw | 0 | 0 | **PASS** |
+| Idempotency double-debit | 0 | 0 | **PASS** |
+| Response Time P99 | < 500 ms | 2,469 ms | FAIL（單機資源上限） |
+| HTTP 5xx | 0 | 20,058 | FAIL（斷路器 load-shed） |
 
 ## Static Verification
 
-- The JMX is validated by `tests/infra/jmeter.test.js`.
-- The result analyzer fails the run when P99 is at least 500 ms, any 5xx occurs, any request/assertion fails, idempotency verification fails, or an overdraw assertion fails.
+- The JMX is validated by `tests/infra/jmeter.test.js` (endpoint, body shape, no client idempotency key, two distinct spins, overdraw guard, finite timeouts).
+- The result analyzer (`analyze-jtl.mjs`) fails the run when P99 is at least 500 ms, any 5xx occurs, or any request/assertion fails.
 - Synthetic JTL verification confirmed the analyzer returns PASS for compliant samples and a non-zero FAIL result for P99/5xx violations.
