@@ -85,6 +85,12 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- Swagger / OpenAPI UI（T-092）。版本由根 pom dependencyManagement 管理。 -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

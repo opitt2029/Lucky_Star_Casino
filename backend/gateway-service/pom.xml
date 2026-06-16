@@ -35,6 +35,12 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- Swagger / OpenAPI 聚合 UI（T-092）：WebFlux 版，於 gateway 一站檢視各服務文件 -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webflux-ui</artifactId>
+        </dependency>
+
         <!-- Redis Reactive: JWT 黑名單查詢、限流計數器 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -17,20 +17,30 @@ describe('T-090 JMeter pressure test contract', () => {
     assert.match(jmx, /__P\(duration_seconds,60\)/)
   })
 
-  test('targets the planned slot spin endpoint', () => {
-    assert.match(jmx, /__P\(spin_path,\/api\/v1\/game\/spin\)/)
+  test('targets the real slot spin endpoint', () => {
+    assert.match(jmx, /__P\(spin_path,\/api\/v1\/game\/slot\/spin\)/)
   })
 
-  test('loads distinct player credentials without recycling', () => {
+  test('sends the real spin body and never a client idempotency key', () => {
+    // 真實契約 body 為 {bet, clientSeed}；冪等鍵由伺服器端生成，client 不得傳入。
+    assert.match(jmx, /"bet":\$\{__P\(bet,100\)\}/)
+    assert.match(jmx, /"clientSeed":"\$\{clientSeed\}"/)
+    assert.doesNotMatch(jmx, /idempotencyKey/)
+  })
+
+  test('loads 1000 funded player credentials and recycles for sustained load', () => {
+    // 1000 名玩家經 CSV 餵入；recycle=true + stopThread=false 讓 60 秒內持續施壓，
+    // 而非每執行緒只跑一次（recycle=false 會在第二輪耗盡 CSV 後停掉所有執行緒）。
     assert.match(jmx, /playerId,accessToken/)
-    assert.match(jmx, /<boolProp name="recycle">false<\/boolProp>/)
-    assert.match(jmx, /<boolProp name="stopThread">true<\/boolProp>/)
+    assert.match(jmx, /<boolProp name="recycle">true<\/boolProp>/)
+    assert.match(jmx, /<boolProp name="stopThread">false<\/boolProp>/)
   })
 
-  test('replays the same idempotency key and verifies the duplicate', () => {
+  test('fires two distinct spins per iteration', () => {
     assert.match(jmx, /01 Primary Slot Spin/)
-    assert.match(jmx, /02 Duplicate Slot Spin Same Idempotency Key/)
-    assert.match(jmx, /Idempotency verification failed/)
+    assert.match(jmx, /02 Secondary Slot Spin/)
+    // 伺服器端冪等：client 無法重送同鍵，故第二次為獨立轉動而非重複請求。
+    assert.match(jmx, /Reject Negative Balance On Secondary Spin/)
   })
 
   test('checks wallet balances for overdraw', () => {
@@ -55,8 +65,12 @@ describe('T-090 JMeter pressure test contract', () => {
     assert.match(analyzer, /fiveXx\.length === 0/)
   })
 
-  test('report honestly records current execution blockers', () => {
-    assert.match(report, /NOT EXECUTED/)
-    assert.match(report, /T-032/)
+  test('report documents the real contract and records measured results honestly', () => {
+    // 報告須對齊真實契約，並以實測數據記錄結果（AGENTS.md §12：不得捏造 P99）。
+    assert.match(report, /POST \/api\/v1\/game\/slot\/spin/)
+    assert.match(report, /冪等鍵由伺服器端生成/)
+    assert.match(report, /Measured Results/)
+    // 帳務不變量（overdraw / 冪等）在實測中為 PASS。
+    assert.match(report, /Wallet overdraw \| 0 \| 0 \| \*\*PASS\*\*/)
   })
 })

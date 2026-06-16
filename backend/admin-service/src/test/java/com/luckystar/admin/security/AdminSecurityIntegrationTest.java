@@ -4,6 +4,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
+
+import com.luckystar.admin.dto.GmGrantRequest;
+import com.luckystar.admin.dto.GmGrantResponse;
+import com.luckystar.admin.service.GmRewardService;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
@@ -12,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
@@ -27,6 +35,9 @@ class AdminSecurityIntegrationTest {
 
     @Autowired
     AdminJwtUtil adminJwtUtil;
+
+    @MockBean
+    GmRewardService gmRewardService;
 
     private String bearer(String token) {
         return "Bearer " + token;
@@ -93,5 +104,30 @@ class AdminSecurityIntegrationTest {
                         .contentType("application/json")
                         .content("{\"username\":\"superadmin\",\"password\":\"nope\"}"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // ── T-055 GM 發幣：僅 SUPER_ADMIN ─────────────────────────────────────
+
+    @Test
+    void operatorToken_cannotGmGrant_returns403() throws Exception {
+        String token = adminJwtUtil.generateToken(2L, "operator", AdminRole.OPERATOR);
+        mockMvc.perform(post("/admin/gm/grant")
+                        .header("Authorization", bearer(token))
+                        .contentType("application/json")
+                        .content("{\"playerId\":42,\"amount\":1000,\"reason\":\"test\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void superAdminToken_canGmGrant_returns200() throws Exception {
+        when(gmRewardService.grant(anyString(), any(GmGrantRequest.class)))
+                .thenReturn(new GmGrantResponse(42L, 1000L, "gm-grant-1-42-uuid", "QUEUED"));
+
+        String token = adminJwtUtil.generateToken(1L, "superadmin", AdminRole.SUPER_ADMIN);
+        mockMvc.perform(post("/admin/gm/grant")
+                        .header("Authorization", bearer(token))
+                        .contentType("application/json")
+                        .content("{\"playerId\":42,\"amount\":1000,\"reason\":\"test\"}"))
+                .andExpect(status().isOk());
     }
 }

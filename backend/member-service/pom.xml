@@ -20,6 +20,10 @@
     <properties>
         <java.version>21</java.version>
         <jjwt.version>0.12.6</jjwt.version>
+        <!-- member-service 的 parent 是 spring-boot-starter-parent（非 monorepo 根 pom），
+             無法繼承根 dependencyManagement 的 ${springdoc.version}，故在此本地宣告版本，
+             與既有 jjwt.version 模式一致。值對齊根 pom 的 2.6.0（springdoc 2.6.x 對應 Spring Boot 3.3.x）。 -->
+        <springdoc.version>2.6.0</springdoc.version>
     </properties>
 
     <dependencies>
@@ -96,6 +100,13 @@
             <artifactId>jjwt-jackson</artifactId>
             <version>${jjwt.version}</version>
             <scope>runtime</scope>
+        </dependency>
+
+        <!-- Swagger / OpenAPI UI（T-092）。版本走本地 ${springdoc.version}，見上方 properties 註解。 -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
         </dependency>
 
         <!-- Test -->

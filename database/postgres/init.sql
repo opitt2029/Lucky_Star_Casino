@@ -208,3 +208,24 @@ CREATE TABLE IF NOT EXISTS dead_letter_messages (
 CREATE INDEX IF NOT EXISTS idx_dlm_status     ON dead_letter_messages (status);
 CREATE INDEX IF NOT EXISTS idx_dlm_dlt_topic  ON dead_letter_messages (dlt_topic);
 CREATE INDEX IF NOT EXISTS idx_dlm_created_at ON dead_letter_messages (created_at);
+
+-- -------------------------------------------------------
+-- admin_action_logs：後台敏感操作稽核紀錄（T-055）
+-- 目前用於 GM 手動發幣（action_type=GM_GRANT）：每次發幣寫一筆。
+-- idempotency_key UNIQUE 兼作去重鍵，並當作 wallet.credit.request 指令的冪等鍵（ADR-002）。
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS admin_action_logs (
+    id               BIGSERIAL    NOT NULL,
+    operator         VARCHAR(50)  NOT NULL,   -- 操作者（後台管理員識別）
+    action_type      VARCHAR(30)  NOT NULL,   -- GM_GRANT 等
+    target_player_id BIGINT,
+    amount           BIGINT,
+    reason           VARCHAR(255),
+    idempotency_key  VARCHAR(100),
+    created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_admin_action_logs       PRIMARY KEY (id),
+    CONSTRAINT uq_admin_action_logs_idem  UNIQUE (idempotency_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_action_logs_operator   ON admin_action_logs (operator);
+CREATE INDEX IF NOT EXISTS idx_admin_action_logs_created_at ON admin_action_logs (created_at);

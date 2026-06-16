@@ -11,6 +11,8 @@ import com.luckystar.wallet.service.BankruptcyAidService;
 import com.luckystar.wallet.service.GiftService;
 import com.luckystar.wallet.service.WalletQueryService;
 import com.luckystar.wallet.service.WalletService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -28,6 +30,7 @@ import java.util.Set;
 
 @RestController
 @RequestMapping("/api/v1/wallet")
+@Tag(name = "錢包", description = "餘額查詢、交易流水、好友贈幣、破產補助")
 public class WalletController {
 
     /** T-025 允許過濾的交易類型（對齊讀庫 chk_wt_type 約束）。 */
@@ -49,6 +52,7 @@ public class WalletController {
         this.bankruptcyAidService = bankruptcyAidService;
     }
 
+    @Operation(summary = "查詢當前玩家星幣餘額")
     @GetMapping("/balance")
     public ResponseEntity<ApiResponse<WalletBalanceResponse>> getBalance(
             @RequestHeader(value = "X-User-Id", required = false) String playerIdStr) {

@@ -30,6 +30,9 @@ public class WalletBalanceChangedConsumer {
         validate(event);
 
         rankService.updatePlayerCoins(event.playerId(), event.balanceAfter());
+        if ("WIN".equals(event.subType()) && event.amount() != null) {
+            rankService.addDailyWinnings(event.playerId(), event.amount());
+        }
         ack.acknowledge();
 
         log.info(
