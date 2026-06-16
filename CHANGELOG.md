@@ -5,6 +5,52 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [feat] — 2026-06-16 — T-114 統一客服入口（SupportModal/uiSlice）+ 工作分配表 xlsx 改真名與新增任務
+
+### Added
+- `frontend/src/store/slices/uiSlice.js`：新增全域 UI slice（`supportOpen` + `openSupport`/`closeSupport`），於 `frontend/src/store/index.js` 註冊為 `ui`。
+- `frontend/src/components/SupportModal.jsx`：把客服說明彈窗抽成 App 根層獨立元件（由 `ui.supportOpen` 控制，重用 `walletSlice` 的 `claimBankruptcyAid`/`fetchWallet`/`clearBankruptcyNotice`），於 `frontend/src/App.jsx` 與 `<QuickToolbar />` 同層渲染。
+
+### Changed
+- `frontend/src/components/QuickToolbar.jsx`：「客服」按鈕由原「客服入口準備中」stub 改為 `dispatch(openSupport())`，與頭像下拉「客服說明」導向同一彈窗。
+- `frontend/src/components/AppShell.jsx`：移除元件內 `supportOpen` local state 與重複的客服說明 `<section>`，頭像下拉改 `dispatch(openSupport())`；保留「可領補助」徽章邏輯。
+- `docs/幸運星幣城_工作分配表.xlsx`：(1) 全 5 分頁代號改真名（組長A→張鈞皓、組員B→黃崇瑜、組員C→林瑋彧、組員D→許銘仁、組員E→王竣揚），與報告一致；(2) 工作總覽分頁新增 T-108~T-114 七列（負責人真名、狀態 ✅ 已完成），dimension 由 `A1:J81` 改 `A1:J88`。以 `unzip -p` 取出各 sheet、node 改寫實體編碼 XML、PowerShell `ZipArchive` Update 就地回寫，保留甘特圖等其他 entry 與樣式。
+- `docs/report/Lucky-Star-Casino-總體檢報告.md` §5.14：補記入口統一（SupportModal/uiSlice、首頁等未掛載 AppShell 的頁面亦可開）。
+- `docs/report/Lucky-Star-Casino-補充說明.md`：§5 問題 #2 與 §6 T-114 狀態改為 ✅ 完成、補驗證紀錄。重跑 `build-split.mjs` + `build-html.mjs` 同步分冊與所有 HTML。
+
+### Why
+- 破產補助前端入口前次做在頭像下拉，但浮動工具列「客服」仍是 stub，兩入口行為不一致；且 QuickToolbar 在 App 根層、首頁等不掛載 AppShell，彈窗放 AppShell 無法全頁共用。抽成根層 `SupportModal` + `uiSlice` 一次解決一致性與可用範圍。xlsx 為任務單一真相，需同步真名與本 session 新增任務。
+
+### Verified
+- `frontend`：`npm run lint` 無錯、`npm run build` 成功。
+- 報告：`node build-split.mjs` + `node build-html.mjs` 成功；`docs/report` 無殘留代號。
+- xlsx：`unzip -t` 無錯、5 分頁 XML 皆良構（`XmlDocument.LoadXml`）；解析後文字確認真名已寫入（張鈞皓 21／黃崇瑜 18／林瑋彧 15／許銘仁 25／王竣揚 14 hits）、代號僅剩 T-108 說明欄刻意提及（組長A×1、組員B×1）、T-108~T-114 七列與 dimension `A1:J88` 到位。
+
+## [fix] — 2026-06-16 — 登出黑名單前綴對齊（撤銷生效）+ 前端破產補助入口（客服說明）+ 報告補強
+
+### Fixed
+- **登出黑名單前綴不一致（高）**：`backend/member-service/.../service/TokenRedisService.java` 寫入黑名單原用前綴 `blacklist:{jti}`，但 `backend/gateway-service/.../filter/JwtAuthenticationGlobalFilter.java` 查詢的是 `jwt:blacklist:{jti}`，兩者對不上 → 登出後 access token 在自然到期前於 Gateway 端仍可通行，撤銷形同未生效。將 member 端常數統一為 `jwt:blacklist:` 並加註解鎖定兩處須同步（member 自身讀寫共用同一常數，故仍一致）。
+
+### Added
+- **前端破產補助入口**（破產補助後端 T-027 早已完成、前端原無入口）：
+  - `frontend/src/components/AppShell.jsx`：頂欄頭像改為可點選下拉，新增「客服說明」彈窗，內含破產補助操作教學、目前餘額與「領取破產補助」按鈕（餘額 < 100 才可領、領取後即時更新餘額）；餘額 < 100 時頭像選單顯示「可領補助」標記。
+  - `frontend/src/services/walletApi.js`：新增 `claimBankruptcyAid()`（串 `POST /api/v1/wallet/bankruptcy-aid`，含 mock 分支）。
+  - `frontend/src/store/slices/walletSlice.js`：新增 `claimBankruptcyAid` thunk、`bankruptcyAid` 子狀態與 `clearBankruptcyNotice`。
+  - `frontend/src/services/mockApi.js`：新增 `claimBankruptcyAid` mock（門檻 100 / 發放 1000 / 每日一次），與後端 `BankruptcyAidService` 一致。
+
+### Changed
+- `docs/report/Lucky-Star-Casino-專題提案書.md`：組員代號改用真名（張鈞皓（組長）/黃崇瑜/林瑋彧/許銘仁/王竣揚），並註記王竣揚前端工作目前由張鈞皓、黃崇瑜、林瑋彧暫代。
+- `docs/report/Lucky-Star-Casino-總體檢報告.md`（報告單一來源）：新增 §4.7 鑽石系統（序號生成與兌換）、§4.8 破產補助金、§4.9 公平性驗證、§4.10 Redis 7 Token/黑名單，§5.14 破產補助/客服說明前端畫面與操作教學，並於 §6.1 補 F-4（黑名單前綴修正）。重跑 `build-split.mjs` + `build-html.mjs` 同步分冊與 HTML、`make-pdf.mjs` 重產提案書 PDF。
+- `docs/report/Lucky-Star-Casino-補充說明.md` / `.html`（新檔）：彙整本次特別要求的四個系統說明、發現並處理的問題（黑名單前綴、客服入口重複）、本 session 新增任務（暫定 T-108~T-114）。`tools/screenshot/build-html.mjs` docs 清單加入此檔以產生 HTML。
+
+### Why
+- F-4 是真實安全缺陷：登出無法在 Gateway 端撤銷 token。破產補助是防流失設計卻無前端入口，玩家輸光後無處可領。報告需反映真名分工與四個被點名系統的詳細說明。
+
+### Verified
+- `mvn -pl backend/member-service test` → BUILD SUCCESS（70 tests）。
+- `frontend`：`npm run lint` 無錯、`npm run build` 成功。
+- 報告：`node build-split.mjs` + `node build-html.mjs` + `node make-pdf.mjs` 皆成功；`grep 組長A|組員B…` 於 `docs/report` 已無殘留代號。
+
 ## [test] — 2026-06-16 — T-090 / T-091：老虎機高併發壓測本機實跑 + 帳務一致性對帳
 
 ### Added

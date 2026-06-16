@@ -8,6 +8,7 @@ const docs = [
   { file: 'Lucky-Star-Casino-總體檢報告', title: '幸運星幣城 — 系統總體檢報告' },
   { file: 'Lucky-Star-Casino-開發與流程報告', title: '幸運星幣城 — 開發與流程報告' },
   { file: 'Lucky-Star-Casino-前端功能導覽', title: '幸運星幣城 — 前端功能導覽' },
+  { file: 'Lucky-Star-Casino-補充說明', title: '幸運星幣城 — 補充說明' },
   // 提案書：白底無主題樣式、A4 邊界 1cm、頁尾頁碼（plain 模板）
   { file: 'Lucky-Star-Casino-專題提案書', title: '幸運星幣城 — 專題提案書', plain: true },
 ]

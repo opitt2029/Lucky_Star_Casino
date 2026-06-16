@@ -21,6 +21,12 @@ const initialState = {
     consecutiveDays: null,
     message: '',
   },
+  bankruptcyAid: {
+    loading: false,
+    amount: null,
+    message: '',
+    error: null,
+  },
   loading: false,
   error: null,
 }
@@ -40,6 +46,17 @@ export const dailyCheckIn = createAsyncThunk('wallet/dailyCheckIn', async (_, { 
     return rejectWithValue(extractError(error))
   }
 })
+
+export const claimBankruptcyAid = createAsyncThunk(
+  'wallet/claimBankruptcyAid',
+  async (_, { rejectWithValue }) => {
+    try {
+      return await walletApi.claimBankruptcyAid()
+    } catch (error) {
+      return rejectWithValue(extractError(error))
+    }
+  },
+)
 
 export const fetchTransactions = createAsyncThunk('wallet/fetchTransactions', async (params, { rejectWithValue }) => {
   try {
@@ -88,6 +105,11 @@ const walletSlice = createSlice({
       state.checkIn.reward = null
       state.error = null
     },
+    clearBankruptcyNotice(state) {
+      state.bankruptcyAid.message = ''
+      state.bankruptcyAid.amount = null
+      state.bankruptcyAid.error = null
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -121,6 +143,22 @@ const walletSlice = createSlice({
         state.checkIn.loading = false
         state.error = action.payload || '簽到失敗'
       })
+      .addCase(claimBankruptcyAid.pending, (state) => {
+        state.bankruptcyAid.loading = true
+        state.bankruptcyAid.message = ''
+        state.bankruptcyAid.error = null
+      })
+      .addCase(claimBankruptcyAid.fulfilled, (state, action) => {
+        state.bankruptcyAid.loading = false
+        state.balance = action.payload.wallet.balance
+        state.frozenAmount = action.payload.wallet.frozenAmount ?? 0
+        state.bankruptcyAid.amount = action.payload.amount
+        state.bankruptcyAid.message = `已領取破產補助 ${action.payload.amount.toLocaleString()} 星幣`
+      })
+      .addCase(claimBankruptcyAid.rejected, (state, action) => {
+        state.bankruptcyAid.loading = false
+        state.bankruptcyAid.error = action.payload || '破產補助領取失敗'
+      })
       .addCase(fetchTransactions.pending, (state) => {
         state.loading = true
         state.error = null
@@ -151,5 +189,6 @@ export const {
   setTransactionFilters,
   setTransactionPage,
   clearWalletNotice,
+  clearBankruptcyNotice,
 } = walletSlice.actions
 export default walletSlice.reducer

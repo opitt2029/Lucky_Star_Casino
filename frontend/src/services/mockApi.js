@@ -44,6 +44,9 @@ const transactionLabels = {
   gift: '贈送',
 }
 const DAILY_CHECKIN_REWARD = 100
+// 破產補助：餘額低於門檻才可領、固定發放金額（與後端 BankruptcyAidService 一致）
+const BANKRUPTCY_AID_THRESHOLD = 100
+const BANKRUPTCY_AID_AMOUNT = 1000
 const checkInMilestoneBonuses = {
   7: 1000,
   14: 2000,
@@ -372,6 +375,33 @@ export const mockApi = {
     const wallet = applyWalletChange(db, playerId, reward, 'checkin', `每日簽到第 ${days} 天`)
     saveDb(db)
     return { wallet, player: user.player, reward, consecutiveDays: days }
+  },
+
+  // 破產補助（對應後端 POST /api/v1/wallet/bankruptcy-aid）：
+  // 餘額低於門檻（100）且當日尚未領取才可領，固定發放 1000 星幣，每天一次。
+  async claimBankruptcyAid() {
+    await wait()
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const user = db.users.find((item) => item.player.id === playerId)
+    const wallet = db.wallets[playerId] || { balance: 0, frozenAmount: 0 }
+    const balanceBefore = wallet.balance
+    if (balanceBefore >= BANKRUPTCY_AID_THRESHOLD) {
+      throw new Error('餘額未低於門檻（100 星幣），尚不符合破產補助資格')
+    }
+    const today = new Date().toISOString().slice(0, 10)
+    if (user?.player.lastBankruptcyAidDate === today) {
+      throw new Error('今日已領取過破產補助')
+    }
+    if (user) user.player.lastBankruptcyAidDate = today
+    const after = applyWalletChange(db, playerId, BANKRUPTCY_AID_AMOUNT, 'task', '破產補助金')
+    saveDb(db)
+    return {
+      amount: BANKRUPTCY_AID_AMOUNT,
+      balanceBefore,
+      balanceAfter: after.balance,
+      wallet: after,
+    }
   },
 
   async getTransactions({ type = 'all', startDate = '', endDate = '', page = 1, pageSize = 8 } = {}) {

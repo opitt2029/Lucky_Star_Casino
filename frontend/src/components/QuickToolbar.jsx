@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { useSound } from '../casino-fx/sound/useSound'
+import { openSupport } from '../store/slices/uiSlice'
 import './QuickToolbar.css'
 
 const tools = [
@@ -55,6 +56,7 @@ function ToolbarIcon({ children }) {
 
 export default function QuickToolbar() {
   const navigate = useNavigate()
+  const dispatch = useDispatch()
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
   const [message, setMessage] = useState('')
   const { play, settings, toggleSfx, toggleBgm } = useSound()
@@ -89,7 +91,8 @@ export default function QuickToolbar() {
   }
 
   const handleAiService = () => {
-    setMessage('客服入口準備中，請稍後再試')
+    // 與頭像下拉「客服說明」共用同一彈窗（uiSlice 控制），行為一致。
+    dispatch(openSupport())
   }
 
   const handleBackToTop = () => {

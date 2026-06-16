@@ -11,7 +11,9 @@ import java.time.Duration;
 public class TokenRedisService {
 
     private static final String REFRESH_KEY_PREFIX = "refresh:";
-    private static final String BLACKLIST_KEY_PREFIX = "blacklist:";
+    // 必須與 gateway-service JwtAuthenticationGlobalFilter 的 BLACKLIST_KEY_PREFIX 一致，
+    // 否則登出寫入的黑名單在 Gateway 端查不到、撤銷不會生效（兩者都用 jwt:blacklist:{jti}）。
+    private static final String BLACKLIST_KEY_PREFIX = "jwt:blacklist:";
 
     private final StringRedisTemplate redisTemplate;
 
