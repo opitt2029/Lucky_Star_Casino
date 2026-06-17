@@ -128,7 +128,24 @@ public class FishingService {
                 .createdAt(now)
                 .lastActivityAt(now)
                 .build();
-        sessionStore.save(session);
+        try {
+            sessionStore.save(session);
+        } catch (RuntimeException ex) {
+            // 補償退款：扣款已成功但 Session 建立失敗（Redis 不可用/序列化失敗）時，
+            // 若不退款，這筆 buyIn 會成為「孤兒扣款」（玩家扣了錢卻進不了場、也無 session 可結算）。
+            // 帶獨立冪等鍵 fishing-buyin-refund-<sessionId>，與正常結算的 fishing-end-<sessionId> 互不衝突。
+            log.error("fishing session save failed after debit, refunding playerId={} sessionId={}",
+                    playerId, sessionId, ex);
+            try {
+                walletClient.credit(playerId, buyIn, "fishing-buyin-refund-" + sessionId, sessionId);
+                log.info("fishing buy-in refunded playerId={} sessionId={} amount={}", playerId, sessionId, buyIn);
+            } catch (RuntimeException refundEx) {
+                // 退款本身又失敗：記為需人工對帳的嚴重事件（冪等鍵已落地，可日後重放補償）
+                log.error("fishing buy-in REFUND FAILED playerId={} sessionId={} amount={} (需人工對帳)",
+                        playerId, sessionId, buyIn, refundEx);
+            }
+            throw ex;
+        }
 
         log.info("fishing session started playerId={} sessionId={} buyIn={} cannonLevel={}",
                 playerId, sessionId, buyIn, cannonLevel);
