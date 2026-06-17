@@ -213,7 +213,10 @@ export function useFishingSession({ onResults } = {}) {
     setPhase('settling')
     if (flushTimerRef.current) window.clearInterval(flushTimerRef.current)
     // 先把殘餘子彈送完再結算（避免 in-flight 期間忙等）。
-    while (bufferRef.current.length > 0 || inFlightRef.current) {
+    // 設硬性截止時間，避免某批 flush 卡在 in-flight 時整個結算永遠卡死（寧可帶殘餘餘額逕行結算，
+    // 後端以局內餘額為準退款，仍冪等安全）。
+    const drainDeadline = Date.now() + 5000
+    while ((bufferRef.current.length > 0 || inFlightRef.current) && Date.now() < drainDeadline) {
       if (inFlightRef.current) {
         await new Promise((resolve) => window.setTimeout(resolve, 60))
       } else {
@@ -228,7 +231,9 @@ export function useFishingSession({ onResults } = {}) {
       setSettleResult({ ...result, shots: [...shotLogRef.current].reverse() })
       setPhase('settled')
     } catch (err) {
-      setError(err?.response?.data?.message || err.message || '結算失敗')
+      // 結算失敗（多為錢包暫時不可用）：場次仍在後端、未刪除，可直接再按「收網結算」重試（冪等安全）。
+      const reason = err?.response?.data?.message || err.message || '結算失敗'
+      setError(`${reason}；場次未結束，請再按一次「收網結算」重試`)
       setPhase('playing')
       startFlushLoop()
     }
