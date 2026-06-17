@@ -76,14 +76,15 @@ export default function FriendFloatingPanel() {
   }, [friends, searchKeyword])
 
   const handleToggle = () => {
-    setIsOpen((open) => {
-      if (open) {
-        resetFriendDetail()
-      } else {
-        loadFriends()
-      }
-      return !open
-    })
+    // 在 updater 外計算下一狀態並執行副作用，避免把 setState 副作用塞進 setIsOpen updater
+    // （StrictMode 雙呼叫下行為不穩，曾導致面板打不開/收不回去）。
+    const next = !isOpen
+    setIsOpen(next)
+    if (next) {
+      loadFriends()
+    } else {
+      resetFriendDetail()
+    }
   }
 
   const handleFriendClick = (friend) => {
