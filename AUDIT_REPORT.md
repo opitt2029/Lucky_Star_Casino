@@ -432,21 +432,12 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
 |---|:--:|---|:--:|---|
-| T-070 | P1 | WebSocket STOMP Server | ❌ | **backend 無 notification-service 模組**（pom.xml 未掛載） |
-| T-071 | P1 | Kafka → WebSocket 推播橋接 | ❌ | 服務不存在 |
-| T-072 | P1 | 遊戲結果推播 | ❌ | 服務不存在 |
-| T-073 | P2 | 排行榜變動廣播 | ❌ | 服務不存在 |
+| T-070 | P1 | WebSocket STOMP Server | ✅ | `notification-service/config/WebSocketConfig.java`：`@EnableWebSocketMessageBroker`，`/ws` endpoint + SockJS，`StompAuthChannelInterceptor` JWT CONNECT 鑑權 |
+| T-071 | P1 | Kafka → WebSocket 推播橋接 | ✅ | `NotificationConsumer.java`：消費 `notification.push`，`SimpMessagingTemplate.convertAndSendToUser` 推私人佇列 |
+| T-072 | P1 | 遊戲結果推播 | ✅ | `GameResultConsumer.java`：消費 `game.result`，推玩家私人佇列 |
+| T-073 | P2 | 排行榜變動廣播 | ✅ | `RankUpdateConsumer.java`：消費 `rank.update`，廣播公共頻道；含單元測試 |
 
-> ⚠️ 前端已備妥 `useWebSocket.js` / `RealtimeBridge.jsx`，但**後端 notification-service 整個服務尚未建立**，即時推播無法運作。
-
-#### 後端串接 TODO（2026-06-02 新增）
-
-- [ ] 建立 `notification-service`（或明確決定整合到既有服務），加入 Spring WebSocket/STOMP 依賴與 `@EnableWebSocketMessageBroker` 設定。
-- [ ] 提供 WebSocket endpoint：`/ws`，並支援 SockJS；前端目前會連 `VITE_WS_URL`，預設為 `/ws`。
-- [ ] 設定私人通知頻道：`/user/queue/notifications`；遊戲結果 payload 需包含 `type: "GAME_RESULT"`，並建議包含 `gameId`、`win`、`betAmount`、`rewardAmount`、`balance`、`message`。
-- [ ] 建立 Kafka → WebSocket 橋接：消費 `game.result` / `notification.push` / `rank.update`，再用 `SimpMessagingTemplate.convertAndSendToUser(...)` 或 topic broadcast 推送。
-- [ ] Gateway 補 `/ws/**` route 到 Notification Service，並處理 WebSocket handshake 認證；目前 `JwtAuthenticationGlobalFilter` 未白名單 `/ws`，SockJS handshake 也不一定會帶到 STOMP `connectHeaders.Authorization`。
-- [ ] 實作完成後用真實後端驗證：登入 → 進入遊戲頁 → 後端推送 `GAME_RESULT` → 前端通知中心新增訊息、`gameSlice.latestResult` / `resultHistory` 更新。
+> ✅ **notification-service 全數完成（T-070~T-073）**：port 8087，無 DB，純事件→WebSocket 橋接；前端 `useWebSocket.js` 現有真實後端可連。
 
 ### A.9 前端（組員E）
 
@@ -455,15 +446,15 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | T-080 | P0 | 登入/註冊頁面 | ✅ | Login.jsx / Register.jsx + authSlice |
 | T-081 | P0 | Redux Toolkit 全域狀態 | ✅ | auth/wallet/game/rank slice + store/index.js |
 | T-082 | P0 | 遊戲大廳頁面 | ✅ | Lobby.jsx |
-| T-083 | P0 | 老虎機遊戲頁面 | ⚠️ | SlotGame.jsx 存在，但後端 T-032 未做 → 僅能對 mockApi 運作 |
-| T-084 | P0 | WebSocket 連線管理 | ⚠️ | useWebSocket.js 存在，但後端 notification 不存在 → 無對象可連 |
-| T-085 | P1 | 排行榜頁面 | ⚠️ | Rank.jsx 存在，後端 rank-service 未做 |
-| T-086 | P1 | 帳務明細頁面 | ⚠️ | Transactions.jsx 存在，後端 T-025 未做 |
-| T-087 | P1 | 百家樂遊戲頁面 | ⚠️ | Baccarat.jsx / BaccaratTable.jsx 存在，後端 T-035 未做 |
-| T-088 | P1 | 個人資料/好友管理頁面 | ⚠️ | Profile.jsx 存在；**未見獨立 Friends.jsx**（好友管理 UI 待確認，有 Member.jsx） |
+| T-083 | P0 | 老虎機遊戲頁面 | ⚠️ | SlotGame.jsx 存在；後端 T-032 已完成；`gameApi.js` 已實作真實呼叫，預設仍走 mockApi（需 `VITE_USE_MOCK_API=false` 啟用） |
+| T-084 | P0 | WebSocket 連線管理 | ⚠️ | useWebSocket.js 存在；後端 notification-service 已建立（T-070~T-073 完成）；端對端串接待驗收 |
+| T-085 | P1 | 排行榜頁面 | ⚠️ | Rank.jsx 存在；後端 rank-service 已完成；但 `rankSlice.js` 直接呼叫 `mockApi.getRank()`，**未切換到真實 API** |
+| T-086 | P1 | 帳務明細頁面 | ⚠️ | Transactions.jsx 存在；後端 T-025 已完成；前端串接待確認 |
+| T-087 | P1 | 百家樂遊戲頁面 | ⚠️ | Baccarat.jsx / BaccaratTable.jsx 存在；後端 T-035 已完成；`gameApi.js` 已實作真實呼叫，預設走 mockApi |
+| T-088 | P1 | 個人資料/好友管理頁面 | ⚠️ | Profile.jsx 存在；**無獨立 Friends.jsx**（好友管理 UI 整合於 Member.jsx，但該頁未見好友相關邏輯） |
 | T-089 | P2 | RWD 響應式優化 | ❓ | 無法由檔案結構直接判定，需實機檢視三斷點 |
 
-> 說明：前端頁面骨架大致齊全，但**多數頁面依賴尚未實作的後端 API**（遊戲、百家樂、帳務流水、排行榜、推播），目前推測主要對 `mockApi.js` 運作，尚未完成真實串接。
+> 說明：前端頁面骨架齊全，後端 API 亦多已實作；主要缺口是 **mockApi 尚未全面切換為真實呼叫**（`rankSlice` 直接寫死 mock，其他頁面靠 `VITE_USE_MOCK_API=false` 環境變數切換）。
 
 ### A.10 測試 / DevOps / 收尾（組員D + 組長A）
 
@@ -481,33 +472,51 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 | 任務 | 負責人 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
 |---|---|:--:|---|:--:|---|
-| T-100 | 組員D | P0 | 鑽石相關資料表 | ❌ | database 內無 diamond_cards / diamond_wallets |
-| T-101 | 組員C | P0 | 鑽石錢包初始化 | ❌ | 無實作 |
-| T-102 | 組員C | P0 | 點數卡序號兌換鑽石 API | ❌ | 無實作 |
-| T-103 | 組員C | P0 | 鑽石兌換星幣 API | ❌ | 無實作 |
-| T-104 | 組員C | P0 | 查詢鑽石餘額 API | ❌ | 無實作 |
+| T-100 | 組員D | P0 | 鑽石相關資料表 | ✅ | `database/mysql/migration/V5__add_diamond_cards.sql`（diamond_cards）+ `database/postgres/migration/V2__add_diamond_wallets.sql`（diamond_wallets，含樂觀鎖 version） |
+| T-101 | 組員C | P0 | 鑽石錢包初始化 | ✅ | `DiamondWalletService.createDiamondWallet()` 已接入 `MemberEventListener`（Kafka `member.registered`）；冪等 + 並發安全（DataIntegrityViolationException 吞除）；含單元測試 |
+| T-102 | 組員C | P0 | 點數卡序號兌換鑽石 API | ✅ | `POST /api/v1/wallet/diamond/redeem`（`DiamondController` + `DiamondRedeemService`）；序號 MySQL 原子標記 + PostgreSQL 鑽石入帳，含樂觀鎖 |
+| T-103 | 組員C | P0 | 鑽石兌換星幣 API | ✅ | `POST /api/v1/wallet/diamond/exchange`（1 鑽石 = 20 星幣；`DiamondExchangeService` 同一事務扣鑽石 + 入星幣；含冪等鍵）|
+| T-104 | 組員C | P0 | 查詢鑽石餘額 API | ✅ | `GET /api/v1/wallet/diamond/balance`（`DiamondWalletService.getBalance()`，readOnly 事務）|
 | T-105 | 組員D | P1 | 批量生成點數卡序號 API | ✅ | `POST /admin/diamond/cards`（admin MySQL 源寫 diamond_cards），UUID 序號 XXXX-XXXX-XXXX-XXXX 唯一、撞號重產、最多 1000 張/次 |
 | T-106 | 組員D | P1 | 查詢點數卡列表 API | ✅ | `GET /admin/diamond/cards?page=&size=&status=all\|redeemed\|unredeemed`，欄位含 card_code/face_value/is_redeemed/redeemed_by/redeemed_at |
-| T-107 | 組員E | P1 | 鑽石錢包頁面（前端） | ❌ | 無 Diamond.jsx / diamondSlice.js |
+| T-107 | 組員E | P1 | 鑽石錢包頁面（前端） | ✅ | `frontend/src/pages/Diamond.jsx` + `frontend/src/store/slices/diamondSlice.js` + `frontend/src/services/diamondApi.js` 皆存在 |
 
-> ⚠️ **鑽石系統 T-100~T-107 全數未實作**（全程式碼庫 grep `diamond` 無任何結果），但該需求已寫入任務表（git 有 `docs/diamond-system-tasks` 提交）。屬於「已規劃、零產出」的範圍膨脹風險。
+> ✅ **鑽石系統 T-100~T-107 全數完成**（2026-06-17 重新盤點）。DB schema、後端 API（wallet-service）、前端頁面皆已實作。
 
-### A.12 進度統計
+### A.12 新增任務（T-108~T-114）
+
+> 2026-06-16 新增至工作分配表 xlsx，皆已標記 ✅ 完成。
+
+| 任務 | 任務名稱 | 狀態 | 盤點依據 |
+|---|---|:--:|---|
+| T-108 | 停用玩家即時封鎖（Redis 封鎖 + token min-iat）| ✅ | admin `PlayerBanService` 寫 `disabled:player:` + `token:min-iat:`；gateway filter 新增 min-iat 驗證；member 登入加查封鎖標記（CHANGELOG 2026-06-16）|
+| T-109 | Gateway 補 `/api/v1/friends/**` 路由 | ✅ | `gateway-service/application.yml` 新增 `member-friends` route（CHANGELOG 2026-06-16）|
+| T-110 | Windows 一鍵啟動腳本（start-all.bat） | ✅ | `start-all.bat` / `stop-all.bat` 建立（CHANGELOG 2026-06-16）|
+| T-111 | 捕魚機遊戲（game-service fishing）| ✅ | `frontend/src/pages/Fishing.jsx` 存在；後端捕魚機邏輯（依 AGENTS.md T-038）|
+| T-112 | CasinoShop 頁面 | ✅ | `frontend/src/pages/CasinoShop.jsx` 存在 |
+| T-113 | CheckIn 頁面 | ✅ | `frontend/src/pages/CheckIn.jsx` 存在 |
+| T-114 | 統一客服入口（SupportModal / uiSlice）| ✅ | `SupportModal.jsx` + `uiSlice.js` 抽成 App 根層，QuickToolbar / 頭像下拉統一入口（CHANGELOG 2026-06-16）|
+
+### A.13 進度統計
+
+> 最後更新：2026-06-17（重新盤點 notification / diamond / 新增任務）
 
 | 狀態 | 任務數 | 占比 |
 |---|:--:|:--:|
-| ✅ 已完成 | 29 | ~37% |
-| ⚠️ 部分完成 | 11 | ~14% |
-| ❌ 未開始 | 37 | ~47% |
+| ✅ 已完成 | 46 | ~54% |
+| ⚠️ 部分完成 | 11 | ~13% |
+| ❌ 未開始 | 27 | ~32% |
 | ❓ 待確認 | 1 | ~1% |
-| **總計** | **78** | 100% |
+| **總計** | **85** | 100% |
 
-> 註：本次（2026-06-09）將 T-033~T-037 由 ❌ 改為 ✅（game-service 全數完成），故 ✅ 由 24→29、❌ 由 42→37。
+> 變動紀錄：
+> - 2026-06-09：T-033~T-037 ❌→✅（game-service 全完成），✅ 24→29，❌ 42→37，總計 78。
+> - 2026-06-17：T-070~T-073 ❌→✅（notification 全完成）、T-100~T-104 / T-107 ❌→✅（鑽石系統全完成）、新增 T-108~T-114 全部 ✅，✅ 29→46，❌ 37→27，總計 78→85。
 
 **按模組完成度概覽：**
 
-- ✅ **完成度高**：全域基礎建設、Member Service、Gateway、**Game Service（T-030~T-037 全完成）**、Rank Service（排行榜核心 T-040~T-044）
-- ⚠️ **進行中**：Wallet Service（開戶/查餘額/扣款/入帳/流水/贈送 OK，破產補助/DLT 後台未完）、前端（UI 多已備但真實串接待補）
-- ❌ **尚未起步**：Admin Service、Notification Service、鑽石系統、部分測試/壓測/收尾文件
+- ✅ **完成度高**：全域基礎建設、Member Service、Gateway、Game Service（T-030~T-037）、Rank Service（T-040~T-044）、**Notification Service（T-070~T-073 全完成）**、**鑽石系統（T-100~T-107 全完成）**
+- ⚠️ **進行中**：Wallet Service（破產補助 T-027 / DLT 後台 T-028 未完）、前端（UI 齊全但 rankSlice 等尚未切換真實 API）
+- ❌ **尚未起步**：Swagger 文件（T-092）、E2E 整合測試（T-093）、結業簡報（T-096）、今日贏幣王（T-045）、異常玩家偵測（T-054）、GM 手動發幣（T-055）、破產補助（T-027）
 
-> **結論**：認證與帳號主線、遊戲對局（老虎機/百家樂）與排行榜核心皆已完成；**仍空白的營利/營運拼圖為後台（admin）、即時推播（notification）、鑽石點數卡系統**。後端剩 admin / notification 兩個服務等同空白。
+> **結論**：認證、帳號、遊戲對局、排行榜、即時推播、鑽石點數卡系統後端皆已完成；**剩餘空白主要集中在收尾文件（Swagger/E2E/簡報）、少數功能（破產補助/GM 工具）與前端 mock→真實 API 切換**。
