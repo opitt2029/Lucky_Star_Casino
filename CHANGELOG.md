@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [fix] — 2026-06-17 — 快速工具列可收合 + 移至左側避免與好友面板重疊
+
+### Changed
+- `components/QuickToolbar.jsx`：快速工具列改為**可收合**，預設收合只顯示單一「工具」按鈕，點擊展開完整選單；偏好記於 `localStorage`（`lucky-star-quicktoolbar-open-v1`）。避免長條工具列常駐擋住遊戲畫面。
+- `components/QuickToolbar.css`：桌機版工具列由右側改釘**左側**（`left: 18px`），與右下角的好友浮動面板分邊，兩者不再互相覆蓋；新增收合切換鈕樣式。
+
+### Why
+- 玩家回報：常駐的直式工具列擋到遊戲觀看，且與右下角好友面板重疊。收合 + 分邊解決兩者。
+
+### How to verify
+- 前端 `npm run lint` 0 問題、`npm run build` 成功。
+- 手動：桌機左側只剩一顆「工具」按鈕，點擊展開/收合；右下角好友面板與工具列不重疊。
+
+---
 ## [fix] — 2026-06-17 — 好友清單改真實資料 + 捕魚進場扣款退款補償
 
 ### Fixed
