@@ -29,6 +29,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - 端到端（直打 wallet:8082，player 1169）：建單 P500 → 付款 `CREDITED`、餘額 200→600,200；重複付款→409。
 - 透過 gateway:8080（真實 JWT，X-User-Id 注入）：方案/建單/付款全鏈路 200，入帳成功。
 - 前端：`npm run lint` 0 問題、`npm run build` 成功。
+---
+
+## [docs] — 2026-06-17 — AUDIT_REPORT 附錄 A 重新盤點 + AGENTS.md 服務完成度同步
+
+### Changed
+- `AUDIT_REPORT.md` 附錄 A.8：T-070~T-073 ❌→✅（notification-service 全數完成，`WebSocketConfig`/`NotificationConsumer`/`GameResultConsumer`/`RankUpdateConsumer` 實際存在）。
+- `AUDIT_REPORT.md` 附錄 A.9：T-083/T-084/T-085/T-086/T-087 盤點備註更新（後端已完成，說明 mockApi 切換現況）。
+- `AUDIT_REPORT.md` 附錄 A.11：T-100~T-104 / T-107 ❌→✅（鑽石系統全數完成，wallet-service `DiamondController`/`DiamondWalletService`/`DiamondRedeemService`/`DiamondExchangeService` + `Diamond.jsx`/`diamondSlice` 實際存在）。
+- `AUDIT_REPORT.md` 新增附錄 A.12（T-108~T-114 新增任務一覽）、原 A.12 改為 A.13（進度統計）：✅ 29→46，❌ 37→27，總計 78→85（~54% 完成）。
+- `AGENTS.md` §2 地雷 10：服務完成度更新（notification T-070~T-073 全完成、鑽石 T-100~T-107 全完成、rank T-040~T-044）。
+
+### Why
+- AUDIT_REPORT 附錄 A 上次更新為 2026-06-09，notification 與鑽石系統的完成狀態未同步，導致進度統計嚴重低估（顯示 37% 實為 54%）。
 
 ---
 
