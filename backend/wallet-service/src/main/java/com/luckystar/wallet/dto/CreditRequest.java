@@ -37,8 +37,8 @@ public class CreditRequest {
      * BET 屬於扣款，不在此允許清單。
      */
     @NotBlank
-    @Pattern(regexp = "WIN|CHECKIN|TASK|GIFT|GM_REWARD|BANKRUPTCY_AID|DIAMOND_EXCHANGE",
-             message = "subType must be one of WIN/CHECKIN/TASK/GIFT/GM_REWARD/BANKRUPTCY_AID/DIAMOND_EXCHANGE")
+    @Pattern(regexp = "WIN|CHECKIN|TASK|GIFT|GM_REWARD|BANKRUPTCY_AID|DIAMOND_EXCHANGE|TOPUP",
+             message = "subType must be one of WIN/CHECKIN/TASK/GIFT/GM_REWARD/BANKRUPTCY_AID/DIAMOND_EXCHANGE/TOPUP")
     private String subType;
 
     /**
