@@ -93,6 +93,41 @@ export const memberApi = {
     const res = await api.put('/api/v1/player/profile', body)
     return mapProfile(res.data.data)
   },
+
+  // GET /api/v1/friends → 目前玩家「已接受」的好友清單（後端只回 ACCEPTED 雙向關係）
+  // 回傳已標準化為前端顯示用形狀；無好友時回空陣列。
+  async listFriends() {
+    if (useMockApi) {
+      const friends = await mockApi.getFriends()
+      return (friends || []).map((f) => ({
+        friendshipId: f.friendshipId ?? f.id,
+        friendId: f.id ?? f.friendId,
+        name: f.nickname || f.username || `玩家${f.id ?? ''}`,
+        username: f.username || '',
+        avatarUrl: f.avatarUrl || '',
+        friendSince: f.friendSince || null,
+      }))
+    }
+
+    const res = await api.get('/api/v1/friends')
+    const list = res.data.data || []
+    return list.map((f) => ({
+      friendshipId: f.friendshipId,
+      friendId: f.friendId,
+      name: f.friendNickname || f.friendUsername || `玩家${f.friendId}`,
+      username: f.friendUsername || '',
+      avatarUrl: f.friendAvatarUrl || '',
+      friendSince: f.friendSince || null,
+    }))
+  },
+
+  // DELETE /api/v1/friends/{friendshipId} → 解除好友關係
+  async deleteFriend(friendshipId) {
+    if (useMockApi) {
+      return mockApi.removeFriend?.(friendshipId)
+    }
+    await api.delete(`/api/v1/friends/${friendshipId}`)
+  },
 }
 
 export { extractError }
