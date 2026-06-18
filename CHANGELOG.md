@@ -3,6 +3,60 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [feat] — 2026-06-18 — 幸運值全滿保底必中（老虎機 / 百家樂 / 捕魚機）
+
+### Added
+- `backend/game-service/.../slot/SlotMachine.java`：新增 `spinGuaranteedWin()`，以加權隨機選出必中符號填滿中線，非中線格仍正常 RNG
+- `backend/game-service/.../fishing/FishSpecies.java`：新增 `resolveGuaranteedPayout()`，跳過命中判定直接回派彩（MONEY_TREE 仍隨機抽倍率）
+
+### Changed
+- `SpinRequest.java` / `BaccaratBetRequest.java` / `FishingShotsRequest.java`：新增 `fortuneReady` 欄位
+- `GameSession.java`：新增 `fortuneReady` 欄位（百家樂兩階段 commit-ahead 需跨請求傳遞）
+- `SlotService.java`：`fortuneReady=true` 時呼叫 `spinGuaranteedWin()`
+- `BaccaratService.java`：`fortuneReady=true` 時最多重發牌 100 次直到結果符合玩家押注區；記錄實際使用的 nonce
+- `FishingService.java`：`fortuneReady=true` 時本批第一發呼叫 `resolveGuaranteedPayout()`
+- `SlotController.java` / `BaccaratController.java` / `FishingController.java`：轉傳 `fortuneReady`
+- `frontend/src/services/gameApi.js`：三遊戲 API 呼叫加入 `fortuneReady` 參數
+- `frontend/src/pages/SlotGame.jsx` / `Baccarat.jsx`：dispatch 加入 `fortuneReady: fortune.full`
+- `frontend/src/hooks/useFishingSession.js`：接受 `fortuneReady` prop，flush 時轉傳至 API
+- `frontend/src/pages/Fishing.jsx`：傳入 `fortuneReady: fortune.full`
+
+**為什麼**：幸運值滿代表玩家已累積足夠「氣力」，應保底觸發一次中獎以兌現期待感。
+**如何驗證**：老虎機累積至幸運值 100 後下注，確認中線三連必中；百家樂幸運值滿時押注確認派彩；捕魚機幸運值滿時開炮確認第一發必中。
+
+## [fix] — 2026-06-18 — 多帳號 localStorage 數據隔離（幸運值 & 百家樂咪牌）
+
+### Fixed
+- `frontend/src/casino-fx/fx/useFortuneMeter.js`：`storageKey` 加入 `playerId`（`lucky-star-fortune-v1:{gameKey}:{playerId}`），防止切換帳號繼承幸運值
+- `frontend/src/pages/SlotGame.jsx`：`useFortuneMeter('slot', player?.id)` 傳入 playerId
+- `frontend/src/pages/Fishing.jsx`：`useFortuneMeter('fishing', player?.id)` 傳入 playerId
+- `frontend/src/pages/Baccarat.jsx`：
+  - `useFortuneMeter('baccarat', player?.id)` 傳入 playerId
+  - 咪牌偏好改以 JSON 物件存多帳號（`getSqueezeMode` / `saveSqueezeMode` helper），key 不變、讀寫改用 `playerId` 子 key
+  - `useState` setter 改名為 `setSqueezeModeState`，避免與工具函式命名衝突
+
+**為什麼**：同一台電腦切換帳號時，幸運值與咪牌偏好會繼承前一帳號的狀態，造成跨帳號數據污染。
+**如何驗證**：帳號 A 累積幸運值後切換帳號 B，確認幸運值從 0 開始；重新登入帳號 A 幸運值恢復原值。
+
+---
+
+## [fix] — 2026-06-18 — 遊戲頁瀏覽器「上一頁」防呆：防止誤觸登出 & 場次懸空
+
+### Added
+- `frontend/src/hooks/useGameLeaveGuard.js`：通用 hook，`active` 為 true 時攔截 `popstate`（上一頁）與 `beforeunload`（關分頁/重整），彈出確認框讓玩家確認後才離開。
+
+### Changed
+- `frontend/src/pages/SlotGame.jsx`：`loading || visualLock`（轉輪動畫進行中）時啟用離開防呆，確認文案提示下注不返還。
+- `frontend/src/pages/Baccarat.jsx`：`isDealing`（後端請求進行中）時啟用離開防呆。
+- `frontend/src/pages/Fishing.jsx`：`phase === 'playing'` 時啟用離開防呆，確認文案提示 30 分鐘自動結算。
+
+### Fixed
+- 玩家在遊戲進行中按上一頁若導回 `/member` 頁，過去有機率觸發 logout 副作用造成帳號登出；現在優先攔截導航，使用者需明確確認才會離開。
+- 捕魚機場次進行中按上一頁會造成場次懸空；現在提示玩家確認，確保場次可正常結算。
+
+### 驗證
+- `frontend/src/services/api.js` interceptor 已確認只在 HTTP 401 時清除 auth，無需修改。
+
 ---
 
 ## [feat] — 2026-06-18 — 共用測試帳號種子資料：團隊各自 docker up 即有一致測試帳號

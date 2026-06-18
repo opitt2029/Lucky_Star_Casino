@@ -75,7 +75,7 @@ public class BaccaratService {
      * @param requestedClientSeed 玩家自訂 client seed（可為 null/空白）
      */
     public BaccaratBetResponse placeBet(long playerId, Long player, Long banker, Long tie,
-                                        String requestedClientSeed) {
+                                        String requestedClientSeed, boolean fortuneReady) {
         long bp = nz(player);
         long bb = nz(banker);
         long bt = nz(tie);
@@ -111,6 +111,7 @@ public class BaccaratService {
                 .serverSeedHash(serverSeedHash)
                 .clientSeed(clientSeed)
                 .nonce(NONCE)
+                .fortuneReady(fortuneReady)
                 .build();
         sessionService.start(session);
 
@@ -143,9 +144,26 @@ public class BaccaratService {
         long bt = nz(session.getBetTie());
         long totalBet = nz(session.getBetAmount());
 
-        // 發牌與結算（確定性）
-        RandomStream stream = rng.stream(session.getServerSeed(), session.getClientSeed(), NONCE);
+        // 發牌與結算：幸運值全滿時，嘗試重發牌（最多 100 次）直到結果符合玩家押注區。
+        long actualNonce = NONCE;
+        RandomStream stream = rng.stream(session.getServerSeed(), session.getClientSeed(), actualNonce);
         BaccaratOutcome outcome = baccaratGame.deal(stream);
+
+        if (Boolean.TRUE.equals(session.getFortuneFull())) {
+            BaccaratResult desired = findDesiredResult(bp, bb, bt);
+            if (desired != null && !outcome.result().equals(desired)) {
+                for (long attempt = 1; attempt <= 100; attempt++) {
+                    RandomStream tryStream = rng.stream(session.getServerSeed(), session.getClientSeed(), attempt);
+                    BaccaratOutcome tryOutcome = baccaratGame.deal(tryStream);
+                    if (tryOutcome.result().equals(desired)) {
+                        outcome = tryOutcome;
+                        actualNonce = attempt;
+                        break;
+                    }
+                }
+            }
+        }
+
         Map<BaccaratResult, Long> bets = new EnumMap<>(BaccaratResult.class);
         if (bp > 0) {
             bets.put(BaccaratResult.PLAYER, bp);
@@ -173,7 +191,7 @@ public class BaccaratService {
         // 寫對局（以 roundId 去重，重試不重複插入）。
         if (roundRepository.findByRoundId(roundId).isEmpty()) {
             try {
-                GameRound round = buildRound(session, outcome, settlement);
+                GameRound round = buildRound(session, outcome, settlement, actualNonce);
                 roundRepository.save(round);
                 eventPublisher.publishBaccaratResult(round, outcome);
             } catch (DataIntegrityViolationException e) {
@@ -185,7 +203,7 @@ public class BaccaratService {
         }
 
         // 揭露 serverSeed 並標記結算
-        sessionService.markSettled(playerId, roundId, session.getServerSeed(), NONCE);
+        sessionService.markSettled(playerId, roundId, session.getServerSeed(), actualNonce);
 
         log.info("baccarat settled roundId={} playerId={} result={} totalBet={} totalPayout={}",
                 roundId, playerId, outcome.result(), totalBet, totalPayout);
@@ -206,11 +224,12 @@ public class BaccaratService {
                 .serverSeed(session.getServerSeed())
                 .serverSeedHash(session.getServerSeedHash())
                 .clientSeed(session.getClientSeed())
-                .nonce(NONCE)
+                .nonce(actualNonce)
                 .build();
     }
 
-    private GameRound buildRound(GameSession session, BaccaratOutcome outcome, BaccaratSettlement settlement) {
+    private GameRound buildRound(GameSession session, BaccaratOutcome outcome,
+                                  BaccaratSettlement settlement, long nonce) {
         GameRound round = new GameRound();
         round.setRoundId(session.getRoundId());
         round.setPlayerId(session.getPlayerId());
@@ -220,11 +239,20 @@ public class BaccaratService {
         round.setServerSeed(session.getServerSeed());
         round.setServerSeedHash(session.getServerSeedHash());
         round.setClientSeed(session.getClientSeed());
-        round.setNonce(NONCE);
+        round.setNonce(nonce);
         round.setResultData(writeResultJson(outcome, settlement));
         round.setStatus(STATUS_SETTLED);
         round.setSettledAt(LocalDateTime.now());
         return round;
+    }
+
+    /** 依押注量找到幸運值保底應命中的結果（以押注金額最大的區為目標）。 */
+    private static BaccaratResult findDesiredResult(long bp, long bb, long bt) {
+        long max = Math.max(bp, Math.max(bb, bt));
+        if (max == 0) return null;
+        if (bt == max) return BaccaratResult.TIE;
+        if (bp >= bb) return BaccaratResult.PLAYER;
+        return BaccaratResult.BANKER;
     }
 
     private String writeResultJson(BaccaratOutcome outcome, BaccaratSettlement settlement) {

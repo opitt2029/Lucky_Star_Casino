@@ -170,7 +170,8 @@ public class FishingService {
      * @throws RoundNotFoundException   無進行中場次或 sessionId 不符
      * @throws IllegalArgumentException 序號/注額/射速驗證失敗（整批拒絕，不動帳）
      */
-    public FishingShotsResponse shots(long playerId, String sessionId, List<FishingShotsRequest.Shot> shots) {
+    public FishingShotsResponse shots(long playerId, String sessionId,
+                                      List<FishingShotsRequest.Shot> shots, boolean fortuneReady) {
         FishingSession session = requireActiveSession(playerId, sessionId);
 
         validateBatch(session, shots);
@@ -180,6 +181,9 @@ public class FishingService {
         long totalPayout = session.getTotalPayout();
         long totalShots = session.getTotalShots();
         long lastShotSeq = session.getLastShotSeq();
+
+        // 幸運值全滿時，本批第一發保底命中（用完後不再保底）
+        boolean fortuneConsumed = !fortuneReady;
 
         List<FishingShotsResponse.ShotResult> results = new ArrayList<>(shots.size());
         for (FishingShotsRequest.Shot shot : shots) {
@@ -202,7 +206,14 @@ public class FishingService {
 
             FishSpecies species = FishSpecies.fromCode(shot.getFishType());
             RandomStream stream = rng.stream(session.getServerSeed(), session.getClientSeed(), shot.getShotSeq());
-            long payout = species.resolvePayout(stream, shot.getBetPerShot());
+            long payout;
+            if (!fortuneConsumed) {
+                // 保底：跳過命中判定，直接計算必中派彩（MONEY_TREE 仍隨機抽倍率）
+                fortuneConsumed = true;
+                payout = species.resolveGuaranteedPayout(stream, shot.getBetPerShot());
+            } else {
+                payout = species.resolvePayout(stream, shot.getBetPerShot());
+            }
             if (payout > 0) {
                 balance += payout;
                 totalPayout += payout;

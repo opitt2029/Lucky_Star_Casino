@@ -73,13 +73,13 @@ public class SlotService {
      * @param bet                 下注金額（已由 controller 驗證 [100, 5000]）
      * @param requestedClientSeed 玩家自訂 client seed（可為 null/空白，則由伺服器產生）
      */
-    public SpinResponse spin(long playerId, long bet, String requestedClientSeed) {
+    public SpinResponse spin(long playerId, long bet, String requestedClientSeed, boolean fortuneReady) {
         String roundId = UUID.randomUUID().toString();
         String serverSeed = rng.generateServerSeed();
         String serverSeedHash = rng.commit(serverSeed);
         String clientSeed = resolveClientSeed(requestedClientSeed);
 
-        return settleInternal(roundId, playerId, bet, serverSeed, serverSeedHash, clientSeed);
+        return settleInternal(roundId, playerId, bet, serverSeed, serverSeedHash, clientSeed, fortuneReady);
     }
 
     /**
@@ -134,7 +134,7 @@ public class SlotService {
 
         SpinResponse response = settleInternal(
                 roundId, playerId, session.getBetAmount(),
-                session.getServerSeed(), session.getServerSeedHash(), session.getClientSeed());
+                session.getServerSeed(), session.getServerSeedHash(), session.getClientSeed(), false);
 
         // 揭露 serverSeed 並標記結算（保留 30 分鐘驗證視窗）。
         sessionService.markSettled(playerId, roundId, session.getServerSeed(), NONCE);
@@ -146,14 +146,17 @@ public class SlotService {
      * 供單次模式與 commit-ahead 結算共用；不觸碰 Session（由呼叫端決定是否標記）。
      */
     private SpinResponse settleInternal(String roundId, long playerId, long bet,
-                                        String serverSeed, String serverSeedHash, String clientSeed) {
+                                        String serverSeed, String serverSeedHash, String clientSeed,
+                                        boolean fortuneReady) {
         // 1) 扣下注（冪等）。餘額不足會丟 InsufficientBalanceException，於此中止、不產生對局。
         WalletDebitResponse debit = walletClient.debit(
                 playerId, bet, "slot-bet-" + roundId, roundId);
 
-        // 2) 以三元組推導確定性結果。
+        // 2) 以三元組推導確定性結果；幸運值全滿時使用保底必中轉動。
         RandomStream stream = rng.stream(serverSeed, clientSeed, NONCE);
-        SlotOutcome outcome = slotMachine.spin(stream, bet);
+        SlotOutcome outcome = fortuneReady
+                ? slotMachine.spinGuaranteedWin(stream, bet)
+                : slotMachine.spin(stream, bet);
 
         // 3) 命中則派彩（冪等）。
         long balanceAfter = debit.balanceAfter();

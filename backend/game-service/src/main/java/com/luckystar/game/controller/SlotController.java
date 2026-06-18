@@ -52,7 +52,7 @@ public class SlotController {
         if (playerId == null) {
             return badPlayerId(playerIdStr);
         }
-        SpinResponse result = slotService.spin(playerId, request.getBet(), request.getClientSeed());
+        SpinResponse result = slotService.spin(playerId, request.getBet(), request.getClientSeed(), request.isFortuneFull());
         return ResponseEntity.ok(ApiResponse.ok(result));
     }
 
