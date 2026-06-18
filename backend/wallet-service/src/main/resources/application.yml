@@ -72,6 +72,11 @@ management:
 internal:
   secret: ${INTERNAL_SECRET:?INTERNAL_SECRET environment variable is required}
 
+# 鑽石測試帳號：列入清單者視為「無限鑽石」，鑽石換星幣不檢查餘額也不實際扣款（僅供測試/展示）
+# 1172=tadge003、1175=weiyu10366。可由 DIAMOND_UNLIMITED_PLAYER_IDS 逗號分隔覆寫
+diamond:
+  unlimited-player-ids: ${DIAMOND_UNLIMITED_PLAYER_IDS:1172,1175}
+
 logging:
   level:
     com.luckystar.wallet: ${LOG_LEVEL_APP:INFO}
