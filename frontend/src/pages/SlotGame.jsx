@@ -15,6 +15,7 @@ import LuckyAura from '../casino-fx/fx/LuckyAura'
 import FortuneMeter from '../casino-fx/fx/FortuneMeter'
 import { useFortuneMeter } from '../casino-fx/fx/useFortuneMeter'
 import { announcePlayerWin } from '../casino-fx/announce/announceBus'
+import { useGameLeaveGuard } from '../hooks/useGameLeaveGuard'
 
 const betOptions = [100, 500, 1000, 'MAX']
 const slotRules = [
@@ -41,7 +42,7 @@ export default function SlotGame() {
   const balance = useSelector((state) => state.wallet.balance)
   const player = useSelector((state) => state.auth.player)
   const { status, result, loading, error, slotGrid, winningCells } = useSelector((state) => state.game)
-  const fortune = useFortuneMeter('slot')
+  const fortune = useFortuneMeter('slot', player?.id)
   useBgm('slot')
   const resolvedBet = selectedBet === 'MAX' ? Math.max(Math.min(balance, 5000), 100) : selectedBet
   const lastPayout = result?.game === 'slot' ? result.payout : null
@@ -50,12 +51,13 @@ export default function SlotGame() {
     lastMultiplier === null ? '開始一局後顯示結果' : lastMultiplier > 0 ? `中獎倍率 ${lastMultiplier}x` : '本局未中獎'
   const roundStatus = loading || visualLock ? 'spinning' : status
   const hasLineWin = winningCells.length > 0
+  useGameLeaveGuard(loading || visualLock, '轉輪進行中，確定要離開嗎？離開後本局下注不返還。')
 
   const handleSpinRound = async () => {
     setVisualLock(true)
     fortune.addCharge(resolvedBet)
     try {
-      const spinResult = await dispatch(spinSlot({ bet: resolvedBet })).unwrap()
+      const spinResult = await dispatch(spinSlot({ bet: resolvedBet, fortuneReady: fortune.full })).unwrap()
       dispatch(setBalance(spinResult.wallet))
       return spinResult
     } finally {

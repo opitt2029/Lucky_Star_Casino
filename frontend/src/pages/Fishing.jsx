@@ -15,6 +15,7 @@ import LuckyAura from '../casino-fx/fx/LuckyAura'
 import FortuneMeter from '../casino-fx/fx/FortuneMeter'
 import { useFortuneMeter } from '../casino-fx/fx/useFortuneMeter'
 import { announcePlayerWin } from '../casino-fx/announce/announceBus'
+import { useGameLeaveGuard } from '../hooks/useGameLeaveGuard'
 
 const BUY_IN_OPTIONS = [1000, 3000, 5000]
 const CANNON_OPTIONS = [
@@ -120,7 +121,7 @@ export default function Fishing() {
   const balance = useSelector((state) => state.wallet.balance)
   const player = useSelector((state) => state.auth.player)
   const { play } = useSound()
-  const fortune = useFortuneMeter('fishing')
+  const fortune = useFortuneMeter('fishing', player?.id)
 
   const [bossActive, setBossActive] = useState(false)
   const [selectedBuyIn, setSelectedBuyIn] = useState(BUY_IN_OPTIONS[0])
@@ -136,6 +137,7 @@ export default function Fishing() {
   const arenaResultsRef = useRef(null)
   const session = useFishingSession({
     onResults: (results, ctx) => arenaResultsRef.current?.(results, ctx),
+    fortuneReady: fortune.full,
   })
 
   // BGM：進場深海主題；Boss 在場切中式大鼓主題。
@@ -183,6 +185,10 @@ export default function Fishing() {
   }
 
   const { phase, sessionBalance, stats, settleResult, error, betPerShot, cannonLevel } = session
+  useGameLeaveGuard(
+    phase === 'playing',
+    '捕魚場次進行中，確定要離開嗎？離開後局內餘額將在 30 分鐘內自動結算退回。'
+  )
 
   return (
     <AppShell>
