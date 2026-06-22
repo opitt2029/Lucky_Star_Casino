@@ -72,7 +72,7 @@ public class AlertRuleEngine {
         }
 
         long betCount = incrWithTtl(BETCOUNT_KEY_PREFIX + playerId, HIGH_FREQ_WINDOW);
-        if (betCount > HIGH_FREQ_BET_LIMIT) {
+        if (betCount == HIGH_FREQ_BET_LIMIT + 1L) {
             raise(playerId, ALERT_HIGH_FREQUENCY,
                     "bet count " + betCount + " > " + HIGH_FREQ_BET_LIMIT
                             + " within " + HIGH_FREQ_WINDOW.toMinutes() + "min");
@@ -88,7 +88,7 @@ public class AlertRuleEngine {
         Long playerId = event.playerId();
 
         long txnCount = incrWithTtl(TXNCOUNT_KEY_PREFIX + playerId, ABNORMAL_TXN_WINDOW);
-        if (txnCount > ABNORMAL_TXN_LIMIT) {
+        if (txnCount == ABNORMAL_TXN_LIMIT + 1L) {
             raise(playerId, ALERT_ABNORMAL_TRANSFER,
                     "transaction count " + txnCount + " > " + ABNORMAL_TXN_LIMIT
                             + " within " + ABNORMAL_TXN_WINDOW.toSeconds() + "s");
@@ -115,6 +115,7 @@ public class AlertRuleEngine {
         log.info("Anomaly alert raised: player={} type={} detail={}", playerId, alertType, detail);
 
         Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("audience", "ADMIN");
         payload.put("playerId", playerId);
         payload.put("alertType", alertType);
         payload.put("detail", detail);
@@ -123,7 +124,7 @@ public class AlertRuleEngine {
                 null,
                 alertType,
                 "Anomaly detected: " + alertType,
-                "Player " + playerId + " — " + detail,
+                "Player " + playerId + ": " + detail,
                 payload);
     }
 }
