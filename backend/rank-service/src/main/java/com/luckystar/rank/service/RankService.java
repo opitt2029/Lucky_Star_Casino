@@ -4,8 +4,6 @@ import com.luckystar.rank.dto.RankEntryResponse;
 import com.luckystar.rank.dto.PlayerCoinBalance;
 import com.luckystar.rank.kafka.RankUpdatePublisher;
 import java.time.Duration;
-import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -33,10 +31,8 @@ public class RankService {
     public static final String PLAYER_USERNAME_KEY = "rank:player:usernames";
 
     // T-045 今日贏幣王
-    public static final String DAILY_WINNINGS_KEY_PREFIX = "rank:daily:winnings:";
+    public static final String DAILY_WINNINGS_KEY = "rank:daily:winnings";
     public static final int DAILY_WINNINGS_TOP_LIMIT = 100;
-    public static final Duration DAILY_WINNINGS_TTL = Duration.ofHours(48);
-    private static final ZoneId TAIPEI = ZoneId.of("Asia/Taipei");
 
     // T-073 排行榜廣播
     public static final int GLOBAL_TOP10_LIMIT = 10;
@@ -73,26 +69,24 @@ public class RankService {
             return;
         }
 
-        String key = dailyWinningsKey();
-        redisTemplate.opsForZSet().incrementScore(key, playerId.toString(), amount);
-        Long ttl = redisTemplate.getExpire(key);
-        if (ttl == null || ttl < 0) {
-            redisTemplate.expire(key, DAILY_WINNINGS_TTL);
-        }
+        redisTemplate.opsForZSet().incrementScore(DAILY_WINNINGS_KEY, playerId.toString(), amount);
+    }
+
+    public void resetDailyWinnings() {
+        redisTemplate.delete(DAILY_WINNINGS_KEY);
     }
 
     public List<RankEntryResponse> getTopDailyWinnings(int limit) {
         int boundedLimit = Math.max(0, Math.min(limit, DAILY_WINNINGS_TOP_LIMIT));
-        return readTopRank(dailyWinningsKey(), boundedLimit);
+        return readTopRank(DAILY_WINNINGS_KEY, boundedLimit);
     }
 
     public Optional<RankEntryResponse> getDailyWinningsRank(Long playerId) {
         Objects.requireNonNull(playerId, "playerId is required");
 
-        String key = dailyWinningsKey();
         String member = playerId.toString();
-        Long zeroBasedRank = redisTemplate.opsForZSet().reverseRank(key, member);
-        Double score = redisTemplate.opsForZSet().score(key, member);
+        Long zeroBasedRank = redisTemplate.opsForZSet().reverseRank(DAILY_WINNINGS_KEY, member);
+        Double score = redisTemplate.opsForZSet().score(DAILY_WINNINGS_KEY, member);
 
         if (zeroBasedRank == null || score == null) {
             return Optional.empty();
@@ -105,10 +99,6 @@ public class RankService {
                 username,
                 zeroBasedRank + 1,
                 score.longValue()));
-    }
-
-    private String dailyWinningsKey() {
-        return DAILY_WINNINGS_KEY_PREFIX + LocalDate.now(TAIPEI);
     }
 
     private void maybeBroadcastTop10() {
