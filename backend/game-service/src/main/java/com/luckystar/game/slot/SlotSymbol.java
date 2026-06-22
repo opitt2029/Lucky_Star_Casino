@@ -13,33 +13,44 @@ package com.luckystar.game.slot;
  *   <li>SEVEN  = U+0037 U+FE0F U+20E3（數字 7 + 變體選擇子 + 圍封鍵帽，共三個 code point）</li>
  * </ul>
  *
- * <p>每個符號帶兩個賠付參數：
+ * <p>每個符號帶三個賠付參數（中線由左到右讀，兩階賠付）：
  * <ul>
  *   <li><b>weight</b>：轉輪上出現的相對權重（越大越常見）。權重決定盤面分布，進而決定 RTP。</li>
- *   <li><b>lineMultiplier</b>：中線三連時的倍率（含本金返還，派彩 = 下注 x 倍率）。
- *       倍率取前端公告的 2x / 3x / 5x / 8x；越稀有的符號倍率越高。</li>
+ *   <li><b>pairMultiplier</b>：中線「左二格相同」（第三格不同）時的小獎倍率（含本金返還）。
+ *       常見符號取 1x（退本金 push），稀有符號略高；用以拉高命中頻率、製造頻繁小獎（LDW）手感。</li>
+ *   <li><b>tripleMultiplier</b>：中線三連時的大獎倍率（含本金返還，派彩 = 下注 x 倍率）。
+ *       越稀有的符號倍率越高，保留稀有符號大獎的刺激尾部。</li>
  * </ul>
  *
- * <p>以目前權重（總和 100）計算，單中線三連的理論 RTP 約 17.7%、命中率約 5.6%。此值偏低源於
- * 「單中線、僅三連賠付、倍率上限 8x」的既有玩法設定；權重與倍率皆為常數，可由產品端調整以
- * 校準 RTP（T-037 會實際量測）。
+ * <p><b>理論值（權重總和 103，中線單線兩階賠付）：</b>
+ * <ul>
+ *   <li>RTP = Σpᵢ³·Tᵢ（三連）+ Σpᵢ²(1−pᵢ)·Pᵢ（左二同） ≈ <b>93.8%</b></li>
+ *   <li>命中率 = Σpᵢ³（三連 ≈11.2%）+ Σpᵢ²(1−pᵢ)（左二同 ≈19.5%） ≈ <b>30.7%</b></li>
+ * </ul>
+ * 其中 pᵢ = weightᵢ / 103，Tᵢ = tripleMultiplier，Pᵢ = pairMultiplier。此設定把舊版「單中線、
+ * 僅三連、RTP 約 17.7%、命中率約 5.6%」提升為娛樂級「常中小獎 + 偶爾大獎」。權重與倍率皆為常數，
+ * 可由產品端調整以校準 RTP（T-037 會實際量測）。前端 mock（{@code frontend/src/services/mockApi.js}
+ * 的 SLOT_PAYTABLE）須與本表權重/倍率對齊；改本表務必同步更新 {@link SlotSymbolTest}/
+ * {@code SlotMachineTest} 的斷言與本 Javadoc 的理論值。
  */
 public enum SlotSymbol {
 
-    CHERRY(30, 2, 0x1F352),
-    LEMON(26, 3, 0x1F34B),
-    BELL(20, 5, 0x1F514),
-    STAR(14, 8, 0x2B50),
-    SEVEN(10, 8, 0x0037, 0xFE0F, 0x20E3);
+    CHERRY(45, 1, 5, 0x1F352),
+    LEMON(30, 1, 8, 0x1F34B),
+    BELL(16, 2, 18, 0x1F514),
+    STAR(7, 3, 50, 0x2B50),
+    SEVEN(5, 5, 70, 0x0037, 0xFE0F, 0x20E3);
 
     private final String display;
     private final int weight;
-    private final int lineMultiplier;
+    private final int pairMultiplier;
+    private final int tripleMultiplier;
 
-    SlotSymbol(int weight, int lineMultiplier, int... codePoints) {
+    SlotSymbol(int weight, int pairMultiplier, int tripleMultiplier, int... codePoints) {
         this.display = new String(codePoints, 0, codePoints.length);
         this.weight = weight;
-        this.lineMultiplier = lineMultiplier;
+        this.pairMultiplier = pairMultiplier;
+        this.tripleMultiplier = tripleMultiplier;
     }
 
     /** 前端顯示用的 emoji 字串。 */
@@ -52,9 +63,14 @@ public enum SlotSymbol {
         return weight;
     }
 
-    /** 中線三連倍率（派彩 = 下注 x 倍率）。 */
-    public int lineMultiplier() {
-        return lineMultiplier;
+    /** 中線「左二格相同」小獎倍率（派彩 = 下注 x 倍率，含本金）。 */
+    public int pairMultiplier() {
+        return pairMultiplier;
+    }
+
+    /** 中線三連大獎倍率（派彩 = 下注 x 倍率，含本金）。 */
+    public int tripleMultiplier() {
+        return tripleMultiplier;
     }
 
     /** 所有符號的權重總和，作為加權抽樣的上界。 */
