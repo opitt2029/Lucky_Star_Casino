@@ -41,7 +41,7 @@ class BaccaratControllerTest {
                 .roundId("r1").game("baccarat")
                 .bets(Map.of("player", 100L, "banker", 0L, "tie", 0L))
                 .totalBet(100).serverSeedHash("hash").clientSeed("cli").build();
-        when(baccaratService.placeBet(eq(7L), eq(100L), any(), any(), any())).thenReturn(resp);
+        when(baccaratService.placeBet(eq(7L), eq(100L), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean())).thenReturn(resp);
 
         mockMvc.perform(post("/api/v1/game/baccarat/bet")
                         .header("X-User-Id", "7")
@@ -63,7 +63,7 @@ class BaccaratControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Missing X-User-Id header"));
 
-        verify(baccaratService, never()).placeBet(anyLong(), any(), any(), any(), any());
+        verify(baccaratService, never()).placeBet(anyLong(), any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
     }
 
     @Test

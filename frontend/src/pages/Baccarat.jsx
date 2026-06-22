@@ -213,7 +213,9 @@ function saveSqueezeMode(playerId, value) {
   try {
     const all = JSON.parse(localStorage.getItem(SQUEEZE_STORAGE_KEY) || '{}')
     localStorage.setItem(SQUEEZE_STORAGE_KEY, JSON.stringify({ ...all, [playerId]: value }))
-  } catch {}
+  } catch {
+    // 忽略寫入失敗（localStorage 不可用或配額已滿）；咪牌偏好為非關鍵狀態。
+  }
 }
 
 export default function Baccarat() {
