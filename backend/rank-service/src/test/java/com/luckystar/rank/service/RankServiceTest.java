@@ -3,8 +3,6 @@ package com.luckystar.rank.service;
 import com.luckystar.rank.dto.RankEntryResponse;
 import com.luckystar.rank.dto.PlayerCoinBalance;
 import com.luckystar.rank.kafka.RankUpdatePublisher;
-import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -44,9 +42,6 @@ class RankServiceTest {
 
     @Mock
     RankUpdatePublisher rankUpdatePublisher;
-
-    private static final String DAILY_KEY =
-            "rank:daily:winnings:" + LocalDate.now(ZoneId.of("Asia/Taipei"));
 
     @Test
     void updatePlayerCoins_zaddsCurrentCoinBalance() {
@@ -238,27 +233,13 @@ class RankServiceTest {
     // ---- T-045 今日贏幣王 ----
 
     @Test
-    void addDailyWinnings_firstWrite_incrementsScoreAndSets48hTtl() {
+    void addDailyWinnings_incrementsFixedDailyWinningsZSet() {
         when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
-        when(redisTemplate.getExpire(DAILY_KEY)).thenReturn(-1L);
         RankService rankService = new RankService(redisTemplate, rankUpdatePublisher);
 
         rankService.addDailyWinnings(42L, 100L);
 
-        verify(zSetOperations, times(1)).incrementScore(DAILY_KEY, "42", 100.0);
-        verify(redisTemplate, times(1)).expire(DAILY_KEY, RankService.DAILY_WINNINGS_TTL);
-    }
-
-    @Test
-    void addDailyWinnings_existingKey_doesNotResetTtl() {
-        when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
-        when(redisTemplate.getExpire(DAILY_KEY)).thenReturn(3600L);
-        RankService rankService = new RankService(redisTemplate, rankUpdatePublisher);
-
-        rankService.addDailyWinnings(42L, 50L);
-
-        verify(zSetOperations, times(1)).incrementScore(DAILY_KEY, "42", 50.0);
-        verify(redisTemplate, never()).expire(eq(DAILY_KEY), eq(RankService.DAILY_WINNINGS_TTL));
+        verify(zSetOperations, times(1)).incrementScore(RankService.DAILY_WINNINGS_KEY, "42", 100.0);
     }
 
     @Test
@@ -269,8 +250,19 @@ class RankServiceTest {
         rankService.addDailyWinnings(42L, 0L);
         rankService.addDailyWinnings(42L, -5L);
 
-        verify(zSetOperations, never()).incrementScore(eq(DAILY_KEY), eq("42"), org.mockito.ArgumentMatchers.anyDouble());
-        verify(redisTemplate, never()).expire(eq(DAILY_KEY), eq(RankService.DAILY_WINNINGS_TTL));
+        verify(zSetOperations, never()).incrementScore(
+                eq(RankService.DAILY_WINNINGS_KEY),
+                eq("42"),
+                org.mockito.ArgumentMatchers.anyDouble());
+    }
+
+    @Test
+    void resetDailyWinnings_deletesFixedDailyWinningsZSet() {
+        RankService rankService = new RankService(redisTemplate, rankUpdatePublisher);
+
+        rankService.resetDailyWinnings();
+
+        verify(redisTemplate).delete(RankService.DAILY_WINNINGS_KEY);
     }
 
     @Test
@@ -279,7 +271,7 @@ class RankServiceTest {
         Set<ZSetOperations.TypedTuple<String>> tuples = new LinkedHashSet<>();
         tuples.add(new DefaultTypedTuple<>("7", 9000.0));
         tuples.add(new DefaultTypedTuple<>("42", 1500.0));
-        when(zSetOperations.reverseRangeWithScores(DAILY_KEY, 0, 99)).thenReturn(tuples);
+        when(zSetOperations.reverseRangeWithScores(RankService.DAILY_WINNINGS_KEY, 0, 99)).thenReturn(tuples);
         when(hashOperations.multiGet(RankService.PLAYER_USERNAME_KEY, List.of("7", "42")))
                 .thenReturn(List.of("nova", "alice"));
 
@@ -293,8 +285,8 @@ class RankServiceTest {
     @Test
     void getDailyWinningsRank_returnsOneBasedRankWhenPresent() {
         RankService rankService = buildService();
-        when(zSetOperations.reverseRank(DAILY_KEY, "42")).thenReturn(0L);
-        when(zSetOperations.score(DAILY_KEY, "42")).thenReturn(1500.0);
+        when(zSetOperations.reverseRank(RankService.DAILY_WINNINGS_KEY, "42")).thenReturn(0L);
+        when(zSetOperations.score(RankService.DAILY_WINNINGS_KEY, "42")).thenReturn(1500.0);
         when(hashOperations.get(RankService.PLAYER_USERNAME_KEY, "42")).thenReturn("alice");
 
         Optional<RankEntryResponse> response = rankService.getDailyWinningsRank(42L);
@@ -305,8 +297,8 @@ class RankServiceTest {
     @Test
     void getDailyWinningsRank_returnsEmptyWhenNotRanked() {
         RankService rankService = buildService();
-        when(zSetOperations.reverseRank(DAILY_KEY, "99")).thenReturn(null);
-        when(zSetOperations.score(DAILY_KEY, "99")).thenReturn(null);
+        when(zSetOperations.reverseRank(RankService.DAILY_WINNINGS_KEY, "99")).thenReturn(null);
+        when(zSetOperations.score(RankService.DAILY_WINNINGS_KEY, "99")).thenReturn(null);
 
         assertThat(rankService.getDailyWinningsRank(99L)).isEmpty();
     }

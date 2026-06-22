@@ -406,7 +406,7 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | T-042 | P0 | 排行榜查詢 API | ✅ | `/global`、`/global/{id}`、`/friends`、`/friends/me`（自己好友名次）+ username read model；**頭像欄位待 member 端發布頭像後補（跨組待辦）** |
 | T-043 | P1 | 每週排行榜重置排程 | ✅ | `@Scheduled(cron="0 0 0 * * MON", zone="Asia/Taipei")` + `rank_history` 冠軍快照 + `wallets.balance` 重建 ZSet + `notification.push` TOP3 通知 |
 | T-044 | P1 | 每日持幣快照任務 | ✅ | `@Scheduled(cron="0 0 0 * * *", zone="Asia/Taipei")` + `rank_daily_snapshots` 前一日持幣量快照 |
-| T-045 | P2 | 今日贏幣王排行榜 | ❌ | 同上 |
+| T-045 | P2 | 今日贏幣王排行榜 | ✅ | `rank:daily:winnings` ZSet + `wallet.credit` WIN 累加 + `/api/v1/rank/daily/winnings` API + 每日 00:00 重置 |
 
 ### A.6 Admin Service（組員D）
 
@@ -517,6 +517,6 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 - ✅ **完成度高**：全域基礎建設、Member Service、Gateway、Game Service（T-030~T-037）、Rank Service（T-040~T-044）、**Notification Service（T-070~T-073 全完成）**、**鑽石系統（T-100~T-107 全完成）**
 - ⚠️ **進行中**：Wallet Service（破產補助 T-027 / DLT 後台 T-028 未完）、前端（UI 齊全但 rankSlice 等尚未切換真實 API）
-- ❌ **尚未起步**：Swagger 文件（T-092）、E2E 整合測試（T-093）、結業簡報（T-096）、今日贏幣王（T-045）、異常玩家偵測（T-054）、GM 手動發幣（T-055）、破產補助（T-027）
+- ❌ **尚未起步**：Swagger 文件（T-092）、E2E 整合測試（T-093）、結業簡報（T-096）、異常玩家偵測（T-054）、GM 手動發幣（T-055）、破產補助（T-027）
 
 > **結論**：認證、帳號、遊戲對局、排行榜、即時推播、鑽石點數卡系統後端皆已完成；**剩餘空白主要集中在收尾文件（Swagger/E2E/簡報）、少數功能（破產補助/GM 工具）與前端 mock→真實 API 切換**。
