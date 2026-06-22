@@ -1,8 +1,17 @@
 const DB_KEY = 'lucky-star-mock-db-v1'
 const SESSION_KEY = 'lucky-star-session-v1'
 
-const slotSymbols = ['🍒', '🍋', '🔔', '⭐', '7️⃣']
-const MOCK_SLOT_FORCED_WIN_RATE = 0.18
+// 老虎機賠付表與權重——與後端 backend/.../slot/SlotSymbol.java 對齊（單一真相）。
+// 中線三連才中獎，倍率由命中符號決定；勿在 mock 端自行加「強制中獎率」或隨機倍率，否則與後端/賠付表脫鉤。
+const SLOT_PAYTABLE = [
+  { symbol: '🍒', weight: 45, multiplier: 2 },
+  { symbol: '🍋', weight: 30, multiplier: 3 },
+  { symbol: '🔔', weight: 16, multiplier: 5 },
+  { symbol: '⭐', weight: 7, multiplier: 8 },
+  { symbol: '7️⃣', weight: 5, multiplier: 8 },
+]
+const SLOT_TOTAL_WEIGHT = SLOT_PAYTABLE.reduce((sum, entry) => sum + entry.weight, 0)
+const SLOT_MULTIPLIER = Object.fromEntries(SLOT_PAYTABLE.map((entry) => [entry.symbol, entry.multiplier]))
 
 // 捕魚機魚種表（與後端 FishSpecies 對齊）；命中機率 = TARGET_RTP / 倍率。
 const FISHING_TARGET_RTP = 0.92
@@ -263,14 +272,45 @@ function points(cards) {
   }, 0) % 10
 }
 
+// 百家樂莊家補牌規則——與後端 BaccaratGameService.bankerDraws 對齊。
+// playerThirdValue 為 null 表示閒家未補牌（莊家比照閒家 0~5 補、6~7 停）。
+function bankerDrawsMock(bankerScore, playerThirdValue) {
+  if (playerThirdValue === null) return bankerScore <= 5
+  const p3 = playerThirdValue
+  switch (bankerScore) {
+    case 0:
+    case 1:
+    case 2:
+      return true
+    case 3:
+      return p3 !== 8
+    case 4:
+      return p3 >= 2 && p3 <= 7
+    case 5:
+      return p3 >= 4 && p3 <= 7
+    case 6:
+      return p3 >= 6 && p3 <= 7
+    default:
+      return false
+  }
+}
+
 function randomCard() {
   return baccaratValues[Math.floor(Math.random() * baccaratValues.length)]
 }
 
+// 逐格加權抽樣，對齊後端 SlotMachine（每格獨立按權重抽符號）。
+function pickSlotSymbol() {
+  let cursor = Math.floor(Math.random() * SLOT_TOTAL_WEIGHT)
+  for (const entry of SLOT_PAYTABLE) {
+    if (cursor < entry.weight) return entry.symbol
+    cursor -= entry.weight
+  }
+  return SLOT_PAYTABLE[SLOT_PAYTABLE.length - 1].symbol
+}
+
 function randomSlotGrid() {
-  return Array.from({ length: 3 }, (_, rowIndex) =>
-    Array.from({ length: 3 }, (_, colIndex) => slotSymbols[(rowIndex + colIndex + Math.floor(Math.random() * slotSymbols.length)) % slotSymbols.length])
-  )
+  return Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => pickSlotSymbol()))
 }
 
 function applyWalletChange(db, playerId, amount, type, title) {
@@ -433,11 +473,10 @@ export const mockApi = {
 
     applyWalletChange(db, playerId, -bet, 'bet', '老虎機下注')
     const grid = randomSlotGrid()
-    const centerSymbol = grid[1][0]
-    const isWin = grid[1].every((symbol) => symbol === centerSymbol) || Math.random() < MOCK_SLOT_FORCED_WIN_RATE
-    if (isWin) grid[1] = [centerSymbol, centerSymbol, centerSymbol]
-
-    const multiplier = isWin ? [2, 3, 5, 8][Math.floor(Math.random() * 4)] : 0
+    // 中線三連才中獎，倍率由命中符號的賠付表決定（與後端 SlotMachine.evaluate 一致）。
+    const [c0, c1, c2] = grid[1]
+    const isWin = c0 === c1 && c1 === c2
+    const multiplier = isWin ? SLOT_MULTIPLIER[c0] : 0
     const payout = bet * multiplier
     if (payout) applyWalletChange(db, playerId, payout, 'payout', '老虎機派彩')
     saveDb(db)
@@ -449,7 +488,7 @@ export const mockApi = {
       bet,
       multiplier,
       payout,
-      winningCells: payout ? [[1, 0], [1, 1], [1, 2]] : [],
+      winningCells: isWin ? [[1, 0], [1, 1], [1, 2]] : [],
       wallet: db.wallets[playerId],
     }
   },
@@ -464,11 +503,34 @@ export const mockApi = {
     applyWalletChange(db, playerId, -amount, 'bet', `百家樂下注 ${area}`)
     const playerCards = [randomCard(), randomCard()]
     const bankerCards = [randomCard(), randomCard()]
-    const playerPoints = points(playerCards)
-    const bankerPoints = points(bankerCards)
+    let playerPoints = points(playerCards)
+    let bankerPoints = points(bankerCards)
+    const playerNatural = playerPoints >= 8
+    const bankerNatural = bankerPoints >= 8
+    // 任一方天牌(8/9)雙方停牌；否則依標準規則補第三張（與後端 BaccaratGameService.play 對齊）。
+    if (!playerNatural && !bankerNatural) {
+      let playerThirdValue = null
+      if (playerPoints <= 5) {
+        const third = randomCard()
+        playerCards.push(third)
+        playerThirdValue = points([third])
+        playerPoints = points(playerCards)
+      }
+      if (bankerDrawsMock(bankerPoints, playerThirdValue)) {
+        bankerCards.push(randomCard())
+        bankerPoints = points(bankerCards)
+      }
+    }
     const winner = playerPoints === bankerPoints ? 'tie' : playerPoints > bankerPoints ? 'player' : 'banker'
-    const odds = area === 'tie' ? 8 : area === 'banker' ? 0.95 : 1
-    const payout = area === winner ? Math.floor(amount + amount * odds) : 0
+    // 派彩含本金（與後端 settle 對齊）：和局時押莊/閒退本金(push)、押中和 9x；莊贏扣 5% 傭金。
+    let payout
+    if (winner === 'tie') {
+      payout = area === 'tie' ? amount * 9 : amount
+    } else if (area === winner) {
+      payout = area === 'banker' ? amount * 2 - Math.floor(amount * 0.05) : amount * 2
+    } else {
+      payout = 0
+    }
     if (payout) applyWalletChange(db, playerId, payout, 'payout', '百家樂派彩')
     saveDb(db)
 

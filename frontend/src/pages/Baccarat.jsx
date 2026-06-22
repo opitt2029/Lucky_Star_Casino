@@ -50,8 +50,8 @@ const chipDenominations = [100, 200, 500, 1000, 2000, 3000, 5000]
 const baccaratRules = [
   '先選擇閒家、莊家或和局，再輸入下注金額（每區 100 ~ 5,000 星幣）或用面額快速選擇。',
   'A 計 1 點，2 到 9 依牌面計點，10、J、Q、K 計 0 點；兩張牌總和只取個位數。',
-  '由伺服器為閒家與莊家各發兩張牌，點數高者勝出，兩邊同分為和局。',
-  '押中會依賠率計算本局獲利，未押中則損失下注金額，結果會即時反映在可用星幣。',
+  '由伺服器為閒家與莊家各發兩張牌，必要時依標準規則補第三張，點數高者勝出，兩邊同分為和局。',
+  '押中依賠率計算獲利（莊家扣 5% 傭金），未押中則損失下注金額；和局時押莊／閒退回本金，結果即時反映在可用星幣。',
 ]
 const baccaratPayouts = [
   { label: '閒家 Player', value: '1x' },
@@ -266,13 +266,11 @@ export default function Baccarat() {
   }, [history])
 
   const numericBetAmount = useMemo(() => Number(betAmount), [betAmount])
-  const canDeal =
-    selectedBet &&
-    Number.isFinite(numericBetAmount) &&
-    numericBetAmount >= MIN_BET &&
-    numericBetAmount <= MAX_BET &&
-    !isDealing &&
-    !concealed
+  const amountInRange =
+    Number.isFinite(numericBetAmount) && numericBetAmount >= MIN_BET && numericBetAmount <= MAX_BET
+  // 餘額不足守門：金額在合法範圍但超過可用星幣時，禁止下注並提示（後端仍是最後防線）。
+  const notEnoughBalance = amountInRange && balance < numericBetAmount
+  const canDeal = selectedBet && amountInRange && !notEnoughBalance && !isDealing && !concealed
   const winnerLabel = winner ? BET_LABELS[winner] : '-'
   const selectedBetLabel = selectedBet ? BET_LABELS[selectedBet] : '尚未選擇'
   const sidebarProfitValue =
@@ -376,6 +374,12 @@ export default function Baccarat() {
 
     if (!Number.isFinite(numericBetAmount) || numericBetAmount < MIN_BET || numericBetAmount > MAX_BET) {
       setResultMessage(`下注金額需介於 ${MIN_BET.toLocaleString()} ~ ${MAX_BET.toLocaleString()} 星幣。`)
+      setRoundProfit(null)
+      return
+    }
+
+    if (balance < numericBetAmount) {
+      setResultMessage('星幣不足，請先儲值後再下注。')
       setRoundProfit(null)
       return
     }
@@ -589,7 +593,7 @@ export default function Baccarat() {
                       disabled={!canDeal}
                       className="baccarat-action-button"
                     >
-                      {isDealing ? '發牌中...' : '開始發牌'}
+                      {isDealing ? '發牌中...' : notEnoughBalance ? '星幣不足' : '開始發牌'}
                     </button>
                   </div>
                 </section>

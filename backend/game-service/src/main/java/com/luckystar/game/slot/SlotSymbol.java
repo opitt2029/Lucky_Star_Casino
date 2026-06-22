@@ -20,17 +20,18 @@ package com.luckystar.game.slot;
  *       倍率取前端公告的 2x / 3x / 5x / 8x；越稀有的符號倍率越高。</li>
  * </ul>
  *
- * <p>以目前權重（總和 100）計算，單中線三連的理論 RTP 約 17.7%、命中率約 5.6%。此值偏低源於
- * 「單中線、僅三連賠付、倍率上限 8x」的既有玩法設定；權重與倍率皆為常數，可由產品端調整以
- * 校準 RTP（T-037 會實際量測）。
+ * <p>以目前權重（總和 103）計算，單中線三連的理論 RTP 約 26%、命中率約 11%。此設定已較原本
+ * （權重總和 100、RTP 約 17.7%、命中率約 5.6%）提升中獎頻率與 RTP；但受限於「單中線、僅三連賠付、
+ * 倍率上限 8x」的玩法上限，RTP 仍屬偏低。權重與倍率皆為常數，可由產品端調整以校準 RTP（T-037 會實際量測）。
+ * 前端 mock（{@code frontend/src/services/mockApi.js} 的 SLOT_PAYTABLE）須與本表權重/倍率對齊。
  */
 public enum SlotSymbol {
 
-    CHERRY(30, 2, 0x1F352),
-    LEMON(26, 3, 0x1F34B),
-    BELL(20, 5, 0x1F514),
-    STAR(14, 8, 0x2B50),
-    SEVEN(10, 8, 0x0037, 0xFE0F, 0x20E3);
+    CHERRY(45, 2, 0x1F352),
+    LEMON(30, 3, 0x1F34B),
+    BELL(16, 5, 0x1F514),
+    STAR(7, 8, 0x2B50),
+    SEVEN(5, 8, 0x0037, 0xFE0F, 0x20E3);
 
     private final String display;
     private final int weight;

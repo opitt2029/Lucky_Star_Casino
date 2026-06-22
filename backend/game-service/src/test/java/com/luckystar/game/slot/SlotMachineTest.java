@@ -116,7 +116,7 @@ class SlotMachineTest {
                 winOutcome = o;
             }
         }
-        assertNotNull(winOutcome, "10 萬局內必有命中（命中率約 5.6%）");
+        assertNotNull(winOutcome, "10 萬局內必有命中（命中率約 11%）");
         assertEquals(200L * winOutcome.multiplier(), winOutcome.payout());
         assertArrayEquals(new int[][] {{1, 0}, {1, 1}, {1, 2}}, winOutcome.winningCells());
         assertEquals(winOutcome.grid()[1][0], winOutcome.grid()[1][1]);
@@ -141,9 +141,9 @@ class SlotMachineTest {
         }
         double rtp = (double) totalPayout / totalBet;
         double hitRate = (double) wins / spins;
-        // 理論 RTP 約 0.177、命中率約 0.056；給寬鬆區間以容納抽樣誤差。
-        assertTrue(rtp > 0.10 && rtp < 0.28, "RTP 超出預期範圍: " + rtp);
-        assertTrue(hitRate > 0.03 && hitRate < 0.09, "命中率超出預期範圍: " + hitRate);
+        // 理論 RTP 約 0.263、命中率約 0.112（權重 45/30/16/7/5、總和 103）；給寬鬆區間以容納抽樣誤差。
+        assertTrue(rtp > 0.20 && rtp < 0.32, "RTP 超出預期範圍: " + rtp);
+        assertTrue(hitRate > 0.08 && hitRate < 0.15, "命中率超出預期範圍: " + hitRate);
     }
 
     @Test

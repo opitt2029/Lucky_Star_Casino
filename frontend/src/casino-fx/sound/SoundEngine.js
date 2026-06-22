@@ -10,6 +10,17 @@ const defaultSettings = {
   volume: 0.8,
 }
 
+// 同一 id 在最小間隔內重複呼叫直接略過，避免高頻音（reelTick/heartbeat）狂按時爆量。
+const PLAY_MIN_INTERVAL_MS = {
+  reelTick: 55,
+  heartbeat: 220,
+}
+const DEFAULT_MIN_INTERVAL_MS = 24
+// 同時發聲上限：超過時丟棄「非關鍵」音以保護音訊執行緒；關鍵音（拉霸/停輪/中獎）永遠優先。
+const MAX_ACTIVE_VOICES = 24
+const VOICE_LIFETIME_MS = 1200
+const CRITICAL_SFX = new Set(['leverPull', 'reelStop', 'winSmall', 'winBig', 'winEpic'])
+
 function loadSettings() {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY)
@@ -28,6 +39,8 @@ class SoundEngine {
     this.settings = loadSettings()
     this.listeners = new Set()
     this.unlockBound = false
+    this.lastPlayAt = {}
+    this.activeVoices = 0
   }
 
   // 首次使用者手勢時呼叫（按鈕點擊內），建立並解鎖 AudioContext。
@@ -74,6 +87,22 @@ class SoundEngine {
     if (!ctx || ctx.state !== 'running') return
     const recipe = SFX_RECIPES[id]
     if (!recipe) return
+
+    const now = ctx.currentTime * 1000
+    // per-id 節流：同一音效在最小間隔內重複觸發直接略過。
+    const minInterval = PLAY_MIN_INTERVAL_MS[id] ?? DEFAULT_MIN_INTERVAL_MS
+    const last = this.lastPlayAt[id] ?? -Infinity
+    if (now - last < minInterval) return
+
+    // 發聲上限：滿載時只放行關鍵音（拉霸/停輪/中獎），其餘丟棄以免音訊執行緒過載。
+    if (this.activeVoices >= MAX_ACTIVE_VOICES && !CRITICAL_SFX.has(id)) return
+
+    this.lastPlayAt[id] = now
+    this.activeVoices += 1
+    window.setTimeout(() => {
+      this.activeVoices = Math.max(0, this.activeVoices - 1)
+    }, VOICE_LIFETIME_MS)
+
     try {
       recipe(ctx, this.sfxGain, {
         pitch: opts.pitch ?? 1,

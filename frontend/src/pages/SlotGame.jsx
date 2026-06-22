@@ -45,6 +45,7 @@ export default function SlotGame() {
   const fortune = useFortuneMeter('slot', player?.id)
   useBgm('slot')
   const resolvedBet = selectedBet === 'MAX' ? Math.max(Math.min(balance, 5000), 100) : selectedBet
+  const canAfford = balance >= resolvedBet
   const lastPayout = result?.game === 'slot' ? result.payout : null
   const lastMultiplier = result?.game === 'slot' ? result.multiplier : null
   const payoutCaption =
@@ -54,6 +55,8 @@ export default function SlotGame() {
   useGameLeaveGuard(loading || visualLock, '轉輪進行中，確定要離開嗎？離開後本局下注不返還。')
 
   const handleSpinRound = async () => {
+    // 餘額不足直接擋下，不發任何請求（後端仍是最後防線）。
+    if (balance < resolvedBet) return null
     setVisualLock(true)
     fortune.addCharge(resolvedBet)
     try {
@@ -113,8 +116,10 @@ export default function SlotGame() {
           grid={slotGrid}
           winningCells={winningCells}
           spinning={loading}
+          canSpin={canAfford && !visualLock}
           onSpin={handleSpinRound}
           onSettled={handleSettled}
+          onSpinComplete={() => setVisualLock(false)}
         />
 
         <aside className="grid gap-4 content-start">
@@ -126,6 +131,11 @@ export default function SlotGame() {
           />
           <MetricCard label="可用星幣" value={balance.toLocaleString()} caption="下注後即時更新" tone="light" />
           <MetricCard label="本局下注" value={resolvedBet.toLocaleString()} caption="最高單局 5,000" />
+          {!canAfford && (
+            <p className="rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">
+              星幣不足，請先儲值後再開始本局。
+            </p>
+          )}
           <MetricCard
             label="最近派彩"
             value={lastPayout === null ? '-' : lastPayout.toLocaleString()}
