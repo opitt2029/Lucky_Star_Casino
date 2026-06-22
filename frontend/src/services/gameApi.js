@@ -11,7 +11,7 @@ export const gameApi = {
   // { roundId, game, grid, bet, multiplier, payout, winningCells, wallet:{balance,frozenAmount}, serverSeed, ... }
   async spinSlot({ bet, clientSeed, fortuneReady }) {
     if (useMockApi) {
-      return mockApi.spinSlot({ bet })
+      return mockApi.spinSlot({ bet, fortuneReady })
     }
 
     const res = await api.post('/api/v1/game/slot/spin', { bet, clientSeed, fortuneReady })

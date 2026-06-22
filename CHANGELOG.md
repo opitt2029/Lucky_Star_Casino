@@ -3,6 +3,36 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Changed] — 2026-06-22 — 老虎機娛樂化 RTP：中線改「左二同小獎 + 三連大獎」兩階賠付（17.7%→93.8%）
+
+### Changed
+- `backend/game-service/.../slot/SlotSymbol.java`：賠付參數由單一 `lineMultiplier` 改為兩階 `pairMultiplier`（左二同小獎）+ `tripleMultiplier`（三連大獎）；權重維持 45/30/16/7/5（總和 103）。新表（pair/triple）：🍒 1/5、🍋 1/8、🔔 2/18、⭐ 3/50、7️⃣ 5/70。
+- `backend/game-service/.../slot/SlotMachine.java`：`evaluate()` 改為由左到右兩階判定——三格相同→`tripleMultiplier`（命中中線三格）；否則左二格相同（a==b 且 c≠a）→`pairMultiplier`（命中左二格）；右二格相同（b==c≠a）不賠。`SlotOutcome` 結構不變（`multiplier` 存實際生效倍率、`winningCells` 為 2 或 3 格）。`spinGuaranteedWin`（幸運值保底）仍填滿中線→三連，無需改。
+- `backend/game-service/.../slot/SlotOutcome.java`：Javadoc 補述兩階語意。
+- `frontend/src/services/mockApi.js`：移除舊 `MOCK_SLOT_FORCED_WIN_RATE=0.18`（無條件灌中獎）與偽分布 `slotSymbols`；新增 `SLOT_PAYTABLE`（鏡像後端權重/倍率）、加權抽樣 `pickSlotSymbol`、逐格加權 `randomSlotGrid`、與後端等價的兩階 `evaluateSlotLine`；`spinSlot` 改鏡像後端 `spin`，並支援 `fortuneReady`（幸運值全滿→填滿中線保底三連，鏡像後端 `spinGuaranteedWin`）。
+- `frontend/src/services/gameApi.js`：mock 路徑改轉傳 `fortuneReady`（原未轉傳，幸運值對 mock 老虎機無效）。
+- `frontend/src/pages/SlotGame.jsx`：規則卡 `slotRules`/`slotPayouts` 文案改為兩階賠付（三連大獎、左二同小獎、各符號倍率）。
+- `backend/game-service/.../slot/SlotSymbolTest.java` / `SlotMachineTest.java`：權重/加權索引區間斷言維持（權重未動）；賠付斷言改 pair≥1、triple>pair；新增「左二同賠 pairMultiplier+2 格」「右二同(b==c≠a)不賠」案例；RTP/命中率 band 對齊兩階（0.88~0.99 / 0.27~0.34，理論 93.8%/30.7%）。
+
+**為什麼**：盤點三款遊戲娛樂中獎率，老虎機（舊版單中線僅三連、倍率 2/3/5/8）理論 RTP ≈17.7%、命中率 ≈5.6%，遠低於休閒社交賭場常見的 90%+，玩家體感「狂輸、很少中」。改兩階單中線後：三連命中 ≈11.2%（RTP 貢獻 ≈70.6%）+ 左二同 ≈19.5%（≈23.3%）＝總命中率 ≈30.7%、總 RTP ≈93.8%，達娛樂級「常中小獎（push/LDW）＋偶爾大獎」曲線。單線+三連的數學上限無法只靠調權重兼顧「達標 RTP + 高命中率 + 大獎尾部 + 視覺多樣」，故改玩法（保留單中線/3×3/權重，工程量與後端/mock 分歧風險最小）。百家樂（莊 ≈98.9%）、捕魚（恆 92%）已合理，本次不動。遵守鐵則：後端引擎為單一真相，後端＋前端 mock＋測試三者同步（前端預設走 mock，即玩家實際體驗）。
+**如何驗證**：`mvn -pl backend/game-service test` → BUILD SUCCESS（111 tests, 0 fail，含 `SlotMachineTest` 10 / `SlotSymbolTest` 5 / `SlotServiceTest` 9 / `VerificationServiceTest` 6）；`cd frontend && npm run lint`（0 error）`&& npm run build`（exit 0，293 modules）。RTP/命中率另以解析式 + 200 萬局蒙地卡羅交叉確認（93.83% / 30.68%）。
+
+## [Fixed] — 2026-06-22 — 補回本分支缺漏的 develop 建置破口修復（等同 6501e4c）
+
+本分支自 develop 切出時點早於 `fix/huang-develop-game-build` 的 `6501e4c`（修復「幸運值保底功能未驗證即合併」造成的編譯/建置/lint 破口），故同樣破口在本分支仍存在，擋住上面老虎機 RTP 的驗收門檻（`mvn test` 測試編譯、`vite build`、`eslint`）。為使門檻綠燈，補回等同 `6501e4c` 的修復：
+
+### Added
+- `frontend/src/hooks/useGameLeaveGuard.js`：自 `6501e4c` 原樣還原（`Baccarat.jsx`/`Fishing.jsx`/`SlotGame.jsx` 皆 import，缺檔導致 `vite build` 解析失敗）。
+
+### Fixed
+- `backend/game-service/.../service/BaccaratService.java`：`session.getFortuneFull()` → `getFortuneReady()`（`GameSession` 僅有 `fortuneReady` 欄位，舊引用無法編譯，擋住整個 game-service 模組）。
+- `SlotServiceTest` / `SlotControllerTest` / `BaccaratServiceTest` / `BaccaratControllerTest`：補 `fortuneReady` 引數（直接呼叫補 `false`、mock matcher 補 `anyBoolean()`），對齊幸運值功能後的 `SlotService.spin` / `BaccaratService.placeBet` 新簽章。
+- `frontend/src/pages/Baccarat.jsx`：`saveSqueezeMode` 的空 `catch {}` 補註解，修 ESLint `no-empty`。
+
+**為什麼**：上述檔案非老虎機 RTP 範圍，但本分支缺 `6501e4c` 導致驗收門檻無法綠燈；修復內容與 `6501e4c` 逐檔比對一致，純屬建置破口修復、不改任何運行行為。
+**如何驗證**：同上（game-service 111 tests 綠、前端 lint/build 綠）。
+**備註**：與 `6501e4c` 內容重複；待本分支合併含該 commit 的 develop 時，本筆與這些檔案可與其協調去重。
+
 ## [feat] — 2026-06-18 — 幸運值全滿保底必中（老虎機 / 百家樂 / 捕魚機）
 
 ### Added
