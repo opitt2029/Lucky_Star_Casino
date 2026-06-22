@@ -30,6 +30,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Verified
 - `mvn -pl backend/rank-service test`: 68 tests passed, 0 failures.
 
+## [fix] — 2026-06-22 — 修復 develop 編譯/建置破口（「幸運值保底」功能未驗證即合併）
+
+### Fixed
+- `frontend/src/hooks/useGameLeaveGuard.js`：**補回從未被 commit 的檔案**。SlotGame/Baccarat/Fishing 三頁都 `import` 它、CHANGELOG 也記載，但實際檔案缺失導致 `npm run build` 失敗。依原 CHANGELOG 規格重建（`active` 為 true 時攔截 `popstate`/`beforeunload` 並確認）。
+- `backend/game-service/.../service/BaccaratService.java`：`session.getFortuneFull()` → `getFortuneReady()`（欄位名為 `fortuneReady`，原呼叫不存在的 getter 導致主程式編譯失敗）。
+- `backend/game-service/.../{service,controller}/{SlotServiceTest,SlotControllerTest,BaccaratServiceTest,BaccaratControllerTest}.java`：`SlotService.spin` / `BaccaratService.placeBet` 已新增 `boolean fortuneReady` 參數，但測試呼叫點未同步更新，導致測試編譯失敗；補上對應引數/`anyBoolean()` 匹配器。
+- `frontend/src/pages/Baccarat.jsx`：`saveSqueezeMode` 空 `catch {}` 補註解，修正 `npm run lint` 的 `no-empty`。
+
+### Why
+- 「幸運值全滿保底必中」功能合併進 develop 時顯然未跑 `mvn -pl backend/game-service test` 與 `cd frontend && npm run lint/build`，造成 develop 在 compile / build / lint / test 四個層面皆紅，其他分支 merge develop 都會被卡。此 PR 直接修 develop 解套。
+
+### How to verify
+- `mvn -pl backend/game-service test` → 109 tests 全綠、BUILD SUCCESS。
+- `cd frontend && npm run lint && npm run build` → 綠燈。
+
 ## [feat] — 2026-06-18 — 幸運值全滿保底必中（老虎機 / 百家樂 / 捕魚機）
 
 ### Added

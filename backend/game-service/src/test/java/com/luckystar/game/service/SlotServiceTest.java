@@ -106,7 +106,7 @@ class SlotServiceTest {
         when(walletClient.credit(eq(PLAYER_ID), eq(500L), anyString(), anyString()))
                 .thenReturn(new WalletCreditResponse(2L, PLAYER_ID, 500L, 9900L, 10400L, 0L, false));
 
-        SpinResponse res = service.spin(PLAYER_ID, BET, "my-seed");
+        SpinResponse res = service.spin(PLAYER_ID, BET, "my-seed", false);
 
         assertEquals("slot", res.getGame());
         assertEquals(5, res.getMultiplier());
@@ -142,7 +142,7 @@ class SlotServiceTest {
         when(walletClient.credit(eq(PLAYER_ID), eq(500L), anyString(), anyString()))
                 .thenReturn(new WalletCreditResponse(2L, PLAYER_ID, 500L, 9900L, 10400L, 0L, false));
 
-        SpinResponse res = service.spin(PLAYER_ID, BET, null);
+        SpinResponse res = service.spin(PLAYER_ID, BET, null, false);
         String roundId = res.getRoundId();
 
         ArgumentCaptor<String> debitKey = ArgumentCaptor.forClass(String.class);
@@ -161,7 +161,7 @@ class SlotServiceTest {
     void spin_lose_noCreditPersistsZeroWin() {
         when(slotMachine.spin(any(), eq(BET))).thenReturn(loseOutcome());
 
-        SpinResponse res = service.spin(PLAYER_ID, BET, null);
+        SpinResponse res = service.spin(PLAYER_ID, BET, null, false);
 
         assertEquals(0, res.getMultiplier());
         assertEquals(0L, res.getPayout());
@@ -182,7 +182,7 @@ class SlotServiceTest {
         when(walletClient.debit(eq(PLAYER_ID), eq(BET), anyString(), anyString()))
                 .thenThrow(new InsufficientBalanceException("星幣餘額不足"));
 
-        assertThrows(InsufficientBalanceException.class, () -> service.spin(PLAYER_ID, BET, null));
+        assertThrows(InsufficientBalanceException.class, () -> service.spin(PLAYER_ID, BET, null, false));
 
         verify(slotMachine, never()).spin(any(), anyLong());
         verify(walletClient, never()).credit(anyLong(), anyLong(), anyString(), anyString());

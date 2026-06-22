@@ -52,7 +52,7 @@ class SlotControllerTest {
     @Test
     @DisplayName("正常下注：200，回傳 ApiResponse 包住結果")
     void spin_happyPath() throws Exception {
-        when(slotService.spin(eq(123L), eq(100L), any())).thenReturn(sampleResponse());
+        when(slotService.spin(eq(123L), eq(100L), any(), org.mockito.ArgumentMatchers.anyBoolean())).thenReturn(sampleResponse());
 
         mockMvc.perform(post("/api/v1/game/slot/spin")
                         .header("X-User-Id", "123")
@@ -65,7 +65,7 @@ class SlotControllerTest {
                 .andExpect(jsonPath("$.data.multiplier").value(5))
                 .andExpect(jsonPath("$.data.wallet.balance").value(10400));
 
-        verify(slotService).spin(eq(123L), eq(100L), any());
+        verify(slotService).spin(eq(123L), eq(100L), any(), org.mockito.ArgumentMatchers.anyBoolean());
     }
 
     @Test
@@ -79,7 +79,7 @@ class SlotControllerTest {
                 .andExpect(jsonPath("$.message").value("Missing X-User-Id header"));
 
         verify(slotService, never()).spin(org.mockito.ArgumentMatchers.anyLong(),
-                org.mockito.ArgumentMatchers.anyLong(), any());
+                org.mockito.ArgumentMatchers.anyLong(), any(), org.mockito.ArgumentMatchers.anyBoolean());
     }
 
     @Test
