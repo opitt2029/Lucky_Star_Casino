@@ -47,11 +47,13 @@ class SlotSymbolTest {
     }
 
     @Test
-    @DisplayName("每個符號的倍率屬於公告的 {2,3,5,8}，display 非空")
+    @DisplayName("兩階賠付參數合法：pair≥1、triple>pair、display 非空、權重為正")
     void payoutParamsAreValid() {
         for (SlotSymbol s : SlotSymbol.values()) {
-            int m = s.lineMultiplier();
-            assertTrue(m == 2 || m == 3 || m == 5 || m == 8, s + " 倍率異常: " + m);
+            int pair = s.pairMultiplier();
+            int triple = s.tripleMultiplier();
+            assertTrue(pair >= 1, s + " 左二同倍率需 ≥ 1（至少退本金）: " + pair);
+            assertTrue(triple > pair, s + " 三連倍率需大於左二同: triple=" + triple + " pair=" + pair);
             assertFalse(s.display().isEmpty(), s + " display 不可為空");
             assertTrue(s.weight() > 0, s + " 權重需為正");
         }
@@ -60,7 +62,7 @@ class SlotSymbolTest {
     @Test
     @DisplayName("display 與前端 mockApi 的 emoji code point 完全相符")
     void displayMatchesFrontendCodePoints() {
-        // 與 frontend/src/services/mockApi.js 的 slotSymbols 逐一核對
+        // 與 frontend/src/services/mockApi.js 的 SLOT_PAYTABLE 逐一核對
         assertEquals(new String(new int[] {0x1F352}, 0, 1), SlotSymbol.CHERRY.display());
         assertEquals(new String(new int[] {0x1F34B}, 0, 1), SlotSymbol.LEMON.display());
         assertEquals(new String(new int[] {0x1F514}, 0, 1), SlotSymbol.BELL.display());

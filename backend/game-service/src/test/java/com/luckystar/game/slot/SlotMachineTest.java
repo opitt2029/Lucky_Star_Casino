@@ -35,8 +35,8 @@ class SlotMachineTest {
         SlotOutcome o = machine.evaluate(b, 500);
 
         assertTrue(o.win());
-        assertEquals(8, o.multiplier(), "STAR 為 8x");
-        assertEquals(4000L, o.payout(), "500 x 8");
+        assertEquals(50, o.multiplier(), "STAR 三連為 50x");
+        assertEquals(25000L, o.payout(), "500 x 50");
         assertArrayEquals(new int[][] {{1, 0}, {1, 1}, {1, 2}}, o.winningCells());
         // 顯示盤面中線應全為 STAR 的 emoji
         assertEquals(SlotSymbol.STAR.display(), o.grid()[1][0]);
@@ -45,16 +45,48 @@ class SlotMachineTest {
     }
 
     @Test
-    @DisplayName("中線未三連：未中獎、派彩 0、命中格為空")
+    @DisplayName("中線未命中：左二格不同符號 → 未中獎、派彩 0、命中格為空")
     void evaluate_centerLineLose() {
         SlotSymbol[][] b = board(
                 new SlotSymbol[] {SlotSymbol.STAR, SlotSymbol.STAR, SlotSymbol.STAR},
-                new SlotSymbol[] {SlotSymbol.STAR, SlotSymbol.STAR, SlotSymbol.BELL},
+                new SlotSymbol[] {SlotSymbol.STAR, SlotSymbol.BELL, SlotSymbol.CHERRY},
                 new SlotSymbol[] {SlotSymbol.STAR, SlotSymbol.STAR, SlotSymbol.STAR});
 
         SlotOutcome o = machine.evaluate(b, 500);
 
         assertFalse(o.win());
+        assertEquals(0, o.multiplier());
+        assertEquals(0L, o.payout());
+        assertEquals(0, o.winningCells().length);
+    }
+
+    @Test
+    @DisplayName("中線左二同：左二格相同、第三格不同 → 小獎 pairMultiplier、命中格為左二格")
+    void evaluate_leftPairWin() {
+        SlotSymbol[][] b = board(
+                new SlotSymbol[] {SlotSymbol.CHERRY, SlotSymbol.LEMON, SlotSymbol.BELL},
+                new SlotSymbol[] {SlotSymbol.STAR, SlotSymbol.STAR, SlotSymbol.BELL},
+                new SlotSymbol[] {SlotSymbol.SEVEN, SlotSymbol.CHERRY, SlotSymbol.LEMON});
+
+        SlotOutcome o = machine.evaluate(b, 500);
+
+        assertTrue(o.win());
+        assertEquals(SlotSymbol.STAR.pairMultiplier(), o.multiplier(), "STAR 左二同為 pairMultiplier");
+        assertEquals(500L * SlotSymbol.STAR.pairMultiplier(), o.payout());
+        assertArrayEquals(new int[][] {{1, 0}, {1, 1}}, o.winningCells());
+    }
+
+    @Test
+    @DisplayName("中線右二同（b==c≠a）不賠：驗證左對齊讀法")
+    void evaluate_rightPairNoWin() {
+        SlotSymbol[][] b = board(
+                new SlotSymbol[] {SlotSymbol.CHERRY, SlotSymbol.LEMON, SlotSymbol.BELL},
+                new SlotSymbol[] {SlotSymbol.BELL, SlotSymbol.STAR, SlotSymbol.STAR},
+                new SlotSymbol[] {SlotSymbol.SEVEN, SlotSymbol.CHERRY, SlotSymbol.LEMON});
+
+        SlotOutcome o = machine.evaluate(b, 500);
+
+        assertFalse(o.win(), "右二格相同但左二格不同，左對齊不賠");
         assertEquals(0, o.multiplier());
         assertEquals(0L, o.payout());
         assertEquals(0, o.winningCells().length);
@@ -69,8 +101,8 @@ class SlotMachineTest {
                     new SlotSymbol[] {s, s, s},
                     new SlotSymbol[] {s, s, s});
             SlotOutcome o = machine.evaluate(b, 100);
-            assertEquals(s.lineMultiplier(), o.multiplier(), s.name());
-            assertEquals(100L * s.lineMultiplier(), o.payout(), s.name());
+            assertEquals(s.tripleMultiplier(), o.multiplier(), s.name());
+            assertEquals(100L * s.tripleMultiplier(), o.payout(), s.name());
         }
     }
 
@@ -107,7 +139,7 @@ class SlotMachineTest {
     }
 
     @Test
-    @DisplayName("spin 暴力搜尋到的命中局，派彩與命中格自洽")
+    @DisplayName("spin 暴力搜尋到的命中局，派彩與命中格自洽（兩階）")
     void spin_winConsistency() {
         SlotOutcome winOutcome = null;
         for (long nonce = 0; nonce < 100_000 && winOutcome == null; nonce++) {
@@ -116,11 +148,19 @@ class SlotMachineTest {
                 winOutcome = o;
             }
         }
-        assertNotNull(winOutcome, "10 萬局內必有命中（命中率約 11%）");
+        assertNotNull(winOutcome, "10 萬局內必有命中（命中率約 30.7%）");
+        assertTrue(winOutcome.multiplier() > 0);
         assertEquals(200L * winOutcome.multiplier(), winOutcome.payout());
-        assertArrayEquals(new int[][] {{1, 0}, {1, 1}, {1, 2}}, winOutcome.winningCells());
+        // 兩階共通：中線左二格相同
         assertEquals(winOutcome.grid()[1][0], winOutcome.grid()[1][1]);
-        assertEquals(winOutcome.grid()[1][1], winOutcome.grid()[1][2]);
+        int cells = winOutcome.winningCells().length;
+        assertTrue(cells == 2 || cells == 3, "命中格應為 2（左二同）或 3（三連），實際 " + cells);
+        if (cells == 3) {
+            assertEquals(winOutcome.grid()[1][1], winOutcome.grid()[1][2], "三連：中線三格全等");
+            assertArrayEquals(new int[][] {{1, 0}, {1, 1}, {1, 2}}, winOutcome.winningCells());
+        } else {
+            assertArrayEquals(new int[][] {{1, 0}, {1, 1}}, winOutcome.winningCells());
+        }
     }
 
     @Test
@@ -141,9 +181,9 @@ class SlotMachineTest {
         }
         double rtp = (double) totalPayout / totalBet;
         double hitRate = (double) wins / spins;
-        // 理論 RTP 約 0.263、命中率約 0.112（權重 45/30/16/7/5、總和 103）；給寬鬆區間以容納抽樣誤差。
-        assertTrue(rtp > 0.20 && rtp < 0.32, "RTP 超出預期範圍: " + rtp);
-        assertTrue(hitRate > 0.08 && hitRate < 0.15, "命中率超出預期範圍: " + hitRate);
+        // 理論 RTP ≈ 0.938、命中率 ≈ 0.307（三連 ≈11.2% + 左二同 ≈19.5%）；給寬鬆區間以容納抽樣誤差。
+        assertTrue(rtp > 0.88 && rtp < 0.99, "RTP 超出預期範圍: " + rtp);
+        assertTrue(hitRate > 0.27 && hitRate < 0.34, "命中率超出預期範圍: " + hitRate);
     }
 
     @Test

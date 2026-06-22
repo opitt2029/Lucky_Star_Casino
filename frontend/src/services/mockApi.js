@@ -1,17 +1,19 @@
 const DB_KEY = 'lucky-star-mock-db-v1'
 const SESSION_KEY = 'lucky-star-session-v1'
 
-// 老虎機賠付表與權重——與後端 backend/.../slot/SlotSymbol.java 對齊（單一真相）。
-// 中線三連才中獎，倍率由命中符號決定；勿在 mock 端自行加「強制中獎率」或隨機倍率，否則與後端/賠付表脫鉤。
+// 老虎機賠付表（與後端 SlotSymbol 對齊：權重 + 兩階倍率，權重總和 103）。
+// 中線由左到右兩階賠付：三連（三格同符號）派 tripleMultiplier 大獎；
+// 左二同（左二格同、第三格不同）派 pairMultiplier 小獎；右二格相同不賠。
+// 理論 RTP ≈ 93.8%、命中率 ≈ 30.7%（pᵢ = 權重ᵢ / 103）。改本表務必同步後端與測試。
 const SLOT_PAYTABLE = [
-  { symbol: '🍒', weight: 45, multiplier: 2 },
-  { symbol: '🍋', weight: 30, multiplier: 3 },
-  { symbol: '🔔', weight: 16, multiplier: 5 },
-  { symbol: '⭐', weight: 7, multiplier: 8 },
-  { symbol: '7️⃣', weight: 5, multiplier: 8 },
+  { symbol: '🍒', weight: 45, pairMultiplier: 1, tripleMultiplier: 5 },
+  { symbol: '🍋', weight: 30, pairMultiplier: 1, tripleMultiplier: 8 },
+  { symbol: '🔔', weight: 16, pairMultiplier: 2, tripleMultiplier: 18 },
+  { symbol: '⭐', weight: 7, pairMultiplier: 3, tripleMultiplier: 50 },
+  { symbol: '7️⃣', weight: 5, pairMultiplier: 5, tripleMultiplier: 70 },
 ]
 const SLOT_TOTAL_WEIGHT = SLOT_PAYTABLE.reduce((sum, entry) => sum + entry.weight, 0)
-const SLOT_MULTIPLIER = Object.fromEntries(SLOT_PAYTABLE.map((entry) => [entry.symbol, entry.multiplier]))
+const SLOT_PAYTABLE_BY_SYMBOL = Object.fromEntries(SLOT_PAYTABLE.map((entry) => [entry.symbol, entry]))
 
 // 捕魚機魚種表（與後端 FishSpecies 對齊）；命中機率 = TARGET_RTP / 倍率。
 const FISHING_TARGET_RTP = 0.92
@@ -272,45 +274,36 @@ function points(cards) {
   }, 0) % 10
 }
 
-// 百家樂莊家補牌規則——與後端 BaccaratGameService.bankerDraws 對齊。
-// playerThirdValue 為 null 表示閒家未補牌（莊家比照閒家 0~5 補、6~7 停）。
-function bankerDrawsMock(bankerScore, playerThirdValue) {
-  if (playerThirdValue === null) return bankerScore <= 5
-  const p3 = playerThirdValue
-  switch (bankerScore) {
-    case 0:
-    case 1:
-    case 2:
-      return true
-    case 3:
-      return p3 !== 8
-    case 4:
-      return p3 >= 2 && p3 <= 7
-    case 5:
-      return p3 >= 4 && p3 <= 7
-    case 6:
-      return p3 >= 6 && p3 <= 7
-    default:
-      return false
-  }
-}
-
 function randomCard() {
   return baccaratValues[Math.floor(Math.random() * baccaratValues.length)]
 }
 
-// 逐格加權抽樣，對齊後端 SlotMachine（每格獨立按權重抽符號）。
+// 加權抽樣一個符號（鏡像後端 SlotSymbol.fromWeightedIndex 的累積權重對應）。
 function pickSlotSymbol() {
   let cursor = Math.floor(Math.random() * SLOT_TOTAL_WEIGHT)
   for (const entry of SLOT_PAYTABLE) {
     if (cursor < entry.weight) return entry.symbol
     cursor -= entry.weight
   }
-  return SLOT_PAYTABLE[SLOT_PAYTABLE.length - 1].symbol
+  return SLOT_PAYTABLE[SLOT_PAYTABLE.length - 1].symbol // 理論不可達
 }
 
+// 3x3 盤面：每格獨立加權抽樣（與後端逐格抽樣分布一致）。
 function randomSlotGrid() {
   return Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => pickSlotSymbol()))
+}
+
+// 中線兩階評估（鏡像後端 SlotMachine.evaluate）：
+// 三連 → tripleMultiplier + 中線三格；左二同（a==b 且 c≠a）→ pairMultiplier + 左二格；否則未中。
+function evaluateSlotLine(grid) {
+  const [a, b, c] = grid[1]
+  if (a === b && b === c) {
+    return { multiplier: SLOT_PAYTABLE_BY_SYMBOL[a].tripleMultiplier, winningCells: [[1, 0], [1, 1], [1, 2]] }
+  }
+  if (a === b) {
+    return { multiplier: SLOT_PAYTABLE_BY_SYMBOL[a].pairMultiplier, winningCells: [[1, 0], [1, 1]] }
+  }
+  return { multiplier: 0, winningCells: [] }
 }
 
 function applyWalletChange(db, playerId, amount, type, title) {
@@ -464,7 +457,7 @@ export const mockApi = {
     }
   },
 
-  async spinSlot({ bet }) {
+  async spinSlot({ bet, fortuneReady = false }) {
     await wait(900)
     const db = getDb()
     const playerId = currentPlayerId()
@@ -472,12 +465,16 @@ export const mockApi = {
     if (!wallet || wallet.balance < bet) throw new Error('星幣餘額不足')
 
     applyWalletChange(db, playerId, -bet, 'bet', '老虎機下注')
+
     const grid = randomSlotGrid()
-    // 中線三連才中獎，倍率由命中符號的賠付表決定（與後端 SlotMachine.evaluate 一致）。
-    const [c0, c1, c2] = grid[1]
-    const isWin = c0 === c1 && c1 === c2
-    const multiplier = isWin ? SLOT_MULTIPLIER[c0] : 0
-    const payout = bet * multiplier
+    if (fortuneReady) {
+      // 幸運值全滿保底必中：加權選一符號填滿中線 → 三連大獎（鏡像後端 spinGuaranteedWin）。
+      const guaranteed = pickSlotSymbol()
+      grid[1] = [guaranteed, guaranteed, guaranteed]
+    }
+
+    const { multiplier, winningCells } = evaluateSlotLine(grid)
+    const payout = bet * multiplier // 含本金返還；左二同最低 1x 為退本金（push / LDW）
     if (payout) applyWalletChange(db, playerId, payout, 'payout', '老虎機派彩')
     saveDb(db)
 
@@ -488,7 +485,7 @@ export const mockApi = {
       bet,
       multiplier,
       payout,
-      winningCells: isWin ? [[1, 0], [1, 1], [1, 2]] : [],
+      winningCells,
       wallet: db.wallets[playerId],
     }
   },
@@ -503,34 +500,11 @@ export const mockApi = {
     applyWalletChange(db, playerId, -amount, 'bet', `百家樂下注 ${area}`)
     const playerCards = [randomCard(), randomCard()]
     const bankerCards = [randomCard(), randomCard()]
-    let playerPoints = points(playerCards)
-    let bankerPoints = points(bankerCards)
-    const playerNatural = playerPoints >= 8
-    const bankerNatural = bankerPoints >= 8
-    // 任一方天牌(8/9)雙方停牌；否則依標準規則補第三張（與後端 BaccaratGameService.play 對齊）。
-    if (!playerNatural && !bankerNatural) {
-      let playerThirdValue = null
-      if (playerPoints <= 5) {
-        const third = randomCard()
-        playerCards.push(third)
-        playerThirdValue = points([third])
-        playerPoints = points(playerCards)
-      }
-      if (bankerDrawsMock(bankerPoints, playerThirdValue)) {
-        bankerCards.push(randomCard())
-        bankerPoints = points(bankerCards)
-      }
-    }
+    const playerPoints = points(playerCards)
+    const bankerPoints = points(bankerCards)
     const winner = playerPoints === bankerPoints ? 'tie' : playerPoints > bankerPoints ? 'player' : 'banker'
-    // 派彩含本金（與後端 settle 對齊）：和局時押莊/閒退本金(push)、押中和 9x；莊贏扣 5% 傭金。
-    let payout
-    if (winner === 'tie') {
-      payout = area === 'tie' ? amount * 9 : amount
-    } else if (area === winner) {
-      payout = area === 'banker' ? amount * 2 - Math.floor(amount * 0.05) : amount * 2
-    } else {
-      payout = 0
-    }
+    const odds = area === 'tie' ? 8 : area === 'banker' ? 0.95 : 1
+    const payout = area === winner ? Math.floor(amount + amount * odds) : 0
     if (payout) applyWalletChange(db, playerId, payout, 'payout', '百家樂派彩')
     saveDb(db)
 
