@@ -50,7 +50,9 @@ export function useFortuneMeter(gameKey, playerId) {
   }, [])
 
   // 回報該局輸贏：贏（payout > 0）釋放幸運值並關吉兆；連輸達門檻開吉兆。
-  const reportRound = useCallback((won) => {
+  // fortuneConsumed=true 表示本局以保底模式送出（fortuneReady=true），無論是否中獎都應釋放幸運值，
+  // 防止風控攔截保底轉動時幸運值卡在 100 的死循環。
+  const reportRound = useCallback((won, fortuneConsumed = false) => {
     if (won) {
       lossStreakRef.current = 0
       setAuraActive(false)
@@ -59,6 +61,9 @@ export function useFortuneMeter(gameKey, playerId) {
       lossStreakRef.current += 1
       if (lossStreakRef.current >= LOSS_STREAK_FOR_AURA) {
         setAuraActive(true)
+      }
+      if (fortuneConsumed) {
+        setValue((prev) => (prev >= 100 ? 0 : prev))
       }
     }
   }, [])

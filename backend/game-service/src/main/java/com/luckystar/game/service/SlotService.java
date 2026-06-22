@@ -17,6 +17,7 @@ import com.luckystar.game.session.GameSession;
 import com.luckystar.game.session.GameSessionService;
 import com.luckystar.game.slot.SlotMachine;
 import com.luckystar.game.slot.SlotOutcome;
+import com.luckystar.game.slot.SlotSymbol;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -65,6 +66,7 @@ public class SlotService {
     private final GameResultEventPublisher eventPublisher;
     private final GameSessionService sessionService;
     private final ObjectMapper objectMapper;
+    private final RiskControlService riskControlService;
 
     /**
      * 單次模式：扣款、轉動並於同一回應揭露 serverSeed（相容前端一次呼叫）。
@@ -152,11 +154,19 @@ public class SlotService {
         WalletDebitResponse debit = walletClient.debit(
                 playerId, bet, "slot-bet-" + roundId, roundId);
 
-        // 2) 以三元組推導確定性結果；幸運值全滿時使用保底必中轉動。
+        // 2) 風控優先檢查：若觸發攔截則不使用保底轉動，避免中獎盤面配零派彩的視覺矛盾。
+        boolean riskIntercept = riskControlService.shouldIntercept(playerId, GAME_TYPE);
+        boolean useGuarantee = fortuneReady && !riskIntercept;
+
         RandomStream stream = rng.stream(serverSeed, clientSeed, NONCE);
-        SlotOutcome outcome = fortuneReady
+        SlotOutcome outcome = useGuarantee
                 ? slotMachine.spinGuaranteedWin(stream, bet)
                 : slotMachine.spin(stream, bet);
+
+        // 一般轉動若命中但被風控攔截，打破中線顯示確保盤面與派彩視覺一致（不出現中獎符號配零派彩）。
+        if (riskIntercept && outcome.win()) {
+            outcome = SlotOutcome.noWin(breakPayline(outcome.grid()));
+        }
 
         // 3) 命中則派彩（冪等）。
         long balanceAfter = debit.balanceAfter();
@@ -199,7 +209,24 @@ public class SlotService {
                 .serverSeedHash(serverSeedHash)
                 .clientSeed(clientSeed)
                 .nonce(NONCE)
+                .guaranteed(useGuarantee && outcome.win())
                 .build();
+    }
+
+    /**
+     * 深複製盤面並將中線中格換成與兩側不同的符號，打破視覺三連，供風控攔截時使用。
+     */
+    private String[][] breakPayline(String[][] src) {
+        String[][] masked = new String[src.length][];
+        for (int i = 0; i < src.length; i++) masked[i] = src[i].clone();
+        String paylineSymbol = masked[SlotMachine.PAYLINE_ROW][0];
+        for (SlotSymbol s : SlotSymbol.values()) {
+            if (!s.display().equals(paylineSymbol)) {
+                masked[SlotMachine.PAYLINE_ROW][1] = s.display();
+                return masked;
+            }
+        }
+        return masked;
     }
 
     private String resolveClientSeed(String requestedClientSeed) {

@@ -59,6 +59,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `mvn -pl backend/game-service test` → 109 tests 全綠、BUILD SUCCESS。
 - `cd frontend && npm run lint && npm run build` → 綠燈。
 
+## [fix] — 2026-06-22 — 老虎機風控攔截中獎盤面顯示矛盾 + 幸運值卡在 100 死循環
+
+### Fixed
+- `backend/game-service/.../service/SlotService.java`：風控檢查前移至 RNG 之前；`fortuneReady=true` 且風控攔截時改用一般轉動（`spin()`），不呼叫 `spinGuaranteedWin()`，避免中獎符號配零派彩的視覺矛盾；一般轉動若自然命中但被風控攔截，呼叫新增的 `breakPayline()` 替換中線中格符號，確保玩家看到的盤面與派彩一致；`guaranteed` 回應欄位改為 `useGuarantee && outcome.win()`，不再因風控攔截誤報保底觸發
+- `frontend/src/casino-fx/fx/useFortuneMeter.js`：`reportRound(won, fortuneConsumed)` 新增第二參數；`fortuneConsumed=true` 且未中獎時仍將幸運值從 100 重置為 0，解除風控持續攔截保底轉動造成的幸運值鎖死循環
+- `frontend/src/pages/SlotGame.jsx`：`handleSpinRound` 在 `addCharge` 之前以 ref 記錄 `fortune.full`（`fortuneReadyOnSpinRef`），防止 addCharge 的非同步 setState 污染判斷；`handleSettled` 將該 ref 傳入 `fortune.reportRound` 作為 `fortuneConsumed`
+
+**為什麼**：風控攔截保底轉動時原本保留中獎盤面但派彩為 0，玩家可截圖搭配 /verify 結果舉證詐騙（T-信任/法律漏洞）；同時 `reportRound(false)` 未重置幸運值導致每轉都被攔截的死循環（T-UX 死循環）。
+**如何驗證**：觸發風控限制後，老虎機轉動不再出現三連符號配零派彩的盤面；幸運值滿格但風控攔截後，幸運值重置為 0，下一局可正常累積。
+
 ## [feat] — 2026-06-18 — 幸運值全滿保底必中（老虎機 / 百家樂 / 捕魚機）
 
 ### Added

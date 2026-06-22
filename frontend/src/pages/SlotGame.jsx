@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import AppShell from '../components/AppShell'
 import GameRuleCard from '../components/GameRuleCard'
@@ -43,6 +43,8 @@ export default function SlotGame() {
   const player = useSelector((state) => state.auth.player)
   const { status, result, loading, error, slotGrid, winningCells } = useSelector((state) => state.game)
   const fortune = useFortuneMeter('slot', player?.id)
+  // 記錄本次轉動發出時幸運值是否已滿（在 addCharge 前讀取，防止 addCharge 的非同步 setState 污染判斷）
+  const fortuneReadyOnSpinRef = useRef(false)
   useBgm('slot')
   const resolvedBet = selectedBet === 'MAX' ? Math.max(Math.min(balance, 5000), 100) : selectedBet
   const canAfford = balance >= resolvedBet
@@ -58,6 +60,7 @@ export default function SlotGame() {
     // 餘額不足直接擋下，不發任何請求（後端仍是最後防線）。
     if (balance < resolvedBet) return null
     setVisualLock(true)
+    fortuneReadyOnSpinRef.current = fortune.full
     fortune.addCharge(resolvedBet)
     try {
       const spinResult = await dispatch(spinSlot({ bet: resolvedBet, fortuneReady: fortune.full })).unwrap()
@@ -75,10 +78,12 @@ export default function SlotGame() {
     const multiplier = spinResult.multiplier ?? 0
     const payout = spinResult.payout ?? 0
     const won = payout > 0
-    fortune.reportRound(won)
+    fortune.reportRound(won, fortuneReadyOnSpinRef.current)
     if (!won) return
 
-    const bannerPick = pickBannerForMultiplier(multiplier)
+    const bannerPick = spinResult.guaranteed
+      ? { text: '幸運保底觸發！', level: 3 }
+      : pickBannerForMultiplier(multiplier)
     setBanner((prev) => ({ trigger: prev.trigger + 1, ...bannerPick }))
     setBurstTrigger((n) => n + 1)
 
