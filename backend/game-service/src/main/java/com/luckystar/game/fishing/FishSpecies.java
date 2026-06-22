@@ -103,6 +103,8 @@ public enum FishSpecies {
      * @return 派彩金額（必 > 0）
      */
     public long resolveGuaranteedPayout(RandomStream stream, long betPerShot) {
+        // 消耗與 resolvePayout 相同的首次 nextDouble()，使串流位置對齊，PF 驗證端點得到相同偏移量。
+        stream.nextDouble();
         if (this == MONEY_TREE) {
             int rolled = MONEY_TREE_MIN + stream.nextInt(MONEY_TREE_MAX - MONEY_TREE_MIN + 1);
             return betPerShot * rolled;

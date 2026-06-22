@@ -15,4 +15,9 @@ public record SlotOutcome(
         int multiplier,
         long payout,
         int[][] winningCells) {
+
+    /** 強制未中獎結果（保留盤面顯示，派彩 = 0，無中線）。風控攔截時使用。 */
+    public static SlotOutcome noWin(String[][] grid) {
+        return new SlotOutcome(grid, false, 0, 0L, new int[0][]);
+    }
 }

@@ -78,6 +78,12 @@ public class FishingSession {
     /** 最後一次受理批次的時間（射速防刷與閒置回收依據）。 */
     private Instant lastActivityAt;
 
+    /** 場次中是否有任何批次曾被風控攔截（verifyShot 警示用）。 */
+    private Boolean intercepted;
+
+    /** 幸運值保底命中的 shotSeq（null 表示本場未觸發保底）。verifyShot 據此選擇正確的 resolve 方法。 */
+    private Long guaranteedShotSeq;
+
     public boolean isActive() {
         return "ACTIVE".equals(state);
     }

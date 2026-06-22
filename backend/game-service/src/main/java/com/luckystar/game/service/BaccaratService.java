@@ -64,6 +64,7 @@ public class BaccaratService {
     private final GameResultEventPublisher eventPublisher;
     private final GameSessionService sessionService;
     private final ObjectMapper objectMapper;
+    private final RiskControlService riskControlService;
 
     /**
      * 下注（commit-ahead 第一階段）：驗證多區押注、扣款、建立 STARTED Session、回傳 serverSeedHash 承諾。
@@ -164,6 +165,28 @@ public class BaccaratService {
             }
         }
 
+        // 風控攔截：淨贏或全局 RTP 超限時，強制結果為莊家贏（確保牌面與結果一致，搜不同 nonce）。
+        // shouldIntercept 佔用並發閘；settle 最後的 finally 必須釋放。
+        boolean intercepted = riskControlService.shouldIntercept(playerId, GAME_TYPE);
+        try {
+        if (intercepted && outcome.result() != BaccaratResult.BANKER) {
+            boolean interceptFound = false;
+            for (long attempt = 10001L; attempt <= 11000L; attempt++) {
+                RandomStream tryStream = rng.stream(session.getServerSeed(), session.getClientSeed(), attempt);
+                BaccaratOutcome tryOutcome = baccaratGame.deal(tryStream);
+                if (tryOutcome.result() == BaccaratResult.BANKER) {
+                    outcome = tryOutcome;
+                    actualNonce = attempt;
+                    interceptFound = true;
+                    log.warn("[風控] 百家樂結果強制改為莊家贏 roundId={} playerId={}", roundId, playerId);
+                    break;
+                }
+            }
+            if (!interceptFound) {
+                log.error("[風控] 百家樂攔截失效：1000 次均未命中 BANKER roundId={} playerId={}", roundId, playerId);
+            }
+        }
+
         Map<BaccaratResult, Long> bets = new EnumMap<>(BaccaratResult.class);
         if (bp > 0) {
             bets.put(BaccaratResult.PLAYER, bp);
@@ -226,6 +249,9 @@ public class BaccaratService {
                 .clientSeed(session.getClientSeed())
                 .nonce(actualNonce)
                 .build();
+        } finally {
+            riskControlService.releaseRiskSlot(playerId);
+        }
     }
 
     private GameRound buildRound(GameSession session, BaccaratOutcome outcome,

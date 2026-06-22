@@ -62,6 +62,11 @@ management:
     health:
       show-details: always
 
+risk:
+  player-win-limit: 50000    # 單玩家今日淨贏上限（星幣），超過即攔截
+  global-rtp-limit: 0.95     # 全局 RTP 上限（95%），超過即攔截
+  rtp-sample-size: 500       # 計算全局 RTP 的近 N 局樣本數
+
 logging:
   level:
     com.luckystar.game: ${LOG_LEVEL_APP:INFO}
