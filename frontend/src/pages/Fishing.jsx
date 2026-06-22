@@ -136,7 +136,13 @@ export default function Fishing() {
 
   const arenaResultsRef = useRef(null)
   const session = useFishingSession({
-    onResults: (results, ctx) => arenaResultsRef.current?.(results, ctx),
+    onResults: (results, ctx) => {
+      // 風控攔截保底批次時，整批無命中但幸運值已消耗，需重置防止鎖死在 100
+      if (ctx?.fortuneConsumed && !results.some((r) => r.accepted && r.payout > 0)) {
+        fortune.reportRound(false, true)
+      }
+      arenaResultsRef.current?.(results, ctx)
+    },
     fortuneReady: fortune.full,
   })
 

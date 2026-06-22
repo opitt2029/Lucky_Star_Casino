@@ -47,6 +47,7 @@ public class FishingSessionStore {
     private static final String F_STATE = "state";
     private static final String F_CREATED_AT = "createdAt";
     private static final String F_LAST_ACTIVITY_AT = "lastActivityAt";
+    private static final String F_INTERCEPTED = "intercepted";
 
     private final StringRedisTemplate redisTemplate;
     private final HashOperations<String, String, String> hashOps;
@@ -130,6 +131,7 @@ public class FishingSessionStore {
         if (s.getLastActivityAt() != null) {
             h.put(F_LAST_ACTIVITY_AT, s.getLastActivityAt().toString());
         }
+        putIfNotNull(h, F_INTERCEPTED, s.getIntercepted());
         return h;
     }
 
@@ -152,6 +154,7 @@ public class FishingSessionStore {
                 .state(h.get(F_STATE))
                 .createdAt(parseInstant(h.get(F_CREATED_AT)))
                 .lastActivityAt(parseInstant(h.get(F_LAST_ACTIVITY_AT)))
+                .intercepted(parseBoolean(h.get(F_INTERCEPTED)))
                 .build();
     }
 
@@ -171,5 +174,9 @@ public class FishingSessionStore {
 
     private static Instant parseInstant(String v) {
         return StringUtils.hasText(v) ? Instant.parse(v) : null;
+    }
+
+    private static Boolean parseBoolean(String v) {
+        return StringUtils.hasText(v) ? Boolean.valueOf(v) : null;
     }
 }

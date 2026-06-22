@@ -6,6 +6,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.luckystar.admin.dto.GmGrantRequest;
@@ -129,5 +131,17 @@ class AdminSecurityIntegrationTest {
                         .contentType("application/json")
                         .content("{\"playerId\":42,\"amount\":1000,\"reason\":\"test\"}"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void superAdminToken_gmGrantWithoutReason_returns400() throws Exception {
+        String token = adminJwtUtil.generateToken(1L, "superadmin", AdminRole.SUPER_ADMIN);
+        mockMvc.perform(post("/admin/gm/grant")
+                        .header("Authorization", bearer(token))
+                        .contentType("application/json")
+                        .content("{\"playerId\":42,\"amount\":1000,\"reason\":\"\"}"))
+                .andExpect(status().isBadRequest());
+
+        verify(gmRewardService, never()).grant(anyString(), any(GmGrantRequest.class));
     }
 }

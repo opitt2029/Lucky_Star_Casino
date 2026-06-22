@@ -406,7 +406,7 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | T-042 | P0 | 排行榜查詢 API | ✅ | `/global`、`/global/{id}`、`/friends`、`/friends/me`（自己好友名次）+ username read model；**頭像欄位待 member 端發布頭像後補（跨組待辦）** |
 | T-043 | P1 | 每週排行榜重置排程 | ✅ | `@Scheduled(cron="0 0 0 * * MON", zone="Asia/Taipei")` + `rank_history` 冠軍快照 + `wallets.balance` 重建 ZSet + `notification.push` TOP3 通知 |
 | T-044 | P1 | 每日持幣快照任務 | ✅ | `@Scheduled(cron="0 0 0 * * *", zone="Asia/Taipei")` + `rank_daily_snapshots` 前一日持幣量快照 |
-| T-045 | P2 | 今日贏幣王排行榜 | ❌ | 同上 |
+| T-045 | P2 | 今日贏幣王排行榜 | ✅ | `rank:daily:winnings` ZSet + `wallet.credit` WIN 累加 + `/api/v1/rank/daily/winnings` API + 每日 00:00 重置 |
 
 ### A.6 Admin Service（組員D）
 
@@ -416,8 +416,8 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | T-051 | P1 | 玩家帳號管理 API | ✅ | `/admin/players` 列表(分頁+關鍵字)、`/{id}` 詳情(跨庫彙整 member/wallet/game)、`PATCH /{id}/status` 停用→Redis `disabled:player:{id}`，gateway 全域 filter 強制即時失效；member.status DB 持久化待 member internal API（跨組待辦） |
 | T-052 | P1 | 星幣流通量報表 API | ✅ | `GET /admin/reports/coin-flow?dimension=day\|week\|month&from=&to=`，讀 MySQL wallet_transactions、Java 彙整發放/消耗/淨流通 |
 | T-053 | P1 | 遊戲 RTP 監控儀表板 API | ✅ | `GET /admin/reports/rtp?game=&from=&to=`，讀 PostgreSQL game_rtp_stats 比對設計 RTP，偏差>5% 標 ABNORMAL |
-| T-054 | P2 | 異常玩家偵測機制 | ❌ | 同上 |
-| T-055 | P2 | 手動發放星幣 API（GM 工具） | ❌ | 同上 |
+| T-054 | P2 | 異常玩家偵測機制 | ✅ | `game.result` 偵測 BIG_WIN/HIGH_FREQUENCY，`wallet.credit/debit` 偵測 ABNORMAL_TRANSFER，寫入 PostgreSQL `admin_alerts` 並發送 Kafka `notification.push` 管理員告警 |
+| T-055 | P2 | 手動發放星幣 API（GM 工具） | ✅ | `POST /admin/gm/grant` 僅 SUPER_ADMIN 可用；發送 `wallet.credit.request` (`subType=GM_REWARD`) 由 wallet-service 入帳，並寫入 PostgreSQL `admin_action_logs` 操作日誌（操作者/玩家/金額/原因/冪等鍵/時間） |
 
 ### A.7 Gateway（組長A）
 
@@ -517,6 +517,6 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 - ✅ **完成度高**：全域基礎建設、Member Service、Gateway、Game Service（T-030~T-037）、Rank Service（T-040~T-044）、**Notification Service（T-070~T-073 全完成）**、**鑽石系統（T-100~T-107 全完成）**
 - ⚠️ **進行中**：Wallet Service（破產補助 T-027 / DLT 後台 T-028 未完）、前端（UI 齊全但 rankSlice 等尚未切換真實 API）
-- ❌ **尚未起步**：Swagger 文件（T-092）、E2E 整合測試（T-093）、結業簡報（T-096）、今日贏幣王（T-045）、異常玩家偵測（T-054）、GM 手動發幣（T-055）、破產補助（T-027）
+- ❌ **尚未起步**：Swagger 文件（T-092）、E2E 整合測試（T-093）、結業簡報（T-096）、破產補助（T-027）
 
-> **結論**：認證、帳號、遊戲對局、排行榜、即時推播、鑽石點數卡系統後端皆已完成；**剩餘空白主要集中在收尾文件（Swagger/E2E/簡報）、少數功能（破產補助/GM 工具）與前端 mock→真實 API 切換**。
+> **結論**：認證、帳號、遊戲對局、排行榜、即時推播、鑽石點數卡系統、Admin GM 手動發幣後端皆已完成；**剩餘空白主要集中在收尾文件（Swagger/E2E/簡報）、少數功能（破產補助）與前端 mock→真實 API 切換**。
