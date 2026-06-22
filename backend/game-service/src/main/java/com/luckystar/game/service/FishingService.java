@@ -217,6 +217,7 @@ public class FishingService {
                 // 保底：跳過命中判定，直接計算必中派彩（MONEY_TREE 仍隨機抽倍率）
                 fortuneConsumed = true;
                 payout = species.resolveGuaranteedPayout(stream, shot.getBetPerShot());
+                session.setGuaranteedShotSeq(shot.getShotSeq());
             } else {
                 // 風控攔截時仍正常消耗 RNG stream，確保 seed 可重放驗證（Provably Fair）。
                 fortuneConsumed = true;
@@ -316,17 +317,24 @@ public class FishingService {
         FishSpecies species = FishSpecies.fromCode(fishType);
         boolean commitmentValid = rng.verifyCommitment(round.getServerSeed(), round.getServerSeedHash());
         RandomStream stream = rng.stream(round.getServerSeed(), round.getClientSeed(), shotSeq);
-        long payout = species.resolvePayout(stream, betPerShot);
 
-        // 讀取場次結算時記錄的風控旗標
+        // 讀取場次結算時記錄的風控旗標與保底 shotSeq
         boolean riskControlled = false;
+        Long guaranteedShotSeq = null;
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> resultData = objectMapper.readValue(round.getResultData(), Map.class);
             riskControlled = Boolean.TRUE.equals(resultData.get("riskControlled"));
+            Object gsq = resultData.get("guaranteedShotSeq");
+            if (gsq instanceof Number) guaranteedShotSeq = ((Number) gsq).longValue();
         } catch (Exception ignored) {
             // result_data 不存在或格式異常時，保守不標記（不影響 PF 驗證本身）
         }
+
+        // 保底命中的 shot 使用 resolveGuaranteedPayout（串流位置已對齊），確保驗證結果與實際派彩一致
+        long payout = (guaranteedShotSeq != null && guaranteedShotSeq == shotSeq)
+                ? species.resolveGuaranteedPayout(stream, betPerShot)
+                : species.resolvePayout(stream, betPerShot);
 
         String message;
         if (!commitmentValid) {
@@ -477,6 +485,8 @@ public class FishingService {
             result.put("roomId", session.getRoomId());
             // verifyShot 用：此場次是否曾有批次被風控攔截（命中時實際派彩為 0）
             result.put("riskControlled", Boolean.TRUE.equals(session.getIntercepted()));
+            // verifyShot 用：幸運值保底命中的 shotSeq（null 代表未觸發）
+            result.put("guaranteedShotSeq", session.getGuaranteedShotSeq());
             return objectMapper.writeValueAsString(result);
         } catch (Exception ex) {
             log.warn("序列化捕魚結果失敗: {}", ex.toString());

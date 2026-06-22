@@ -165,8 +165,9 @@ export function useFishingSession({ onResults, fortuneReady = false } = {}) {
     if (!sessionId) return
     inFlightRef.current = true
     const batch = bufferRef.current.splice(0, MAX_BATCH)
+    const wasFortuneReady = fortuneReadyRef.current
     try {
-      const res = await gameApi.fishingShots({ sessionId, shots: batch, fortuneReady: fortuneReadyRef.current })
+      const res = await gameApi.fishingShots({ sessionId, shots: batch, fortuneReady: wasFortuneReady })
       let delta = 0
       let payoutSum = 0
       let acceptedShots = 0
@@ -198,7 +199,7 @@ export function useFishingSession({ onResults, fortuneReady = false } = {}) {
         setStats((prev) => ({ totalShots: prev.totalShots + acceptedShots, totalPayout: prev.totalPayout + payoutSum }))
       }
       const fishBySeq = fishBySeqRef.current
-      onResultsRef.current?.(res.results, { sessionBalance: res.sessionBalance, fishBySeq })
+      onResultsRef.current?.(res.results, { sessionBalance: res.sessionBalance, fishBySeq, fortuneConsumed: wasFortuneReady })
       res.results.forEach((r) => fishBySeq.delete(r.shotSeq))
     } catch (err) {
       // 送出失敗：退回整批樂觀扣注，避免局內餘額被卡住。
