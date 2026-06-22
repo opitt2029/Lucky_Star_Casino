@@ -55,6 +55,7 @@ class GmRewardServiceTest {
         assertThat(payload.get("amount")).isEqualTo(5000);
         assertThat(payload.get("idempotencyKey")).asString().startsWith("gm-grant-admin-1-42-");
         assertThat(payload.get("referenceId")).isEqualTo(payload.get("idempotencyKey"));
+        assertThat(payload.get("reason")).isEqualTo("compensation");
 
         // 2) admin_action_logs 稽核紀錄
         ArgumentCaptor<AdminActionLog> logCaptor = ArgumentCaptor.forClass(AdminActionLog.class);
@@ -64,6 +65,7 @@ class GmRewardServiceTest {
         assertThat(saved.getOperator()).isEqualTo("admin-1");
         assertThat(saved.getTargetPlayerId()).isEqualTo(42L);
         assertThat(saved.getAmount()).isEqualTo(5000L);
+        assertThat(saved.getReason()).isEqualTo("compensation");
         assertThat(saved.getIdempotencyKey()).isEqualTo(payload.get("idempotencyKey"));
 
         // 3) 回應
