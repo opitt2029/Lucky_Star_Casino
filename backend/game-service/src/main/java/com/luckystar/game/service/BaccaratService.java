@@ -149,7 +149,7 @@ public class BaccaratService {
         RandomStream stream = rng.stream(session.getServerSeed(), session.getClientSeed(), actualNonce);
         BaccaratOutcome outcome = baccaratGame.deal(stream);
 
-        if (Boolean.TRUE.equals(session.getFortuneFull())) {
+        if (Boolean.TRUE.equals(session.getFortuneReady())) {
             BaccaratResult desired = findDesiredResult(bp, bb, bt);
             if (desired != null && !outcome.result().equals(desired)) {
                 for (long attempt = 1; attempt <= 100; attempt++) {

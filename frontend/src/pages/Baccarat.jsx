@@ -213,7 +213,7 @@ function saveSqueezeMode(playerId, value) {
   try {
     const all = JSON.parse(localStorage.getItem(SQUEEZE_STORAGE_KEY) || '{}')
     localStorage.setItem(SQUEEZE_STORAGE_KEY, JSON.stringify({ ...all, [playerId]: value }))
-  } catch {}
+  } catch { /* localStorage 不可用時忽略寫入 */ }
 }
 
 export default function Baccarat() {

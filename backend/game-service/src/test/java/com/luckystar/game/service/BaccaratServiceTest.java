@@ -94,7 +94,7 @@ class BaccaratServiceTest {
         when(walletClient.debit(eq(PLAYER_ID), eq(300L), anyString(), anyString()))
                 .thenReturn(new WalletDebitResponse(1L, PLAYER_ID, 300L, 10000L, 9700L, false));
 
-        BaccaratBetResponse res = service.placeBet(PLAYER_ID, 100L, 200L, 0L, "my-seed");
+        BaccaratBetResponse res = service.placeBet(PLAYER_ID, 100L, 200L, 0L, "my-seed", false);
 
         assertEquals("baccarat", res.getGame());
         assertEquals(300L, res.getTotalBet());
@@ -119,7 +119,7 @@ class BaccaratServiceTest {
     @DisplayName("placeBet：總額低於下限 → IllegalArgumentException，不扣款")
     void placeBet_belowMin_throws() {
         assertThrows(IllegalArgumentException.class,
-                () -> service.placeBet(PLAYER_ID, 50L, 0L, 0L, null));
+                () -> service.placeBet(PLAYER_ID, 50L, 0L, 0L, null, false));
         verify(walletClient, never()).debit(anyLong(), anyLong(), anyString(), anyString());
         verify(sessionService, never()).start(any());
     }
@@ -128,7 +128,7 @@ class BaccaratServiceTest {
     @DisplayName("placeBet：總額超過上限 → IllegalArgumentException")
     void placeBet_aboveMax_throws() {
         assertThrows(IllegalArgumentException.class,
-                () -> service.placeBet(PLAYER_ID, 3000L, 3000L, 0L, null));
+                () -> service.placeBet(PLAYER_ID, 3000L, 3000L, 0L, null, false));
         verify(walletClient, never()).debit(anyLong(), anyLong(), anyString(), anyString());
     }
 
@@ -138,7 +138,7 @@ class BaccaratServiceTest {
         when(walletClient.debit(anyLong(), anyLong(), anyString(), anyString()))
                 .thenThrow(new InsufficientBalanceException("星幣餘額不足"));
         assertThrows(InsufficientBalanceException.class,
-                () -> service.placeBet(PLAYER_ID, 100L, 0L, 0L, null));
+                () -> service.placeBet(PLAYER_ID, 100L, 0L, 0L, null, false));
         verify(sessionService, never()).start(any());
     }
 
