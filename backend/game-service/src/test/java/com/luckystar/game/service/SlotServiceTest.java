@@ -52,6 +52,7 @@ class SlotServiceTest {
     private final GameResultEventPublisher publisher = org.mockito.Mockito.mock(GameResultEventPublisher.class);
     private final GameSessionService sessionService = org.mockito.Mockito.mock(GameSessionService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final RiskControlService riskControlService = org.mockito.Mockito.mock(RiskControlService.class);
 
     private SlotService service;
 
@@ -84,7 +85,9 @@ class SlotServiceTest {
     @BeforeEach
     void setUp() {
         service = new SlotService(rng, slotMachine, walletClient, roundRepository,
-                publisher, sessionService, objectMapper);
+                publisher, sessionService, objectMapper, riskControlService);
+        // 預設：風控不攔截
+        when(riskControlService.shouldIntercept(anyLong(), anyString())).thenReturn(false);
         when(rng.generateServerSeed()).thenReturn("srv");
         when(rng.commit("srv")).thenReturn("hash");
         when(rng.generateClientSeed()).thenReturn("gen-client");
@@ -174,6 +177,30 @@ class SlotServiceTest {
         verify(roundRepository).save(roundCaptor.capture());
         assertEquals(0L, roundCaptor.getValue().getWinAmount());
         verify(publisher).publishSlotResult(any(), any());
+    }
+
+    @Test
+    @DisplayName("spin fortuneReady=true 且風控攔截：guaranteed=true 幸運值應清零，無派彩")
+    void spin_fortuneReadyWithRiskIntercept_guaranteedTrueNoPayout() {
+        when(riskControlService.shouldIntercept(anyLong(), anyString())).thenReturn(true);
+        when(slotMachine.spin(any(), eq(BET))).thenReturn(winOutcome());
+
+        SpinResponse res = service.spin(PLAYER_ID, BET, null, true);
+
+        assertTrue(res.isGuaranteed(), "fortuneReady=true 時即使風控攔截，guaranteed 仍應為 true 以清零幸運值");
+        assertEquals(0L, res.getPayout(), "風控攔截後派彩應為 0");
+    }
+
+    @Test
+    @DisplayName("spin fortuneReady=false：guaranteed=false，幸運值不受影響")
+    void spin_noFortuneReady_guaranteedFalse() {
+        when(slotMachine.spin(any(), eq(BET))).thenReturn(winOutcome());
+        when(walletClient.credit(eq(PLAYER_ID), eq(500L), anyString(), anyString()))
+                .thenReturn(new WalletCreditResponse(2L, PLAYER_ID, 500L, 9900L, 10400L, 0L, false));
+
+        SpinResponse res = service.spin(PLAYER_ID, BET, null, false);
+
+        assertEquals(false, res.isGuaranteed(), "fortuneReady=false 時 guaranteed 應為 false");
     }
 
     @Test

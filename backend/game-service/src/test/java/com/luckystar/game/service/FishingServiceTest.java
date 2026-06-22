@@ -43,12 +43,15 @@ class FishingServiceTest {
     private final GameRoundRepository roundRepository = org.mockito.Mockito.mock(GameRoundRepository.class);
     private final GameResultEventPublisher publisher = org.mockito.Mockito.mock(GameResultEventPublisher.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final RiskControlService riskControlService = org.mockito.Mockito.mock(RiskControlService.class);
 
     private FishingService service;
 
     @BeforeEach
     void setUp() {
-        service = new FishingService(rng, walletClient, sessionStore, roundRepository, publisher, objectMapper);
+        service = new FishingService(rng, walletClient, sessionStore, roundRepository, publisher, objectMapper, riskControlService);
+        // 預設：風控不攔截
+        when(riskControlService.shouldIntercept(anyLong(), anyString())).thenReturn(false);
         when(rng.generateServerSeed()).thenReturn("server-seed");
         when(rng.commit(anyString())).thenReturn("server-seed-hash");
         when(rng.generateClientSeed()).thenReturn("client-seed");

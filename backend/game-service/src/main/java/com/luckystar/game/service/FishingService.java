@@ -86,6 +86,7 @@ public class FishingService {
     private final GameRoundRepository roundRepository;
     private final GameResultEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final RiskControlService riskControlService;
 
     /**
      * 開場（或續玩）：已有進行中場次時直接回傳原場次（resumed=true，不重複扣款）；
@@ -176,6 +177,9 @@ public class FishingService {
 
         validateBatch(session, shots);
 
+        // 風控攔截：整批子彈共用同一攔截結果，避免逐發查詢 DB。
+        boolean intercepted = riskControlService.shouldIntercept(session.getPlayerId(), GAME_TYPE);
+
         long balance = session.getSessionBalance();
         long totalBet = session.getTotalBet();
         long totalPayout = session.getTotalPayout();
@@ -207,12 +211,15 @@ public class FishingService {
             FishSpecies species = FishSpecies.fromCode(shot.getFishType());
             RandomStream stream = rng.stream(session.getServerSeed(), session.getClientSeed(), shot.getShotSeq());
             long payout;
-            if (!fortuneConsumed) {
+            if (!fortuneConsumed && !intercepted) {
                 // 保底：跳過命中判定，直接計算必中派彩（MONEY_TREE 仍隨機抽倍率）
                 fortuneConsumed = true;
                 payout = species.resolveGuaranteedPayout(stream, shot.getBetPerShot());
             } else {
-                payout = species.resolvePayout(stream, shot.getBetPerShot());
+                // 風控攔截時仍正常消耗 RNG stream，確保 seed 可重放驗證（Provably Fair）。
+                fortuneConsumed = true;
+                long rawPayout = species.resolvePayout(stream, shot.getBetPerShot());
+                payout = intercepted ? 0L : rawPayout;
             }
             if (payout > 0) {
                 balance += payout;

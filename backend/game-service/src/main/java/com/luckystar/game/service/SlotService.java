@@ -209,7 +209,7 @@ public class SlotService {
                 .serverSeedHash(serverSeedHash)
                 .clientSeed(clientSeed)
                 .nonce(NONCE)
-                .guaranteed(useGuarantee && outcome.win())
+                .guaranteed(fortuneReady)
                 .build();
     }
 

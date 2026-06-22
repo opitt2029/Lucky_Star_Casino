@@ -57,6 +57,7 @@ class BaccaratServiceTest {
     private final com.luckystar.game.session.GameSessionService sessionService =
             org.mockito.Mockito.mock(com.luckystar.game.session.GameSessionService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final RiskControlService riskControlService = org.mockito.Mockito.mock(RiskControlService.class);
 
     private BaccaratService service;
 
@@ -65,6 +66,13 @@ class BaccaratServiceTest {
                 List.of(new Card(0, 0), new Card(4, 0)),
                 List.of(new Card(8, 0), new Card(0, 0)),
                 5, 9, BaccaratResult.BANKER, false, false);
+    }
+
+    private static BaccaratOutcome playerWinOutcome() {
+        return new BaccaratOutcome(
+                List.of(new Card(8, 0), new Card(0, 0)),
+                List.of(new Card(4, 0), new Card(0, 0)),
+                9, 5, BaccaratResult.PLAYER, false, false);
     }
 
     private static GameSession startedSession(long player, long banker, long tie) {
@@ -79,7 +87,9 @@ class BaccaratServiceTest {
     @BeforeEach
     void setUp() {
         service = new BaccaratService(rng, baccaratGame, walletClient, roundRepository,
-                publisher, sessionService, objectMapper);
+                publisher, sessionService, objectMapper, riskControlService);
+        // 預設：風控不攔截
+        when(riskControlService.shouldIntercept(anyLong(), anyString())).thenReturn(false);
         when(rng.generateServerSeed()).thenReturn("srv");
         when(rng.commit("srv")).thenReturn("hash");
         when(rng.generateClientSeed()).thenReturn("gen-client");
@@ -198,6 +208,27 @@ class BaccaratServiceTest {
         when(sessionService.find(PLAYER_ID, ROUND_ID)).thenReturn(Optional.empty());
         assertThrows(RoundNotFoundException.class, () -> service.settle(PLAYER_ID, ROUND_ID));
         verify(baccaratGame, never()).deal(any());
+        verify(walletClient, never()).credit(anyLong(), anyLong(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("settle 風控攔截：初始 PLAYER 結果被強制替換為莊家贏，押閒無派彩")
+    void settle_riskIntercept_forcesBankerWin() {
+        when(sessionService.find(PLAYER_ID, ROUND_ID))
+                .thenReturn(Optional.of(startedSession(100L, 0L, 0L))); // 押閒
+        when(riskControlService.shouldIntercept(anyLong(), anyString())).thenReturn(true);
+        BaccaratOutcome bankerOutcome = bankerWinOutcome();
+        when(baccaratGame.deal(any()))
+                .thenReturn(playerWinOutcome()) // nonce 0 → PLAYER（原始結果）
+                .thenReturn(bankerOutcome);      // 風控搜尋到的 BANKER
+        when(baccaratGame.settle(eq(bankerOutcome), anyMap()))
+                .thenReturn(new BaccaratSettlement(BaccaratResult.BANKER, 100L, 0L,
+                        new EnumMap<>(BaccaratResult.class)));
+
+        BaccaratResultResponse res = service.settle(PLAYER_ID, ROUND_ID);
+
+        assertEquals("BANKER", res.getResult(), "風控攔截後應為莊家贏");
+        assertEquals(0L, res.getTotalPayout(), "押閒但莊贏，無派彩");
         verify(walletClient, never()).credit(anyLong(), anyLong(), anyString(), anyString());
     }
 
