@@ -14,6 +14,9 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /** {@link RiskControlService} 單元測試。 */
@@ -23,11 +26,17 @@ class RiskControlServiceTest {
     private static final String GAME_TYPE = "SLOT";
 
     private final GameRoundRepository roundRepository = org.mockito.Mockito.mock(GameRoundRepository.class);
+    @SuppressWarnings("unchecked")
+    private final ValueOperations<String, String> valueOps = org.mockito.Mockito.mock(ValueOperations.class);
+    private final StringRedisTemplate redisTemplate = org.mockito.Mockito.mock(StringRedisTemplate.class);
     private RiskControlService service;
 
     @BeforeEach
     void setUp() {
-        service = new RiskControlService(roundRepository);
+        Mockito.when(redisTemplate.opsForValue()).thenReturn(valueOps);
+        // 預設：並發閘回傳 1（無並發，正常通過）
+        Mockito.when(valueOps.increment(Mockito.anyString(), Mockito.anyLong())).thenReturn(1L);
+        service = new RiskControlService(roundRepository, redisTemplate);
         ReflectionTestUtils.setField(service, "playerWinLimit", 50000L);
         ReflectionTestUtils.setField(service, "globalRtpLimit", 0.95d);
         ReflectionTestUtils.setField(service, "rtpSampleSize", 500);

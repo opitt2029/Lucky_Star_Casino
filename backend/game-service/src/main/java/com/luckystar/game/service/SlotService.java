@@ -155,7 +155,9 @@ public class SlotService {
                 playerId, bet, "slot-bet-" + roundId, roundId);
 
         // 2) 風控優先檢查：若觸發攔截則不使用保底轉動，避免中獎盤面配零派彩的視覺矛盾。
+        // shouldIntercept 會佔用並發閘；無論是否攔截，finally 均須呼叫 releaseRiskSlot。
         boolean riskIntercept = riskControlService.shouldIntercept(playerId, GAME_TYPE);
+        try {
         boolean useGuarantee = fortuneReady && !riskIntercept;
 
         RandomStream stream = rng.stream(serverSeed, clientSeed, NONCE);
@@ -211,6 +213,9 @@ public class SlotService {
                 .nonce(NONCE)
                 .guaranteed(fortuneReady)
                 .build();
+        } finally {
+            riskControlService.releaseRiskSlot(playerId);
+        }
     }
 
     /**

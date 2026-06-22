@@ -166,7 +166,9 @@ public class BaccaratService {
         }
 
         // 風控攔截：淨贏或全局 RTP 超限時，強制結果為莊家贏（確保牌面與結果一致，搜不同 nonce）。
+        // shouldIntercept 佔用並發閘；settle 最後的 finally 必須釋放。
         boolean intercepted = riskControlService.shouldIntercept(playerId, GAME_TYPE);
+        try {
         if (intercepted && outcome.result() != BaccaratResult.BANKER) {
             boolean interceptFound = false;
             for (long attempt = 10001L; attempt <= 11000L; attempt++) {
@@ -247,6 +249,9 @@ public class BaccaratService {
                 .clientSeed(session.getClientSeed())
                 .nonce(actualNonce)
                 .build();
+        } finally {
+            riskControlService.releaseRiskSlot(playerId);
+        }
     }
 
     private GameRound buildRound(GameSession session, BaccaratOutcome outcome,

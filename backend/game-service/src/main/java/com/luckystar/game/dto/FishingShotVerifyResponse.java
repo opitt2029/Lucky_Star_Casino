@@ -19,8 +19,12 @@ public class FishingShotVerifyResponse {
     long betPerShot;
     /** SHA-256(serverSeed) 是否等於開場公布的 serverSeedHash。 */
     boolean commitmentValid;
+    /** RNG 判定原始命中結果（未套用風控規則）。 */
     boolean hit;
+    /** RNG 判定原始派彩（未套用風控規則）。 */
     long payout;
+    /** 此場次是否曾有批次被風控攔截；若為 true，命中局的實際入帳派彩為 0。 */
+    boolean riskControlled;
     String serverSeed;
     String serverSeedHash;
     String clientSeed;

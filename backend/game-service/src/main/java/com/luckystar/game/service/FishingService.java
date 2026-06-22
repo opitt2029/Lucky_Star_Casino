@@ -178,7 +178,9 @@ public class FishingService {
         validateBatch(session, shots);
 
         // 風控攔截：整批子彈共用同一攔截結果，避免逐發查詢 DB。
+        // shouldIntercept 佔用並發閘；shots() 最後的 finally 必須釋放。
         boolean intercepted = riskControlService.shouldIntercept(session.getPlayerId(), GAME_TYPE);
+        try {
 
         long balance = session.getSessionBalance();
         long totalBet = session.getTotalBet();
@@ -235,6 +237,9 @@ public class FishingService {
                     .build());
         }
 
+        if (intercepted) {
+            session.setIntercepted(Boolean.TRUE);
+        }
         session.setSessionBalance(balance);
         session.setTotalBet(totalBet);
         session.setTotalPayout(totalPayout);
@@ -250,6 +255,9 @@ public class FishingService {
                 .totalShots(totalShots)
                 .lastShotSeq(lastShotSeq)
                 .build();
+        } finally {
+            riskControlService.releaseRiskSlot(session.getPlayerId());
+        }
     }
 
     /**
@@ -310,6 +318,27 @@ public class FishingService {
         RandomStream stream = rng.stream(round.getServerSeed(), round.getClientSeed(), shotSeq);
         long payout = species.resolvePayout(stream, betPerShot);
 
+        // 讀取場次結算時記錄的風控旗標
+        boolean riskControlled = false;
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> resultData = objectMapper.readValue(round.getResultData(), Map.class);
+            riskControlled = Boolean.TRUE.equals(resultData.get("riskControlled"));
+        } catch (Exception ignored) {
+            // result_data 不存在或格式異常時，保守不標記（不影響 PF 驗證本身）
+        }
+
+        String message;
+        if (!commitmentValid) {
+            message = "承諾雜湊不符（異常）";
+        } else if (riskControlled && payout > 0) {
+            // PF 驗證 RNG 結果為命中，但場次有風控介入；實際入帳派彩為 0
+            message = "承諾相符；RNG 結果可確定性重現。"
+                    + "注意：此場次有風控介入，命中局的實際入帳派彩已調整為 0（payout 欄位顯示原始 RNG 值）";
+        } else {
+            message = "承諾相符；該發結果可由 (serverSeed, clientSeed, shotSeq) 確定性重現";
+        }
+
         return FishingShotVerifyResponse.builder()
                 .sessionId(sessionId)
                 .shotSeq(shotSeq)
@@ -318,12 +347,11 @@ public class FishingService {
                 .commitmentValid(commitmentValid)
                 .hit(payout > 0)
                 .payout(payout)
+                .riskControlled(riskControlled)
                 .serverSeed(round.getServerSeed())
                 .serverSeedHash(round.getServerSeedHash())
                 .clientSeed(round.getClientSeed())
-                .message(commitmentValid
-                        ? "承諾相符；該發結果可由 (serverSeed, clientSeed, shotSeq) 確定性重現"
-                        : "承諾雜湊不符（異常）")
+                .message(message)
                 .build();
     }
 
@@ -447,6 +475,8 @@ public class FishingService {
             result.put("totalPayout", session.getTotalPayout());
             result.put("cannonLevel", session.getCannonLevel());
             result.put("roomId", session.getRoomId());
+            // verifyShot 用：此場次是否曾有批次被風控攔截（命中時實際派彩為 0）
+            result.put("riskControlled", Boolean.TRUE.equals(session.getIntercepted()));
             return objectMapper.writeValueAsString(result);
         } catch (Exception ex) {
             log.warn("序列化捕魚結果失敗: {}", ex.toString());
