@@ -14,8 +14,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - 測試 `SlotMachineTest`/`SlotSymbolTest`：改兩階斷言（新增「左二同賠 pairMultiplier+2 格」「右二同 b==c≠a 不賠」案例、RTP/命中率 band 對齊 93.8%/30.7%）。
 
 **為什麼**：老虎機（develop 既有版：單中線僅三連、倍率 2/3/5/8、RTP ≈26%）仍偏低，玩家體感「少中」。改兩階單中線後三連 ≈11.2% + 左二同 ≈19.5% ＝命中率 ≈30.7%、RTP ≈93.8%，達娛樂級「常中小獎（push/LDW）＋偶爾大獎」。權重不變；與後端 `breakPayline`/風控/幸運值保底邏輯相容（`breakPayline` 把中線中格換成與首格不同符號，兩階皆破）。百家樂、捕魚維持不動。鐵則：後端引擎為單一真相，後端＋mock＋測試三者同步。
-**如何驗證**：`mvn -pl backend/game-service test`（BUILD SUCCESS，slot 相關測試全綠）；`cd frontend && npm run lint && npm run build`（皆綠）。RTP/命中率另以解析式 + 200 萬局蒙地卡羅交叉確認（93.83% / 30.68%）。
-> 註：本分支原另記一筆「補回 develop 建置破口（等同 6501e4c）」，因 develop 已含等義修復（見下方「修復 develop 編譯/建置破口」），合併時去重移除。
+**如何驗證**：`mvn -pl backend/game-service test`（BUILD SUCCESS，121 tests / slot 相關測試全綠）；`cd frontend && npm run lint && npm run build`（皆綠）。RTP/命中率另以解析式 + 200 萬局蒙地卡羅交叉確認（93.83% / 30.68%）。
+> 註：本分支原另記一筆「補回 develop 建置破口（等同 6501e4c）」，因 develop 已含等義修復（見「修復 develop 編譯/建置破口」），合併時去重移除。
+
+## [docs] -- 2026-06-22 -- Align T-090 load test audit status
+
+### Changed
+- `AUDIT_REPORT.md`: updates T-090 from outdated blocked wording to the current measured state: JMX, runner, analyzer, provisioning, and report are complete; accounting/idempotency gates passed; single-host 1,000-player performance gates failed.
+
+### Why
+- The T-090 deliverables now exist and have real measurements, so the audit should no longer say the work is blocked by missing slot API, JMeter, environment, or 1,000 player credentials.
+
+### Verified
+- `npm test -- --test-reporter=spec tests/infra/jmeter.test.js`: 122 infra tests passed, including the T-090 JMeter contract checks.
 
 ## [fix] -- 2026-06-22 -- Complete T-055 GM coin grant API
 
