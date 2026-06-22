@@ -14,6 +14,7 @@ import com.luckystar.admin.kafka.WalletEvent;
 import com.luckystar.admin.postgres.entity.AdminAlert;
 import com.luckystar.admin.postgres.repository.AdminAlertRepository;
 import java.time.Duration;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -70,8 +71,15 @@ class AlertRuleEngineTest {
         verify(alertRepository).save(captor.capture());
         assertThat(captor.getValue().getAlertType()).isEqualTo("BIG_WIN");
         assertThat(captor.getValue().getPlayerId()).isEqualTo(1L);
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        ArgumentCaptor<Map<String, Object>> payloadCaptor =
+                ArgumentCaptor.forClass((Class) Map.class);
         verify(notificationPushPublisher)
-                .publishAlert(isNull(), eq("BIG_WIN"), any(), any(), any());
+                .publishAlert(isNull(), eq("BIG_WIN"), any(), any(), payloadCaptor.capture());
+        assertThat(payloadCaptor.getValue())
+                .containsEntry("audience", "ADMIN")
+                .containsEntry("playerId", 1L)
+                .containsEntry("alertType", "BIG_WIN");
     }
 
     // ── 規則② HIGH_FREQUENCY 邊界 ─────────────────────────────────────────
@@ -96,6 +104,16 @@ class AlertRuleEngineTest {
         assertThat(captor.getValue().getAlertType()).isEqualTo("HIGH_FREQUENCY");
     }
 
+    @Test
+    void betCountAfterAlreadyAlerted_doesNotRaiseDuplicateHighFrequency() {
+        when(valueOps.increment("admin:betcount:7")).thenReturn(102L);
+
+        engine().onGameResult(gameResult(7L, null));
+
+        verify(alertRepository, never()).save(any());
+        verify(notificationPushPublisher, never()).publishAlert(any(), any(), any(), any(), any());
+    }
+
     // ── 規則③ ABNORMAL_TRANSFER 邊界 ──────────────────────────────────────
 
     @Test
@@ -116,6 +134,16 @@ class AlertRuleEngineTest {
         ArgumentCaptor<AdminAlert> captor = ArgumentCaptor.forClass(AdminAlert.class);
         verify(alertRepository).save(captor.capture());
         assertThat(captor.getValue().getAlertType()).isEqualTo("ABNORMAL_TRANSFER");
+    }
+
+    @Test
+    void txnCountAfterAlreadyAlerted_doesNotRaiseDuplicateAbnormalTransfer() {
+        when(valueOps.increment("admin:txncount:5")).thenReturn(22L);
+
+        engine().onWalletEvent(new WalletEvent(1L, 5L, 100L, 1000L, "BET", "idem", "ref"));
+
+        verify(alertRepository, never()).save(any());
+        verify(notificationPushPublisher, never()).publishAlert(any(), any(), any(), any(), any());
     }
 
     @Test
