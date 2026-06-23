@@ -131,21 +131,26 @@ export default function FishingArena({
           showHint('局內餘額不足，請結算後再加值')
           continue
         }
-        if (r.hit && r.payout > 0) {
+        if (r.captured && r.payout > 0) {
+          // 致命一擊 + 捕獲：派彩演出（淡出後移除）
           const effMult = Math.max(1, Math.round(r.payout / bet))
           play?.('hit')
           play?.('net')
           play?.('fishCaught')
           spawnSpark(pending.xPct, pending.yPct)
           spawnFloat(pending.xPct, pending.yPct, r.payout)
-          // 標記該魚捕獲（淡出動畫後移除）
           setFishes((prev) => prev.map((f) => (f.id === pending.fishId ? { ...f, caught: true } : f)))
           window.setTimeout(() => removeFish(pending.fishId), 520)
           onCatch?.({ payout: r.payout, multiplier: pending.multiplier, effMult, tier: pending.tier })
-        } else {
-          // 高倍魚逃跑：near-miss 惋惜音
+        } else if (r.killed) {
+          // 致命一擊但掙脫逃跑：移除魚 + 高倍惋惜音
           if (pending.multiplier >= 15) play?.('fishEscape')
+          removeFish(pending.fishId)
           onMiss?.({ multiplier: pending.multiplier })
+        } else {
+          // 命中但未死（擦傷）：火花回饋，不移除魚；高頻音交由 soundEngine 節流
+          play?.('hit')
+          spawnSpark(pending.xPct, pending.yPct)
         }
       }
     },
@@ -235,7 +240,7 @@ export default function FishingArena({
       setAim(aimFor(px, py))
       if (fish.tier === 'boss' || fish.tier === 'special') play?.('lockOn')
 
-      const res = fire(fish.code)
+      const res = fire(String(fish.id), fish.code)
       if (!res.ok) {
         if (res.reason === 'insufficient') showHint('局內餘額不足，請結算後再加值')
         return res.reason

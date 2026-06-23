@@ -3,6 +3,34 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Changed] — 2026-06-23 — 捕魚機改「血量/傷害」模型（Phase 1：後端引擎 + mock + 測試 + ADR-003）
+
+> 捕魚機升級的第一階段：把「每發獨立判定命中」改為真·血量/傷害模型（魚有血、砲台有傷害、暴擊扣更多血、
+> 血量歸零才擊殺派彩），同時維持 Provably Fair、RTP≈92%、帳務冪等。渲染（PixiJS 引擎）、戰鬥回饋演出、
+> 砲台差異化、Boss 事件為後續 Phase 2~4。決策見 `docs/adr/ADR-003.md`。
+
+### Added
+- `backend/game-service/.../fishing/FishingCombat.java`：血量/傷害模型核心數學（純函式）。暴擊（`CRIT_CHANCE` 0.20 / `CRIT_MULTIPLIER` 2）、各砲台基礎傷害（銅10/銀17/金26）、DP 精確期望擊殺發數 `expectedShotsToKill`、反推捕獲機率 `pCapture = TARGET_RTP × E[N] / multiplier` 使 RTP 精確 92%、`resolveShot`/`resolveShotGuaranteed` 解析單發（暴擊→累傷→致命一擊捕獲/掙脫）。
+- `FishSpecies.java`：每魚種加 `hp`（= 倍率 × 10）、`tier`（SMALL/MEDIUM/HIGH/BOSS/SPECIAL）、`spawnWeight`。
+- `FishingSession.java`：加 `fishDamage`（instanceId→累積傷害，跨批次）、`kills`（致命一擊紀錄供 verifyShot 重放）。
+- DTO：`FishingShotsRequest.Shot` 加必填 `fishInstanceId`；`FishingShotsResponse.ShotResult` 加 `crit/damage/hpRemaining/killed/captured`（向後相容預設值）。
+- 測試 `FishingCombatTest`：RTP 解析證明（每魚種/砲台精確 92%）+ Monte-Carlo band + 暴擊率 + 保底強制捕獲 + PF 確定性重放。
+- `docs/adr/ADR-003.md`：模型、RTP 推導、PF 重放、行為相關性與線上監控策略。
+
+### Changed
+- `FishingService.shots()`：改用 `FishingCombat` 逐發解析、在 session 累積各魚 instance 傷害、記錄致命一擊；`verifyShot()` 改以結算紀錄的 `kills`（damageBefore）+ cannonLevel 精確重放致命一擊；保底改為「本批第一個致命一擊強制捕獲」；風控攔截改為「致命一擊改判掙脫、派彩 0」；`FishTableEntry` 改帶 `hp/tier/spawnWeight`。並設 `MAX_LIVE_FISH=80` 控管並存 instance。
+- `frontend/src/services/mockApi.js`：完整鏡像血量/傷害數學（per-instance 累傷、暴擊、`pCapture` 捕獲判定、新回應欄位），`FISH_SPECIES`/`fishTableView` 補 `hp/tier/spawnWeight`（AGENTS 雷區 14）。
+- `frontend/src/hooks/useFishingSession.js`：`fire(fishCode)` → `fire(fishInstanceId, fishCode)`，批次帶 `fishInstanceId`。
+- `frontend/src/components/FishingArena.jsx`：開火帶魚 instance id；命中演出改 `captured`（派彩）/`killed` 未捕獲（掙脫移除）/未死（擦傷火花不移除）三態（DOM 漁場為過渡，Phase 2 由 PixiJS 取代）。
+- 測試 `FishSpeciesTest`：改為純資料驗證（hp/tier/spawnWeight/fromCode）；戰鬥數學移至 `FishingCombatTest`。
+
+### 為什麼
+- 玩家回報捕魚機「看不到傷害、魚剩多少血、有沒有暴擊」「砲台差別不明顯」。改血量/傷害模型可直接呈現這些回饋，且砲台可做出傷害/手感差異——同時用 `pCapture` 反推維持各魚種/砲台 RTP 精確 92%、不破壞 Provably Fair 與帳務冪等（wallet 仍只在 buy-in/結算各動一次）。
+
+### 如何驗證
+- `mvn -pl backend/game-service test` → **131 tests 全綠，BUILD SUCCESS**（含 RTP band / 暴擊 / 保底 / PF 重放）。
+- `npm run lint && npm run build`（frontend）通過。
+
 ## [Fixed] — 2026-06-23 — 登入偶發「第一次失敗、原帳密第二次又成功」：登入流程加逾時放寬+重試、401 攔截器不再洗掉登入錯誤
 
 ### Fixed

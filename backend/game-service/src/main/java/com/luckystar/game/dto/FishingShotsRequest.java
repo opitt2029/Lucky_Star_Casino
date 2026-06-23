@@ -49,5 +49,13 @@ public class FishingShotsRequest {
         /** 目標魚種代碼（FishSpecies 名稱）。 */
         @NotBlank(message = "缺少魚種代碼 fishType")
         private String fishType;
+
+        /**
+         * 目標魚 instance 識別碼（前端為每條魚產生的穩定 id）。血量/傷害模型用以跨批次累積同一條魚的傷害；
+         * 同一條魚的連續射擊須帶相同 fishInstanceId。
+         */
+        @NotBlank(message = "缺少 fishInstanceId")
+        @Size(max = 64, message = "fishInstanceId 過長")
+        private String fishInstanceId;
     }
 }

@@ -134,8 +134,11 @@ export function useFishingSession({ onResults, fortuneReady = false } = {}) {
   /**
    * 開火一發。回傳 { ok, reason }：ok 時已排入批次並樂觀扣局內餘額。
    * reason: 'ratelimited'（射速過快）| 'insufficient'（局內餘額不足）| 'inactive'。
+   *
+   * @param {string} fishInstanceId 目標魚 instance 的穩定 id（血量/傷害模型用以跨批次累積同一條魚的傷害）
+   * @param {string} fishCode       目標魚種代碼
    */
-  const fire = useCallback((fishCode) => {
+  const fire = useCallback((fishInstanceId, fishCode) => {
     if (phase !== 'playing') return { ok: false, reason: 'inactive' }
     const betPerShot = CANNON_BET[cannonLevelRef.current] || CANNON_BET[1]
     if (balanceRef.current < betPerShot) return { ok: false, reason: 'insufficient' }
@@ -144,7 +147,7 @@ export function useFishingSession({ onResults, fortuneReady = false } = {}) {
     const shotSeq = shotSeqRef.current + 1
     shotSeqRef.current = shotSeq
     fishBySeqRef.current.set(shotSeq, fishCode)
-    bufferRef.current.push({ shotSeq, betPerShot, fishType: fishCode })
+    bufferRef.current.push({ shotSeq, betPerShot, fishType: fishCode, fishInstanceId: String(fishInstanceId) })
     setBalanceBoth(balanceRef.current - betPerShot) // 樂觀扣注，命中後於回應補回派彩
 
     if (bufferRef.current.length >= FLUSH_SIZE) flush()

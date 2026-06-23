@@ -15,23 +15,52 @@ const SLOT_PAYTABLE = [
 const SLOT_TOTAL_WEIGHT = SLOT_PAYTABLE.reduce((sum, entry) => sum + entry.weight, 0)
 const SLOT_PAYTABLE_BY_SYMBOL = Object.fromEntries(SLOT_PAYTABLE.map((entry) => [entry.symbol, entry]))
 
-// 捕魚機魚種表（與後端 FishSpecies 對齊）；命中機率 = TARGET_RTP / 倍率。
+// 捕魚機魚種表（血量/傷害模型，鏡像後端 FishSpecies / FishingCombat，ADR-003）。
+// 重要：此檔是「預設玩家實際體驗」（前端預設走 mock），改後端規則時務必同步此處（AGENTS 雷區 14）。
 const FISHING_TARGET_RTP = 0.92
 const FISHING_MONEY_TREE_MIN = 10
 const FISHING_MONEY_TREE_MAX = 50
+// HP = multiplier × 此值（對齊後端 FishSpecies.HP_PER_MULTIPLIER）
+const FISHING_HP_PER_MULT = 10
+// 暴擊（對齊後端 FishingCombat）
+const FISHING_CRIT_CHANCE = 0.2
+const FISHING_CRIT_MULT = 2
+// 各砲台單發基礎傷害（索引 0 不用；銅/銀/金，對齊後端 CANNON_DAMAGE）
+const FISHING_CANNON_DAMAGE = [0, 10, 17, 26]
 const FISH_SPECIES = [
-  { code: 'KOI', name: '錦鯉', assetId: 'fish-koi', multiplier: 2 },
-  { code: 'GOLDFISH', name: '金魚', assetId: 'fish-goldfish', multiplier: 3 },
-  { code: 'LANTERN', name: '燈籠魚', assetId: 'fish-lantern', multiplier: 5 },
-  { code: 'PUFFER', name: '河豚', assetId: 'fish-puffer', multiplier: 8 },
-  { code: 'ANGELFISH', name: '神仙魚', assetId: 'fish-angelfish', multiplier: 15 },
-  { code: 'DEVIL_RAY', name: '魔鬼魚', assetId: 'fish-devil-ray', multiplier: 25 },
-  { code: 'GOLD_DRAGON', name: '金龍', assetId: 'fish-gold-dragon', multiplier: 60 },
-  { code: 'PIXIU', name: '貔貅', assetId: 'fish-pixiu', multiplier: 88 },
-  { code: 'CAISHEN', name: '財神爺', assetId: 'fish-caishen', multiplier: 100 },
-  { code: 'DRAGON_KING', name: '龍王', assetId: 'fish-dragon-king', multiplier: 200 },
-  { code: 'MONEY_TREE', name: '搖錢樹', assetId: 'fish-money-tree', multiplier: 30 },
+  { code: 'KOI', name: '錦鯉', assetId: 'fish-koi', multiplier: 2, tier: 'SMALL', spawnWeight: 100 },
+  { code: 'GOLDFISH', name: '金魚', assetId: 'fish-goldfish', multiplier: 3, tier: 'SMALL', spawnWeight: 90 },
+  { code: 'LANTERN', name: '燈籠魚', assetId: 'fish-lantern', multiplier: 5, tier: 'SMALL', spawnWeight: 70 },
+  { code: 'PUFFER', name: '河豚', assetId: 'fish-puffer', multiplier: 8, tier: 'MEDIUM', spawnWeight: 50 },
+  { code: 'ANGELFISH', name: '神仙魚', assetId: 'fish-angelfish', multiplier: 15, tier: 'MEDIUM', spawnWeight: 35 },
+  { code: 'DEVIL_RAY', name: '魔鬼魚', assetId: 'fish-devil-ray', multiplier: 25, tier: 'MEDIUM', spawnWeight: 22 },
+  { code: 'GOLD_DRAGON', name: '金龍', assetId: 'fish-gold-dragon', multiplier: 60, tier: 'HIGH', spawnWeight: 12 },
+  { code: 'PIXIU', name: '貔貅', assetId: 'fish-pixiu', multiplier: 88, tier: 'HIGH', spawnWeight: 7 },
+  { code: 'CAISHEN', name: '財神爺', assetId: 'fish-caishen', multiplier: 100, tier: 'HIGH', spawnWeight: 6 },
+  { code: 'DRAGON_KING', name: '龍王', assetId: 'fish-dragon-king', multiplier: 200, tier: 'BOSS', spawnWeight: 2 },
+  { code: 'MONEY_TREE', name: '搖錢樹', assetId: 'fish-money-tree', multiplier: 30, tier: 'SPECIAL', spawnWeight: 5 },
 ]
+
+function fishHp(fish) {
+  return fish.multiplier * FISHING_HP_PER_MULT
+}
+
+// 期望擊殺發數 E[N]（DP；對齊後端 FishingCombat.expectedShotsToKill）。
+function fishingExpectedShotsToKill(hp, damage) {
+  if (hp <= 0) return 0
+  const units = Math.ceil(hp / damage)
+  const g = new Array(units + 2).fill(0)
+  for (let u = units - 1; u >= 0; u--) {
+    g[u] = 1 + (1 - FISHING_CRIT_CHANCE) * g[u + 1] + FISHING_CRIT_CHANCE * g[u + 2]
+  }
+  return g[0]
+}
+
+// 捕獲機率 pCapture（反推使 RTP=92%；對齊後端 FishingCombat.pCapture）。
+function fishingCapture(fish, cannonLevel) {
+  const eN = fishingExpectedShotsToKill(fishHp(fish), FISHING_CANNON_DAMAGE[cannonLevel])
+  return Math.min(1, (FISHING_TARGET_RTP * eN) / fish.multiplier)
+}
 
 function fishTableView() {
   return FISH_SPECIES.map((fish) => ({
@@ -39,7 +68,9 @@ function fishTableView() {
     name: fish.name,
     assetId: fish.assetId,
     multiplier: fish.multiplier,
-    hitProbability: FISHING_TARGET_RTP / fish.multiplier,
+    hp: fishHp(fish),
+    tier: fish.tier,
+    spawnWeight: fish.spawnWeight,
   }))
 }
 
@@ -682,13 +713,19 @@ export const mockApi = {
     const session = (db.fishingSessions || {})[playerId]
     if (!session || session.sessionId !== sessionId) throw new Error('場次不存在或已結束')
 
+    const cannonLevel = session.cannonLevel || 1
+    session.fishDamage = session.fishDamage || {}
     const results = []
     for (const shot of shots) {
       const fish = FISH_SPECIES.find((item) => item.code === shot.fishType)
       const bet = Number(shot.betPerShot)
       // 局內餘額不足：該發（含其後同批）整批不受理（比照後端）。
       if (!fish || session.sessionBalance < bet) {
-        results.push({ shotSeq: shot.shotSeq, accepted: false, hit: false, payout: 0, sessionBalance: session.sessionBalance })
+        results.push({
+          shotSeq: shot.shotSeq, accepted: false, hit: false, crit: false,
+          damage: 0, hpRemaining: 0, killed: false, captured: false, payout: 0,
+          sessionBalance: session.sessionBalance,
+        })
         continue
       }
       session.sessionBalance -= bet
@@ -696,19 +733,38 @@ export const mockApi = {
       session.totalShots += 1
       session.lastShotSeq = Math.max(session.lastShotSeq, Number(shot.shotSeq))
 
-      const hitProbability = FISHING_TARGET_RTP / fish.multiplier
-      const hit = Math.random() < hitProbability
+      // 血量/傷害模型：累積傷害 → 致命一擊擲捕獲（鏡像後端 FishingCombat）。
+      const instanceId = shot.fishInstanceId || `seq-${shot.shotSeq}`
+      const hp = fishHp(fish)
+      const damageBefore = session.fishDamage[instanceId] || 0
+      const crit = Math.random() < FISHING_CRIT_CHANCE
+      const damage = FISHING_CANNON_DAMAGE[cannonLevel] * (crit ? FISHING_CRIT_MULT : 1)
+      const after = damageBefore + damage
+      const killed = after >= hp
+      let captured = false
       let payout = 0
-      if (hit) {
-        const factor = fish.code === 'MONEY_TREE' ? randInt(FISHING_MONEY_TREE_MIN, FISHING_MONEY_TREE_MAX) : fish.multiplier
-        payout = bet * factor
-        session.sessionBalance += payout
-        session.totalPayout += payout
+      let hpRemaining = 0
+      if (!killed) {
+        hpRemaining = hp - after
+        session.fishDamage[instanceId] = after
+      } else {
+        captured = Math.random() < fishingCapture(fish, cannonLevel)
+        if (captured) {
+          const factor = fish.code === 'MONEY_TREE' ? randInt(FISHING_MONEY_TREE_MIN, FISHING_MONEY_TREE_MAX) : fish.multiplier
+          payout = bet * factor
+          session.sessionBalance += payout
+          session.totalPayout += payout
+        }
+        delete session.fishDamage[instanceId]
       }
       // 記錄逐發結果供結算後 verify-shot 重放（mock 無真正 RNG 種子，改以對局存檔回放）。
       session.shotResults = session.shotResults || {}
-      session.shotResults[String(shot.shotSeq)] = { fishType: fish.code, betPerShot: bet, hit, payout }
-      results.push({ shotSeq: shot.shotSeq, accepted: true, hit, payout, sessionBalance: session.sessionBalance })
+      session.shotResults[String(shot.shotSeq)] = { fishType: fish.code, betPerShot: bet, crit, damage, killed, captured, payout }
+      results.push({
+        shotSeq: shot.shotSeq, accepted: true, hit: true, crit,
+        damage, hpRemaining, killed, captured, payout,
+        sessionBalance: session.sessionBalance,
+      })
     }
     saveDb(db)
 
@@ -783,7 +839,7 @@ export const mockApi = {
       fishType: recorded.fishType,
       betPerShot: recorded.betPerShot,
       commitmentValid: true,
-      hit: recorded.hit,
+      hit: !!recorded.captured,
       payout: recorded.payout,
       serverSeed: round.serverSeed,
       serverSeedHash: round.serverSeedHash,
