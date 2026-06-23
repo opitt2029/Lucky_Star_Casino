@@ -3,6 +3,36 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Changed] — 2026-06-23 — 捕魚機 PixiJS 漁場引擎（Phase 2：取代 DOM 漁場 + 紋理烘焙 + 效能模式 + §6 HUD 飄移修復）
+
+> 捕魚機升級第二階段：把 React-DOM 漁場改成 **PixiJS canvas 遊戲引擎**，根治 H5/手機連發+特效「當機」；
+> 並修掉「底部錢幣 UI 飄移」。**玩法/契約/帳務完全不變**（沿用 Phase 1 的血量/傷害模型與 `fire(fishInstanceId, fishCode)`）。
+> 戰鬥回饋演出（HP 條/傷害數字/暴擊/掙脫）、砲台差異化、Boss 事件仍留 Phase 3~4——本階段戰鬥視覺維持現狀（火花 + 派彩浮字）。
+
+### Added
+- `frontend/src/components/FishingCanvas.jsx`：Pixi 漁場 React 殼（薄）。`Application` async init + StrictMode 雙掛載防護 + 卸載確實 `destroy`；props（phase/betPerShot/fishTable/fire/play/perfMode/callbacks）以 ref 灌進引擎。經 `Fishing.jsx` 用 `React.lazy` 動態載入 → pixi 切成獨立 chunk，不膨脹主 bundle。
+- `frontend/src/components/fishingEngine.js`：非 React 遊戲引擎。魚/子彈/火花/浮字/砲台皆 Pixi 物件，單一 `ticker` 跑生成/移動/壽命；**命中判定全在 canvas 座標**（消滅舊檔每幀 `querySelector`+`getBoundingClientRect`）；子彈/火花/浮字物件池 + 並存上限；**FPS 守門**（持續 <40fps 自動降載）、**效能模式開關**、尊重 `prefers-reduced-motion`、**分頁隱藏暫停 ticker**。沿用舊 `deriveMeta/weightedPick/engageFish/handleResults` 邏輯（手感參數不變）。
+- `frontend/src/casino-fx/assets/bakeTextures.js`：SVG 程式化美術 → `PIXI.Texture` 烘焙快取（`renderToStaticMarkup` 離屏 rasterize）；PNG override 走 `Assets.load`，維持「換 AI 圖零改碼」。
+- `frontend/src/components/Fishing.css`：新增 §6 固定高度 HUD 條（`.fishing-hud*`）與固定槽位橫幅（`.fishing-banner*`）樣式。
+
+### Changed
+- `frontend/src/pages/Fishing.jsx`：`FishingArena` → lazy `FishingCanvas`（`<Suspense>`）。**§6 飄移修復**：把進行中的即時讀數（局內餘額/本場派彩/砲台/收網/效能模式）移到漁場上方**固定高度 HUD 條**（`tabular-nums` 等寬），右側 `aside` 只留靜態（規則/可用星幣/幸運值）→ 不再隨 phase 增減 reflow；Boss/error 橫幅改**固定槽位 opacity 淡入淡出**，不插入/抽走節點。
+- `frontend/src/components/MetricCard.jsx`：數值加 `tabular-nums`（全站等寬，cheap win）。
+- `frontend/src/casino-fx/casino-fx.css`：移除 `.fx-gold-burst__coin` / `.fx-rain__drop` 的 per-frame `filter: drop-shadow`（手機 GPU 殺手，§2.3）。
+- `frontend/src/casino-fx/fx/FallRain.jsx`：`epic` 金幣雨上限 150 → 90（§2.3，降同時動畫節點數）。
+- `frontend/package.json`：新增依賴 `pixi.js` ^8.19。
+
+### Removed
+- `frontend/src/components/FishingArena.jsx`（DOM 漁場，由 Pixi 引擎取代）及 `Fishing.css` 對應的舊魚/子彈/火花/砲台/提示樣式。
+
+### 為什麼
+- 舊 DOM 漁場在 H5/手機連發+特效會當機：14 條魚各跑 CSS infinite animation、每 110ms 對每條魚 `querySelector`+`getBoundingClientRect`（layout thrashing）、每發子彈多次 `setState`+`setTimeout`。改 Pixi 單 canvas + ticker + 物件池 + canvas 座標命中後，這些每幀 DOM 成本歸零，並有 FPS 守門/效能模式保底。底部錢幣 UI 飄移則來自 aside 即時卡片條件渲染 reflow + 非等寬數字，移到固定 HUD 條 + `tabular-nums` 後消除。
+
+### 如何驗證
+- `cd frontend && npm run lint`（綠）、`npm run build`（綠；pixi 切出獨立 `FishingCanvas-*.js` + renderer 子 chunk，主 `index` 未含 pixi）。
+- `npm run dev` 進 `/game/fishing`：進場→連發→命中火花 + 捕獲派彩浮字 + 頁面 FX 分級→收網結算→逐發驗證面板（契約未變）。
+- 效能：手機/H5 連發 + boss + 金幣雨同時不當機；切「效能模式」降載生效；切背景分頁 ticker 暫停。
+
 ## [Changed] — 2026-06-23 — 捕魚機改「血量/傷害」模型（Phase 1：後端引擎 + mock + 測試 + ADR-003）
 
 > 捕魚機升級的第一階段：把「每發獨立判定命中」改為真·血量/傷害模型（魚有血、砲台有傷害、暴擊扣更多血、
