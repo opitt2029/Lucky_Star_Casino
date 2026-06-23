@@ -462,7 +462,7 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 |---|:--:|---|:--:|---|
 | T-090 | P0 | JMeter 高併發壓測腳本 | ⚠️ | JMX、執行器、分析器、1,000 玩家 provisioning 與實測報告已完成；單機實測帳務無超扣/冪等正常，但 1,000 併發 P99≈2.5s 且有大量 5xx，效能 gate 未達標（需正式/多機資源重測） |
 | T-091 | P0 | 帳務一致性對帳腳本 | ✅ | `tests/performance/accounting-reconciliation.sql` + `run-accounting-reconciliation.ps1`：壓測後驗證 wallets.balance 與流水加總一致、無負餘額、frozen_amount 歸零 |
-| T-092 | P1 | Swagger UI API 文件 | ❌ | 各服務 pom.xml 無 springdoc-openapi 依賴 |
+| T-092 | P1 | Swagger UI API 文件 | ✅ | 各 REST/通知服務整合 springdoc-openapi，定義 OpenAPI metadata 與 JWT security scheme；gateway `/swagger-ui.html` 聚合 member/wallet/game/rank/admin/notification 的 `/v3/api-docs/{service}`；含 infra contract test |
 | T-093 | P0 | End-to-End 整合測試 | ❌ | 多數後端服務未實作，無法執行完整流程 |
 | T-094 | P0 | README 與部署文件 | ✅ | README.md + DEPLOY.md 皆存在（DEPLOY.md 於 2026-05-29 補上本機部署 SOP） |
 | T-095 | P0 | ADR 整理（ADR-001~005） | ⚠️ | ADR-001（DB 分配）、ADR-002（wallet.credit 事件契約）已產出；ADR-003~005 未產出 |
@@ -517,6 +517,6 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 - ✅ **完成度高**：全域基礎建設、Member Service、Gateway、Game Service（T-030~T-037）、Rank Service（T-040~T-044）、**Notification Service（T-070~T-073 全完成）**、**鑽石系統（T-100~T-107 全完成）**
 - ⚠️ **進行中**：Wallet Service（破產補助 T-027 / DLT 後台 T-028 未完）、前端（UI 齊全但 rankSlice 等尚未切換真實 API）
-- ❌ **尚未起步**：Swagger 文件（T-092）、E2E 整合測試（T-093）、結業簡報（T-096）、破產補助（T-027）
+- ❌ **尚未起步**：E2E 整合測試（T-093）、結業簡報（T-096）、破產補助（T-027）
 
-> **結論**：認證、帳號、遊戲對局、排行榜、即時推播、鑽石點數卡系統、Admin GM 手動發幣後端皆已完成；**剩餘空白主要集中在收尾文件（Swagger/E2E/簡報）、少數功能（破產補助）與前端 mock→真實 API 切換**。
+> **結論**：認證、帳號、遊戲對局、排行榜、即時推播、鑽石點數卡系統、Admin GM 手動發幣與 Swagger/OpenAPI 聚合皆已完成；**剩餘空白主要集中在收尾驗證/簡報、少數功能（破產補助）與前端 mock→真實 API 切換**。
