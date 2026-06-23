@@ -39,6 +39,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run lint`（0 error）、`npm run build`（綠；pixi 維持獨立 chunk、主 bundle 不含 pixi）。
 - `npm run dev` 進 `/game/fishing`：命中冒傷害數字（暴擊橘紅放大）、魚頭 HP 條遞減、血量歸零捕獲派彩 or 掙脫逃跑；切銅/銀/金砲台見子彈色/大小/砲口/音調差異；開「自動」自動鎖定最高倍率魚連發 + 準心轉橘紅。
 
+---
+
+## [Added] — 2026-06-23 — 遊戲中途離開確認視窗（AppShell 導航攔截 + LeaveGameModal + leaveGuard 狀態）
+
+> 把遊戲進行中的「離開防呆」從瀏覽器原生 `confirm()` 升級成賭場主題的自訂視窗，並把離開意圖收進 Redux
+> （`uiSlice.leaveGuard`），讓頂部導航列能統一攔截站內導航。老虎機、百家樂、捕魚三款共用同一套。
+> 玩法/契約/帳務完全不變，純前端 UX。
+
+### Added
+- `frontend/src/components/LeaveGameModal.jsx`：賭場主題自訂離開確認視窗（`luxury-panel` + 金/紅金按鈕）。開窗播 `click` 音效（走 `soundEngine`，AGENTS 雷區 13）；紅底警示列「離開後將無法退回已下注金額」；兩顆操作「繼續遊戲」（預設 `autoFocus`，避免誤觸）/「確認離開」；帶 `role="dialog"` + `aria-modal` 無障礙標記。由 AppShell 在 `leaveGuard.pendingPath` 有值時渲染。
+- `frontend/src/store/slices/uiSlice.js`：新增 `leaveGuard` 狀態（`active` / `message` / `pendingPath`）與 actions `activateLeaveGuard` / `deactivateLeaveGuard` / `setPendingNavigation` / `clearPendingNavigation`，讓離開意圖變成可被任何元件觀察的全域 UI 狀態。
+
+### Changed
+- `frontend/src/hooks/useGameLeaveGuard.js`：從「自己處理 `window.confirm`」改為 dispatch `activateLeaveGuard` / `deactivateLeaveGuard` 同步 Redux 狀態（掛載/卸載/`active` 變化都同步，避免殘留攔截）。`beforeunload`（關分頁/重整）與 `popstate`（上一頁/手勢返回）保留原生攔截，拆成獨立 `useEffect` 各管各的。
+- `frontend/src/components/AppShell.jsx`：頂部 NavLink 加 `onClick` 攔截——`leaveGuard.active` 時 `preventDefault` 擋下、記住目標路由（`setPendingNavigation`）並彈出 modal；確認 → `Maps(pendingPath)` 真正離開、取消 → `clearPendingNavigation` 留在原頁。離開邏輯集中在 AppShell 一處，三款遊戲共用。
+
+### 為什麼
+- 舊防呆只攔 `beforeunload` / `popstate`，玩家在遊戲進行中直接點頂部導航列就會繞過確認、無聲離場（已下注金額無法退回）。把離開意圖提升為 Redux 全域狀態後，導航列點擊也能納管；同時把原生 `confirm()` 換成賭場質感視窗，提示更清楚、體驗一致。
+
+### 如何驗證
+- `cd frontend && npm run lint`（綠）、`npm run build`（綠）。
+- 手測：老虎機/百家樂/捕魚進行中分別點導航列、上一頁、重整、關分頁，皆正確彈窗；確認後導向目標頁、取消後留在原頁。
+
 ## [Changed] — 2026-06-23 — 捕魚機 PixiJS 漁場引擎（Phase 2：取代 DOM 漁場 + 紋理烘焙 + 效能模式 + §6 HUD 飄移修復）
 
 > 捕魚機升級第二階段：把 React-DOM 漁場改成 **PixiJS canvas 遊戲引擎**，根治 H5/手機連發+特效「當機」；
