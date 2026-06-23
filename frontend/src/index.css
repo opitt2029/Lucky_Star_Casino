@@ -848,6 +848,18 @@ video {
   transform: none;
 }
 
+.baccarat-bet-option--player:not(.baccarat-bet-option--selected) {
+  border-left: 3px solid rgba(96, 165, 250, 0.72);
+}
+
+.baccarat-bet-option--banker:not(.baccarat-bet-option--selected) {
+  border-left: 3px solid rgba(248, 113, 113, 0.72);
+}
+
+.baccarat-bet-option--tie:not(.baccarat-bet-option--selected) {
+  border-left: 3px solid rgba(52, 211, 153, 0.72);
+}
+
 .baccarat-bet-option span {
   display: block;
   font-size: 0.68rem;
@@ -962,6 +974,98 @@ video {
 .baccarat-amount-toggle:disabled {
   cursor: not-allowed;
   opacity: 0.52;
+}
+
+/* ---- 籌碼列（替代下拉式面額選單）---- */
+
+.baccarat-chip-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 0 6px;
+}
+
+.baccarat-chip-row::-webkit-scrollbar {
+  display: none;
+}
+
+.baccarat-chip {
+  flex: 0 0 auto;
+  min-height: 44px;
+  min-width: 64px;
+  padding: 0 12px;
+  border: 2px solid rgba(255, 234, 160, 0.28);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 230, 0.18), transparent 20%),
+    linear-gradient(145deg, rgba(78, 3, 10, 0.92), rgba(20, 1, 4, 0.94));
+  color: rgba(255, 244, 196, 0.82);
+  font-size: 0.82rem;
+  font-weight: 900;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 3px 8px rgba(0, 0, 0, 0.3);
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease;
+}
+
+.baccarat-chip:hover {
+  border-color: rgba(255, 234, 160, 0.68);
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 18px rgba(248, 213, 106, 0.18);
+}
+
+.baccarat-chip--selected {
+  border-color: rgba(255, 244, 196, 0.92);
+  background:
+    radial-gradient(circle at 32% 24%, rgba(255, 255, 230, 0.3), transparent 18%),
+    linear-gradient(145deg, rgba(255, 234, 160, 0.94), rgba(177, 95, 8, 0.96));
+  color: #240205;
+  transform: translateY(-3px) scale(1.06);
+  box-shadow:
+    0 0 22px rgba(248, 213, 106, 0.28),
+    inset 0 -2px 0 rgba(165, 100, 8, 0.48);
+}
+
+.baccarat-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+}
+
+/* ---- 天牌（Natural）徽章 ---- */
+
+.baccarat-natural-badge {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 3px 9px;
+  border: 1px solid rgba(255, 234, 160, 0.7);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255, 234, 160, 0.9), rgba(177, 95, 8, 0.94));
+  color: #240205;
+  font-size: 0.65rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  animation: baccarat-natural-pop 0.38s cubic-bezier(0.2, 0.9, 0.22, 1.2) both;
+}
+
+@keyframes baccarat-natural-pop {
+  from {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .baccarat-amount-menu {
@@ -1109,6 +1213,10 @@ video {
   padding: 11px 12px;
 }
 
+.baccarat-result-item--wide {
+  grid-column: 1 / -1;
+}
+
 .baccarat-result-item span {
   display: block;
   color: rgba(255, 232, 150, 0.62);
@@ -1133,6 +1241,8 @@ video {
   gap: 14px;
   align-content: start;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .baccarat-api-panel {
@@ -1945,6 +2055,26 @@ video {
   }
 }
 
+@media (min-width: 480px) {
+  .baccarat-duel-grid {
+    grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr);
+  }
+
+  .baccarat-vs-medallion {
+    width: 64px;
+    min-height: 76px;
+    border-radius: 999px;
+  }
+
+  .baccarat-vs-medallion span {
+    font-size: 1.55rem;
+  }
+
+  .baccarat-vs-medallion small {
+    font-size: 0.58rem;
+  }
+}
+
 @media (min-width: 640px) {
   .baccarat-table-felt {
     padding: 20px;
@@ -1959,8 +2089,8 @@ video {
     align-items: end;
   }
 
-  .baccarat-amount-menu {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+  .baccarat-wager-row .baccarat-chip-row {
+    grid-column: 1 / -1;
   }
 
   .baccarat-result-grid {
@@ -1973,6 +2103,12 @@ video {
 
   .slot-symbol-label {
     font-size: 3.8rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .baccarat-control-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 
@@ -1989,7 +2125,18 @@ video {
   }
 
   .baccarat-main-grid {
-    grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    align-items: start;
+  }
+
+  .baccarat-side-panel {
+    position: sticky;
+    top: 16px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 234, 160, 0.2) transparent;
   }
 
   .baccarat-hero {
