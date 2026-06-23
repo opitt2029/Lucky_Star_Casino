@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import ErrorBoundary from './ErrorBoundary'
 import { fetchProfile, logoutMember } from '../store/slices/authSlice'
-import { clearNotifications } from '../store/slices/gameSlice'
+import { clearNotifications, resetGame } from '../store/slices/gameSlice'
 import { fetchRanks } from '../store/slices/rankSlice'
 import { fetchDiamondBalance, resetDiamond } from '../store/slices/diamondSlice'
 import { dailyCheckIn, fetchWallet, resetWallet } from '../store/slices/walletSlice'
@@ -181,6 +181,8 @@ export default function AppShell({ children }) {
     dispatch(logoutMember()).finally(() => {
       dispatch(resetWallet())
       dispatch(resetDiamond())
+      dispatch(resetGame())
+      sessionStorage.clear()
       navigate('/member')
     })
   }

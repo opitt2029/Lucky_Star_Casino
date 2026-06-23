@@ -135,6 +135,80 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Verified
 - `npm test -- --test-reporter=spec tests/infra/jmeter.test.js`: 122 infra tests passed, including the T-090 JMeter contract checks.
 
+## [feat] — 2026-06-23 — 百家樂畫面優化（籌碼列 / 顏色區分 / 天牌徽章 / 版面重排）
+
+### Changed
+- `frontend/src/pages/Baccarat.jsx`：移除下拉式面額選單，改為常駐籌碼排（`baccarat-chip-row`，100/200/500/1K/2K/3K/5K，點即套用、有音效）；下注選項加入 `--player/--banker/--tie` 色彩 modifier；HandPanel 新增 `isNatural` 偵測，點數 8/9 時顯示「天牌 Natural」徽章。
+- `frontend/src/index.css`：新增 `.baccarat-chip-row`、`.baccarat-chip`、`.baccarat-chip--selected` 樣式（圓形籌碼、金色選中態、hover 浮起）；新增 `.baccarat-bet-option--player/banker/tie` 左側色條；新增 `.baccarat-natural-badge` 彈入動畫；新增 `@media (min-width: 480px)` 閒/莊並排（`1fr 72px 1fr`）；新增 `@media (min-width: 768px)` 下注+結算雙欄並排。
+
+### Why
+籌碼常駐比下拉式少一次點擊，符合實體百家樂桌面操作習慣；顏色區分提升下注項目辨識度；天牌徽章增強儀式感；版面重排讓平板/寬螢幕利用率更高。
+
+### How to verify
+```bash
+npm run dev -- --mode mock   # 前端用 mock API 離線驗證
+# 瀏覽 /game/baccarat：
+# 1. 下注區下方應有 7 顆圓形籌碼，點擊自動填入金額
+# 2. 閒/莊/和按鈕左側分別顯示藍/紅/綠色線條
+# 3. ≥ 480px：閒家與莊家左右並排
+# 4. ≥ 768px：下注區與結算區左右並排
+# 5. 發牌後若點數為 8 或 9，標題下出現「天牌 Natural」金色徽章
+```
+
+---
+
+## [feat] — 2026-06-23 — 虧損返利排程系統（日返利 + 週返利）
+
+### Added
+- `database/postgres/migration/V9__add_cashback_records.sql`：新增 `cashback_records` 表（去重 + 稽核）、擴充 `wallet_transactions.sub_type` 加入 `CASHBACK`。
+- `database/mysql/migration/V6__add_cashback_subtype.sql`：MySQL 讀端同步擴充 `sub_type`。
+- `backend/game-service/.../entity/CashbackRecord.java`：返利記錄 entity。
+- `backend/game-service/.../repository/CashbackRecordRepository.java`：去重查詢。
+- `backend/game-service/.../repository/GameRoundRepository.java`：新增 `aggregateNetLossPerPlayer` 原生 SQL 查詢。
+- `backend/game-service/.../kafka/CashbackEventPublisher.java`：發 `wallet.credit.request` 入帳指令 + `notification.push` 推播。
+- `backend/game-service/.../service/CashbackService.java`：核心計算邏輯（日/週階梯費率、去重、@Transactional 保護）。
+- `backend/game-service/.../scheduler/DailyCashbackScheduler.java`：cron `0 5 0 * * *`，每日凌晨 00:05 結算前一天虧損。
+- `backend/game-service/.../scheduler/WeeklyCashbackScheduler.java`：cron `0 10 0 * * MON`，每週一凌晨 00:10 結算上週虧損。
+
+### Changed
+- 不需要新增 Kafka topic（複用現有 `wallet.credit.request` / `notification.push`）。
+
+### Rules
+- 日返利：淨虧損 ≥ 1,000 → 5%；≥ 5,000 → 8%；≥ 10,000 → 10%（無上限、直接入帳）
+- 週返利：淨虧損 ≥ 3,000 → 8%；≥ 5,000 → 12%；≥ 10,000 → 15%（比日返更優惠）
+- 日返 + 週返疊加發放，每局結算後翌日/翌週一自動觸發
+
+### Why
+批次排程（方案 A）對平台最有利：控制成本時機、帶動次日/次週回訪、可設發放上限防套利；日返解決短期痛點，週返獎勵長期留存，兩者目的互補故疊加。
+
+### How to verify
+```
+mvn -pl backend/game-service test
+```
+全部 139 個測試通過（含 20 個新增返利測試）。
+
+## [feat] — 2026-06-23 — 百家樂改為反水機制，移除幸運值保底
+
+### Changed
+- `backend/game-service/.../service/BaccaratService.java`：移除 `fortuneReady` 保底邏輯（重試 nonce 找目標結果），改為每局無論輸贏返還下注額 0.5%（最低 1 星幣）反水；credit 呼叫改為永遠執行（派彩 + 反水），wallet 視圖每局必回。
+- `backend/game-service/.../dto/BaccaratResultResponse.java`：新增 `rebate` 欄位。
+- `backend/game-service/.../controller/BaccaratController.java`：`placeBet` 呼叫移除 `fortuneReady` 參數。
+- `frontend/src/services/gameApi.js`：`baccaratBet` 移除 `fortuneReady`，透傳後端 `rebate`。
+- `frontend/src/services/mockApi.js`：`baccaratBet` 加入反水計算，返回 `rebate`。
+- `frontend/src/pages/Baccarat.jsx`：移除 `FortuneMeter`、`LuckyAura`、`useFortuneMeter` 及所有幸運值相關邏輯；結算面板新增「本局反水」列，訊息提示反水金額；遊戲規則說明補充反水說明。
+
+### Fixed
+- `backend/game-service/.../test/BaccaratServiceTest.java`、`BaccaratControllerTest.java`：更新 `placeBet` 簽名（移除第六個 boolean 參數），輸局測試改為驗證 rebate 入帳而非跳過 credit。
+
+### Why
+幸運值保底屬於「暗中讓玩家必中」的機制，與 Provably Fair 精神相悖；反水（流水返點）是業界標準做法，無論輸贏皆透明返還比例，既提升留存率又維持公平性。
+
+### How to verify
+```
+mvn -pl backend/game-service test
+```
+所有 34 個百家樂相關測試均通過。
+
 ## [fix] -- 2026-06-22 -- Complete T-055 GM coin grant API
 
 ### Changed

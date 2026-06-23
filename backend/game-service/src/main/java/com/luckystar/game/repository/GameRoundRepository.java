@@ -46,4 +46,24 @@ public interface GameRoundRepository extends JpaRepository<GameRound, Long> {
             @Param("playerId") long playerId,
             @Param("gameType") String gameType,
             @Param("startOfDay") LocalDateTime startOfDay);
+
+    /**
+     * 彙整指定期間內所有玩家的已結算對局，回傳「淨虧損 > 0」的玩家清單。
+     * 回傳欄位：[player_id(Long), total_bet(Number), total_win(Number)]。
+     * HAVING 直接篩掉不虧損的玩家，減少後端計算量。
+     */
+    @Query(value = """
+            SELECT player_id,
+                   COALESCE(SUM(bet_amount), 0) AS total_bet,
+                   COALESCE(SUM(win_amount), 0) AS total_win
+            FROM game_rounds
+            WHERE status = 'SETTLED'
+              AND settled_at >= :start
+              AND settled_at < :end
+            GROUP BY player_id
+            HAVING SUM(bet_amount) > SUM(win_amount)
+            """, nativeQuery = true)
+    List<Object[]> aggregateNetLossPerPlayer(
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
 }

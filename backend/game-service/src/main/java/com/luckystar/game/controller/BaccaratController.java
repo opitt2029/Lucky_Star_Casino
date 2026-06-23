@@ -45,7 +45,7 @@ public class BaccaratController {
         }
         BaccaratBetResponse result = baccaratService.placeBet(
                 playerId, request.getPlayer(), request.getBanker(), request.getTie(),
-                request.getClientSeed(), request.isFortuneFull());
+                request.getClientSeed());
         return ResponseEntity.ok(ApiResponse.ok(result));
     }
 

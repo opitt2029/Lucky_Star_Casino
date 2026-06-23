@@ -34,6 +34,8 @@ export default function SlotGame() {
   const dispatch = useDispatch()
   const [selectedBet, setSelectedBet] = useState(100)
   const [visualLock, setVisualLock] = useState(false)
+  const [sessionProfit, setSessionProfit] = useState(null)
+  const [sessionRounds, setSessionRounds] = useState(0)
   // 慶祝特效觸發器（遞增數字觸發一次性特效）
   const [burstTrigger, setBurstTrigger] = useState(0)
   const [coinTrigger, setCoinTrigger] = useState(0)
@@ -60,12 +62,15 @@ export default function SlotGame() {
   const handleSpinRound = async () => {
     // 餘額不足直接擋下，不發任何請求（後端仍是最後防線）。
     if (balance < resolvedBet) return null
+    const betAtSpin = resolvedBet
     setVisualLock(true)
     fortuneReadyOnSpinRef.current = fortune.full
     fortune.addCharge(resolvedBet)
     try {
-      const spinResult = await dispatch(spinSlot({ bet: resolvedBet, fortuneReady: fortune.full })).unwrap()
+      const spinResult = await dispatch(spinSlot({ bet: betAtSpin, fortuneReady: fortune.full })).unwrap()
       dispatch(setBalance(spinResult.wallet))
+      setSessionProfit((prev) => (prev ?? 0) + (spinResult.payout ?? 0) - betAtSpin)
+      setSessionRounds((prev) => prev + 1)
       return spinResult
     } finally {
       window.setTimeout(() => setVisualLock(false), 2900)
@@ -129,13 +134,13 @@ export default function SlotGame() {
         />
 
         <aside className="grid gap-4 content-start">
+          <MetricCard label="可用星幣" value={balance.toLocaleString()} caption="下注後即時更新" tone="light" />
           <GameRuleCard
             title="星幣老虎機規則"
             subtitle="了解如何下注、判定中獎與計算派彩。"
             rules={slotRules}
             payouts={slotPayouts}
           />
-          <MetricCard label="可用星幣" value={balance.toLocaleString()} caption="下注後即時更新" tone="light" />
           <MetricCard label="本局下注" value={resolvedBet.toLocaleString()} caption="最高單局 5,000" />
           {!canAfford && (
             <p className="rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">
@@ -146,6 +151,18 @@ export default function SlotGame() {
             label="最近派彩"
             value={lastPayout === null ? '-' : lastPayout.toLocaleString()}
             caption={payoutCaption}
+          />
+          <MetricCard
+            label="本場損益"
+            value={
+              sessionProfit === null
+                ? '-'
+                : sessionProfit >= 0
+                  ? `+${sessionProfit.toLocaleString()}`
+                  : sessionProfit.toLocaleString()
+            }
+            caption={sessionProfit === null ? '開始第一局後開始記錄' : `本場共 ${sessionRounds} 局`}
+            valueClass={sessionProfit === null ? '' : sessionProfit >= 0 ? 'text-emerald-300' : 'text-red-300'}
           />
           <FortuneMeter value={fortune.value} />
 

@@ -113,13 +113,8 @@ const gameSlice = createSlice({
     clearNotifications(state) {
       state.notifications = []
     },
-    resetGame(state) {
-      state.status = 'idle'
-      state.result = null
-      state.latestResult = null
-      state.error = null
-      state.roundId = null
-      state.winningCells = []
+    resetGame() {
+      return initialState
     },
   },
   extraReducers: (builder) => {

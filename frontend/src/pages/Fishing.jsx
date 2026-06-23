@@ -126,6 +126,7 @@ export default function Fishing() {
   const [bossActive, setBossActive] = useState(false)
   const [selectedBuyIn, setSelectedBuyIn] = useState(BUY_IN_OPTIONS[0])
   const [selectedCannon, setSelectedCannon] = useState(1)
+  const [sessionBuyIn, setSessionBuyIn] = useState(null)
 
   // 慶祝特效觸發器
   const [burstTrigger, setBurstTrigger] = useState(0)
@@ -182,6 +183,7 @@ export default function Fishing() {
   const handleStart = () => {
     play('click')
     fortune.addCharge(selectedBuyIn)
+    setSessionBuyIn(selectedBuyIn)
     session.startSession({ buyIn: selectedBuyIn, cannonLevel: selectedCannon })
   }
 
@@ -233,6 +235,19 @@ export default function Fishing() {
                     <MetricCard label="本場派彩" value={settleResult.totalPayout.toLocaleString()} tone="light" />
                     <MetricCard label="總射擊數" value={settleResult.totalShots.toLocaleString()} />
                     <MetricCard label="退回星幣" value={settleResult.credited.toLocaleString()} tone="light" />
+                    {sessionBuyIn !== null && (() => {
+                      const profit = settleResult.credited - sessionBuyIn
+                      return (
+                        <div className="col-span-2">
+                          <MetricCard
+                            label="本場淨損益"
+                            value={profit >= 0 ? `+${profit.toLocaleString()}` : profit.toLocaleString()}
+                            caption="退回星幣 − 進場金額"
+                            valueClass={profit >= 0 ? 'text-emerald-300' : 'text-red-300'}
+                          />
+                        </div>
+                      )
+                    })()}
                   </div>
                   <p className="break-all rounded border border-yellow-200/15 bg-red-950/70 px-3 py-2 text-xs font-bold text-yellow-100/60">
                     server seed：{settleResult.serverSeed}
@@ -316,17 +331,28 @@ export default function Fishing() {
         </div>
 
         <aside className="grid gap-4 content-start">
+          <MetricCard label="可用星幣" value={balance.toLocaleString()} caption="結算後回填" tone="light" />
           <GameRuleCard
             title="捕魚機規則"
             subtitle="了解 buy-in、炮台注額與魚種賠率。"
             rules={fishingRules}
             payouts={fishingPayouts}
           />
-          <MetricCard label="可用星幣" value={balance.toLocaleString()} caption="結算後回填" tone="light" />
           {(phase === 'playing' || phase === 'settling') && (
             <>
               <MetricCard label="局內餘額" value={sessionBalance.toLocaleString()} caption={`炮台 ${cannonLevel} 級・${betPerShot}/發`} />
               <MetricCard label="本場派彩" value={stats.totalPayout.toLocaleString()} caption={`已射擊 ${stats.totalShots} 發`} />
+              {sessionBuyIn !== null && (() => {
+                const profit = sessionBalance - sessionBuyIn
+                return (
+                  <MetricCard
+                    label="本場損益"
+                    value={profit >= 0 ? `+${profit.toLocaleString()}` : profit.toLocaleString()}
+                    caption="局內餘額 − 進場金額"
+                    valueClass={profit >= 0 ? 'text-emerald-300' : 'text-red-300'}
+                  />
+                )
+              })()}
               <button
                 type="button"
                 onClick={handleEnd}
