@@ -21,16 +21,16 @@ const FishingCanvas = lazy(() => import('../components/FishingCanvas'))
 
 const BUY_IN_OPTIONS = [1000, 3000, 5000]
 const CANNON_OPTIONS = [
-  { level: 1, label: '銅炮', bet: CANNON_BET[1] },
-  { level: 2, label: '銀炮', bet: CANNON_BET[2] },
-  { level: 3, label: '金炮', bet: CANNON_BET[3] },
+  { level: 1, label: '銅炮', bet: CANNON_BET[1], desc: '傷害 10・穩紮穩打' },
+  { level: 2, label: '銀炮', bet: CANNON_BET[2], desc: '傷害 17・攻守均衡' },
+  { level: 3, label: '金炮', bet: CANNON_BET[3], desc: '傷害 26・大砲速殺' },
 ]
 const fishingRules = [
   '先選擇 buy-in 金額與炮台等級進場：buy-in 會一次性從星幣扣除，轉為「局內餘額」。',
-  '點擊魚開火，每發子彈固定消耗炮台注額（銅10／銀50／金100），命中即依魚種倍率派彩到局內餘額。',
-  '魚種倍率越高命中率越低，但每發子彈期望回報相同（RTP 92%），打大魚是高波動玩法。',
-  '隨時可「收網結算」，剩餘局內餘額會冪等退回星幣錢包，並揭露 server seed 供公平性驗證。',
-  '局內餘額不足時無法繼續開火，請先結算。',
+  '對魚開火，每發固定消耗炮台注額（銅10／銀50／金100）並造成傷害；魚有血量，傷害累積到血量歸零才結算擊殺。',
+  '砲台越高傷害越大（銅10／銀17／金26）、暴擊扣雙倍血；血量歸零時可能捕獲派彩，也可能掙脫逃跑（高波動）。',
+  '魚種倍率越高血量越厚（需更多發才打死），但每發子彈期望回報相同（RTP 92%）——打大魚是高風險高報酬。',
+  '隨時可「收網結算」，剩餘局內餘額冪等退回星幣錢包，並揭露 server seed 供逐發公平性驗證；餘額不足時請先結算。',
 ]
 const fishingPayouts = [
   { label: '小魚', value: '錦鯉2x／金魚3x／燈籠魚5x／河豚8x' },
@@ -127,6 +127,7 @@ export default function Fishing() {
 
   const [bossActive, setBossActive] = useState(false)
   const [perfMode, setPerfMode] = useState(false)
+  const [autoFire, setAutoFire] = useState(false)
   const [selectedBuyIn, setSelectedBuyIn] = useState(BUY_IN_OPTIONS[0])
   const [selectedCannon, setSelectedCannon] = useState(1)
   const [sessionBuyIn, setSessionBuyIn] = useState(null)
@@ -247,6 +248,18 @@ export default function Fishing() {
                 <div className="fishing-hud__actions">
                   <button
                     type="button"
+                    onClick={() => {
+                      play('click')
+                      setAutoFire((v) => !v)
+                    }}
+                    aria-pressed={autoFire}
+                    className="fishing-hud__perf"
+                    title="自動射擊：自動鎖定畫面內最高倍率的魚連續開火"
+                  >
+                    自動 {autoFire ? '開' : '關'}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setPerfMode((v) => !v)}
                     aria-pressed={perfMode}
                     className="fishing-hud__perf"
@@ -275,10 +288,12 @@ export default function Fishing() {
                 <FishingCanvas
                   phase={phase}
                   betPerShot={betPerShot}
+                  cannonLevel={cannonLevel}
                   fishTable={session.fishTable}
                   fire={session.fire}
                   play={play}
                   perfMode={perfMode}
+                  autoFire={autoFire}
                   registerResults={(fn) => {
                     arenaResultsRef.current = fn
                   }}
@@ -383,7 +398,7 @@ export default function Fishing() {
                           ].join(' ')}
                         >
                           {option.label}
-                          <span className="block text-[11px] font-bold opacity-80">{option.bet}/發</span>
+                          <span className="block text-[11px] font-bold opacity-80">{option.bet}/發・{option.desc}</span>
                         </button>
                       ))}
                     </div>

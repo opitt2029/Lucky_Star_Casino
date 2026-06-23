@@ -10,10 +10,13 @@ const defaultSettings = {
   volume: 0.8,
 }
 
-// 同一 id 在最小間隔內重複呼叫直接略過，避免高頻音（reelTick/heartbeat）狂按時爆量。
+// 同一 id 在最小間隔內重複呼叫直接略過，避免高頻音（reelTick/heartbeat/捕魚連發）狂按時爆量。
 const PLAY_MIN_INTERVAL_MS = {
   reelTick: 55,
   heartbeat: 220,
+  shoot: 70, // 按住連發/空海域曳光：token bucket 之外的第二道節流，防瞬間爆量
+  hit: 45, // 命中音：一批多發結果只放行最早的，避免 30 發同響
+  crit: 45, // 暴擊音同理
 }
 const DEFAULT_MIN_INTERVAL_MS = 24
 // 同時發聲上限：超過時丟棄「非關鍵」音以保護音訊執行緒；關鍵音（拉霸/停輪/中獎）永遠優先。

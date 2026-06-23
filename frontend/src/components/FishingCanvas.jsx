@@ -13,6 +13,7 @@ import './Fishing.css'
 export default function FishingCanvas({
   phase,
   betPerShot,
+  cannonLevel = 1,
   fishTable,
   fire,
   play,
@@ -21,6 +22,7 @@ export default function FishingCanvas({
   onMiss,
   onBossChange,
   perfMode = false,
+  autoFire = false,
 }) {
   const hostRef = useRef(null)
   const engineRef = useRef(null)
@@ -30,6 +32,7 @@ export default function FishingCanvas({
   const ctxRef = useRef({})
   ctxRef.current.phase = phase
   ctxRef.current.betPerShot = betPerShot
+  ctxRef.current.cannonLevel = cannonLevel
   ctxRef.current.fishTable = fishTable
   ctxRef.current.fire = fire
   ctxRef.current.play = play
@@ -37,6 +40,7 @@ export default function FishingCanvas({
   ctxRef.current.onMiss = onMiss
   ctxRef.current.onBossChange = onBossChange
   ctxRef.current.perfMode = perfMode
+  ctxRef.current.autoFire = autoFire
 
   const registerRef = useRef(registerResults)
   registerRef.current = registerResults
@@ -73,7 +77,9 @@ export default function FishingCanvas({
         // 灌入當前 props
         engine.setFishTable(ctxRef.current.fishTable)
         engine.setBet(ctxRef.current.betPerShot)
+        engine.setCannon(ctxRef.current.cannonLevel)
         engine.setPerfMode(ctxRef.current.perfMode)
+        engine.setAutoFire(ctxRef.current.autoFire)
         engine.setPhase(ctxRef.current.phase)
         registerRef.current?.(engine.handleResults)
       })
@@ -98,11 +104,17 @@ export default function FishingCanvas({
     engineRef.current?.setBet(betPerShot)
   }, [betPerShot])
   useEffect(() => {
+    engineRef.current?.setCannon(cannonLevel)
+  }, [cannonLevel])
+  useEffect(() => {
     engineRef.current?.setFishTable(fishTable)
   }, [fishTable])
   useEffect(() => {
     engineRef.current?.setPerfMode(perfMode)
   }, [perfMode])
+  useEffect(() => {
+    engineRef.current?.setAutoFire(autoFire)
+  }, [autoFire])
 
   return <div ref={hostRef} className="fishing-arena fishing-arena--canvas" style={{ touchAction: 'none', userSelect: 'none' }} />
 }

@@ -8,6 +8,8 @@ import {
   Angelfish,
   Caishen,
   Cannon,
+  CannonCopper,
+  CannonSilver,
   CopperCoin,
   DevilRay,
   DragonKing,
@@ -49,7 +51,9 @@ const SVG_COMPONENTS = {
   'fish-dragon-king': DragonKing,
   'fish-money-tree': MoneyTree,
   // 其他
-  cannon: Cannon,
+  cannon: Cannon, // 金炮（L3）
+  'cannon-copper': CannonCopper, // 銅炮（L1）
+  'cannon-silver': CannonSilver, // 銀炮（L2）
   coin: SimpleCoin,
   'star-coin': StarCoin,
 }
