@@ -19,7 +19,7 @@
   margin-left: calc(var(--burst-size) / -2);
   margin-top: calc(var(--burst-size) / -2);
   animation: fx-burst var(--burst-duration) cubic-bezier(0.16, 0.6, 0.45, 1) var(--burst-delay) both;
-  filter: drop-shadow(0 0 6px rgba(248, 213, 106, 0.65));
+  /* 移除 per-frame drop-shadow（手機 GPU 殺手，§2.3）；金幣本身漸層已具立體感 */
 }
 
 @keyframes fx-burst {
@@ -50,7 +50,7 @@
   width: var(--rain-size);
   height: var(--rain-size);
   animation: fx-rain-fall var(--rain-duration) cubic-bezier(0.3, 0.1, 0.85, 1) var(--rain-delay) both;
-  filter: drop-shadow(0 0 8px rgba(248, 213, 106, 0.5));
+  /* 移除 per-frame drop-shadow（手機 GPU 殺手，§2.3）；大量雨滴同時 filter 會掉幀 */
 }
 
 @keyframes fx-rain-fall {
