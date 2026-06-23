@@ -5,6 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [fix] — 2026-06-23 — game-service 內部 secret env var 名稱錯誤導致 wallet 401
+
+### Fixed
+- `backend/game-service/src/main/resources/application.yml:54`：`internal.wallet-service.secret` 讀取的環境變數由 `INTERNAL_SERVICE_SECRET` 改為 `INTERNAL_SECRET`，與 wallet-service 及 `.env` 一致。原本名稱不符導致 game-service 呼叫 `POST /internal/wallet/debit` 時 `X-Internal-Secret` header 值為空/錯誤，wallet-service `InternalSecretFilter` 驗證失敗回 HTTP 401。
+
+### Why
+- `.env` 只定義 `INTERNAL_SECRET`，game-service yml 卻讀 `INTERNAL_SERVICE_SECRET`（不同名），導致 `WalletClientConfig` 建立 `RestClient` 時帶入錯誤 header 值。
+
+### Verified
+- 統一後兩端 secret 值相同，`InternalSecretFilter.MessageDigest.isEqual()` 比對通過。
+
+---
+
 ## [fix] — 2026-06-15 — game-service 捕魚機閒置回收：Redis KEYS→SCAN + 排程韌性
 
 ### Changed
