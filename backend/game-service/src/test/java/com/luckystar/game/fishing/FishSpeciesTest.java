@@ -1,73 +1,63 @@
 package com.luckystar.game.fishing;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.luckystar.game.rng.ProvablyFairRng;
-import com.luckystar.game.rng.RandomStream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link FishSpecies} 的 PF 串流對齊驗證。
- *
- * <p>核心不變式：{@code resolveGuaranteedPayout} 消耗的 RNG 呼叫次數
- * 必須與 {@code resolvePayout}（命中路徑）完全相同，使 {@code verifyShot}
- * 端點可用相同串流位移重放並得到一致結果。
+ * {@link FishSpecies} 純資料定義驗證（血量/傷害模型，ADR-003）。
+ * 戰鬥數學（暴擊/捕獲/RTP）見 {@link FishingCombatTest}。
  */
 class FishSpeciesTest {
 
-    private static final ProvablyFairRng RNG = new ProvablyFairRng();
-    private static final String SERVER_SEED = "test-server-seed-fixed";
-    private static final String CLIENT_SEED = "test-client-seed";
-    private static final long NONCE = 42L;
-    private static final long BET = 100L;
-
     @Test
-    @DisplayName("非搖錢樹：resolveGuaranteedPayout 消耗一次 nextDouble()，與 resolvePayout 命中路徑相同")
-    void resolveGuaranteedPayout_nonMoneyTree_streamAlignedWithHitPath() {
-        // s1：呼叫 resolveGuaranteedPayout 後，串流位置應移動 1 個 nextDouble()
-        RandomStream s1 = RNG.stream(SERVER_SEED, CLIENT_SEED, NONCE);
-        FishSpecies.KOI.resolveGuaranteedPayout(s1, BET);
-
-        // s2：手動消耗相同呼叫（1 nextDouble = hit check）
-        RandomStream s2 = RNG.stream(SERVER_SEED, CLIENT_SEED, NONCE);
-        s2.nextDouble();
-
-        // 兩條串流此後應完全對齊
-        assertEquals(s2.nextInt(256), s1.nextInt(256),
-                "KOI resolveGuaranteedPayout 後的串流位置應與消耗一次 nextDouble() 的路徑一致");
-    }
-
-    @Test
-    @DisplayName("搖錢樹：resolveGuaranteedPayout 消耗 nextDouble() + nextInt(41)，與 resolvePayout 命中路徑相同")
-    void resolveGuaranteedPayout_moneyTree_streamAlignedWithHitPath() {
-        // s1：呼叫 resolveGuaranteedPayout 後，應消耗 nextDouble() + nextInt(41)
-        RandomStream s1 = RNG.stream(SERVER_SEED, CLIENT_SEED, NONCE);
-        long payout = FishSpecies.MONEY_TREE.resolveGuaranteedPayout(s1, BET);
-
-        // s2：模擬 resolvePayout 命中路徑（nextDouble 命中 → nextInt(41) 取倍率）
-        RandomStream s2 = RNG.stream(SERVER_SEED, CLIENT_SEED, NONCE);
-        s2.nextDouble();          // hit check（忽略結果）
-        int rolled = FishSpecies.MONEY_TREE_MIN + s2.nextInt(FishSpecies.MONEY_TREE_MAX - FishSpecies.MONEY_TREE_MIN + 1);
-
-        // 派彩應與手動重算一致（保底必中，倍率 = rolled）
-        assertEquals(BET * rolled, payout,
-                "MONEY_TREE resolveGuaranteedPayout 派彩應與以相同串流手動計算的倍率一致");
-
-        // 此後串流應完全對齊
-        assertEquals(s2.nextInt(256), s1.nextInt(256),
-                "MONEY_TREE resolveGuaranteedPayout 後的串流位置應與消耗 nextDouble()+nextInt(41) 的路徑一致");
-    }
-
-    @Test
-    @DisplayName("resolveGuaranteedPayout 對所有魚種必回傳 > 0 的派彩")
-    void resolveGuaranteedPayout_allSpecies_alwaysPositive() {
+    @DisplayName("HP = 倍率 × HP_PER_MULTIPLIER")
+    void hp_isMultiplierTimesPerMultiplier() {
         for (FishSpecies species : FishSpecies.values()) {
-            RandomStream stream = RNG.stream(SERVER_SEED, CLIENT_SEED, NONCE);
-            long payout = species.resolveGuaranteedPayout(stream, BET);
-            assertTrue(payout > 0,
-                    "resolveGuaranteedPayout 對 " + species.name() + " 應回傳 > 0，實際=" + payout);
+            assertEquals((long) species.multiplier() * FishSpecies.HP_PER_MULTIPLIER, species.hp(),
+                    species + " 的 HP 應為 倍率 × " + FishSpecies.HP_PER_MULTIPLIER);
         }
+    }
+
+    @Test
+    @DisplayName("每個魚種都有 tier 與正的出現權重")
+    void everySpecies_hasTierAndPositiveSpawnWeight() {
+        for (FishSpecies species : FishSpecies.values()) {
+            assertNotNull(species.tier(), species + " 應有 tier");
+            assertTrue(species.spawnWeight() > 0, species + " 出現權重應為正");
+        }
+    }
+
+    @Test
+    @DisplayName("出現權重與倍率負相關：小魚比 Boss 常見")
+    void spawnWeight_inverselyRelatedToMultiplier() {
+        assertTrue(FishSpecies.KOI.spawnWeight() > FishSpecies.GOLD_DRAGON.spawnWeight(),
+                "錦鯉應比金龍常見");
+        assertTrue(FishSpecies.GOLD_DRAGON.spawnWeight() > FishSpecies.DRAGON_KING.spawnWeight(),
+                "金龍應比龍王常見");
+    }
+
+    @Test
+    @DisplayName("tier 分級正確（小/中/高/Boss/特殊）")
+    void tier_assignments() {
+        assertEquals(FishSpecies.Tier.SMALL, FishSpecies.KOI.tier());
+        assertEquals(FishSpecies.Tier.MEDIUM, FishSpecies.PUFFER.tier());
+        assertEquals(FishSpecies.Tier.HIGH, FishSpecies.CAISHEN.tier());
+        assertEquals(FishSpecies.Tier.BOSS, FishSpecies.DRAGON_KING.tier());
+        assertEquals(FishSpecies.Tier.SPECIAL, FishSpecies.MONEY_TREE.tier());
+        assertTrue(FishSpecies.MONEY_TREE.isMoneyTree());
+    }
+
+    @Test
+    @DisplayName("fromCode 大小寫不拘；不存在的代碼丟例外")
+    void fromCode_caseInsensitive_andRejectsUnknown() {
+        assertEquals(FishSpecies.DRAGON_KING, FishSpecies.fromCode("dragon_king"));
+        assertEquals(FishSpecies.KOI, FishSpecies.fromCode("  KOI "));
+        assertThrows(IllegalArgumentException.class, () -> FishSpecies.fromCode("UNKNOWN_FISH"));
+        assertThrows(IllegalArgumentException.class, () -> FishSpecies.fromCode(" "));
     }
 }

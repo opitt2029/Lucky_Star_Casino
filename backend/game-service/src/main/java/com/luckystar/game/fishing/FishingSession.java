@@ -1,6 +1,10 @@
 package com.luckystar.game.fishing;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -84,7 +88,32 @@ public class FishingSession {
     /** 幸運值保底命中的 shotSeq（null 表示本場未觸發保底）。verifyShot 據此選擇正確的 resolve 方法。 */
     private Long guaranteedShotSeq;
 
+    /**
+     * 血量/傷害模型：每條魚 instance（key = 前端產生的 fishInstanceId）目前已累積的傷害。
+     * 致命一擊（累傷達 HP）後該 entry 移除。並存上限由 {@code FishingService} 控管以防灌量。
+     */
+    @Builder.Default
+    private Map<String, Long> fishDamage = new LinkedHashMap<>();
+
+    /**
+     * 致命一擊紀錄（供結算後 verifyShot 精確重放）：記錄每次「血量歸零」那一發的
+     * shotSeq、魚種與該發之前的累積傷害（damageBefore）。
+     */
+    @Builder.Default
+    private List<KillRecord> kills = new ArrayList<>();
+
     public boolean isActive() {
         return "ACTIVE".equals(state);
+    }
+
+    /** 致命一擊紀錄（Redis/JSON 可序列化）。 */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class KillRecord {
+        private long shotSeq;
+        private String fishType;
+        /** 該致命一擊之前該魚已累積的傷害（verifyShot 用以對齊判定）。 */
+        private long damageBefore;
     }
 }
