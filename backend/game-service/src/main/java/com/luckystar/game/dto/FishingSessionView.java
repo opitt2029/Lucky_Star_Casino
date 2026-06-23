@@ -43,7 +43,11 @@ public class FishingSessionView {
         /** 前端 casino-fx registry 的資源 id。 */
         String assetId;
         int multiplier;
-        /** 命中機率（= RTP / 倍率），前端顯示與動畫節奏參考。 */
-        double hitProbability;
+        /** 魚的總血量（前端畫 HP 條、推算擊殺節奏）。 */
+        long hp;
+        /** 魚種分級 SMALL/MEDIUM/HIGH/BOSS/SPECIAL（前端渲染體型/游速/視覺分流）。 */
+        String tier;
+        /** 出現權重（前端 spawn director 參考；倍率越高越稀有）。 */
+        int spawnWeight;
     }
 }

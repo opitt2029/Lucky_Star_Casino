@@ -13,6 +13,7 @@ import com.luckystar.game.dto.WalletView;
 import com.luckystar.game.entity.GameRound;
 import com.luckystar.game.exception.RoundNotFoundException;
 import com.luckystar.game.fishing.FishSpecies;
+import com.luckystar.game.fishing.FishingCombat;
 import com.luckystar.game.fishing.FishingSession;
 import com.luckystar.game.fishing.FishingSessionStore;
 import com.luckystar.game.kafka.GameResultEventPublisher;
@@ -23,6 +24,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -79,6 +81,12 @@ public class FishingService {
 
     /** 閒置自動結算門檻（分鐘）。 */
     static final long IDLE_TIMEOUT_MINUTES = 10;
+
+    /** 單場次同時追蹤傷害的魚 instance 上限（防前端灌量；超出時淘汰最舊者）。 */
+    static final int MAX_LIVE_FISH = 80;
+
+    /** 致命一擊紀錄保留上限（供 verifyShot 重放近期捕獲；超出時淘汰最舊，避免 result_data 無限膨脹）。 */
+    static final int KILL_LOG_CAP = 300;
 
     private final ProvablyFairRng rng;
     private final WalletClient walletClient;
@@ -188,8 +196,20 @@ public class FishingService {
         long totalShots = session.getTotalShots();
         long lastShotSeq = session.getLastShotSeq();
 
-        // 幸運值全滿時，本批第一發保底命中（用完後不再保底）
-        boolean fortuneConsumed = !fortuneReady;
+        int cannonLevel = session.getCannonLevel();
+        Map<String, Long> fishDamage = session.getFishDamage();
+        if (fishDamage == null) {
+            fishDamage = new LinkedHashMap<>();
+            session.setFishDamage(fishDamage);
+        }
+        List<FishingSession.KillRecord> kills = session.getKills();
+        if (kills == null) {
+            kills = new ArrayList<>();
+            session.setKills(kills);
+        }
+
+        // 幸運值全滿且未被風控攔截時，本批第一個「致命一擊」強制捕獲（用完即止）。
+        boolean fortuneAvailable = fortuneReady && !intercepted;
 
         List<FishingShotsResponse.ShotResult> results = new ArrayList<>(shots.size());
         for (FishingShotsRequest.Shot shot : shots) {
@@ -199,6 +219,11 @@ public class FishingService {
                         .shotSeq(shot.getShotSeq())
                         .accepted(false)
                         .hit(false)
+                        .crit(false)
+                        .damage(0L)
+                        .hpRemaining(0L)
+                        .killed(false)
+                        .captured(false)
                         .payout(0L)
                         .sessionBalance(balance)
                         .build());
@@ -211,19 +236,38 @@ public class FishingService {
             lastShotSeq = shot.getShotSeq();
 
             FishSpecies species = FishSpecies.fromCode(shot.getFishType());
+            String instanceId = shot.getFishInstanceId();
+            long damageBefore = fishDamage.getOrDefault(instanceId, 0L);
             RandomStream stream = rng.stream(session.getServerSeed(), session.getClientSeed(), shot.getShotSeq());
-            long payout;
-            if (!fortuneConsumed && !intercepted) {
-                // 保底：跳過命中判定，直接計算必中派彩（MONEY_TREE 仍隨機抽倍率）
-                fortuneConsumed = true;
-                payout = species.resolveGuaranteedPayout(stream, shot.getBetPerShot());
-                session.setGuaranteedShotSeq(shot.getShotSeq());
+
+            // 風控攔截時仍正常消耗 RNG stream，確保 seed 可重放驗證（Provably Fair）。
+            boolean forceThisShot = fortuneAvailable;
+            FishingCombat.ShotOutcome outcome = forceThisShot
+                    ? FishingCombat.resolveShotGuaranteed(stream, species, cannonLevel, damageBefore, shot.getBetPerShot())
+                    : FishingCombat.resolveShot(stream, species, cannonLevel, damageBefore, shot.getBetPerShot());
+
+            // 風控攔截：致命一擊的捕獲一律改判「掙脫」、派彩 0（RNG 已照常消耗）。
+            boolean captured = outcome.captured() && !intercepted;
+            long payout = captured ? outcome.payout() : 0L;
+
+            if (outcome.killed()) {
+                // 致命一擊：記錄供 verifyShot 精確重放，並移除該魚 instance 的累傷。
+                kills.add(new FishingSession.KillRecord(shot.getShotSeq(), species.name(), damageBefore));
+                while (kills.size() > KILL_LOG_CAP) {
+                    kills.remove(0);
+                }
+                fishDamage.remove(instanceId);
+                if (forceThisShot) {
+                    // fortune 真正用在一個致命一擊上 → 標記供 verifyShot 選用 guaranteed 路徑。
+                    session.setGuaranteedShotSeq(shot.getShotSeq());
+                    fortuneAvailable = false;
+                }
             } else {
-                // 風控攔截時仍正常消耗 RNG stream，確保 seed 可重放驗證（Provably Fair）。
-                fortuneConsumed = true;
-                long rawPayout = species.resolvePayout(stream, shot.getBetPerShot());
-                payout = intercepted ? 0L : rawPayout;
+                // 未死：累積傷害（並控管並存 instance 數，淘汰最舊者）。
+                fishDamage.put(instanceId, outcome.damageTakenAfter());
+                pruneFishDamage(fishDamage);
             }
+
             if (payout > 0) {
                 balance += payout;
                 totalPayout += payout;
@@ -232,7 +276,12 @@ public class FishingService {
             results.add(FishingShotsResponse.ShotResult.builder()
                     .shotSeq(shot.getShotSeq())
                     .accepted(true)
-                    .hit(payout > 0)
+                    .hit(true)
+                    .crit(outcome.crit())
+                    .damage(outcome.damage())
+                    .hpRemaining(outcome.hpRemaining())
+                    .killed(outcome.killed())
+                    .captured(captured)
                     .payout(payout)
                     .sessionBalance(balance)
                     .build());
@@ -314,37 +363,60 @@ public class FishingService {
                 .orElseThrow(() -> new RoundNotFoundException(
                         "場次不存在或尚未結算（sessionId=" + sessionId + "）"));
 
-        FishSpecies species = FishSpecies.fromCode(fishType);
         boolean commitmentValid = rng.verifyCommitment(round.getServerSeed(), round.getServerSeedHash());
-        RandomStream stream = rng.stream(round.getServerSeed(), round.getClientSeed(), shotSeq);
 
-        // 讀取場次結算時記錄的風控旗標與保底 shotSeq
+        // 讀取場次結算時記錄的：砲台等級、風控旗標、保底 shotSeq、各致命一擊（shotSeq→damageBefore/魚種）
+        int cannonLevel = 1;
         boolean riskControlled = false;
         Long guaranteedShotSeq = null;
+        Map<Long, Long> killDamageBefore = new HashMap<>();
+        Map<Long, String> killSpecies = new HashMap<>();
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> resultData = objectMapper.readValue(round.getResultData(), Map.class);
+            Object cl = resultData.get("cannonLevel");
+            if (cl instanceof Number) cannonLevel = ((Number) cl).intValue();
             riskControlled = Boolean.TRUE.equals(resultData.get("riskControlled"));
             Object gsq = resultData.get("guaranteedShotSeq");
             if (gsq instanceof Number) guaranteedShotSeq = ((Number) gsq).longValue();
+            Object killsObj = resultData.get("kills");
+            if (killsObj instanceof List<?> list) {
+                for (Object entry : list) {
+                    if (entry instanceof Map<?, ?> m && m.get("shotSeq") instanceof Number seq) {
+                        long s = seq.longValue();
+                        Object before = m.get("damageBefore");
+                        killDamageBefore.put(s, before instanceof Number ? ((Number) before).longValue() : 0L);
+                        Object ft = m.get("fishType");
+                        if (ft != null) killSpecies.put(s, String.valueOf(ft));
+                    }
+                }
+            }
         } catch (Exception ignored) {
-            // result_data 不存在或格式異常時，保守不標記（不影響 PF 驗證本身）
+            // result_data 不存在或格式異常時，保守以 fishType 參數 + damageBefore=0 重放（不影響承諾驗證本身）
         }
 
-        // 保底命中的 shot 使用 resolveGuaranteedPayout（串流位置已對齊），確保驗證結果與實際派彩一致
-        long payout = (guaranteedShotSeq != null && guaranteedShotSeq == shotSeq)
-                ? species.resolveGuaranteedPayout(stream, betPerShot)
-                : species.resolvePayout(stream, betPerShot);
+        // 致命一擊以結算紀錄的魚種為準（避免依賴 client 傳入的 fishType）；非致命發則用查詢參數。
+        boolean killingBlow = killDamageBefore.containsKey(shotSeq);
+        FishSpecies species = FishSpecies.fromCode(killSpecies.getOrDefault(shotSeq, fishType));
+        long damageBefore = killingBlow ? killDamageBefore.get(shotSeq) : 0L;
+        boolean guaranteed = guaranteedShotSeq != null && guaranteedShotSeq == shotSeq;
+
+        RandomStream stream = rng.stream(round.getServerSeed(), round.getClientSeed(), shotSeq);
+        FishingCombat.ShotOutcome outcome = guaranteed
+                ? FishingCombat.resolveShotGuaranteed(stream, species, cannonLevel, damageBefore, betPerShot)
+                : FishingCombat.resolveShot(stream, species, cannonLevel, damageBefore, betPerShot);
 
         String message;
         if (!commitmentValid) {
             message = "承諾雜湊不符（異常）";
-        } else if (riskControlled && payout > 0) {
-            // PF 驗證 RNG 結果為命中，但場次有風控介入；實際入帳派彩為 0
-            message = "承諾相符；RNG 結果可確定性重現。"
-                    + "注意：此場次有風控介入，命中局的實際入帳派彩已調整為 0（payout 欄位顯示原始 RNG 值）";
+        } else if (!killingBlow) {
+            message = "承諾相符；此發為非致命發（未派彩），暴擊/傷害判定可由 (serverSeed, clientSeed, shotSeq) 重放";
+        } else if (riskControlled && outcome.captured()) {
+            // PF 重現為捕獲，但場次有風控介入；實際入帳派彩為 0
+            message = "承諾相符；RNG 重現為捕獲，但此場次有風控介入，"
+                    + "命中局的實際入帳派彩已調整為 0（payout 欄位顯示原始 RNG 值）";
         } else {
-            message = "承諾相符；該發結果可由 (serverSeed, clientSeed, shotSeq) 確定性重現";
+            message = "承諾相符；該致命一擊結果可由 (serverSeed, clientSeed, shotSeq) 確定性重現";
         }
 
         return FishingShotVerifyResponse.builder()
@@ -353,8 +425,8 @@ public class FishingService {
                 .fishType(species.name())
                 .betPerShot(betPerShot)
                 .commitmentValid(commitmentValid)
-                .hit(payout > 0)
-                .payout(payout)
+                .hit(outcome.captured())
+                .payout(outcome.payout())
                 .riskControlled(riskControlled)
                 .serverSeed(round.getServerSeed())
                 .serverSeedHash(round.getServerSeedHash())
@@ -398,6 +470,14 @@ public class FishingService {
         long allowedShots = elapsedMs * MAX_SHOTS_PER_SEC / 1000 + BURST_ALLOWANCE;
         if (shots.size() > allowedShots) {
             throw new IllegalArgumentException("射速異常（疑似連點外掛），本批子彈已整批拒絕");
+        }
+    }
+
+    /** 控管同時追蹤傷害的魚 instance 數：超出上限時淘汰最舊（LinkedHashMap 插入序）者。 */
+    private void pruneFishDamage(Map<String, Long> fishDamage) {
+        while (fishDamage.size() > MAX_LIVE_FISH) {
+            String eldest = fishDamage.keySet().iterator().next();
+            fishDamage.remove(eldest);
         }
     }
 
@@ -487,6 +567,8 @@ public class FishingService {
             result.put("riskControlled", Boolean.TRUE.equals(session.getIntercepted()));
             // verifyShot 用：幸運值保底命中的 shotSeq（null 代表未觸發）
             result.put("guaranteedShotSeq", session.getGuaranteedShotSeq());
+            // verifyShot 用：各致命一擊的 shotSeq / 魚種 / 該發前累積傷害，供重放捕獲判定
+            result.put("kills", session.getKills());
             return objectMapper.writeValueAsString(result);
         } catch (Exception ex) {
             log.warn("序列化捕魚結果失敗: {}", ex.toString());
@@ -502,7 +584,9 @@ public class FishingService {
                     .name(species.displayName())
                     .assetId(species.assetId())
                     .multiplier(species.multiplier())
-                    .hitProbability(species.hitProbability())
+                    .hp(species.hp())
+                    .tier(species.tier().name())
+                    .spawnWeight(species.spawnWeight())
                     .build());
         }
         return FishingSessionView.builder()
