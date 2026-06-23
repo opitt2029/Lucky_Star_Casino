@@ -45,10 +45,13 @@ public class BaccaratResultResponse {
     /** 下注總額。 */
     private long totalBet;
 
-    /** 派彩總額。 */
+    /** 派彩總額（不含反水）。 */
     private long totalPayout;
 
-    /** 結算後錢包視圖。 */
+    /** 本局反水金額（下注總額 × 0.5%，最低 1 星幣）。 */
+    private long rebate;
+
+    /** 結算後錢包視圖（含派彩與反水，每局必有）。 */
     private WalletView wallet;
 
     // ---- Provably Fair 揭露欄位 ----

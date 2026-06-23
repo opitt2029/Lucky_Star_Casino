@@ -506,6 +506,8 @@ export const mockApi = {
     const odds = area === 'tie' ? 8 : area === 'banker' ? 0.95 : 1
     const payout = area === winner ? Math.floor(amount + amount * odds) : 0
     if (payout) applyWalletChange(db, playerId, payout, 'payout', '百家樂派彩')
+    const rebate = Math.max(1, Math.floor(amount * 0.005))
+    applyWalletChange(db, playerId, rebate, 'payout', '百家樂反水')
     saveDb(db)
 
     return {
@@ -515,6 +517,7 @@ export const mockApi = {
       amount,
       winner,
       payout,
+      rebate,
       playerCards,
       bankerCards,
       playerPoints,

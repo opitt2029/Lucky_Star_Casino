@@ -21,7 +21,7 @@ export const gameApi = {
   // 百家樂兩階段：POST /bet（多區押注扣款）→ POST /{roundId}/result（結算派彩）。
   // 前端目前以單區 { area, amount } 下注，這裡轉接成後端的多區契約並合併結果，
   // 回傳與 mockApi.baccaratBet 一致的形狀供 gameSlice 使用。
-  async baccaratBet({ area, amount, clientSeed, fortuneReady }) {
+  async baccaratBet({ area, amount, clientSeed }) {
     if (useMockApi) {
       return mockApi.baccaratBet({ area, amount })
     }
@@ -31,7 +31,6 @@ export const gameApi = {
       banker: area === 'banker' ? amount : 0,
       tie: area === 'tie' ? amount : 0,
       clientSeed,
-      fortuneReady,
     }
     const betRes = await api.post('/api/v1/game/baccarat/bet', betBody)
     const roundId = betRes.data.data.roundId
@@ -46,6 +45,7 @@ export const gameApi = {
       amount,
       winner: (r.result || '').toLowerCase(), // PLAYER/BANKER/TIE → player/banker/tie
       payout: r.payouts?.[area] ?? 0,
+      rebate: r.rebate ?? 0,
       playerCards: r.playerCards,
       bankerCards: r.bankerCards,
       playerPoints: r.playerScore,

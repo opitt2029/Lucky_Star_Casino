@@ -205,6 +205,7 @@ function ResultItem({ label, value, wide = false }) {
 }
 
 const ROAD_STORAGE_KEY = 'lucky-star-baccarat-road-v1'
+const SESSION_PROFIT_KEY = 'lucky-star-baccarat-session-profit-v1'
 const SQUEEZE_STORAGE_KEY = 'lucky-star-baccarat-squeeze-v1'
 
 function getSqueezeMode(playerId) {
@@ -236,6 +237,15 @@ export default function Baccarat() {
   const [isDealing, setIsDealing] = useState(false)
   const [roundProfit, setRoundProfit] = useState(null)
   const [roundBet, setRoundBet] = useState(null)
+  // 本場損益（session 內持續累積，重整不丟）
+  const [sessionProfit, setSessionProfit] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem(SESSION_PROFIT_KEY)
+      if (raw === null) return null
+      const n = Number(raw)
+      return Number.isFinite(n) ? n : null
+    } catch { return null }
+  })
   // 路單局史（session 內持續累積，重整不丟）
   const [history, setHistory] = useState(() => {
     try {
@@ -267,6 +277,12 @@ export default function Baccarat() {
       // 忽略儲存失敗
     }
   }, [history])
+
+  useEffect(() => {
+    try {
+      if (sessionProfit !== null) sessionStorage.setItem(SESSION_PROFIT_KEY, String(sessionProfit))
+    } catch {}
+  }, [sessionProfit])
 
   const numericBetAmount = useMemo(() => Number(betAmount), [betAmount])
   const amountInRange =
@@ -306,6 +322,7 @@ export default function Baccarat() {
     setBankerScore(result.bankerPoints ?? null)
     setWinner(nextWinner)
     setRoundProfit(profit)
+    setSessionProfit((prev) => (prev ?? 0) + profit)
     setRoundBet({ selectedBet: betArea, amount, rebate })
     setResultMessage(
       hit
@@ -652,6 +669,18 @@ export default function Baccarat() {
               label="本局獲利"
               value={sidebarProfitValue}
               caption={sidebarProfitCaption}
+            />
+            <MetricCard
+              label="本場損益"
+              value={
+                sessionProfit === null
+                  ? '-'
+                  : sessionProfit >= 0
+                    ? `+${formatCoins(sessionProfit)}`
+                    : `-${formatCoins(Math.abs(sessionProfit))}`
+              }
+              caption={sessionProfit === null ? '本局結算後開始記錄' : `本場共 ${history.length} 局`}
+              valueClass={sessionProfit === null ? '' : sessionProfit >= 0 ? 'text-emerald-300' : 'text-red-300'}
             />
 
             <div className="baccarat-api-panel">
