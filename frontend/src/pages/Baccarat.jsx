@@ -281,7 +281,9 @@ export default function Baccarat() {
   useEffect(() => {
     try {
       if (sessionProfit !== null) sessionStorage.setItem(SESSION_PROFIT_KEY, String(sessionProfit))
-    } catch {}
+    } catch {
+      // 忽略儲存失敗
+    }
   }, [sessionProfit])
 
   const numericBetAmount = useMemo(() => Number(betAmount), [betAmount])

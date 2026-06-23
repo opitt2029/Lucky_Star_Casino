@@ -169,12 +169,15 @@ docker compose（infra）→ member-service → wallet-service → game-service 
 
 ```bash
 cd frontend
-npm install        # 第一次才需要
+npm install        # 第一次、或 git pull 後 package.json 新增依賴時都要重跑
 npm run dev
 ```
 
 瀏覽器開啟 **http://localhost:5173**。
 
+> ⚠️ **拉到新前端依賴要重跑 `npm install`**：捕魚機漁場已改用 **PixiJS**（`pixi.js`，見 `frontend/package.json`）。
+> 若 `git pull` 後沒重裝，`npm run dev`／`npm run build` 會報 `Rollup failed to resolve import "pixi.js"`——此時 `cd frontend && npm install` 即可。
+>
 > 前端透過 Gateway（8080）呼叫後端 API；`.env` 的 `CORS_ALLOWED_ORIGINS` 已允許 `http://localhost:5173`。
 >
 > 前端預設 `VITE_USE_MOCK_API=false`（見 `frontend/.env.development`），會打**真實後端**——所以後端要先起好。若只想看 UI、暫不起後端，可在個人的 `frontend/.env.local`（不進版控）設 `VITE_USE_MOCK_API=true` 改用假資料。
