@@ -23,6 +23,10 @@ function weightedPick(table) {
 
 const MAX_FISH = 14
 const SPAWN_INTERVAL_MS = 850
+// 按住連發：朝游標方向持續開火的取樣節奏（實際射速由 hook 的 token bucket 限到 8 發/秒）。
+const FIRE_INTERVAL_MS = 110
+// 游標命中判定半徑（px）：游標距魚中心在此範圍內視為瞄到該魚，給連發掃射足夠容錯。
+const AIM_RADIUS = 92
 
 /**
  * 捕魚機漁場：魚群游動、點擊射擊、命中演出。
@@ -54,6 +58,13 @@ export default function FishingArena({
   const [sparks, setSparks] = useState([])
   const [floats, setFloats] = useState([])
   const [hint, setHint] = useState('')
+
+  // 按住連發相關即時狀態（用 ref 避免閉包過期）。
+  const pointerRef = useRef(null) // 游標在 arena 內座標 { x, y }
+  const holdingRef = useRef(false)
+  const fireTimerRef = useRef(null)
+  const fishesRef = useRef([])
+  fishesRef.current = fishes
 
   // 魚表附加渲染中繼資料。
   const tableRef = useRef([])
@@ -174,52 +185,163 @@ export default function FishingArena({
     window.setTimeout(() => setBullets((prev) => prev.filter((b) => b.id !== id)), 340)
   }
 
-  const handleFishClick = (event, fish) => {
-    event.stopPropagation()
-    if (phase !== 'playing' || fish.caught) return
+  // 指標事件 → arena 內座標
+  const toLocal = (event) => {
     const rect = arenaRef.current.getBoundingClientRect()
-    const px = event.clientX - rect.left
-    const py = event.clientY - rect.top
-    const xPct = (px / rect.width) * 100
-    const yPct = (py / rect.height) * 100
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top }
+  }
 
-    // 砲台瞄準
-    const cx = rect.width / 2
-    const cy = rect.height
-    setAim((Math.atan2(px - cx, cy - py) * 180) / Math.PI)
+  // 砲台朝 (px,py) 的轉角（度）
+  const aimFor = (px, py) => {
+    const rect = arenaRef.current.getBoundingClientRect()
+    return (Math.atan2(px - rect.width / 2, rect.height - py) * 180) / Math.PI
+  }
 
-    if (fish.tier === 'boss' || fish.tier === 'special') play?.('lockOn')
-
-    const res = fire(fish.code)
-    if (!res.ok) {
-      if (res.reason === 'insufficient') showHint('局內餘額不足，請結算後再加值')
-      return
+  // 找出距游標最近、且在容錯半徑內的活魚（連發掃射的瞄準對象）。
+  function nearestFish(px, py) {
+    const root = arenaRef.current
+    if (!root) return null
+    const rect = root.getBoundingClientRect()
+    let best = null
+    let bestDist = AIM_RADIUS
+    for (const fish of fishesRef.current) {
+      if (fish.caught) continue
+      const el = root.querySelector(`[data-fish-id="${fish.id}"]`)
+      if (!el) continue
+      const r = el.getBoundingClientRect()
+      const fx = r.left - rect.left + r.width / 2
+      const fy = r.top - rect.top + r.height / 2
+      const dist = Math.hypot(fx - px, fy - py)
+      if (dist <= bestDist) {
+        bestDist = dist
+        best = fish
+      }
     }
-    play?.('shoot', { pitch: 1 + Math.random() * 0.1 })
-    spawnBullet(px, py)
-    pendingRef.current.set(res.shotSeq, {
-      fishId: fish.id,
-      code: fish.code,
-      multiplier: fish.multiplier,
-      tier: fish.tier,
-      xPct,
-      yPct,
-    })
+    return best
   }
 
-  // 點擊空海域也讓砲台轉向（純表現）
-  const handleArenaClick = (event) => {
-    if (phase !== 'playing') return
-    const rect = arenaRef.current.getBoundingClientRect()
-    const px = event.clientX - rect.left
-    const py = event.clientY - rect.top
-    const cx = rect.width / 2
-    const cy = rect.height
-    setAim((Math.atan2(px - cx, cy - py) * 180) / Math.PI)
+  // 對指定魚開一發（鍵盤無障礙 + 連發掃射共用）。
+  // 回傳 'fired' | 'ratelimited' | 'insufficient' | 'inactive'。
+  const engageFish = useCallback(
+    (fish) => {
+      const root = arenaRef.current
+      if (!root || phase !== 'playing' || fish.caught) return 'inactive'
+      const el = root.querySelector(`[data-fish-id="${fish.id}"]`)
+      if (!el) return 'inactive'
+      const rect = root.getBoundingClientRect()
+      const r = el.getBoundingClientRect()
+      const px = r.left - rect.left + r.width / 2
+      const py = r.top - rect.top + r.height / 2
+      setAim(aimFor(px, py))
+      if (fish.tier === 'boss' || fish.tier === 'special') play?.('lockOn')
+
+      const res = fire(fish.code)
+      if (!res.ok) {
+        if (res.reason === 'insufficient') showHint('局內餘額不足，請結算後再加值')
+        return res.reason
+      }
+      play?.('shoot', { pitch: 1 + Math.random() * 0.1 })
+      spawnBullet(px, py)
+      pendingRef.current.set(res.shotSeq, {
+        fishId: fish.id,
+        code: fish.code,
+        multiplier: fish.multiplier,
+        tier: fish.tier,
+        xPct: (px / rect.width) * 100,
+        yPct: (py / rect.height) * 100,
+      })
+      return 'fired'
+    },
+    [phase, fire, play, showHint],
+  )
+
+  // 朝游標方向開火：瞄到魚就實際開火（扣注、進批次）；空海域只放純視覺曳光，不扣注。
+  const fireToward = useCallback(
+    (px, py) => {
+      if (phase !== 'playing') return
+      setAim(aimFor(px, py))
+      const fish = nearestFish(px, py)
+      // 沒瞄到魚、或被 token bucket 限流的空檔 → 補一發純視覺曳光，讓連發節奏不頓挫。
+      if (!fish || engageFish(fish) === 'ratelimited') {
+        play?.('shoot', { pitch: 1 + Math.random() * 0.1 })
+        spawnBullet(px, py)
+      }
+    },
+    [phase, engageFish, play],
+  )
+
+  const fireTowardRef = useRef(fireToward)
+  fireTowardRef.current = fireToward
+
+  const stopFireLoop = () => {
+    if (fireTimerRef.current) {
+      window.clearInterval(fireTimerRef.current)
+      fireTimerRef.current = null
+    }
   }
+
+  const startFireLoop = () => {
+    stopFireLoop()
+    fireTimerRef.current = window.setInterval(() => {
+      const p = pointerRef.current
+      if (p) fireTowardRef.current(p.x, p.y)
+    }, FIRE_INTERVAL_MS)
+  }
+
+  const handlePointerDown = (event) => {
+    if (phase !== 'playing' || event.button === 2) return // 略過右鍵
+    event.preventDefault()
+    const p = toLocal(event)
+    pointerRef.current = p
+    holdingRef.current = true
+    try {
+      arenaRef.current?.setPointerCapture?.(event.pointerId)
+    } catch {
+      /* 不支援 pointer capture 時退化為一般事件 */
+    }
+    fireToward(p.x, p.y) // 立即開第一發
+    startFireLoop()
+  }
+
+  const handlePointerMove = (event) => {
+    if (phase !== 'playing') return
+    const p = toLocal(event)
+    pointerRef.current = p
+    setAim(aimFor(p.x, p.y))
+  }
+
+  const handlePointerUp = (event) => {
+    if (!holdingRef.current) return
+    holdingRef.current = false
+    stopFireLoop()
+    try {
+      arenaRef.current?.releasePointerCapture?.(event.pointerId)
+    } catch {
+      /* 已釋放 */
+    }
+  }
+
+  // 離開 playing（結算/卸載）一律停下連發迴圈，避免視覺鎖脫鉤。
+  useEffect(() => {
+    if (phase !== 'playing') {
+      holdingRef.current = false
+      stopFireLoop()
+    }
+    return () => stopFireLoop()
+  }, [phase])
 
   return (
-    <div ref={arenaRef} className="fishing-arena" onClick={handleArenaClick}>
+    <div
+      ref={arenaRef}
+      className="fishing-arena"
+      style={{ touchAction: 'none', userSelect: 'none' }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onPointerLeave={handlePointerUp}
+      onContextMenu={(event) => event.preventDefault()}
+    >
       {fishes.map((fish) => (
         <div
           key={fish.id}
@@ -231,9 +353,13 @@ export default function FishingArena({
         >
           <button
             type="button"
+            data-fish-id={fish.id}
             className={`fishing-fish${fish.tier === 'boss' ? ' fishing-fish--boss' : ''}${fish.caught ? ' fishing-fish--caught' : ''}`}
             style={{ width: `${fish.size}px`, height: `${fish.size}px` }}
-            onClick={(e) => handleFishClick(e, fish)}
+            // 滑鼠/觸控的開火統一交給 arena 的 pointer 連發；此處只接鍵盤 Enter/Space（detail===0）做無障礙開火
+            onClick={(event) => {
+              if (event.detail === 0) engageFish(fish)
+            }}
             aria-label={`${fish.name} ${fish.multiplier}x`}
           >
             <Art

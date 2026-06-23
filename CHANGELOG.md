@@ -3,6 +3,37 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Fixed] — 2026-06-23 — 登入偶發「第一次失敗、原帳密第二次又成功」：登入流程加逾時放寬+重試、401 攔截器不再洗掉登入錯誤
+
+### Fixed
+- `frontend/src/services/api.js`：全域回應攔截器原本對**任何** 401 都 `window.location.href='/login'` 強制整頁重載，會把登入頁的錯誤訊息與表單狀態洗掉，正是「看起來失敗、再試又好」的成因之一。改為**跳過** auth 端點（`/api/v1/auth/`，帳密錯誤本就回 401）與帶 `skipAuthRedirect` 的請求（登入流程中抓 profile），交由呼叫端呈現錯誤；其餘受保護端點的 401 維持原本登出重導。
+- `frontend/src/services/memberApi.js`：`login()` 兩段請求（`POST /auth/login` → `GET /player/profile`）加上**逾時放寬至 15s**（後端冷啟動首次請求可能超過預設 10s）與**暫時性失敗自動重試**（`withRetry`）。登入 POST 只重試網路/逾時/5xx（401=帳密錯誤不重試）；profile GET 額外容忍「剛簽出 token、gateway 暖機」的暫時 401，並帶 `skipAuthRedirect` 不觸發整頁重導。
+
+### Changed
+- `frontend/src/services/memberApi.js`：`extractError` 對逾時（`ECONNABORTED`）回友善訊息「連線逾時，請再試一次」；`friendlyErrorMap` 新增帳密錯誤/帳號停用的中文對應（後端原回英文）。
+
+### 為什麼
+- 玩家回報「輸入正確帳密第一次沒登入成功，帳密沒動第二次又成功」。確認為**連真實後端**。根因為登入是兩段請求，後端冷啟動或 gateway 暖機時第二段（抓 profile）偶發逾時/暫時 401，使整個登入 thunk reject；加上全域 401 攔截器把頁面整個重載、洗掉錯誤狀態，造成「時好時壞」的錯覺。前端做暫時性失敗的容錯重試即可，不需動後端。
+
+### 如何驗證
+- `npx eslint src/services/api.js src/services/memberApi.js` 通過（0 error）。
+- 手動：連真實後端、服務剛啟動時登入，首次請求逾時/暫時 401 會自動重試而非直接失敗；帳密打錯則顯示「帳號或密碼不正確」且不再整頁重載。
+
+## [Added] — 2026-06-23 — 捕魚機支援「按住滑鼠連發」（朝游標方向持續開火）
+
+### Added
+- `frontend/src/components/FishingArena.jsx`：新增 pointer 按住連發。`onPointerDown` 立即開第一發並啟動 `setInterval`（`FIRE_INTERVAL_MS=110`）持續朝游標方向開火，`onPointerUp/Cancel/Leave` 釋放停止；以 `setPointerCapture` 保留拖曳瞄準。游標掃到容錯半徑（`AIM_RADIUS=92`px）內最近的活魚（`nearestFish` 以 DOM 即時座標計算）即對該魚實際開火扣注；空海域或被射速限流的空檔只放純視覺曳光，不扣注（後端為「點魚判定命中」模型，無子彈碰撞）。
+
+### Changed
+- `FishingArena.jsx`：原本只有「點到魚」`onClick` 單發（`handleFishClick`）與空海域轉向 `handleArenaClick`，改由 arena 的 pointer 事件統一處理；單發開火重構為共用的 `engageFish(fish)`。魚 `<button>` 加 `data-fish-id` 供座標查詢，其 `onClick` 僅在鍵盤觸發（`event.detail===0`）時開火，避免與 pointer 連發重複開火、保留鍵盤無障礙。arena 加 `touch-action:none`/`user-select:none` 與右鍵屏蔽。
+
+### 為什麼
+- 玩家回報「釣魚機沒辦法滑鼠按住連續發射」。底層 `useFishingSession.fire()` 早已支援高速連發（token bucket 8 發/秒 + burst），缺的只是 UI 層的「按住→定時連發」輸入；補上即可，且符合 AGENTS.md §2.13 三鐵則（射速交給引擎節流、視覺鎖綁定真實 pointer 生命週期而非魔術數字、音效統一走 `play()`/soundEngine）。
+
+### 如何驗證
+- `npx eslint src/components/FishingArena.jsx` 通過（0 error）。
+- 手動：進場後按住滑鼠掃過魚群可連續開火並扣局內餘額；放開/收網結算即停；空海域只見曳光不扣注。
+
 ## [Changed] — 2026-06-22 — 老虎機娛樂化 RTP：中線改兩階賠付「左二同小獎 + 三連大獎」（RTP ≈93.8%、命中率 ≈30.7%）
 
 ### Changed
