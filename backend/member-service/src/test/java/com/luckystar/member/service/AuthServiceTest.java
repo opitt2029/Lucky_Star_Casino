@@ -1,18 +1,23 @@
 package com.luckystar.member.service;
 
+import com.luckystar.member.dto.LoginRequest;
 import com.luckystar.member.dto.RegisterRequest;
 import com.luckystar.member.dto.RegisterResponse;
 import com.luckystar.member.entity.Member;
+import com.luckystar.member.exception.AccountDisabledException;
 import com.luckystar.member.exception.MemberAlreadyExistsException;
 import com.luckystar.member.repository.MemberRepository;
+import com.luckystar.member.security.JwtTokenProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -26,6 +31,12 @@ class AuthServiceTest {
 
     @Mock
     private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private JwtTokenProvider jwtTokenProvider;
+
+    @Mock
+    private TokenRedisService tokenRedisService;
 
     @Mock
     private OutboxService outboxService;
@@ -87,6 +98,50 @@ class AuthServiceTest {
         when(memberRepository.existsByEmail("test@example.com")).thenReturn(true);
 
         assertThrows(MemberAlreadyExistsException.class, () -> authService.register(request));
+    }
+
+    private Member buildActiveMember() {
+        Member m = new Member();
+        m.setId(1L);
+        m.setUsername("testuser");
+        m.setPasswordHash("$2a$hashed");
+        m.setStatus("ACTIVE");
+        m.setRole("PLAYER");
+        return m;
+    }
+
+    private LoginRequest buildLoginRequest() {
+        LoginRequest req = new LoginRequest();
+        req.setUsername("testuser");
+        req.setPassword("Password1");
+        return req;
+    }
+
+    @Test
+    void login_disabledByRedis_throws() {
+        Member member = buildActiveMember();
+        when(memberRepository.findByUsername("testuser")).thenReturn(Optional.of(member));
+        when(passwordEncoder.matches("Password1", "$2a$hashed")).thenReturn(true);
+        when(tokenRedisService.isPlayerDisabled(1L)).thenReturn(true);
+
+        assertThrows(AccountDisabledException.class, () -> authService.login(buildLoginRequest()));
+        verifyNoInteractions(jwtTokenProvider);
+    }
+
+    @Test
+    void login_redisWriteFails_throws() {
+        Member member = buildActiveMember();
+        when(memberRepository.findByUsername("testuser")).thenReturn(Optional.of(member));
+        when(passwordEncoder.matches("Password1", "$2a$hashed")).thenReturn(true);
+        when(tokenRedisService.isPlayerDisabled(1L)).thenReturn(false);
+        when(jwtTokenProvider.generateAccessToken(1L, "testuser", "PLAYER")).thenReturn("access-token");
+        when(jwtTokenProvider.generateRefreshToken(1L, "testuser", "PLAYER")).thenReturn("refresh-token");
+        when(jwtTokenProvider.getRemainingTtlMs("refresh-token")).thenReturn(86400000L);
+        doThrow(new RedisConnectionFailureException("Redis down"))
+                .when(tokenRedisService).saveRefreshToken(anyLong(), anyString(), anyLong());
+
+        RuntimeException ex = assertThrows(RuntimeException.class, () -> authService.login(buildLoginRequest()));
+        assertTrue(ex.getMessage().contains("temporarily unavailable"));
     }
 
     @Test

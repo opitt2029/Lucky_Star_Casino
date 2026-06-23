@@ -95,6 +95,12 @@ spring:
             - Path=/v3/api-docs/admin
           filters:
             - RewritePath=/v3/api-docs/admin, /v3/api-docs
+        - id: openapi-notification
+          uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8087}
+          predicates:
+            - Path=/v3/api-docs/notification
+          filters:
+            - RewritePath=/v3/api-docs/notification, /v3/api-docs
         # 白名單路徑：免 JWT 驗證（登入/註冊）
         # 套用速率限制防暴力破解：5 req/sec replenish, burst 10
         - id: member-auth
@@ -279,6 +285,8 @@ springdoc:
         url: /v3/api-docs/rank
       - name: admin-service
         url: /v3/api-docs/admin
+      - name: notification-service
+        url: /v3/api-docs/notification
 
 management:
   endpoints:

@@ -51,7 +51,7 @@ spring:
 internal:
   wallet-service:
     base-url: ${WALLET_SERVICE_URL:http://localhost:8082}
-    secret: ${INTERNAL_SERVICE_SECRET:?INTERNAL_SERVICE_SECRET environment variable is required}
+    secret: ${INTERNAL_SECRET:?INTERNAL_SECRET environment variable is required}
 
 management:
   endpoints:

@@ -58,6 +58,7 @@ public class AuthService {
         );
     }
 
+    @Transactional(readOnly = true)
     public LoginResponse login(LoginRequest request) {
         Member member = memberRepository.findByUsername(request.getUsername())
                 .orElseThrow(() -> new InvalidCredentialsException("Invalid username or password"));
@@ -76,7 +77,12 @@ public class AuthService {
         String refreshToken = jwtTokenProvider.generateRefreshToken(member.getId(), member.getUsername(), member.getRole());
 
         long refreshTtl = jwtTokenProvider.getRemainingTtlMs(refreshToken);
-        tokenRedisService.saveRefreshToken(member.getId(), refreshToken, refreshTtl);
+        try {
+            tokenRedisService.saveRefreshToken(member.getId(), refreshToken, refreshTtl);
+        } catch (Exception e) {
+            log.error("Redis write failed during login for memberId={}", member.getId(), e);
+            throw new RuntimeException("Login service temporarily unavailable. Please retry.", e);
+        }
 
         return new LoginResponse(accessToken, refreshToken);
     }

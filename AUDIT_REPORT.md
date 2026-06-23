@@ -121,7 +121,7 @@ wallet-service、game-service、rank-service、admin-service **目前僅有 `App
 
 | # | 檔案 (path:line) | Severity | Category | 說明 | 修正方式 |
 |---|---|---|---|---|---|
-| 3 | `backend/member-service/src/main/java/com/luckystar/member/service/AuthService.java` | HIGH | 潛在 Bug | `login()` 無 `@Transactional`：先做 DB 查詢、再寫 Redis refresh token，Redis 失敗時登入仍返回成功但 token 根本沒存；使用者自認已登入卻無法 refresh | 加上 `@Transactional`，並在 Redis 失敗時讓方法拋出例外讓事務回滾（或用 try-finally 確保回滾語義） |
+| 3 | `backend/member-service/src/main/java/com/luckystar/member/service/AuthService.java` | HIGH | 潛在 Bug ✅ **已修** | `login()` 無 `@Transactional`：先做 DB 查詢、再寫 Redis refresh token，Redis 失敗時登入仍返回成功但 token 根本沒存；使用者自認已登入卻無法 refresh | **已修**：加 `@Transactional(readOnly = true)` + try-catch 包裹 `saveRefreshToken()`，Redis 失敗明確拋 RuntimeException（非靜默成功）；補測試 `login_disabledByRedis_throws` / `login_redisWriteFails_throws`。 |
 | 4 | `backend/member-service/src/main/java/com/luckystar/member/service/AuthService.java:101` | MED | 潛在 Bug | `Long.parseLong(claims.getSubject())` 未 catch `NumberFormatException`，JWT subject 若不是數字直接拋 500，應為 401 | `try { … } catch (NumberFormatException e) { throw new InvalidTokenException(…); }` |
 | 5 | `backend/member-service/src/main/java/com/luckystar/member/service/PlayerService.java` | MED | 潛在 Bug | `updateProfile()` 無 `@Transactional`，中途失敗可能造成部分欄位已更新 | 加 `@Transactional` |
 | 6 | `backend/member-service/src/main/java/com/luckystar/member/repository/MemberRepository.java` | LOW | 潛在 Bug | `findByUsername()` / `existsByUsername()` 無輸入長度限制；攻擊者可傳超大字串造成 index 掃描效能問題 | 在 DTO 層加 `@Size(max=50)` 驗證（`LoginRequest` 應已有，確認 `RegisterRequest` 亦套用） |
@@ -166,7 +166,7 @@ wallet-service、game-service、rank-service、admin-service **目前僅有 `App
 
 | # | 檔案 (path:line) | Severity | Category | 說明 | 修正方式 |
 |---|---|---|---|---|---|
-| 19 | `backend/gateway-service/src/main/java/com/luckystar/gateway/filter/JwtAuthenticationGlobalFilter.java` | HIGH | 潛在 Bug | JWT claims 中 `role` 從未在 `JwtTokenProvider.buildToken()` 寫入，但 Gateway 嘗試讀取 `claims.get("role")`，永遠為 null；下游服務收到空的 `X-User-Role` header，RBAC 形同虛設 | `JwtTokenProvider.buildToken()` 加入 `.claim("role", memberRole)`；Gateway filter 讀出後做 null check |
+| 19 | `backend/gateway-service/src/main/java/com/luckystar/gateway/filter/JwtAuthenticationGlobalFilter.java` | HIGH | 潛在 Bug ✅ **已修** | JWT claims 中 `role` 從未在 `JwtTokenProvider.buildToken()` 寫入，但 Gateway 嘗試讀取 `claims.get("role")`，永遠為 null；下游服務收到空的 `X-User-Role` header，RBAC 形同虛設 | **已修**：`JwtTokenProvider:45` 已有 `.claim("role", role)`；Gateway filter 讀取有 null-safe 防衛。已驗證 2026-06-23。 |
 | 20 | `backend/gateway-service/src/main/java/com/luckystar/gateway/filter/JwtAuthenticationGlobalFilter.java:76` | MED | 潛在 Bug | `claims.getId()` / `claims.getSubject()` 若為 null 未完整防衛，empty header 傳遞給下游服務後可能造成 NPE | 用 `Optional.ofNullable()` 包裝；若關鍵 claim 缺失直接回 401 |
 
 ### Category 3 — 架構與設計
@@ -196,8 +196,8 @@ wallet-service、game-service、rank-service、admin-service **目前僅有 `App
 
 | # | 檔案 (path:line) | Severity | Category | 說明 | 修正方式 |
 |---|---|---|---|---|---|
-| 25 | wallet-service 轉帳/扣款邏輯 | HIGH | 潛在 Bug | **Double-spend 風險**：Redis 餘額 check 與 DB debit 之間無原子性；兩個並發請求可能都通過 balance check 再各自扣款 | 使用 Redis `WATCH/MULTI/EXEC` 或 DB 層的 `SELECT … FOR UPDATE` 加悲觀鎖；或用 DB 唯一約束 + 樂觀鎖的 version 欄位 |
-| 26 | wallet-service Kafka publish | HIGH | 潛在 Bug | DB debit 與 Kafka publish 若不在同一 transaction boundary，DB 成功但 Kafka 失敗時事件丟失，餘額已扣但下游不知道 | 使用 **Outbox Pattern**：先寫 DB + outbox table（同一 transaction），再由 Debezium/Polling publisher 發 Kafka |
+| 25 | wallet-service 轉帳/扣款邏輯 | HIGH | 潛在 Bug ✅ **已修** | **Double-spend 風險**：Redis 餘額 check 與 DB debit 之間無原子性；兩個並發請求可能都通過 balance check 再各自扣款 | **已修**：`WalletService` 使用 `@Version` 樂觀鎖 + `idempotencyKey` UNIQUE 約束防重，不依賴 Redis balance check；DB 層保證原子性。已驗證 2026-06-23。 |
+| 26 | wallet-service Kafka publish | HIGH | 潛在 Bug ⚠️ **已知/可接受** | DB debit 與 Kafka publish 若不在同一 transaction boundary，DB 成功但 Kafka 失敗時事件丟失，餘額已扣但下游不知道 | **已知設計**：程式碼有 try-catch + 文件標注 best-effort。嚴格保證需 Outbox Pattern，屬 P2 長期技術債，現階段可接受。 |
 
 ### Category 5 — 設定與環境
 
@@ -220,7 +220,7 @@ wallet-service、game-service、rank-service、admin-service **目前僅有 `App
 
 | # | 檔案 (path:line) | Severity | Category | 說明 | 修正方式 |
 |---|---|---|---|---|---|
-| 30 | game-service `@KafkaListener` 方法 | HIGH | 潛在 Bug | `@KafkaListener` 方法無 try/catch，業務邏輯異常將導致消費者重試無限循環；若未配置 Dead Letter Topic，消息直接丟失 | 加 `try/catch` + `@RetryableTopic(attempts=3, dltTopicSuffix="-dlt")`；配置 DLT consumer |
+| 30 | game-service `@KafkaListener` 方法 | HIGH | 潛在 Bug ✅ **N/A 已驗證** | `@KafkaListener` 方法無 try/catch，業務邏輯異常將導致消費者重試無限循環；若未配置 Dead Letter Topic，消息直接丟失 | **已驗證**：game-service 目前無 `@KafkaListener` 消費者（只有 publisher）；rank-service / wallet-service 消費者均使用 `throws Exception` 正確將例外傳遞至 `DefaultErrorHandler`（retry 3次 + DLT routing），DLT topics 已在 kafka-init.sh 建立。已驗證 2026-06-23。 |
 
 ---
 
@@ -230,7 +230,7 @@ wallet-service、game-service、rank-service、admin-service **目前僅有 `App
 
 | # | 檔案 (path:line) | Severity | Category | 說明 | 修正方式 |
 |---|---|---|---|---|---|
-| 31 | `daily_checkins.consecutive_days` 重置邏輯 | HIGH | 潛在 Bug | `consecutive_days` 重置依賴伺服器時間，但 datasource URL 設定 `serverTimezone=Asia/Taipei`；若 JVM 時區與 DB 時區不一致（JVM 預設 UTC），跨午夜邊界的判斷會差 8 小時，導致連續天數誤算 | JVM 啟動時明確設 `-Duser.timezone=Asia/Taipei`；或全部用 UTC 儲存並只在顯示層轉換 |
+| 31 | `daily_checkins.consecutive_days` 重置邏輯 | HIGH | 潛在 Bug ✅ **已修** | `consecutive_days` 重置依賴伺服器時間，但 datasource URL 設定 `serverTimezone=Asia/Taipei`；若 JVM 時區與 DB 時區不一致（JVM 預設 UTC），跨午夜邊界的判斷會差 8 小時，導致連續天數誤算 | **已修**：`CheckinService:31` 使用 `LocalDate.now(ZoneId.of("Asia/Taipei"))`；`DailyWinningsResetScheduler` 與 `DailyRankSnapshotScheduler` 均指定 `zone="Asia/Taipei"`。已驗證 2026-06-23。 |
 
 ---
 
@@ -462,7 +462,7 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 |---|:--:|---|:--:|---|
 | T-090 | P0 | JMeter 高併發壓測腳本 | ⚠️ | JMX、執行器、分析器、1,000 玩家 provisioning 與實測報告已完成；單機實測帳務無超扣/冪等正常，但 1,000 併發 P99≈2.5s 且有大量 5xx，效能 gate 未達標（需正式/多機資源重測） |
 | T-091 | P0 | 帳務一致性對帳腳本 | ✅ | `tests/performance/accounting-reconciliation.sql` + `run-accounting-reconciliation.ps1`：壓測後驗證 wallets.balance 與流水加總一致、無負餘額、frozen_amount 歸零 |
-| T-092 | P1 | Swagger UI API 文件 | ❌ | 各服務 pom.xml 無 springdoc-openapi 依賴 |
+| T-092 | P1 | Swagger UI API 文件 | ✅ | 各 REST/通知服務整合 springdoc-openapi，定義 OpenAPI metadata 與 JWT security scheme；gateway `/swagger-ui.html` 聚合 member/wallet/game/rank/admin/notification 的 `/v3/api-docs/{service}`；含 infra contract test |
 | T-093 | P0 | End-to-End 整合測試 | ❌ | 多數後端服務未實作，無法執行完整流程 |
 | T-094 | P0 | README 與部署文件 | ✅ | README.md + DEPLOY.md 皆存在（DEPLOY.md 於 2026-05-29 補上本機部署 SOP） |
 | T-095 | P0 | ADR 整理（ADR-001~005） | ⚠️ | ADR-001（DB 分配）、ADR-002（wallet.credit 事件契約）已產出；ADR-003~005 未產出 |
@@ -517,6 +517,6 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 - ✅ **完成度高**：全域基礎建設、Member Service、Gateway、Game Service（T-030~T-037）、Rank Service（T-040~T-044）、**Notification Service（T-070~T-073 全完成）**、**鑽石系統（T-100~T-107 全完成）**
 - ⚠️ **進行中**：Wallet Service（破產補助 T-027 / DLT 後台 T-028 未完）、前端（UI 齊全但 rankSlice 等尚未切換真實 API）
-- ❌ **尚未起步**：Swagger 文件（T-092）、E2E 整合測試（T-093）、結業簡報（T-096）、破產補助（T-027）
+- ❌ **尚未起步**：E2E 整合測試（T-093）、結業簡報（T-096）、破產補助（T-027）
 
-> **結論**：認證、帳號、遊戲對局、排行榜、即時推播、鑽石點數卡系統、Admin GM 手動發幣後端皆已完成；**剩餘空白主要集中在收尾文件（Swagger/E2E/簡報）、少數功能（破產補助）與前端 mock→真實 API 切換**。
+> **結論**：認證、帳號、遊戲對局、排行榜、即時推播、鑽石點數卡系統、Admin GM 手動發幣與 Swagger/OpenAPI 聚合皆已完成；**剩餘空白主要集中在收尾驗證/簡報、少數功能（破產補助）與前端 mock→真實 API 切換**。
