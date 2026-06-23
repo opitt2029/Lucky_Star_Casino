@@ -6,27 +6,42 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 const STORAGE_PREFIX = 'lucky-star-fortune-v1:'
 const LOSS_STREAK_FOR_AURA = 4
 
-export function useFortuneMeter(gameKey) {
-  const storageKey = `${STORAGE_PREFIX}${gameKey}`
-  const [value, setValue] = useState(() => {
-    try {
-      const raw = localStorage.getItem(storageKey)
-      const parsed = raw ? Number(raw) : 0
-      return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 0), 100) : 0
-    } catch {
-      return 0
-    }
-  })
+function readFortuneFromStorage(key) {
+  try {
+    const raw = localStorage.getItem(key)
+    const parsed = raw ? Number(raw) : 0
+    return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 0), 100) : 0
+  } catch {
+    return 0
+  }
+}
+
+export function useFortuneMeter(gameKey, playerId) {
+  const storageKey = `${STORAGE_PREFIX}${gameKey}:${playerId ?? 'guest'}`
+  const [value, setValue] = useState(() => readFortuneFromStorage(storageKey))
   const lossStreakRef = useRef(0)
   const [auraActive, setAuraActive] = useState(false)
 
+  // storageKey 以 ref 追蹤，讓寫入 effect 不因 key 變化而觸發（避免用 guest 的 0 覆蓋玩家存值）
+  const prevKeyRef = useRef(storageKey)
+  const storageKeyRef = useRef(storageKey)
+  storageKeyRef.current = storageKey
+
+  // auth 非同步載入：playerId 從 null 變成真實 ID 時，重新讀取對應帳號的幸運值
+  useEffect(() => {
+    if (prevKeyRef.current === storageKey) return
+    prevKeyRef.current = storageKey
+    setValue(readFortuneFromStorage(storageKey))
+  }, [storageKey])
+
+  // 只在 value 改變時寫入，透過 ref 取得當下正確的 key，避免 key 切換瞬間寫入舊值
   useEffect(() => {
     try {
-      localStorage.setItem(storageKey, String(value))
+      localStorage.setItem(storageKeyRef.current, String(value))
     } catch {
       // 忽略儲存失敗
     }
-  }, [storageKey, value])
+  }, [value])
 
   // 每次下注累積幸運值；下注越大蓄越快（上限 100）。
   const addCharge = useCallback((betAmount) => {
@@ -35,7 +50,9 @@ export function useFortuneMeter(gameKey) {
   }, [])
 
   // 回報該局輸贏：贏（payout > 0）釋放幸運值並關吉兆；連輸達門檻開吉兆。
-  const reportRound = useCallback((won) => {
+  // fortuneConsumed=true 表示本局以保底模式送出（fortuneReady=true），無論是否中獎都應釋放幸運值，
+  // 防止風控攔截保底轉動時幸運值卡在 100 的死循環。
+  const reportRound = useCallback((won, fortuneConsumed = false) => {
     if (won) {
       lossStreakRef.current = 0
       setAuraActive(false)
@@ -44,6 +61,9 @@ export function useFortuneMeter(gameKey) {
       lossStreakRef.current += 1
       if (lossStreakRef.current >= LOSS_STREAK_FOR_AURA) {
         setAuraActive(true)
+      }
+      if (fortuneConsumed) {
+        setValue((prev) => (prev >= 100 ? 0 : prev))
       }
     }
   }, [])

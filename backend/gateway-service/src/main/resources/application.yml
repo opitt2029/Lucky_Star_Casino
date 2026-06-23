@@ -15,6 +15,36 @@ spring:
   # Spring Cloud Gateway 路由設定（詳細路由規則待 T-003 補充）
   cloud:
     gateway:
+      # ── HttpClient 連線池 ────────────────────────────────────────────────
+      # 修正偶發「<service> service is temporarily unavailable」：reactor-netty 預設
+      # 不驅逐閒置連線，會重用「下游 Tomcat 已關閉的 keep-alive 連線」，送出後收到
+      # connection reset / PrematureCloseException → 觸發 CircuitBreaker fallback。
+      # 對策：max-idle-time 必須 < 下游 Tomcat keepAliveTimeout（預設 20s），並開背景驅逐，
+      # 讓 gateway 在下游關閉前就先淘汰閒置連線。
+      httpclient:
+        connect-timeout: 2000          # 建立 TCP 連線逾時（ms）
+        response-timeout: 10s          # 等待下游回應逾時（需 > 熔斷 slow-call 3s 與冷啟動）
+        pool:
+          type: ELASTIC
+          max-idle-time: 10s           # 閒置 > 10s 即驅逐（< 下游 keepAliveTimeout 20s）
+          max-life-time: 5m            # 連線最長壽命，避免長壽連線累積異常
+          eviction-interval: 30s       # 背景定期掃描驅逐過期連線
+      # 全域 Retry：對「安全可重試」的情境自動重試一次，避免單一連線層瞬斷打到 fallback。
+      # 僅限 GET（冪等）；POST（如註冊/登入）不重試，改由上方連線池設定根除瞬斷來源。
+      default-filters:
+        - name: Retry
+          args:
+            retries: 2
+            methods: GET
+            exceptions:
+              - java.io.IOException
+              - java.util.concurrent.TimeoutException
+              - reactor.netty.http.client.PrematureCloseException
+            backoff:
+              firstBackoff: 50ms
+              maxBackoff: 500ms
+              factor: 2
+              basedOnPreviousValue: false
       # 預設 CORS 設定，前端 localhost:5173 開發期間使用
       globalcors:
         cors-configurations:
@@ -65,6 +95,12 @@ spring:
             - Path=/v3/api-docs/admin
           filters:
             - RewritePath=/v3/api-docs/admin, /v3/api-docs
+        - id: openapi-notification
+          uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8087}
+          predicates:
+            - Path=/v3/api-docs/notification
+          filters:
+            - RewritePath=/v3/api-docs/notification, /v3/api-docs
         # 白名單路徑：免 JWT 驗證（登入/註冊）
         # 套用速率限制防暴力破解：5 req/sec replenish, burst 10
         - id: member-auth
@@ -249,6 +285,8 @@ springdoc:
         url: /v3/api-docs/rank
       - name: admin-service
         url: /v3/api-docs/admin
+      - name: notification-service
+        url: /v3/api-docs/notification
 
 management:
   endpoints:

@@ -89,11 +89,39 @@ public class GlobalExceptionHandler {
         return ApiResponse.error(ex.getMessage());
     }
 
+    /** 加值方案代號不存在（自助加值）→ 400。 */
+    @ExceptionHandler(InvalidTopupPackageException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiResponse<Void> handleInvalidTopupPackage(InvalidTopupPackageException ex) {
+        return ApiResponse.error(ex.getMessage());
+    }
+
+    /** 查無加值訂單（或不屬於該玩家）→ 404。 */
+    @ExceptionHandler(TopupOrderNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ApiResponse<Void> handleTopupOrderNotFound(TopupOrderNotFoundException ex) {
+        return ApiResponse.error(ex.getMessage());
+    }
+
+    /** 對非待付款狀態訂單重複付款等不合法操作（自助加值）→ 409。 */
+    @ExceptionHandler(IllegalTopupStateException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ApiResponse<Void> handleIllegalTopupState(IllegalTopupStateException ex) {
+        return ApiResponse.error(ex.getMessage());
+    }
+
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public ApiResponse<Void> handleOptimisticLock(ObjectOptimisticLockingFailureException ex) {
         log.warn("Optimistic lock conflict: {}", ex.getMessage());
         return ApiResponse.error("Concurrent modification detected, please retry");
+    }
+
+    /** 缺漏 / 非法的 X-User-Id 等請求參數 → 400。 */
+    @ExceptionHandler(IllegalArgumentException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiResponse<Void> handleIllegalArgument(IllegalArgumentException ex) {
+        return ApiResponse.error(ex.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

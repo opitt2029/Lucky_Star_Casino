@@ -1,5 +1,6 @@
 package com.luckystar.wallet.service;
 
+import com.luckystar.wallet.config.DiamondTestAccountProperties;
 import com.luckystar.wallet.exception.DiamondWalletNotFoundException;
 import com.luckystar.wallet.exception.InsufficientDiamondException;
 import com.luckystar.wallet.postgres.entity.DiamondWallet;
@@ -27,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class DiamondWalletService {
 
     private final DiamondWalletRepository diamondWalletRepository;
+    private final DiamondTestAccountProperties testAccountProperties;
 
     @Transactional(transactionManager = "postgresTransactionManager")
     public void createDiamondWallet(Long playerId) {
@@ -77,6 +79,10 @@ public class DiamondWalletService {
      */
     @Transactional(transactionManager = "postgresTransactionManager", readOnly = true)
     public long getBalance(Long playerId) {
+        // 無限鑽石測試帳號：直接回傳無限值，不受實際錢包餘額影響（也避免無錢包時 404）
+        if (testAccountProperties.isUnlimited(playerId)) {
+            return DiamondTestAccountProperties.UNLIMITED_BALANCE;
+        }
         return diamondWalletRepository.findById(playerId)
                 .orElseThrow(() -> new DiamondWalletNotFoundException(
                         "Diamond wallet not found for player: " + playerId))
@@ -95,6 +101,11 @@ public class DiamondWalletService {
      */
     @Transactional(transactionManager = "postgresTransactionManager")
     public long debitDiamond(Long playerId, long amount) {
+        // 無限鑽石測試帳號：跳過餘額檢查與實際扣款，回傳無限餘額，讓兌換可無上限進行
+        if (testAccountProperties.isUnlimited(playerId)) {
+            log.info("Unlimited diamond test account, skipping debit: playerId={} amount={}", playerId, amount);
+            return DiamondTestAccountProperties.UNLIMITED_BALANCE;
+        }
         DiamondWallet wallet = diamondWalletRepository.findById(playerId)
                 .orElseThrow(() -> new DiamondWalletNotFoundException(
                         "Diamond wallet not found for player: " + playerId));

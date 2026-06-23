@@ -95,6 +95,24 @@ public enum FishSpecies {
     }
 
     /**
+     * 幸運值全滿保底命中：必中，跳過 {@code nextDouble()} 命中判定，直接計算派彩。
+     * MONEY_TREE 仍以 {@code nextInt(41)} 隨機抽取實際倍率（維持高低倍刺激感）。
+     *
+     * @param stream     本發子彈的隨機串流（nonce = shotSeq）
+     * @param betPerShot 單發子彈下注額
+     * @return 派彩金額（必 > 0）
+     */
+    public long resolveGuaranteedPayout(RandomStream stream, long betPerShot) {
+        // 消耗與 resolvePayout 相同的首次 nextDouble()，使串流位置對齊，PF 驗證端點得到相同偏移量。
+        stream.nextDouble();
+        if (this == MONEY_TREE) {
+            int rolled = MONEY_TREE_MIN + stream.nextInt(MONEY_TREE_MAX - MONEY_TREE_MIN + 1);
+            return betPerShot * rolled;
+        }
+        return betPerShot * multiplier;
+    }
+
+    /**
      * 由 API 傳入的魚種代碼（enum 名稱，大小寫不拘）解析魚種。
      *
      * @throws IllegalArgumentException 代碼不存在

@@ -86,6 +86,7 @@ public class FishingService {
     private final GameRoundRepository roundRepository;
     private final GameResultEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final RiskControlService riskControlService;
 
     /**
      * 開場（或續玩）：已有進行中場次時直接回傳原場次（resumed=true，不重複扣款）；
@@ -128,7 +129,24 @@ public class FishingService {
                 .createdAt(now)
                 .lastActivityAt(now)
                 .build();
-        sessionStore.save(session);
+        try {
+            sessionStore.save(session);
+        } catch (RuntimeException ex) {
+            // 補償退款：扣款已成功但 Session 建立失敗（Redis 不可用/序列化失敗）時，
+            // 若不退款，這筆 buyIn 會成為「孤兒扣款」（玩家扣了錢卻進不了場、也無 session 可結算）。
+            // 帶獨立冪等鍵 fishing-buyin-refund-<sessionId>，與正常結算的 fishing-end-<sessionId> 互不衝突。
+            log.error("fishing session save failed after debit, refunding playerId={} sessionId={}",
+                    playerId, sessionId, ex);
+            try {
+                walletClient.credit(playerId, buyIn, "fishing-buyin-refund-" + sessionId, sessionId);
+                log.info("fishing buy-in refunded playerId={} sessionId={} amount={}", playerId, sessionId, buyIn);
+            } catch (RuntimeException refundEx) {
+                // 退款本身又失敗：記為需人工對帳的嚴重事件（冪等鍵已落地，可日後重放補償）
+                log.error("fishing buy-in REFUND FAILED playerId={} sessionId={} amount={} (需人工對帳)",
+                        playerId, sessionId, buyIn, refundEx);
+            }
+            throw ex;
+        }
 
         log.info("fishing session started playerId={} sessionId={} buyIn={} cannonLevel={}",
                 playerId, sessionId, buyIn, cannonLevel);
@@ -153,16 +171,25 @@ public class FishingService {
      * @throws RoundNotFoundException   無進行中場次或 sessionId 不符
      * @throws IllegalArgumentException 序號/注額/射速驗證失敗（整批拒絕，不動帳）
      */
-    public FishingShotsResponse shots(long playerId, String sessionId, List<FishingShotsRequest.Shot> shots) {
+    public FishingShotsResponse shots(long playerId, String sessionId,
+                                      List<FishingShotsRequest.Shot> shots, boolean fortuneReady) {
         FishingSession session = requireActiveSession(playerId, sessionId);
 
         validateBatch(session, shots);
+
+        // 風控攔截：整批子彈共用同一攔截結果，避免逐發查詢 DB。
+        // shouldIntercept 佔用並發閘；shots() 最後的 finally 必須釋放。
+        boolean intercepted = riskControlService.shouldIntercept(session.getPlayerId(), GAME_TYPE);
+        try {
 
         long balance = session.getSessionBalance();
         long totalBet = session.getTotalBet();
         long totalPayout = session.getTotalPayout();
         long totalShots = session.getTotalShots();
         long lastShotSeq = session.getLastShotSeq();
+
+        // 幸運值全滿時，本批第一發保底命中（用完後不再保底）
+        boolean fortuneConsumed = !fortuneReady;
 
         List<FishingShotsResponse.ShotResult> results = new ArrayList<>(shots.size());
         for (FishingShotsRequest.Shot shot : shots) {
@@ -185,7 +212,18 @@ public class FishingService {
 
             FishSpecies species = FishSpecies.fromCode(shot.getFishType());
             RandomStream stream = rng.stream(session.getServerSeed(), session.getClientSeed(), shot.getShotSeq());
-            long payout = species.resolvePayout(stream, shot.getBetPerShot());
+            long payout;
+            if (!fortuneConsumed && !intercepted) {
+                // 保底：跳過命中判定，直接計算必中派彩（MONEY_TREE 仍隨機抽倍率）
+                fortuneConsumed = true;
+                payout = species.resolveGuaranteedPayout(stream, shot.getBetPerShot());
+                session.setGuaranteedShotSeq(shot.getShotSeq());
+            } else {
+                // 風控攔截時仍正常消耗 RNG stream，確保 seed 可重放驗證（Provably Fair）。
+                fortuneConsumed = true;
+                long rawPayout = species.resolvePayout(stream, shot.getBetPerShot());
+                payout = intercepted ? 0L : rawPayout;
+            }
             if (payout > 0) {
                 balance += payout;
                 totalPayout += payout;
@@ -200,6 +238,9 @@ public class FishingService {
                     .build());
         }
 
+        if (intercepted) {
+            session.setIntercepted(Boolean.TRUE);
+        }
         session.setSessionBalance(balance);
         session.setTotalBet(totalBet);
         session.setTotalPayout(totalPayout);
@@ -215,6 +256,9 @@ public class FishingService {
                 .totalShots(totalShots)
                 .lastShotSeq(lastShotSeq)
                 .build();
+        } finally {
+            riskControlService.releaseRiskSlot(session.getPlayerId());
+        }
     }
 
     /**
@@ -273,7 +317,35 @@ public class FishingService {
         FishSpecies species = FishSpecies.fromCode(fishType);
         boolean commitmentValid = rng.verifyCommitment(round.getServerSeed(), round.getServerSeedHash());
         RandomStream stream = rng.stream(round.getServerSeed(), round.getClientSeed(), shotSeq);
-        long payout = species.resolvePayout(stream, betPerShot);
+
+        // 讀取場次結算時記錄的風控旗標與保底 shotSeq
+        boolean riskControlled = false;
+        Long guaranteedShotSeq = null;
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> resultData = objectMapper.readValue(round.getResultData(), Map.class);
+            riskControlled = Boolean.TRUE.equals(resultData.get("riskControlled"));
+            Object gsq = resultData.get("guaranteedShotSeq");
+            if (gsq instanceof Number) guaranteedShotSeq = ((Number) gsq).longValue();
+        } catch (Exception ignored) {
+            // result_data 不存在或格式異常時，保守不標記（不影響 PF 驗證本身）
+        }
+
+        // 保底命中的 shot 使用 resolveGuaranteedPayout（串流位置已對齊），確保驗證結果與實際派彩一致
+        long payout = (guaranteedShotSeq != null && guaranteedShotSeq == shotSeq)
+                ? species.resolveGuaranteedPayout(stream, betPerShot)
+                : species.resolvePayout(stream, betPerShot);
+
+        String message;
+        if (!commitmentValid) {
+            message = "承諾雜湊不符（異常）";
+        } else if (riskControlled && payout > 0) {
+            // PF 驗證 RNG 結果為命中，但場次有風控介入；實際入帳派彩為 0
+            message = "承諾相符；RNG 結果可確定性重現。"
+                    + "注意：此場次有風控介入，命中局的實際入帳派彩已調整為 0（payout 欄位顯示原始 RNG 值）";
+        } else {
+            message = "承諾相符；該發結果可由 (serverSeed, clientSeed, shotSeq) 確定性重現";
+        }
 
         return FishingShotVerifyResponse.builder()
                 .sessionId(sessionId)
@@ -283,12 +355,11 @@ public class FishingService {
                 .commitmentValid(commitmentValid)
                 .hit(payout > 0)
                 .payout(payout)
+                .riskControlled(riskControlled)
                 .serverSeed(round.getServerSeed())
                 .serverSeedHash(round.getServerSeedHash())
                 .clientSeed(round.getClientSeed())
-                .message(commitmentValid
-                        ? "承諾相符；該發結果可由 (serverSeed, clientSeed, shotSeq) 確定性重現"
-                        : "承諾雜湊不符（異常）")
+                .message(message)
                 .build();
     }
 
@@ -412,6 +483,10 @@ public class FishingService {
             result.put("totalPayout", session.getTotalPayout());
             result.put("cannonLevel", session.getCannonLevel());
             result.put("roomId", session.getRoomId());
+            // verifyShot 用：此場次是否曾有批次被風控攔截（命中時實際派彩為 0）
+            result.put("riskControlled", Boolean.TRUE.equals(session.getIntercepted()));
+            // verifyShot 用：幸運值保底命中的 shotSeq（null 代表未觸發）
+            result.put("guaranteedShotSeq", session.getGuaranteedShotSeq());
             return objectMapper.writeValueAsString(result);
         } catch (Exception ex) {
             log.warn("序列化捕魚結果失敗: {}", ex.toString());

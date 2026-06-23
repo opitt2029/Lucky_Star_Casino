@@ -1,6 +1,7 @@
 package com.luckystar.game.repository;
 
 import com.luckystar.game.entity.GameRound;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -28,4 +29,21 @@ public interface GameRoundRepository extends JpaRepository<GameRound, Long> {
             + "WHERE game_type = :gameType AND status = 'SETTLED' "
             + "ORDER BY created_at DESC LIMIT :limit) t", nativeQuery = true)
     List<Object[]> aggregateRecent(@Param("gameType") String gameType, @Param("limit") int limit);
+
+    /**
+     * 查詢指定玩家在指定遊戲今日的下注/派彩總額（風控水位用）。
+     * 回傳單列 {@code [totalBet, totalWin, roundCount]}。
+     */
+    @Query("""
+            SELECT COALESCE(SUM(r.betAmount), 0), COALESCE(SUM(r.winAmount), 0), COUNT(r)
+            FROM GameRound r
+            WHERE r.playerId = :playerId
+              AND r.gameType = :gameType
+              AND r.status = 'SETTLED'
+              AND r.settledAt >= :startOfDay
+            """)
+    List<Object[]> aggregatePlayerToday(
+            @Param("playerId") long playerId,
+            @Param("gameType") String gameType,
+            @Param("startOfDay") LocalDateTime startOfDay);
 }

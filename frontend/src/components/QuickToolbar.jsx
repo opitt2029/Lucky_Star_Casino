@@ -54,12 +54,34 @@ function ToolbarIcon({ children }) {
   )
 }
 
+const TOOLBAR_OPEN_KEY = 'lucky-star-quicktoolbar-open-v1'
+
 export default function QuickToolbar() {
   const navigate = useNavigate()
   const dispatch = useDispatch()
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
   const [message, setMessage] = useState('')
+  // 預設收合，避免長條工具列擋住遊戲畫面；偏好記在 localStorage。
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(TOOLBAR_OPEN_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
   const { play, settings, toggleSfx, toggleBgm } = useSound()
+
+  const toggleOpen = () => {
+    setOpen((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem(TOOLBAR_OPEN_KEY, next ? '1' : '0')
+      } catch {
+        // localStorage 不可用時忽略，僅影響偏好記憶
+      }
+      return next
+    })
+  }
 
   useEffect(() => {
     if (!message) return undefined
@@ -102,7 +124,11 @@ export default function QuickToolbar() {
 
   return (
     <>
-      <aside className="quick-toolbar" aria-label="快速工具欄">
+      <aside
+        className={`quick-toolbar ${open ? 'quick-toolbar--open' : 'quick-toolbar--collapsed'}`}
+        aria-label="快速工具欄"
+      >
+        {open && (
         <div className="quick-toolbar__panel">
           {tools.map((tool) => (
             <button
@@ -172,6 +198,21 @@ export default function QuickToolbar() {
             <span>回頂端</span>
           </button>
         </div>
+        )}
+
+        <button
+          type="button"
+          className="quick-toolbar__toggle"
+          onClick={toggleOpen}
+          aria-expanded={open}
+          aria-label={open ? '收合工具列' : '展開工具列'}
+          title={open ? '收合工具列' : '展開工具列'}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" className="quick-toolbar__icon">
+            {open ? <path d="M6 15l6-6 6 6" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+          </svg>
+          <span>{open ? '收合' : '工具'}</span>
+        </button>
       </aside>
 
       {message && (

@@ -1,5 +1,6 @@
 package com.luckystar.wallet.service;
 
+import com.luckystar.wallet.config.DiamondTestAccountProperties;
 import com.luckystar.wallet.exception.DiamondWalletNotFoundException;
 import com.luckystar.wallet.exception.InsufficientDiamondException;
 import com.luckystar.wallet.postgres.entity.DiamondWallet;
@@ -28,6 +29,9 @@ class DiamondWalletServiceTest {
 
     @Mock
     DiamondWalletRepository diamondWalletRepository;
+
+    @Mock
+    DiamondTestAccountProperties testAccountProperties;
 
     @InjectMocks
     DiamondWalletService diamondWalletService;
@@ -156,5 +160,29 @@ class DiamondWalletServiceTest {
                 .isInstanceOf(DiamondWalletNotFoundException.class);
 
         verify(diamondWalletRepository, never()).save(any());
+    }
+
+    // ── 無限鑽石測試帳號 ─────────────────────────────────────────────────────
+
+    @Test
+    void debitDiamond_unlimitedTestAccount_skipsBalanceCheckAndDeductionReturnsUnlimited() {
+        when(testAccountProperties.isUnlimited(1172L)).thenReturn(true);
+
+        // 即使遠超任何實際餘額也成功，且完全不碰錢包（不查、不扣、不存）
+        long balanceAfter = diamondWalletService.debitDiamond(1172L, 999_999_999_999L);
+
+        assertThat(balanceAfter).isEqualTo(DiamondTestAccountProperties.UNLIMITED_BALANCE);
+        verify(diamondWalletRepository, never()).findById(any());
+        verify(diamondWalletRepository, never()).save(any());
+    }
+
+    @Test
+    void getBalance_unlimitedTestAccount_returnsUnlimitedWithoutWalletLookup() {
+        when(testAccountProperties.isUnlimited(1175L)).thenReturn(true);
+
+        long balance = diamondWalletService.getBalance(1175L);
+
+        assertThat(balance).isEqualTo(DiamondTestAccountProperties.UNLIMITED_BALANCE);
+        verify(diamondWalletRepository, never()).findById(any());
     }
 }

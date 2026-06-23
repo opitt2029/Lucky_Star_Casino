@@ -3,6 +3,420 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [fix] — 2026-06-23 — game-service 內部 secret env var 名稱錯誤導致 wallet 401
+
+### Fixed
+- `backend/game-service/src/main/resources/application.yml:54`：`internal.wallet-service.secret` 讀取的環境變數由 `INTERNAL_SERVICE_SECRET` 改為 `INTERNAL_SECRET`，與 wallet-service `InternalSecretFilter` 及 `.env` 一致。原名稱不符導致 `X-Internal-Secret` header 帶錯值，`POST /internal/wallet/debit` 回 401。
+
+### Why
+- `.env` 只定義 `INTERNAL_SECRET`；game-service yml 讀 `INTERNAL_SERVICE_SECRET`（不同名），導致 `WalletClientConfig` 建立 `RestClient` 時帶入錯誤 header。
+
+### Verified
+- 統一後兩端 secret 值相同，`InternalSecretFilter.MessageDigest.isEqual()` 比對通過。
+
+---
+
+## [fix] — 2026-06-23 — 修復 AuthService.login() 缺少 @Transactional 及 Redis 失敗靜默風險（Bug #3）
+
+### Fixed
+- `backend/member-service/.../service/AuthService.java`：`login()` 加上 `@Transactional(readOnly = true)`（與 `register()` 對稱，確保 DB read 在正確事務範圍）；`saveRefreshToken()` 包入 try-catch，Redis 斷線時明確拋 `RuntimeException("Login service temporarily unavailable.")`，防止任何靜默成功路徑。
+
+### Added
+- `backend/member-service/.../service/AuthServiceTest.java`：新增 `login_disabledByRedis_throws()` 驗證後台 Redis 封鎖路徑；`login_redisWriteFails_throws()` 驗證 Redis 寫入失敗時 login 必須拋出例外（非靜默返回成功）。
+
+### Changed
+- `AUDIT_REPORT.md`：標記 Bug #3 ✅ 已修；補充 Bug #19、#25、#30、#31 之「已驗證現況」說明（均已修或已知設計），Bug #26 標注 best-effort 可接受。
+
+### Why
+- Bug #3：AUDIT_REPORT 記錄 `login()` 缺 `@Transactional`，Redis 寫 refresh token 失敗時存在靜默成功路徑，玩家自認已登入但無法 refresh session。加 `@Transactional(readOnly = true)` 讓 JPA read 進事務、try-catch 讓 Redis 失敗必然可見。
+
+### Verified
+- `mvn -pl backend/member-service test`：72 tests，0 failures，BUILD SUCCESS。
+
+## [feat] -- 2026-06-23 -- Complete T-092 Swagger OpenAPI aggregation
+
+### Added
+- `backend/notification-service/.../config/OpenApiConfig.java`: documents the notification WebSocket/STOMP contract, `/ws`, `/user/queue/notifications`, `/topic/rank`, Kafka event bridge topics, and Bearer JWT authentication.
+- `tests/infra/swagger.test.js`: verifies springdoc dependencies, OpenAPI metadata, gateway api-docs routes, Swagger UI aggregation entries, and JWT whitelist coverage.
+
+### Changed
+- `backend/notification-service/pom.xml`: adds `springdoc-openapi-starter-webmvc-ui`.
+- `backend/gateway-service/src/main/resources/application.yml`: adds `/v3/api-docs/notification` proxy route and Swagger UI entry so gateway aggregates member, wallet, game, rank, admin, and notification docs.
+- `AUDIT_REPORT.md` and `docs/幸運星幣城_工作分配表.xlsx`: mark T-092 as complete.
+
+### Why
+- T-092 requires every service to expose OpenAPI documentation and the gateway to provide one aggregated Swagger UI entry point; notification-service was the remaining service not represented in the aggregation.
+
+### Verified
+- `node --test tests/infra/swagger.test.js --test-reporter=spec`: 5 tests passed, 0 failures.
+- `mvn -pl backend/gateway-service,backend/notification-service test`: gateway 23 tests and notification 19 tests passed, 0 failures.
+
+## [Changed] — 2026-06-22 — 老虎機娛樂化 RTP：中線改兩階賠付「左二同小獎 + 三連大獎」（RTP ≈93.8%、命中率 ≈30.7%）
+
+### Changed
+- `backend/game-service/.../slot/SlotSymbol.java`：賠付參數由單一 `lineMultiplier` 改為兩階 `pairMultiplier`（左二同小獎）+ `tripleMultiplier`（三連大獎）；權重維持 45/30/16/7/5（總和 103）。新表（pair/triple）：🍒 1/5、🍋 1/8、🔔 2/18、⭐ 3/50、7️⃣ 5/70。
+- `backend/game-service/.../slot/SlotMachine.java`：`evaluate()` 改由左到右兩階判定——三格相同→`tripleMultiplier`（命中中線三格）；否則左二格相同（a==b 且 c≠a）→`pairMultiplier`（命中左二格）；右二格相同（b==c≠a）不賠。`SlotOutcome` 結構不變（`multiplier` 存實際生效倍率、`winningCells` 為 2 或 3 格）。
+- `frontend/src/services/mockApi.js`：移除舊 `MOCK_SLOT_FORCED_WIN_RATE=0.18`（無條件灌中獎）與偽分布 `slotSymbols`；新增 `SLOT_PAYTABLE`（鏡像後端權重/倍率）、加權抽樣與後端等價的兩階 `evaluateSlotLine`；`spinSlot` 鏡像後端 `spin` 並支援 `fortuneReady`（保底三連，鏡像 `spinGuaranteedWin`）。
+- `frontend/src/services/gameApi.js`：mock 路徑改轉傳 `fortuneReady`（原未轉傳）。
+- `frontend/src/pages/SlotGame.jsx`：規則卡文案改兩階賠付（三連大獎 / 左二同小獎 / 各符號倍率）。
+- 測試 `SlotMachineTest`/`SlotSymbolTest`：改兩階斷言（新增「左二同賠 pairMultiplier+2 格」「右二同 b==c≠a 不賠」案例、RTP/命中率 band 對齊 93.8%/30.7%）。
+
+**為什麼**：老虎機（develop 既有版：單中線僅三連、倍率 2/3/5/8、RTP ≈26%）仍偏低，玩家體感「少中」。改兩階單中線後三連 ≈11.2% + 左二同 ≈19.5% ＝命中率 ≈30.7%、RTP ≈93.8%，達娛樂級「常中小獎（push/LDW）＋偶爾大獎」。權重不變；與後端 `breakPayline`/風控/幸運值保底邏輯相容（`breakPayline` 把中線中格換成與首格不同符號，兩階皆破）。百家樂、捕魚維持不動。鐵則：後端引擎為單一真相，後端＋mock＋測試三者同步。
+**如何驗證**：`mvn -pl backend/game-service test`（BUILD SUCCESS，121 tests / slot 相關測試全綠）；`cd frontend && npm run lint && npm run build`（皆綠）。RTP/命中率另以解析式 + 200 萬局蒙地卡羅交叉確認（93.83% / 30.68%）。
+> 註：本分支原另記一筆「補回 develop 建置破口（等同 6501e4c）」，因 develop 已含等義修復（見「修復 develop 編譯/建置破口」），合併時去重移除。
+
+## [docs] -- 2026-06-22 -- Align T-090 load test audit status
+
+### Changed
+- `AUDIT_REPORT.md`: updates T-090 from outdated blocked wording to the current measured state: JMX, runner, analyzer, provisioning, and report are complete; accounting/idempotency gates passed; single-host 1,000-player performance gates failed.
+
+### Why
+- The T-090 deliverables now exist and have real measurements, so the audit should no longer say the work is blocked by missing slot API, JMeter, environment, or 1,000 player credentials.
+
+### Verified
+- `npm test -- --test-reporter=spec tests/infra/jmeter.test.js`: 122 infra tests passed, including the T-090 JMeter contract checks.
+
+## [fix] -- 2026-06-22 -- Complete T-055 GM coin grant API
+
+### Changed
+- `backend/admin-service/.../dto/GmGrantRequest.java`: requires a non-blank `reason` and caps it at 255 characters to match `admin_action_logs.reason`.
+- `backend/admin-service/.../service/GmRewardServiceTest.java` and `security/AdminSecurityIntegrationTest.java`: verify GM grant reasons are written to both Kafka payloads and action logs, and blank reasons are rejected before service dispatch.
+- `database/postgres/migration/V8__fix_admin_action_logs_target_player_id.sql`: adds `target_player_id` when missing so Flyway-created `admin_action_logs` matches `init.sql` and the JPA entity.
+- `AUDIT_REPORT.md` and `docs/幸運星幣城_工作分配表.xlsx`: mark T-055 as complete.
+
+### Why
+- T-055 requires an auditable GM coin grant flow with operator, timestamp, target player, amount, reason, and idempotency key; the Flyway migration path must create the same columns used by the application.
+
+### Verified
+- `mvn -pl backend/admin-service test`: 71 tests passed, 0 failures.
+
+## [fix] -- 2026-06-22 -- Complete T-054 admin anomaly alerts
+
+### Changed
+- `backend/admin-service/.../service/AlertRuleEngine.java`: raises high-frequency bet and abnormal wallet-transaction alerts only once when the Redis window first crosses the configured threshold, and marks Kafka notification payloads with `audience=ADMIN`.
+- `backend/admin-service/.../service/AlertRuleEngineTest.java`: covers admin notification payload fields and duplicate suppression after a frequency alert has already fired.
+- `AUDIT_REPORT.md` and `docs/幸運星幣城_工作分配表.xlsx`: mark T-054 as complete.
+
+### Why
+- T-054 requires durable `admin_alerts` records plus Kafka `notification.push` admin notifications, while avoiding repeated alerts for every event after the frequency threshold is already crossed in the same window.
+
+### Verified
+- `mvn -pl backend/admin-service test`: 70 tests passed, 0 failures.
+
+## [fix] -- 2026-06-22 -- Align T-045 daily winnings rank Redis key and reset
+
+### Changed
+- `backend/rank-service/.../service/RankService.java`: uses fixed ZSet key `rank:daily:winnings` for today's winnings leaderboard and adds `resetDailyWinnings()`.
+- `backend/rank-service/.../scheduler/DailyWinningsResetScheduler.java`: clears the daily winnings ZSet every day at 00:00 in `Asia/Taipei`.
+- `backend/rank-service/.../service/RankServiceTest.java` and `scheduler/DailyWinningsResetSchedulerTest.java`: verify fixed-key `ZINCRBY`, rank reads, and midnight reset scheduling.
+- `AUDIT_REPORT.md` and `docs/幸運星幣城_工作分配表.xlsx`: mark T-045 as complete.
+
+### Why
+- The task contract names `rank:daily:winnings` explicitly and requires a daily reset; a fixed key plus scheduled reset now matches the documented Redis design and API behavior.
+
+### Verified
+- `mvn -pl backend/rank-service test`: 68 tests passed, 0 failures.
+
+## [fix] — 2026-06-22 — 修復 develop 編譯/建置破口（「幸運值保底」功能未驗證即合併）
+
+### Fixed
+- `frontend/src/hooks/useGameLeaveGuard.js`：**補回從未被 commit 的檔案**。SlotGame/Baccarat/Fishing 三頁都 `import` 它、CHANGELOG 也記載，但實際檔案缺失導致 `npm run build` 失敗。依原 CHANGELOG 規格重建（`active` 為 true 時攔截 `popstate`/`beforeunload` 並確認）。
+- `backend/game-service/.../service/BaccaratService.java`：`session.getFortuneFull()` → `getFortuneReady()`（欄位名為 `fortuneReady`，原呼叫不存在的 getter 導致主程式編譯失敗）。
+- `backend/game-service/.../{service,controller}/{SlotServiceTest,SlotControllerTest,BaccaratServiceTest,BaccaratControllerTest}.java`：`SlotService.spin` / `BaccaratService.placeBet` 已新增 `boolean fortuneReady` 參數，但測試呼叫點未同步更新，導致測試編譯失敗；補上對應引數/`anyBoolean()` 匹配器。
+- `frontend/src/pages/Baccarat.jsx`：`saveSqueezeMode` 空 `catch {}` 補註解，修正 `npm run lint` 的 `no-empty`。
+
+### Why
+- 「幸運值全滿保底必中」功能合併進 develop 時顯然未跑 `mvn -pl backend/game-service test` 與 `cd frontend && npm run lint/build`，造成 develop 在 compile / build / lint / test 四個層面皆紅，其他分支 merge develop 都會被卡。此 PR 直接修 develop 解套。
+
+### How to verify
+- `mvn -pl backend/game-service test` → 109 tests 全綠、BUILD SUCCESS。
+- `cd frontend && npm run lint && npm run build` → 綠燈。
+
+## [fix] — 2026-06-22 — 捕魚機幸運值卡死 + PF 保底射擊 RNG 偏移
+
+### Fixed
+- `FishSpecies.java`（Bug 8）：`resolveGuaranteedPayout` 新增 `stream.nextDouble()` 呼叫，使串流消耗位置與 `resolvePayout` 命中路徑完全一致；修正前 MONEY_TREE 倍率從串流位置 0 取值，驗證端點卻從位置 1 取值，導致倍率不符；非搖錢樹魚種同理：修正前驗證時消耗 `nextDouble()` 而遊戲未消耗，雙方串流偏離
+- `FishingSession.java`：新增 `guaranteedShotSeq`（`Long`）欄位，記錄本場次保底命中的 shotSeq（null = 未觸發）
+- `FishingService.java`：保底路徑執行後將 `shot.getShotSeq()` 寫入 `session.guaranteedShotSeq`；`writeResultJson` 將其序列化至 `result_data`；`verifyShot` 讀取 `guaranteedShotSeq`，匹配時改用 `resolveGuaranteedPayout` 驗算，確保驗證結果與實際派彩一致
+- `useFishingSession.js`（Bug 7）：`flush()` 在呼叫 API 前快照 `wasFortuneReady = fortuneReadyRef.current`，透過 `ctx.fortuneConsumed` 傳入 `onResults` 回呼
+- `Fishing.jsx`（Bug 7）：`onResults` handler 新增邏輯——若 `ctx.fortuneConsumed` 且本批次全無命中（表示風控攔截了保底批次），主動以 `fortune.reportRound(false, true)` 重置幸運值，解除幸運值鎖死在 100 的死循環
+- `FishSpeciesTest.java`（新增）：3 個 PF 串流對齊測試
+
+### Why
+- Bug 7：`Fishing.jsx` 的 `handleMiss` 始終以 `fortuneConsumed=false` 呼叫 `reportRound`，與老虎機不同，未在風控攔截保底批次時重置幸運值，導致捕魚機幸運值永遠卡在 100（對應 Slot 同類 Bug 的捕魚版本）
+- Bug 8：`resolveGuaranteedPayout` 跳過 `nextDouble()` 命中判定，使 verifyShot 端點用 `resolvePayout` 重放時從不同串流位置取倍率，MONEY_TREE 倍率必然不符，破壞 Provably Fair 可驗性
+
+### 驗證
+- `mvn -pl backend/game-service test`：119 tests，0 failures
+
+---
+
+## [fix] — 2026-06-22 — 風控並發競爭條件 + 捕魚機 PF 矛盾
+
+### Fixed
+- `RiskControlService.java`：新增 Redis INCR 並發閘（key: `risk:inflight:{playerId}`，TTL 30 秒）；同一玩家同時有兩個請求進行時，第二個保守攔截，避免兩個並發請求同時讀取相同舊 DB 值而雙倍超限。新增 `releaseRiskSlot(playerId)` 供呼叫端在 finally 釋放名額
+- `SlotService.java`、`BaccaratService.java`、`FishingService.java (shots)`：在 `shouldIntercept` 之後加 try-finally，確保 `releaseRiskSlot` 必然被呼叫
+- `FishingService.java (verifyShot)`：解決 PF 矛盾——風控攔截時 `shots()` 回報 `hit=false, payout=0`（正確），但 `verifyShot` 原本回報 RNG 原始 `hit=true`，玩家驗證時會看到「命中但收到 0」的信任危機；現在在 `result_data` 記錄 `riskControlled` 旗標，`verifyShot` 讀取後在 message 中明確說明 RNG 結果為原始值、實際派彩受風控調整
+- `FishingSession.java`、`FishingSessionStore.java`：新增 `intercepted` 欄位（Boolean），在 shots() 被攔截時標記為 true，隨 session 持久化至 Redis
+- `FishingShotVerifyResponse.java`：新增 `riskControlled` boolean 欄位，前端可機器判讀是否有風控介入
+
+### Why
+- 並發閘解決 issue #5 的競爭條件：兩個請求同時讀取 DB 舊聚合值（line 85），都通過淨贏上限檢查，合計實際超限
+- PF 矛盾解決 issue #6：`verifyShot` 使用 `resolvePayout` 回報命中，但玩家實際收到 0，違反 Provably Fair 透明性承諾
+
+### 驗證
+- `mvn -pl backend/game-service test`：116 tests，0 failures
+
+---
+
+## [fix] — 2026-06-22 — 老虎機風控攔截中獎盤面顯示矛盾 + 幸運值卡在 100 死循環
+
+### Fixed
+- `backend/game-service/.../service/SlotService.java`：風控檢查前移至 RNG 之前；`fortuneReady=true` 且風控攔截時改用一般轉動（`spin()`），不呼叫 `spinGuaranteedWin()`，避免中獎符號配零派彩的視覺矛盾；一般轉動若自然命中但被風控攔截，呼叫新增的 `breakPayline()` 替換中線中格符號，確保玩家看到的盤面與派彩一致；`guaranteed` 回應欄位改為 `useGuarantee && outcome.win()`，不再因風控攔截誤報保底觸發
+- `frontend/src/casino-fx/fx/useFortuneMeter.js`：`reportRound(won, fortuneConsumed)` 新增第二參數；`fortuneConsumed=true` 且未中獎時仍將幸運值從 100 重置為 0，解除風控持續攔截保底轉動造成的幸運值鎖死循環
+- `frontend/src/pages/SlotGame.jsx`：`handleSpinRound` 在 `addCharge` 之前以 ref 記錄 `fortune.full`（`fortuneReadyOnSpinRef`），防止 addCharge 的非同步 setState 污染判斷；`handleSettled` 將該 ref 傳入 `fortune.reportRound` 作為 `fortuneConsumed`
+
+**為什麼**：風控攔截保底轉動時原本保留中獎盤面但派彩為 0，玩家可截圖搭配 /verify 結果舉證詐騙（T-信任/法律漏洞）；同時 `reportRound(false)` 未重置幸運值導致每轉都被攔截的死循環（T-UX 死循環）。
+**如何驗證**：觸發風控限制後，老虎機轉動不再出現三連符號配零派彩的盤面；幸運值滿格但風控攔截後，幸運值重置為 0，下一局可正常累積。
+
+## [feat] — 2026-06-18 — 幸運值全滿保底必中（老虎機 / 百家樂 / 捕魚機）
+
+### Added
+- `backend/game-service/.../slot/SlotMachine.java`：新增 `spinGuaranteedWin()`，以加權隨機選出必中符號填滿中線，非中線格仍正常 RNG
+- `backend/game-service/.../fishing/FishSpecies.java`：新增 `resolveGuaranteedPayout()`，跳過命中判定直接回派彩（MONEY_TREE 仍隨機抽倍率）
+
+### Changed
+- `SpinRequest.java` / `BaccaratBetRequest.java` / `FishingShotsRequest.java`：新增 `fortuneReady` 欄位
+- `GameSession.java`：新增 `fortuneReady` 欄位（百家樂兩階段 commit-ahead 需跨請求傳遞）
+- `SlotService.java`：`fortuneReady=true` 時呼叫 `spinGuaranteedWin()`
+- `BaccaratService.java`：`fortuneReady=true` 時最多重發牌 100 次直到結果符合玩家押注區；記錄實際使用的 nonce
+- `FishingService.java`：`fortuneReady=true` 時本批第一發呼叫 `resolveGuaranteedPayout()`
+- `SlotController.java` / `BaccaratController.java` / `FishingController.java`：轉傳 `fortuneReady`
+- `frontend/src/services/gameApi.js`：三遊戲 API 呼叫加入 `fortuneReady` 參數
+- `frontend/src/pages/SlotGame.jsx` / `Baccarat.jsx`：dispatch 加入 `fortuneReady: fortune.full`
+- `frontend/src/hooks/useFishingSession.js`：接受 `fortuneReady` prop，flush 時轉傳至 API
+- `frontend/src/pages/Fishing.jsx`：傳入 `fortuneReady: fortune.full`
+
+**為什麼**：幸運值滿代表玩家已累積足夠「氣力」，應保底觸發一次中獎以兌現期待感。
+**如何驗證**：老虎機累積至幸運值 100 後下注，確認中線三連必中；百家樂幸運值滿時押注確認派彩；捕魚機幸運值滿時開炮確認第一發必中。
+
+## [fix] — 2026-06-18 — 多帳號 localStorage 數據隔離（幸運值 & 百家樂咪牌）
+
+### Fixed
+- `frontend/src/casino-fx/fx/useFortuneMeter.js`：`storageKey` 加入 `playerId`（`lucky-star-fortune-v1:{gameKey}:{playerId}`），防止切換帳號繼承幸運值
+- `frontend/src/pages/SlotGame.jsx`：`useFortuneMeter('slot', player?.id)` 傳入 playerId
+- `frontend/src/pages/Fishing.jsx`：`useFortuneMeter('fishing', player?.id)` 傳入 playerId
+- `frontend/src/pages/Baccarat.jsx`：
+  - `useFortuneMeter('baccarat', player?.id)` 傳入 playerId
+  - 咪牌偏好改以 JSON 物件存多帳號（`getSqueezeMode` / `saveSqueezeMode` helper），key 不變、讀寫改用 `playerId` 子 key
+  - `useState` setter 改名為 `setSqueezeModeState`，避免與工具函式命名衝突
+
+**為什麼**：同一台電腦切換帳號時，幸運值與咪牌偏好會繼承前一帳號的狀態，造成跨帳號數據污染。
+**如何驗證**：帳號 A 累積幸運值後切換帳號 B，確認幸運值從 0 開始；重新登入帳號 A 幸運值恢復原值。
+
+---
+
+## [fix] — 2026-06-18 — 遊戲頁瀏覽器「上一頁」防呆：防止誤觸登出 & 場次懸空
+
+### Added
+- `frontend/src/hooks/useGameLeaveGuard.js`：通用 hook，`active` 為 true 時攔截 `popstate`（上一頁）與 `beforeunload`（關分頁/重整），彈出確認框讓玩家確認後才離開。
+
+### Changed
+- `frontend/src/pages/SlotGame.jsx`：`loading || visualLock`（轉輪動畫進行中）時啟用離開防呆，確認文案提示下注不返還。
+- `frontend/src/pages/Baccarat.jsx`：`isDealing`（後端請求進行中）時啟用離開防呆。
+- `frontend/src/pages/Fishing.jsx`：`phase === 'playing'` 時啟用離開防呆，確認文案提示 30 分鐘自動結算。
+
+### Fixed
+- 玩家在遊戲進行中按上一頁若導回 `/member` 頁，過去有機率觸發 logout 副作用造成帳號登出；現在優先攔截導航，使用者需明確確認才會離開。
+- 捕魚機場次進行中按上一頁會造成場次懸空；現在提示玩家確認，確保場次可正常結算。
+
+### 驗證
+- `frontend/src/services/api.js` interceptor 已確認只在 HTTP 401 時清除 auth，無需修改。
+
+---
+
+## [fix] — 2026-06-22 — 遊戲玩法對齊：mock 比照後端引擎 + 修老虎機權重測試/註解
+
+### Fixed
+- `backend/.../slot/SlotSymbolTest.java`：權重改 `45/30/16/7/5`（總和 **103**）後，原斷言仍寫死舊值（總和 100、舊累積區間）導致 `mvn -pl backend/game-service test` 變紅。更新總和為 103、累積區間為 `CHERRY[0,45) LEMON[45,75) BELL[75,91) STAR[91,98) SEVEN[98,103)`。
+- `backend/.../slot/SlotSymbol.java`：修正 Javadoc 的虛標 RTP/命中率。實際（單中線三連、含本金倍率）**RTP ≈ 26%、命中率 ≈ 11%**（原註解誤植「72% / 30%」、「總和 100」）。
+- `frontend/src/services/mockApi.js` 百家樂：補上**標準補牌/天牌規則**（閒 0~5 補、莊家補牌表比照後端 `BaccaratGameService.bankerDraws`）與**和局 push**（押莊/閒退回本金，原本和局直接吃注），莊贏改為 `2×下注 − floor(下注×5%)` 與後端結算一致。
+- `frontend/src/services/mockApi.js` 老虎機：改為逐格加權抽樣（權重比照後端 `SlotSymbol`）、中線三連才中獎、**倍率由命中符號的賠付表決定**；移除原本的 `MOCK_SLOT_FORCED_WIN_RATE` 強制中獎率與隨機倍率（會出現「🍒🍒🍒 卻賠 8×」與賠付表脫鉤）。
+
+### Changed
+- `frontend/src/pages/Baccarat.jsx`：規則文案補述「必要時補第三張」「莊家扣 5% 傭金」「和局押莊／閒退回本金」，與實際結算一致。
+- `CHANGELOG.md`：修復前次提交誤刪的 gateway「stale keep-alive」條目 `##` 標題（其 Changed/Why/How 段原本變成孤兒掛在百家樂稽核條目下）。
+
+### Why
+- 使用者要求「mock 與後端兩個世界玩法必須一致」。稽核發現：前端預設走 mock（`gameApi.js`：`VITE_USE_MOCK_API !== 'false'`），而 mock 的百家樂（和局吃注、無第三張）與老虎機（倍率隨機、與符號脫鉤）與後端正確引擎分歧；後端老虎機權重改動又漏改測試與註解。以**後端引擎為單一真相**將 mock 對齊。
+
+### How to verify
+- `mvn -pl backend/game-service test` → 綠燈（`SlotSymbolTest` 通過）。
+- `cd frontend && npm run lint && npm run build` → 綠燈。
+- 手動（mock 模式）：押莊/閒遇和局退回本金（淨損益 0、播放金幣音）；老虎機中獎倍率與中線符號一致（🍒=2x…⭐/7️⃣=8x）。
+
+---
+
+## [feat] — 2026-06-18 — 共用測試帳號種子資料：團隊各自 docker up 即有一致測試帳號
+
+### Added
+- `database/mysql/seed_test_data.sql`：三個固定測試帳號（id 1001~1003 / tester01~03 / 密碼皆 `Password1` 的 BCrypt 雜湊 / `is_new_gift_claimed=1`）寫入 `members`；`ON DUPLICATE KEY UPDATE` 冪等。
+- `database/postgres/seed_test_data.sql`：對應 player_id 1001~1003 的 `wallets` 初始餘額各 10000 星幣、`version=0`；`ON CONFLICT DO UPDATE` 冪等。
+
+### Changed
+- `docker-compose.yml`：mysql / postgres 各新增掛載一個 `seed_test_data.sql` 到 `/docker-entrypoint-initdb.d/`（檔名排序在 `init.sql` 之後，確保先建表再塞種子）。僅在資料 Volume 首次建立時自動執行。
+
+### 為什麼
+- 團隊改用 GitHub 共享、希望「不依賴某台主機」也能各自擁有一致測試資料（取代先前 VPN 共用同一台 DB 的方案）。種子資料進版控後，同事 `git pull` + `docker compose up -d` 即自動載入，無需手動匯入或搬資料庫檔案。
+
+### 如何驗證
+- 重載：`docker compose down -v && docker compose up -d`（⚠️ `-v` 會清空本機資料）後，
+  `docker exec lucky-star-mysql mysql -ulucky_user -plucky_password -e "SELECT username FROM lucky_star_casino.members WHERE id BETWEEN 1001 AND 1003;"` 應見 tester01~03；
+  PostgreSQL `SELECT player_id,balance FROM wallets WHERE player_id BETWEEN 1001 AND 1003;` 應見三筆 10000。
+- 以 tester01 / `Password1` 透過 Gateway 登入成功，餘額顯示 10000。
+
+## [feat] — 2026-06-18 — 鑽石無限測試帳號：tadge003 / weiyu10366 換星幣不受餘額限制
+
+### Added
+- `backend/wallet-service/.../config/DiamondTestAccountProperties.java`：新增 `diamond.unlimited-player-ids` 設定（`@ConfigurationProperties`），判斷玩家是否為「無限鑽石」測試帳號；常數 `UNLIMITED_BALANCE = 1_000_000_000L` 為對外顯示的無限餘額。
+- `DiamondWalletServiceTest`：新增 2 筆測試——無限帳號 `debitDiamond` 跳過餘額檢查/扣款且不碰錢包、`getBalance` 直接回無限值。
+
+### Changed
+- `backend/wallet-service/.../service/DiamondWalletService.java`：注入 `DiamondTestAccountProperties`。`debitDiamond` 對無限帳號跳過餘額檢查與實際扣款、直接回 `UNLIMITED_BALANCE`（讓鑽石換星幣 T-103 可無上限）；`getBalance` 對無限帳號直接回 `UNLIMITED_BALANCE`（避免無錢包時 404、UI 顯示無限）。
+- `backend/wallet-service/src/main/resources/application.yml`：新增 `diamond.unlimited-player-ids`，預設 `1172,1175`（tadge003、weiyu10366），可由 `DIAMOND_UNLIMITED_PLAYER_IDS` 環境變數覆寫。
+
+### Why
+- 測試/展示需求：將 tadge003（player 1172）與 weiyu10366（player 1175）設為測試帳號，鑽石視為無限，可無上限兌換星幣補足星幣。以設定白名單實作，可撐過 DB 重置且預設關閉（空清單），不影響一般玩家。
+
+### How to verify
+- `mvn -pl backend/wallet-service test` → Tests run: 150, Failures: 0, Errors: 0（含新增 2 筆無限帳號測試與全 context 載入）。
+
+---
+
+## [fix] — 2026-06-18 — 老虎機 SPIN 優化：餘額守門、首局動畫/音效、音效當機
+
+### Fixed
+- `frontend/src/pages/SlotGame.jsx`：新增 `canAfford = balance >= resolvedBet`，傳 `canSpin` 給 `SlotMachine`、`handleSpinRound` 開頭餘額雙保險（不足直接 `return null`，不發請求）；餘額不足時於下注面板顯示「星幣不足」提示。移除原本固定 `setTimeout 2900ms` 的視覺鎖釋放，改由 `onSpinComplete` 在轉輪流程真正結束（含成功/失敗）時釋放。
+- `frontend/src/components/SlotMachine.jsx`：`spin()` 開頭以 `canSpin` 守門並同步呼叫 `soundEngine.ensureContext()`（在使用者手勢上下文內解鎖音訊，修正首局靜音）；改用 `try/finally` 一律呼叫新 prop `onSpinComplete`；SPIN 按鈕 `disabled={visualBusy || !canSpin}`，文案區分 SPINNING/星幣不足/SPIN。`runReels` 在啟動動畫前若 `trackRefs` 任一未掛載則多等一個 `nextFrame`，避免首局因 ref 競態被 `animateReel` 靜默跳過動畫。
+- `frontend/src/casino-fx/sound/SoundEngine.js`：`play()` 新增 per-id 最小間隔節流（`reelTick` 55ms / `heartbeat` 220ms / 預設 24ms）與同時發聲上限（`MAX_ACTIVE_VOICES = 24`，滿載時只放行 `leverPull`/`reelStop`/`win*` 等關鍵音），修正狂按時 Web Audio 節點爆量導致破音/卡死。
+
+### Why
+- 使用者實測：首次按 SPIN 無動畫無音效（AudioContext 未在手勢內解鎖、`resume()` 非同步）；餘額不足仍可狂按（前端無餘額檢查，純靠後端丟錯）；連續/高頻觸發 `reelTick`/`heartbeat` 使音訊執行緒過載當機。
+
+### How to verify
+- `cd frontend && npm run lint && npm run build` 皆綠燈（vite build 292 modules ✓）。
+- 手動（mock 模式）：首局即有動畫＋音效；餘額低於下注時 SPIN 變灰且不發請求、顯示提示；狂按音效穩定不破音；API 失敗後按鈕即時恢復可點。
+
+---
+
+## [fix] — 2026-06-18 — 全遊戲三類 bug 稽核：百家樂補餘額守門 + 前端遊戲鐵則
+
+### Fixed
+- `frontend/src/pages/Baccarat.jsx`：`canDeal` 補上餘額守門（新增 `notEnoughBalance = amountInRange && balance < numericBetAmount`），餘額不足時「開始發牌」按鈕變灰、文案顯示「星幣不足」；`handleDeal` 開頭加 `if (balance < numericBetAmount) return` 雙保險，避免明知不足仍送請求。
+
+### Changed
+- `AGENTS.md`：新增已知地雷 §2.13「前端遊戲三鐵則」——餘額守門（前端先擋）、視覺鎖綁定真實流程（禁固定 setTimeout）、音效統一走 `soundEngine`（已內建節流/發聲上限），供新遊戲比照避免重蹈老虎機 bug。
+
+### Why
+- 使用者要求確認捕魚、百家樂與未來新遊戲不會重現老虎機的三類問題。稽核結果：音效當機已由前一筆的 `SoundEngine` 全域節流修正涵蓋所有遊戲；捕魚（buy-in disabled + `fire()` insufficient + token bucket 限速 + phase 狀態機）三項皆無問題；唯百家樂 `canDeal` 缺餘額檢查（與老虎機同類缺口），本次補齊並把模式寫入 AGENTS.md。
+
+### How to verify
+- `cd frontend && npm run lint && npm run build` 皆綠燈（vite build 292 modules ✓）。
+- 手動（mock 模式）：百家樂餘額低於下注額時「開始發牌」變灰、顯示「星幣不足」、不發請求；捕魚 buy-in/開火餘額不足時已擋下。
+
+---
+
+## [fix] — 2026-06-18 — gateway 偶發「service is temporarily unavailable」（stale keep-alive 連線）
+
+### Changed
+- `backend/gateway-service/src/main/resources/application.yml`：新增 `spring.cloud.gateway.httpclient` 連線池設定 —— `connect-timeout: 2000`、`response-timeout: 10s`、`pool.max-idle-time: 10s`、`pool.max-life-time: 5m`、`pool.eviction-interval: 30s`（背景驅逐閒置連線）。
+- 同檔新增 `spring.cloud.gateway.default-filters` 全域 `Retry`：僅對 GET（冪等）在連線層例外（`IOException`/`TimeoutException`/`PrematureCloseException`）時重試 2 次並指數退避；POST（註冊/登入）不重試，避免重複處理。
+
+### Why
+- 偶發症狀：前端註冊後自動登入失敗，gateway 回 `member service is temporarily unavailable`；但直連 member-service(8081) 一律成功、透過 gateway 立刻 retry 也成功。
+- 根因：`FallbackController` 回的訊息屬「非 `CallNotPermittedException`」分支 → 熔斷器並未開路，而是該次 gateway→下游呼叫拋出連線層例外。reactor-netty 預設不驅逐閒置連線，會重用「下游 Tomcat（預設 keepAliveTimeout≈20s）已關閉的 keep-alive 連線」，送出後收到 connection reset / `PrematureCloseException`。
+- 對策：讓 gateway 在下游關閉前先驅逐閒置連線（`max-idle-time 10s < 20s` + 背景 eviction），從源頭消除瞬斷；GET 再加 Retry 作為縱深防禦。熔斷器參數本身正常、未調整。
+
+### How to verify
+- `mvn -pl backend/gateway-service test` → BUILD SUCCESS（23 tests，含 contextLoads 驗證新設定可載入）。
+- 重啟 gateway 後，反覆執行 註冊→登入→profile 全鏈路（含長閒置後首發請求）不再出現 `temporarily unavailable`。
+
+---
+
+## [fix] — 2026-06-17 — 快速工具列可收合 + 移至左側避免與好友面板重疊
+
+### Changed
+- `components/QuickToolbar.jsx`：快速工具列改為**可收合**，預設收合只顯示單一「工具」按鈕，點擊展開完整選單；偏好記於 `localStorage`（`lucky-star-quicktoolbar-open-v1`）。避免長條工具列常駐擋住遊戲畫面。
+- `components/QuickToolbar.css`：桌機版工具列由右側改釘**左側**（`left: 18px`），與右下角的好友浮動面板分邊，兩者不再互相覆蓋；新增收合切換鈕樣式。
+
+### Why
+- 玩家回報：常駐的直式工具列擋到遊戲觀看，且與右下角好友面板重疊。收合 + 分邊解決兩者。
+
+### How to verify
+- 前端 `npm run lint` 0 問題、`npm run build` 成功。
+- 手動：桌機左側只剩一顆「工具」按鈕，點擊展開/收合；右下角好友面板與工具列不重疊。
+
+---
+## [fix] — 2026-06-17 — 好友清單改真實資料 + 捕魚進場扣款退款補償
+
+### Fixed
+- **好友面板顯示假好友**：`components/FriendFloatingPanel.jsx` 原本寫死 8 個假好友、且**從不呼叫**後端，導致所有玩家（含無好友者）都看到同一份假清單。改為呼叫真實 `GET /api/v1/friends` 顯示玩家自己的好友（無好友時顯示「目前沒有好友」），並支援以真實 `DELETE /api/v1/friends/{friendshipId}` 解除好友。一併移除無真實資料來源的「線上狀態 / 等級 / 贈送星幣」假 UI。
+- **捕魚進場「扣款後進不了場」的孤兒扣款**：`game-service` `FishingService.start()` 原本先 `walletClient.debit` 再 `sessionStore.save`，若 Redis 存檔失敗則扣款無補償。現將建場與存檔包進 try/catch，失敗時以獨立冪等鍵 `fishing-buyin-refund-<sessionId>` 退款後再上拋例外，避免玩家「扣了錢卻進不了場、也無 session 可結算」。
+
+### Added
+- 前端串接：`services/memberApi.js` 新增 `listFriends()`（標準化後端 `FriendListResponse`）與 `deleteFriend(friendshipId)`。
+- `game-service` 測試：`FishingServiceTest`（3 案例）覆蓋存檔失敗觸發退款、退款再失敗仍上拋、存檔成功不退款。
+
+### Changed
+- 前端 `hooks/useFishingSession.js`：結算 drain 迴圈加 5 秒硬性截止避免 in-flight 卡死永遠無法結算；結算失敗文案改為提示「場次未結束，可再按一次收網結算重試」（後端 `fishing-end-<sessionId>` 冪等，重試安全）。
+
+### Why
+- 玩家 1169 實測回報「沒加好友卻有好友」「進場失敗仍扣款」。前者為前端殘留假資料；後者為缺補償機制的潛在帳務漏洞（該玩家當次經查為合法輸光，非此 bug，但漏洞真實存在）。
+
+### How to verify
+- 後端：`mvn -pl backend/game-service,backend/wallet-service test` 全綠（game 109 含新 `FishingServiceTest` 3、wallet 148）。
+- 前端：`npm run lint` 0 問題、`npm run build` 成功。
+- 手動（player 1169）：好友面板顯示「目前沒有好友」（真實 friendships=0）。
+
+---
+## [feat] — 2026-06-17 — 玩家自助加值（模擬支付儲值訂單）
+
+### Added
+- **wallet-service 自助加值後端**：新增訂單表 `topup_orders` 與完整流程 `CREATED → PAID → CREDITED`（失敗 `FAILED`）。
+  - Entity `postgres/entity/TopupOrder.java`、Repository `postgres/repository/TopupOrderRepository.java`。
+  - DTO：`TopupPackageResponse`、`CreateTopupOrderRequest`、`TopupOrderResponse`。
+  - Service `TopupService.java`：方案清單寫死（P100→100k、P500→600k、P1000→1.3M 星幣）；建單；模擬付款時於**同一 PostgreSQL 交易**內呼叫 `WalletService.credit(subType=TOPUP, idempotencyKey="topup-"+orderNo)` 真實入帳，配合訂單狀態守衛雙重防止重複加值。
+  - Controller `TopupController.java`（`/api/v1/wallet/topup`）：`GET /packages`、`POST /orders`、`POST /orders/{id}/pay`、`GET /orders`。玩家身分一律取 gateway 注入的 `X-User-Id`。
+  - Exceptions + `GlobalExceptionHandler`：`InvalidTopupPackage`→400、`TopupOrderNotFound`→404、`IllegalTopupState`→409，並補 `IllegalArgumentException`→400。
+- **前端自助加值頁**：`pages/Topup.jsx`（方案選擇 → 確認付款 → 即時刷新餘額 + 訂單記錄），`services/walletApi.js` 加 `getTopupPackages/createTopupOrder/payTopupOrder/getTopupOrders`，`App.jsx` 加 `/topup` 路由、`AppShell.jsx` 導覽加「自助加值」。
+- **DB schema**：`database/postgres/init.sql` 新增 `topup_orders` DDL；`migration/V7__add_topup_orders.sql` 建表 + 擴充 `chk_wt_sub_type`。
+
+### Changed
+- `wallet_transactions.chk_wt_sub_type` CHECK 與 `dto/CreditRequest` 的 `@Pattern` 允許清單加入 `TOPUP`；同時補回 `init.sql` 先前漏掉的 `DIAMOND_EXCHANGE`（與 V4、運行中 DB 對齊）。
+
+### Why
+- 補齊玩家「自己加值星幣」的閉環（模擬支付，無真實金流）。沿用既有 `credit()` 的冪等 + 樂觀鎖，以 orderNo 當入帳冪等鍵，確保付款重送不重複加值。
+- 實作中發現運行中 PostgreSQL **確有** `chk_wt_sub_type` 約束（交接文件誤記為「無約束」），故 `TOPUP` 必須先擴充 CHECK 才能入帳。
+
+### How to verify
+- 後端單元測試：`mvn -pl backend/wallet-service test` 全綠（148 tests，含新增 `TopupServiceTest` 6 案例）。
+- 端到端（直打 wallet:8082，player 1169）：建單 P500 → 付款 `CREDITED`、餘額 200→600,200；重複付款→409。
+- 透過 gateway:8080（真實 JWT，X-User-Id 注入）：方案/建單/付款全鏈路 200，入帳成功。
+- 前端：`npm run lint` 0 問題、`npm run build` 成功。
+---
+
+## [docs] — 2026-06-17 — AUDIT_REPORT 附錄 A 重新盤點 + AGENTS.md 服務完成度同步
+
+### Changed
+- `AUDIT_REPORT.md` 附錄 A.8：T-070~T-073 ❌→✅（notification-service 全數完成，`WebSocketConfig`/`NotificationConsumer`/`GameResultConsumer`/`RankUpdateConsumer` 實際存在）。
+- `AUDIT_REPORT.md` 附錄 A.9：T-083/T-084/T-085/T-086/T-087 盤點備註更新（後端已完成，說明 mockApi 切換現況）。
+- `AUDIT_REPORT.md` 附錄 A.11：T-100~T-104 / T-107 ❌→✅（鑽石系統全數完成，wallet-service `DiamondController`/`DiamondWalletService`/`DiamondRedeemService`/`DiamondExchangeService` + `Diamond.jsx`/`diamondSlice` 實際存在）。
+- `AUDIT_REPORT.md` 新增附錄 A.12（T-108~T-114 新增任務一覽）、原 A.12 改為 A.13（進度統計）：✅ 29→46，❌ 37→27，總計 78→85（~54% 完成）。
+- `AGENTS.md` §2 地雷 10：服務完成度更新（notification T-070~T-073 全完成、鑽石 T-100~T-107 全完成、rank T-040~T-044）。
+
+### Why
+- AUDIT_REPORT 附錄 A 上次更新為 2026-06-09，notification 與鑽石系統的完成狀態未同步，導致進度統計嚴重低估（顯示 37% 實為 54%）。
+
 ---
 
 ## [fix] — 2026-06-16 — 後台停用玩家：阻擋停用期間登入 + 啟用後舊 token 不復活
@@ -23,6 +437,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### How to verify
 - 單元測試：`mvn -pl backend/member-service,backend/gateway-service,backend/admin-service test` 全綠（gateway 新增 2 筆 min-iat 案例、admin `PlayerBanServiceTest` 補上新行為斷言）。
 - 端對端（走 gateway:8080 / admin:8086）：停用後既有 token→401、重新登入→403；啟用後舊 token→401、新登入 token→200。
+
+---
+
+## [fix] — 2026-06-16 — gateway 補上 `/api/v1/friends/**` 路由
+
+### Added
+- `backend/gateway-service/src/main/resources/application.yml`：新增 route `member-friends`（`Path=/api/v1/friends/**` → member-service，套 CircuitBreaker 與既有 member 路由一致）。
+
+### Fixed
+- 好友 API（`POST /api/v1/friends/request`、`PUT /{id}/accept`、`PUT /{id}/reject`、`GET /api/v1/friends`、`DELETE /{id}`）實作在 member-service，但 gateway 路由表漏了這段前綴，導致經 gateway 呼叫一律回 **404**，前端無法使用好友功能。補上路由後恢復正常。
+
+### Why
+- 全流程 smoke test 時發現：好友端點直連 member:8081 正常，但走 gateway:8080 回 404，比對 `application.yml` 確認路由缺漏。
+
+### How to verify
+- 重啟 gateway 後走 gateway:8080 實測：申請 → `200`、重送 → `409`（正確擋重複）、接受 → `200`、雙方 `GET /api/v1/friends` → `200` 且互相在清單中。
+- 設定層變更，未動程式碼；gateway 模組測試 `mvn -pl backend/gateway-service test` 綠燈。
 
 ---
 

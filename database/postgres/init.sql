@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
     id               BIGSERIAL    NOT NULL,
     player_id        BIGINT       NOT NULL,
     type             VARCHAR(10)  NOT NULL,   -- DEBIT / CREDIT / BONUS
-    sub_type         VARCHAR(20)  NOT NULL,   -- BET / WIN / CHECKIN / TASK / GIFT / GM_REWARD / BANKRUPTCY_AID
+    sub_type         VARCHAR(20)  NOT NULL,   -- BET / WIN / CHECKIN / TASK / GIFT / GM_REWARD / BANKRUPTCY_AID / DIAMOND_EXCHANGE / TOPUP
     amount           BIGINT       NOT NULL,
     balance_before   BIGINT,
     balance_after    BIGINT,
@@ -39,13 +39,37 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
     created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_wallet_transactions PRIMARY KEY (id),
     CONSTRAINT chk_wt_type     CHECK (type    IN ('DEBIT', 'CREDIT', 'BONUS')),
-    CONSTRAINT chk_wt_sub_type CHECK (sub_type IN ('BET', 'WIN', 'CHECKIN', 'TASK', 'GIFT', 'GM_REWARD', 'BANKRUPTCY_AID')),
+    CONSTRAINT chk_wt_sub_type CHECK (sub_type IN ('BET', 'WIN', 'CHECKIN', 'TASK', 'GIFT', 'GM_REWARD', 'BANKRUPTCY_AID', 'DIAMOND_EXCHANGE', 'TOPUP')),
     CONSTRAINT chk_wt_amount   CHECK (amount > 0)
 );
 
 CREATE INDEX IF NOT EXISTS idx_wallet_transactions_player_id   ON wallet_transactions (player_id);
 CREATE INDEX IF NOT EXISTS idx_wallet_transactions_created_at  ON wallet_transactions (created_at);
 CREATE INDEX IF NOT EXISTS idx_wallet_transactions_player_time ON wallet_transactions (player_id, created_at DESC);
+
+-- -------------------------------------------------------
+-- topup_orders：玩家自助加值訂單（模擬支付，無真實金流）
+-- 流程：CREATED（建單）→ PAID（模擬付款）→ CREDITED（星幣已入帳）；失敗為 FAILED
+-- 付款成功後以 order_no 當冪等鍵呼叫 WalletService.credit() 真實入帳，credit_tx_id 記入帳流水 id
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS topup_orders (
+    id            BIGSERIAL    NOT NULL,
+    order_no      VARCHAR(40)  NOT NULL,            -- 訂單編號（冪等鍵來源）
+    player_id     BIGINT       NOT NULL,
+    package_id    VARCHAR(20)  NOT NULL,            -- 方案代號（如 P100 / P500 / P1000）
+    amount        BIGINT       NOT NULL,            -- 入帳星幣數
+    price_label   VARCHAR(20)  NOT NULL,            -- 顯示用售價（如 NT$100）
+    status        VARCHAR(20)  NOT NULL DEFAULT 'CREATED',
+    credit_tx_id  BIGINT,                           -- 入帳成功後的 wallet_transactions.id
+    created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    paid_at       TIMESTAMP,
+    CONSTRAINT pk_topup_orders        PRIMARY KEY (id),
+    CONSTRAINT uq_topup_orders_no     UNIQUE (order_no),
+    CONSTRAINT chk_topup_amount       CHECK (amount > 0),
+    CONSTRAINT chk_topup_status       CHECK (status IN ('CREATED', 'PAID', 'CREDITED', 'FAILED'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_topup_orders_player_time ON topup_orders (player_id, created_at DESC);
 
 -- -------------------------------------------------------
 -- game_rounds：遊戲對局紀錄

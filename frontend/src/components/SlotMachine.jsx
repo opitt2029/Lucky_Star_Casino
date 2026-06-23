@@ -51,8 +51,10 @@ export default function SlotMachine({
   grid,
   winningCells = [],
   spinning: externalSpinning = false,
+  canSpin = true,
   onSpin,
   onSettled,
+  onSpinComplete,
   symbols = defaultSymbols,
   symbolHeight: symbolHeightProp,
 }) {
@@ -161,6 +163,10 @@ export default function SlotMachine({
       setPhase('spinning')
       soundEngine.play('leverPull')
       await nextFrame()
+      // 首局或 re-render 競態時 ref 可能尚未掛上；多等一幀，避免 animateReel 因 trackElement 為 null 靜默跳過動畫。
+      if (trackRefs.current.some((node) => !node)) {
+        await nextFrame()
+      }
 
       await Promise.all(
         nextTracks.map((track, colIndex) => {
@@ -207,7 +213,10 @@ export default function SlotMachine({
   )
 
   const spin = async () => {
-    if (visualBusy) return
+    if (visualBusy || !canSpin) return
+
+    // 在使用者手勢同步上下文內解鎖音訊，讓首局就有拉霸/轉輪/停輪音效。
+    soundEngine.ensureContext()
 
     setPhase('waiting')
     try {
@@ -224,6 +233,9 @@ export default function SlotMachine({
     } catch {
       setAnticipating(false)
       setPhase('idle')
+    } finally {
+      // 無論成功、失敗或下注被擋，都通知外層解除視覺鎖。
+      onSpinComplete?.()
     }
   }
 
@@ -299,10 +311,10 @@ export default function SlotMachine({
         <button
           type="button"
           onClick={spin}
-          disabled={visualBusy}
+          disabled={visualBusy || !canSpin}
           className="slot-spin-button gold-button rounded text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {visualBusy ? 'SPINNING' : 'SPIN'}
+          {visualBusy ? 'SPINNING' : !canSpin ? '星幣不足' : 'SPIN'}
         </button>
         <div className={['slot-lever', visualBusy ? 'slot-lever--active' : ''].join(' ')} aria-hidden="true">
           <span />

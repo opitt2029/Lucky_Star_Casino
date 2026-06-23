@@ -26,8 +26,11 @@ const SHOT_LOG_CAP = 50
  * @param {(results, ctx) => void} onResults 每批 fishingShots 回應觸發；results 為逐發判定，
  *        ctx = { sessionBalance, fishBySeq }，供頁面播放命中/逃跑音效與派彩特效。
  */
-export function useFishingSession({ onResults } = {}) {
+export function useFishingSession({ onResults, fortuneReady = false } = {}) {
   const dispatch = useDispatch()
+
+  const fortuneReadyRef = useRef(fortuneReady)
+  fortuneReadyRef.current = fortuneReady  // 每次 render 同步最新值，避免閉包過期
 
   const [phase, setPhase] = useState('loading') // 'loading' | 'idle' | 'playing' | 'settling' | 'settled'
   const [session, setSession] = useState(null) // { sessionId, cannonLevel, fishTable, serverSeedHash, clientSeed }
@@ -162,8 +165,9 @@ export function useFishingSession({ onResults } = {}) {
     if (!sessionId) return
     inFlightRef.current = true
     const batch = bufferRef.current.splice(0, MAX_BATCH)
+    const wasFortuneReady = fortuneReadyRef.current
     try {
-      const res = await gameApi.fishingShots({ sessionId, shots: batch })
+      const res = await gameApi.fishingShots({ sessionId, shots: batch, fortuneReady: wasFortuneReady })
       let delta = 0
       let payoutSum = 0
       let acceptedShots = 0
@@ -195,7 +199,7 @@ export function useFishingSession({ onResults } = {}) {
         setStats((prev) => ({ totalShots: prev.totalShots + acceptedShots, totalPayout: prev.totalPayout + payoutSum }))
       }
       const fishBySeq = fishBySeqRef.current
-      onResultsRef.current?.(res.results, { sessionBalance: res.sessionBalance, fishBySeq })
+      onResultsRef.current?.(res.results, { sessionBalance: res.sessionBalance, fishBySeq, fortuneConsumed: wasFortuneReady })
       res.results.forEach((r) => fishBySeq.delete(r.shotSeq))
     } catch (err) {
       // 送出失敗：退回整批樂觀扣注，避免局內餘額被卡住。
@@ -213,7 +217,10 @@ export function useFishingSession({ onResults } = {}) {
     setPhase('settling')
     if (flushTimerRef.current) window.clearInterval(flushTimerRef.current)
     // 先把殘餘子彈送完再結算（避免 in-flight 期間忙等）。
-    while (bufferRef.current.length > 0 || inFlightRef.current) {
+    // 設硬性截止時間，避免某批 flush 卡在 in-flight 時整個結算永遠卡死（寧可帶殘餘餘額逕行結算，
+    // 後端以局內餘額為準退款，仍冪等安全）。
+    const drainDeadline = Date.now() + 5000
+    while ((bufferRef.current.length > 0 || inFlightRef.current) && Date.now() < drainDeadline) {
       if (inFlightRef.current) {
         await new Promise((resolve) => window.setTimeout(resolve, 60))
       } else {
@@ -228,7 +235,9 @@ export function useFishingSession({ onResults } = {}) {
       setSettleResult({ ...result, shots: [...shotLogRef.current].reverse() })
       setPhase('settled')
     } catch (err) {
-      setError(err?.response?.data?.message || err.message || '結算失敗')
+      // 結算失敗（多為錢包暫時不可用）：場次仍在後端、未刪除，可直接再按「收網結算」重試（冪等安全）。
+      const reason = err?.response?.data?.message || err.message || '結算失敗'
+      setError(`${reason}；場次未結束，請再按一次「收網結算」重試`)
       setPhase('playing')
       startFlushLoop()
     }

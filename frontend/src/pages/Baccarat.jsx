@@ -16,6 +16,7 @@ import LuckyAura from '../casino-fx/fx/LuckyAura'
 import FortuneMeter from '../casino-fx/fx/FortuneMeter'
 import { useFortuneMeter } from '../casino-fx/fx/useFortuneMeter'
 import { announcePlayerWin } from '../casino-fx/announce/announceBus'
+import { useGameLeaveGuard } from '../hooks/useGameLeaveGuard'
 
 const initialCards = []
 const suitSymbols = {
@@ -49,8 +50,8 @@ const chipDenominations = [100, 200, 500, 1000, 2000, 3000, 5000]
 const baccaratRules = [
   '先選擇閒家、莊家或和局，再輸入下注金額（每區 100 ~ 5,000 星幣）或用面額快速選擇。',
   'A 計 1 點，2 到 9 依牌面計點，10、J、Q、K 計 0 點；兩張牌總和只取個位數。',
-  '由伺服器為閒家與莊家各發兩張牌，點數高者勝出，兩邊同分為和局。',
-  '押中會依賠率計算本局獲利，未押中則損失下注金額，結果會即時反映在可用星幣。',
+  '由伺服器為閒家與莊家各發兩張牌，必要時依標準規則補第三張，點數高者勝出，兩邊同分為和局。',
+  '押中依賠率計算獲利（莊家扣 5% 傭金），未押中則損失下注金額；和局時押莊／閒退回本金，結果即時反映在可用星幣。',
 ]
 const baccaratPayouts = [
   { label: '閒家 Player', value: '1x' },
@@ -201,6 +202,20 @@ function ResultItem({ label, value }) {
 const ROAD_STORAGE_KEY = 'lucky-star-baccarat-road-v1'
 const SQUEEZE_STORAGE_KEY = 'lucky-star-baccarat-squeeze-v1'
 
+function getSqueezeMode(playerId) {
+  try {
+    const all = JSON.parse(localStorage.getItem(SQUEEZE_STORAGE_KEY) || '{}')
+    return all[playerId] === true
+  } catch { return false }
+}
+
+function saveSqueezeMode(playerId, value) {
+  try {
+    const all = JSON.parse(localStorage.getItem(SQUEEZE_STORAGE_KEY) || '{}')
+    localStorage.setItem(SQUEEZE_STORAGE_KEY, JSON.stringify({ ...all, [playerId]: value }))
+  } catch { /* localStorage 不可用時忽略寫入 */ }
+}
+
 export default function Baccarat() {
   const dispatch = useDispatch()
   const balance = useSelector((state) => state.wallet.balance)
@@ -227,14 +242,8 @@ export default function Baccarat() {
       return []
     }
   })
-  // 咪牌模式（記住玩家偏好）
-  const [squeezeMode, setSqueezeMode] = useState(() => {
-    try {
-      return localStorage.getItem(SQUEEZE_STORAGE_KEY) === 'true'
-    } catch {
-      return false
-    }
-  })
+  // 咪牌模式（記住玩家偏好，以 playerId 為 JSON 子 key 隔離多帳號）
+  const [squeezeMode, setSqueezeModeState] = useState(() => getSqueezeMode(player?.id))
   const [concealed, setConcealed] = useState(false)
   const [revealedCount, setRevealedCount] = useState(0)
   const pendingRef = useRef(null)
@@ -244,8 +253,9 @@ export default function Baccarat() {
   const [coinDensity, setCoinDensity] = useState('light')
   const [envelopeTrigger, setEnvelopeTrigger] = useState(0)
   const [banner, setBanner] = useState({ trigger: 0, text: '', level: 1 })
-  const fortune = useFortuneMeter('baccarat')
+  const fortune = useFortuneMeter('baccarat', player?.id)
   useBgm('baccarat')
+  useGameLeaveGuard(isDealing, '下注進行中，確定要離開嗎？')
 
   useEffect(() => {
     try {
@@ -256,13 +266,11 @@ export default function Baccarat() {
   }, [history])
 
   const numericBetAmount = useMemo(() => Number(betAmount), [betAmount])
-  const canDeal =
-    selectedBet &&
-    Number.isFinite(numericBetAmount) &&
-    numericBetAmount >= MIN_BET &&
-    numericBetAmount <= MAX_BET &&
-    !isDealing &&
-    !concealed
+  const amountInRange =
+    Number.isFinite(numericBetAmount) && numericBetAmount >= MIN_BET && numericBetAmount <= MAX_BET
+  // 餘額不足守門：金額在合法範圍但超過可用星幣時，禁止下注並提示（後端仍是最後防線）。
+  const notEnoughBalance = amountInRange && balance < numericBetAmount
+  const canDeal = selectedBet && amountInRange && !notEnoughBalance && !isDealing && !concealed
   const winnerLabel = winner ? BET_LABELS[winner] : '-'
   const selectedBetLabel = selectedBet ? BET_LABELS[selectedBet] : '尚未選擇'
   const sidebarProfitValue =
@@ -370,6 +378,12 @@ export default function Baccarat() {
       return
     }
 
+    if (balance < numericBetAmount) {
+      setResultMessage('星幣不足，請先儲值後再下注。')
+      setRoundProfit(null)
+      return
+    }
+
     setIsDealing(true)
     setResultMessage('發牌中...')
     setWinner('')
@@ -384,7 +398,7 @@ export default function Baccarat() {
     try {
       // 呼叫 game-service（T-034/035）：閒/莊/和擇一押注 → 後端扣款、發牌、派彩。
       const result = await dispatch(
-        betBaccarat({ area: selectedBet.toLowerCase(), amount: numericBetAmount })
+        betBaccarat({ area: selectedBet.toLowerCase(), amount: numericBetAmount, fortuneReady: fortune.full })
       ).unwrap()
 
       const nextWinner = capitalizeWinner(result.winner)
@@ -426,13 +440,9 @@ export default function Baccarat() {
   }
 
   const toggleSqueezeMode = () => {
-    setSqueezeMode((prev) => {
+    setSqueezeModeState((prev) => {
       const next = !prev
-      try {
-        localStorage.setItem(SQUEEZE_STORAGE_KEY, String(next))
-      } catch {
-        // 忽略儲存失敗
-      }
+      saveSqueezeMode(player?.id, next)
       return next
     })
     soundEngine.play('click')
@@ -583,7 +593,7 @@ export default function Baccarat() {
                       disabled={!canDeal}
                       className="baccarat-action-button"
                     >
-                      {isDealing ? '發牌中...' : '開始發牌'}
+                      {isDealing ? '發牌中...' : notEnoughBalance ? '星幣不足' : '開始發牌'}
                     </button>
                   </div>
                 </section>

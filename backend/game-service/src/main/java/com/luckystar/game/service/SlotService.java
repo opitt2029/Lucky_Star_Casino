@@ -17,6 +17,7 @@ import com.luckystar.game.session.GameSession;
 import com.luckystar.game.session.GameSessionService;
 import com.luckystar.game.slot.SlotMachine;
 import com.luckystar.game.slot.SlotOutcome;
+import com.luckystar.game.slot.SlotSymbol;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -65,6 +66,7 @@ public class SlotService {
     private final GameResultEventPublisher eventPublisher;
     private final GameSessionService sessionService;
     private final ObjectMapper objectMapper;
+    private final RiskControlService riskControlService;
 
     /**
      * 單次模式：扣款、轉動並於同一回應揭露 serverSeed（相容前端一次呼叫）。
@@ -73,13 +75,13 @@ public class SlotService {
      * @param bet                 下注金額（已由 controller 驗證 [100, 5000]）
      * @param requestedClientSeed 玩家自訂 client seed（可為 null/空白，則由伺服器產生）
      */
-    public SpinResponse spin(long playerId, long bet, String requestedClientSeed) {
+    public SpinResponse spin(long playerId, long bet, String requestedClientSeed, boolean fortuneReady) {
         String roundId = UUID.randomUUID().toString();
         String serverSeed = rng.generateServerSeed();
         String serverSeedHash = rng.commit(serverSeed);
         String clientSeed = resolveClientSeed(requestedClientSeed);
 
-        return settleInternal(roundId, playerId, bet, serverSeed, serverSeedHash, clientSeed);
+        return settleInternal(roundId, playerId, bet, serverSeed, serverSeedHash, clientSeed, fortuneReady);
     }
 
     /**
@@ -134,7 +136,7 @@ public class SlotService {
 
         SpinResponse response = settleInternal(
                 roundId, playerId, session.getBetAmount(),
-                session.getServerSeed(), session.getServerSeedHash(), session.getClientSeed());
+                session.getServerSeed(), session.getServerSeedHash(), session.getClientSeed(), false);
 
         // 揭露 serverSeed 並標記結算（保留 30 分鐘驗證視窗）。
         sessionService.markSettled(playerId, roundId, session.getServerSeed(), NONCE);
@@ -146,14 +148,27 @@ public class SlotService {
      * 供單次模式與 commit-ahead 結算共用；不觸碰 Session（由呼叫端決定是否標記）。
      */
     private SpinResponse settleInternal(String roundId, long playerId, long bet,
-                                        String serverSeed, String serverSeedHash, String clientSeed) {
+                                        String serverSeed, String serverSeedHash, String clientSeed,
+                                        boolean fortuneReady) {
         // 1) 扣下注（冪等）。餘額不足會丟 InsufficientBalanceException，於此中止、不產生對局。
         WalletDebitResponse debit = walletClient.debit(
                 playerId, bet, "slot-bet-" + roundId, roundId);
 
-        // 2) 以三元組推導確定性結果。
+        // 2) 風控優先檢查：若觸發攔截則不使用保底轉動，避免中獎盤面配零派彩的視覺矛盾。
+        // shouldIntercept 會佔用並發閘；無論是否攔截，finally 均須呼叫 releaseRiskSlot。
+        boolean riskIntercept = riskControlService.shouldIntercept(playerId, GAME_TYPE);
+        try {
+        boolean useGuarantee = fortuneReady && !riskIntercept;
+
         RandomStream stream = rng.stream(serverSeed, clientSeed, NONCE);
-        SlotOutcome outcome = slotMachine.spin(stream, bet);
+        SlotOutcome outcome = useGuarantee
+                ? slotMachine.spinGuaranteedWin(stream, bet)
+                : slotMachine.spin(stream, bet);
+
+        // 一般轉動若命中但被風控攔截，打破中線顯示確保盤面與派彩視覺一致（不出現中獎符號配零派彩）。
+        if (riskIntercept && outcome.win()) {
+            outcome = SlotOutcome.noWin(breakPayline(outcome.grid()));
+        }
 
         // 3) 命中則派彩（冪等）。
         long balanceAfter = debit.balanceAfter();
@@ -196,7 +211,27 @@ public class SlotService {
                 .serverSeedHash(serverSeedHash)
                 .clientSeed(clientSeed)
                 .nonce(NONCE)
+                .guaranteed(fortuneReady)
                 .build();
+        } finally {
+            riskControlService.releaseRiskSlot(playerId);
+        }
+    }
+
+    /**
+     * 深複製盤面並將中線中格換成與兩側不同的符號，打破視覺三連，供風控攔截時使用。
+     */
+    private String[][] breakPayline(String[][] src) {
+        String[][] masked = new String[src.length][];
+        for (int i = 0; i < src.length; i++) masked[i] = src[i].clone();
+        String paylineSymbol = masked[SlotMachine.PAYLINE_ROW][0];
+        for (SlotSymbol s : SlotSymbol.values()) {
+            if (!s.display().equals(paylineSymbol)) {
+                masked[SlotMachine.PAYLINE_ROW][1] = s.display();
+                return masked;
+            }
+        }
+        return masked;
     }
 
     private String resolveClientSeed(String requestedClientSeed) {

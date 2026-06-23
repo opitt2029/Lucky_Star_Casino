@@ -15,6 +15,7 @@ import Transactions from './pages/Transactions'
 import CasinoShop from './pages/CasinoShop'
 import CheckIn from './pages/CheckIn'
 import Diamond from './pages/Diamond'
+import Topup from './pages/Topup'
 import PageTransition from './components/PageTransition'
 import QuickToolbar from './components/QuickToolbar'
 import FriendFloatingPanel from './components/FriendFloatingPanel'
@@ -70,6 +71,14 @@ export default function App() {
             element={
               <PrivateRoute>
                 <Diamond />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/topup"
+            element={
+              <PrivateRoute>
+                <Topup />
               </PrivateRoute>
             }
           />

@@ -51,7 +51,7 @@ spring:
 internal:
   wallet-service:
     base-url: ${WALLET_SERVICE_URL:http://localhost:8082}
-    secret: ${INTERNAL_SERVICE_SECRET:?INTERNAL_SERVICE_SECRET environment variable is required}
+    secret: ${INTERNAL_SECRET:?INTERNAL_SECRET environment variable is required}
 
 management:
   endpoints:
@@ -61,6 +61,11 @@ management:
   endpoint:
     health:
       show-details: always
+
+risk:
+  player-win-limit: 50000    # 單玩家今日淨贏上限（星幣），超過即攔截
+  global-rtp-limit: 0.95     # 全局 RTP 上限（95%），超過即攔截
+  rtp-sample-size: 500       # 計算全局 RTP 的近 N 局樣本數
 
 logging:
   level:
