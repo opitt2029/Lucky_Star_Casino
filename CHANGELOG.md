@@ -3,6 +3,167 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Fixed] — 2026-06-24 — 捕魚機四個前端體驗 bug 修正
+
+### Fixed
+- `frontend/src/components/fishingEngine.js`：**限流視覺子彈** — 有魚目標但 token bucket 限流時不再生成視覺子彈，消除「大量子彈飛出卻不扣注也不傷魚」誤解。
+- `frontend/src/components/fishingEngine.js`：**HP 條計時消失** — 魚有累積傷害（`hp < maxHp`）時 HP 條以半透明（alpha 0.55）持續顯示，大魚多發攻擊時玩家可看到傷害積累。
+- `frontend/src/services/mockApi.js`：**fishDamage ID 碰撞** — `fishingActive()` 恢復場次時先清空 `fishDamage`，防止引擎重建後新魚繼承舊魚傷害（新魚 hpRemaining 異常或一擊即死）。
+- `frontend/src/pages/Fishing.jsx`：**結算說明不足** — 結算按鈕下方新增「剩餘餘額全額退回」說明，玩家知道無需打光餘額即可隨時結算。
+
+---
+## [Fixed] — 2026-06-24 — 老虎機機台面板標示與音效修正（賠付線數、左二同小獎誤播惋惜音）
+
+> 兩個與玩法/體驗一致性相關的問題：
+> (1) 機台面板硬寫「LINES 03」，但引擎（`SlotMachine.evaluate`）只判定中線一條（`PAYLINE_ROW=1`），標示與實際賠付線數不符、誤導玩家以為三排都算。
+> (2) `runReels` 在「前兩格中線同符號、第三格不同」時播 `fishEscape` 惋惜/逃跑音；但本作賠付表所有符號 `pairMultiplier ≥ 1`，該情形恆為**會派彩的左二同小獎**，於是中小獎時先播輸錢音、隨後 `handleSettled` 又播 `winSmall`，贏錢卻播輸錢音、互相矛盾。
+> 決策：維持現有單中線玩法（不擴充賠付線），僅修正標示與音效。
+
+### Fixed
+- `frontend/src/components/SlotMachine.jsx`：
+  - 機台面板「LINES 03」改為「LINE 01」，與單中線引擎一致。
+  - 移除左二同小獎落定時的 `fishEscape` 惋惜音（及不再使用的 `isLineWin` 區域變數）。第三輪 anticipation 慢停＋心跳的張力保留，落定後交由 `handleSettled` 的中獎音收尾。
+
+**為什麼**：標示需反映真實賠付線數；派彩當下不應播失落音（正常娛樂城不會在贏錢時播輸錢音）。因賠付表所有符號 pair 皆 ≥ 1x，`isNearMiss && !isLineWin` 恆為派彩局，惋惜音邏輯實際永遠誤觸發。
+**如何驗證**：`npm run lint`（frontend）全綠；後端與賠付數值未動（RTP/測試/mock 不受影響）。
+
+## [Fixed] — 2026-06-24 — 老虎機側欄結果搶跑（劇透）：結算改在輪停瞬間揭曉
+
+> 問題：`spinSlot.fulfilled`（`gameSlice.js`）在 thunk 一回應（mock ~900ms／真實網路）就寫入 `result`/`slotGrid`/`winningCells`，
+> 但轉輪動畫要 2.6–3.5s 才停。`SlotGame.jsx` 右側面板（最近派彩、中獎倍率、中線命中、本場損益）直接讀 redux，
+> 加上 `dispatch(setBalance)` 與 `sessionProfit` 在 `handleSpinRound` 內即時觸發——於是輪子還在轉時，
+> 側欄與餘額就已揭曉本局派彩/命中，等於劇透結果（轉輪本身有 `Reel` 的 `!isSpinning` 守門、不受影響）。
+
+### Fixed
+- `frontend/src/pages/SlotGame.jsx`：新增本地 `settled` 結算快照，側欄 `lastPayout`/`lastMultiplier`/`hasLineWin` 改讀快照而非 redux `result`/`winningCells`。
+  - 將結算副作用（`setBalance` 餘額、`sessionProfit` 損益、`sessionRounds` 局數、`settled` 快照）一律從 `handleSpinRound` 移至 `handleSettled`——後者由 `SlotMachine` 的 `onSettled` 在 `runReels` 完成（輪停）瞬間呼叫，與轉輪同步揭曉。
+  - 進場 `clearGameResult()` 一併 `setSettled(null)`（重開即歸零）。
+  - 移除已不再使用的 redux `result` 選取；`winningCells` 仍傳給 `SlotMachine`（其格子高亮已由 `Reel` 的 `!isSpinning` 正確守門、輪停才亮）。
+
+**為什麼**：result-leak 來自「結果寫入 redux 的時點」與「轉輪揭曉時點」不一致；把所有 result-derived 顯示與副作用統一綁到輪停（`handleSettled`）即可同步。`onSettled` 在 `onSpinComplete`（解鎖視覺鎖）之前呼叫，故 `settled` 必先填好再顯示，無空窗閃爍。
+**如何驗證**：`npm run lint`（frontend）全綠；後端未動。走查時序：`runReels` → `onSettled`（set settled/balance）→ finally `onSpinComplete`（解鎖）；thunk 失敗時 `onSettled` 不觸發，不誤記損益/局數（與原行為一致）。
+
+## [Fixed] — 2026-06-24 — 老虎機視覺鎖脫鉤：移除魔術數字 `setTimeout(2900)` 解鎖
+
+> 問題：`SlotGame.jsx` 的 `handleSpinRound` 在 `finally` 用固定 `setTimeout(…, 2900)` 解除視覺鎖（visualLock），
+> 但轉輪動畫在 near-miss（前兩輪中線同符號進入 anticipation 慢停）時長達 `2600 + 900 = 3500ms`，
+> 加上 `preloadSymbolImages` 起點更晚。定時器在 2900ms 提早開鎖，造成：
+> (1) 離場守門 `useGameLeaveGuard(loading || visualLock, …)` 提早失效，輪子未停玩家即可離頁、跳不出「本局下注不返還」警告；
+> (2) 右側面板狀態提早從「轉動中」翻成「已結算」，與仍在轉的畫面脫鉤。違反 AGENTS.md 雷區 13「視覺鎖綁定真實流程、禁止固定 setTimeout 魔術數字」。
+
+### Fixed
+- `frontend/src/pages/SlotGame.jsx`：移除 `handleSpinRound` 中 `setTimeout(() => setVisualLock(false), 2900)`，視覺鎖解除統一交給 `SlotMachine` 的 `onSpinComplete`（綁定 `runReels` 動畫真實生命週期，成功/失敗/中止各路徑的 try-catch-finally 都會呼叫，不會卡死）。near-miss 局不再提早解鎖。
+
+**為什麼**：固定 2900ms 與實際動畫長度（一般 2600ms、near-miss 3500ms）不一致，是脫鉤根因；`onSpinComplete` 才是綁定真實流程的解鎖點。
+**如何驗證**：`mvn -q -pl backend/game-service test -Dtest='Slot*'` 全綠（35 案，未動後端）；前端走查 `onSpin` 拋例外（餘額不足/網路失敗）時，`SlotMachine.spin()` 的 catch→finally 仍呼叫 `onSpinComplete`，visualLock 不會卡住。
+
+## [Added] — 2026-06-24 — 完整遊戲紀錄/注單稽核（流水號 / 局號 / 毫秒時間戳 / 餘額變化）＋遊戲重開小計歸零
+
+> 需求：每筆投注都要可稽核——唯一注單號（流水號）、精確到毫秒的下注/派彩時間、
+> 「投注前餘額 → 投注金額 → 中獎/沒中 → 派彩後餘額」的完整餘額變化軌跡、以及遊戲局號；
+> 並讓玩家在「遊戲紀錄」頁逐筆檢視。另要求遊戲重開時把前端「本場小計」刷新歸零。
+
+### Added
+- **DB**：`game_rounds` 新增 `balance_before` / `balance_after`（餘額變化稽核）、`bet_at`（毫秒下注時間，與既有 `settled_at` 派彩時間區分）。
+  - `database/postgres/init.sql`：新表定義含三欄。
+  - `database/postgres/migration/V10__add_game_round_audit_fields.sql`：對既有環境以 `ADD COLUMN IF NOT EXISTS` 增量補欄（既有列為 NULL，前端以 `-` 呈現）。
+- **後端遊戲紀錄 API**：`GET /api/v1/game/history`（玩家身分取自 gateway 注入 `X-User-Id`），分頁回傳注單，形狀 `{ items, total, page, pageSize }` 與錢包交易紀錄一致。
+  - 新增 `GameHistoryController` / `GameHistoryService` / `GameHistoryResponse` / `GameRecordView`（含 `roundId`/`nonce`/`betAmount`/`winAmount`/`profit`/`balanceBefore`/`balanceAfter`/`betAt`/`settledAt`/`status` 等稽核欄位）。
+  - `GameRoundRepository`：新增 `findByPlayerIdOrderByCreatedAtDesc` / `findByPlayerIdAndGameTypeOrderByCreatedAtDesc` 分頁查詢。
+  - `GameHistoryServiceTest`（4 案：全類型/類型過濾大小寫正規化/分頁夾限/null 金額不誤算 profit）。
+- **前端遊戲紀錄頁**：`frontend/src/pages/GameHistory.jsx`（桌機表格 + 手機卡片、毫秒時間格式、損益正負色、分頁），路由 `/game-history`（`App.jsx`）、導覽列「遊戲紀錄」（`AppShell.jsx`）。
+  - `gameApi.gameHistory()` 接後端；`mockApi.getGameHistory()` 鏡像；`recordGameRound()` 於老虎機/百家樂/捕魚結算時各寫一筆（鏡像後端 `game_rounds`）。
+
+### Changed
+- **三款遊戲結算落地稽核欄位**（後端）：`SlotService`/`BaccaratService`/`FishingService` 寫 `game_rounds` 時填入 `balanceBefore`（扣款前 wallet 餘額）、`balanceAfter`（派彩後餘額）、`betAt`（老虎機＝下注瞬間；百家樂/捕魚＝開局時間）。
+  - `GameSession` / `GameSessionService`：Session 增帶 `balanceBefore`，結算時落地。
+  - `FishingSession` / `FishingSessionStore`：Session 增帶 `balanceBefore`。
+- **遊戲重開小計歸零**（前端）：
+  - `SlotGame.jsx`：進場 `dispatch(clearGameResult())` 清上一場殘留結果/最近派彩。
+  - `Baccarat.jsx`：本場損益（`sessionProfit`）與路單（`history`）改為純元件狀態、進場清除舊 `sessionStorage` 快取——「重開即歸零」，不再跨場累積。
+
+### 為什麼
+- 注單稽核是賭場系統合規與爭議排查的基本盤；既有 `game_rounds` 只存 bet/win，缺餘額變化與下注時間，無法回放「玩家當下錢包怎麼變」。
+- 遊戲小計（本場損益）原本用 `sessionStorage` 跨重整保留，與使用者「遊戲重開應刷新小計」期望相反，故改為進場歸零。
+
+### 如何驗證
+- `mvn -pl backend/game-service test` → **BUILD SUCCESS，Tests run: 155, Failures: 0, Errors: 0**（含新增 `GameHistoryServiceTest` 4 案）。
+- 前端走 mock：玩老虎機/百家樂/捕魚後開「遊戲紀錄」頁，應見每局注單號、局號、毫秒下注/派彩時間、`投注前 → 派彩後` 餘額；重新進場遊戲頁本場小計歸零。
+
+## [Fixed] — 2026-06-24 — 前端百家樂 mock 對齊後端引擎（補和局 push + 補牌規則）
+
+> 前端預設走 mock（雷區 14），玩家實際體驗到的百家樂出自 `mockApi.js`。盤點發現 mock 與後端
+> `BaccaratGameService` 有兩處分歧，害押莊/閒的玩家被多坑，且機率分布失真。本次將 mock 對齊後端
+> 標準 Punto Banco 規則。**後端不變（後端本來就正確、已含 0.5% 反水）**，純前端修正。
+
+### Fixed
+- `frontend/src/services/mockApi.js`：
+  - **和局 push**：原本結果為和局時，押莊/閒的注直接賠 0（整注輸光）；改為退回本金（push），鏡像後端
+    `payoutFor` 的「和局押莊/閒退本金」。此 bug 使押閒期望值從 −1.2% 惡化到 ~−10.8%，修正後回到業界標準。
+  - **補牌（第三張）規則**：原本莊/閒各只發兩張就結算，缺第三張補牌；新增 `dealBaccarat()` + `bankerDrawsMock()`
+    鏡像後端 `play()`／`bankerDraws()`（天牌不補、閒家 0~5 補、莊家查表補），使莊/閒/和機率分布與後端一致。
+
+### Added
+- `frontend/src/services/mockApi.js`：`cardValue()`（單張牌點數，鏡像 `Card.value()`）、`bankerDrawsMock()`（莊家補牌表）、
+  `baccaratPayout()`（單區派彩，鏡像 `payoutFor`，含莊家 5% 傭金）、`dealBaccarat()`（完整補牌發牌流程）。
+
+### Unchanged（澄清）
+- **賠率與反水皆已對齊、不動**：閒 1:1、莊 1:1 扣 5% 傭金、和 8:1；0.5% 反水（最低 1 星幣）後端
+  `BaccaratService.settle()` 第 188 行本就有，mock 亦同。三種押注莊家皆維持正期望（加反水後玩家 EV：閒 −0.74%／莊 −0.56%／和 −13.9%）。
+- 後端 `BaccaratGameService`／`BaccaratService` 完全未動。
+
+### 為什麼
+- 雷區 14 要求「mock 必須鏡像後端引擎」。和局 push 缺失是會讓玩家蒙受損失的真 bug；補牌缺失使勝率分布偏離標準百家樂。
+  使用者要求「做成與業界一樣」，後端已是業界標準，故將 mock 對齊後端即達標。
+
+### 如何驗證
+- `node --check frontend/src/services/mockApi.js` 通過；`npx eslint src/services/mockApi.js` 0 error。
+- 邏輯比對：mock `baccaratPayout` ↔ 後端 `BaccaratGameService.payoutFor`；mock `bankerDrawsMock` ↔ 後端 `bankerDraws`（逐分支等值）。
+
+---
+
+## [Fixed] — 2026-06-24 — 修正 AUDIT_REPORT 漏記 wallet T-027/T-028（誤標未完）
+
+> 進度盤點文件的事實修正：`AUDIT_REPORT.md` 把 wallet-service 的破產補助（T-027）與 Kafka DLT 後台
+> （T-028）標為 ❌/⚠️，但兩者其實早在 2026-06-01 即 commit 併入 develop+main、含測試。**純文件修正，不動任何程式碼/行為。**
+
+### Fixed
+- `AUDIT_REPORT.md`：
+  - T-027 破產補助 `❌` → `✅`（`BankruptcyAidService` + `POST /api/v1/wallet/bankruptcy-aid`，commit c945f97）。
+  - T-028 Kafka DLT `⚠️` → `✅`（`AdminDeadLetterController` `/internal/wallet/dlt` 查詢 + `POST /{id}/retry`，commit 2646cb3）。
+  - A.13 統計：✅ 46→48、⚠️ 11→10、❌ 27→26（總計仍 85）；變動紀錄補 2026-06-24 一列。
+  - 模組概覽：wallet-service 由「進行中」移至「完成度高（T-020~T-028 全完成）」；結論移除破產補助為空白。
+- `AGENTS.md`（§1 必讀文件表後）：新增告示「查進度別只信 AUDIT_REPORT，務必拿程式碼/git 交叉驗證」，附 wallet T-027/T-028 漏標實例與驗證手段（檔案存在 / `git log` / `git branch --contains` / 測試），治本避免下一個 AI 重蹈覆轍。
+
+### 為什麼
+- AUDIT_REPORT 是「手動維護的快照」，上次盤點（2026-06-17）漏掉了 6/01 就合併的兩個 wallet 任務，導致每次照它檢查進度都誤報 wallet「進行中」。本次以實際程式碼（檔案存在 + `git branch --contains` 確認在 develop/main + 對應測試）為準更正。
+
+### 如何驗證
+- `git log --oneline -- backend/wallet-service/.../BankruptcyAidService.java` 見 commit c945f97；`AdminDeadLetterController.java` 見 2646cb3。
+- 程式碼：`WalletController` 已掛 `POST /bankruptcy-aid`；`AdminDeadLetterController` 已掛 `/internal/wallet/dlt`；測試 `BankruptcyAidServiceTest` / `DeadLetterServiceTest` / `DeadLetterListenerTest` 存在。
+
+---
+
+## [fix] — 2026-06-24 — 修復 DB 慢開機導致 member/game-service 啟動崩潰、登入需重試
+
+### Changed
+- `backend/member-service/src/main/resources/application.yml`、`backend/game-service/src/main/resources/application.yml`：datasource hikari 區塊新增 `initialization-fail-timeout: ${DB_INIT_FAIL_TIMEOUT:60000}`。HikariCP 開機 `checkFailFast` 時若值 > 0 會**重試取得首條連線**直到逾時（預設 60s），而非立即拋例外退出。
+- `start-backend.ps1`：新增 `Wait-DbHealthy` 函式，`docker compose up -d` 後（及未帶 `-WithInfra` 但偵測到 DB 容器存在時）輪詢 `docker inspect` 的健康狀態，`lucky-star-mysql`/`lucky-star-postgres` 皆 `healthy` 才啟動後端（上限 120s，逾時印警告續行）。
+- `start-all.bat`：在 `infra` 路徑 `docker compose up -d` 後新增 `:waitdb` 迴圈，同樣輪詢兩個 DB 容器 healthy（上限約 120s）才啟動後端。
+
+### Why
+- 使用者回報「每次登入要試兩次才成功（member-service 沒回應），game-service 也有問題」。由 `member-log.txt` 確認根因：服務開機就要連 DB 跑 Hibernate `ddl-auto: validate`，但啟動腳本 `docker compose up -d` 後只等 3~4 秒就啟動後端，而 MySQL/Postgres 首次開機需 20~40 秒才 healthy → `Connection refused` → `entityManagerFactory` bean 建立失敗 → `BUILD FAILURE`/`exit code 1`，服務直接崩潰沒起來。再啟動一次（DB 已暖）才成功，即體感的「要兩次」。game-service 連 PostgreSQL（5433）同一個雷。
+- 雙保險：後端層（Hikari 重試，不再開機即崩潰）＋ 腳本層（DB healthy 才啟動）。
+
+### Verified
+- `mvn -pl backend/member-service,backend/game-service test`：member 70 pass、game 106 pass、BUILD SUCCESS（測試走 test scope H2，main yml 變更不影響）。
+- 手動：`docker compose down && docker compose up -d` 後立刻起 member/game，不再崩潰；`start-backend.ps1 -WithInfra` 第一次乾淨啟動；前端登入 test/test1234 一次成功。
+
+### Notes
+- wallet-service 為雙資料源、EntityManagerFactory 在 `DataSourceConfig` 手動建立（AGENTS.md 雷區 5），同樣有 DB 慢開機崩潰風險，但不在本次範圍，待後續評估是否於手動 EMF 加同類重試。
+
+---
+
 ## [Changed] — 2026-06-23 — 捕魚機戰鬥回饋 + 砲台差異化 + 新互動（Phase 3）
 
 > 捕魚機升級第三階段：把 Phase 1 後端已回傳、Phase 2 引擎尚未演出的 `crit/damage/hpRemaining` 接上戰鬥回饋

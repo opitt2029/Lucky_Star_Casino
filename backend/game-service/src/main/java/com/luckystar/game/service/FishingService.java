@@ -23,6 +23,7 @@ import com.luckystar.game.rng.RandomStream;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -125,6 +126,7 @@ public class FishingService {
                 .seatIndex(0)
                 .cannonLevel(cannonLevel)
                 .buyIn(buyIn)
+                .balanceBefore(debit.balanceBefore())
                 .sessionBalance(buyIn)
                 .totalBet(0L)
                 .totalPayout(0L)
@@ -487,9 +489,14 @@ public class FishingService {
         long credited = session.getSessionBalance() == null ? 0L : session.getSessionBalance();
 
         WalletView wallet = null;
+        // 派彩後餘額（稽核）：有退回時取 credit 後餘額；無退回時＝投注前餘額扣掉 buyIn（buyIn 全數消耗）。
+        Long balanceAfter = (session.getBalanceBefore() != null && session.getBuyIn() != null)
+                ? session.getBalanceBefore() - session.getBuyIn()
+                : null;
         if (credited > 0) {
             WalletCreditResponse credit = walletClient.credit(
                     playerId, credited, "fishing-end-" + sessionId, sessionId);
+            balanceAfter = credit.balanceAfter();
             wallet = WalletView.builder()
                     .balance(credit.balanceAfter())
                     .frozenAmount(credit.frozenAfter() == null ? 0L : credit.frozenAfter())
@@ -499,7 +506,7 @@ public class FishingService {
         // 彙總對局紀錄（roundId = sessionId 去重，重試不重複插入）
         if (roundRepository.findByRoundId(sessionId).isEmpty()) {
             try {
-                GameRound round = buildRound(session);
+                GameRound round = buildRound(session, balanceAfter);
                 roundRepository.save(round);
                 eventPublisher.publishFishingResult(round, session.getTotalShots());
             } catch (DataIntegrityViolationException e) {
@@ -535,7 +542,7 @@ public class FishingService {
                 .build();
     }
 
-    private GameRound buildRound(FishingSession session) {
+    private GameRound buildRound(FishingSession session, Long balanceAfter) {
         GameRound round = new GameRound();
         round.setRoundId(session.getSessionId());
         round.setPlayerId(session.getPlayerId());
@@ -543,12 +550,18 @@ public class FishingService {
         // RTP 統計口徑：以「子彈下注總額 / 派彩總額」為準（wallet 流向為 buyIn/credited，淨額一致）
         round.setBetAmount(session.getTotalBet());
         round.setWinAmount(session.getTotalPayout());
+        round.setBalanceBefore(session.getBalanceBefore());
+        round.setBalanceAfter(balanceAfter);
         round.setServerSeed(session.getServerSeed());
         round.setServerSeedHash(session.getServerSeedHash());
         round.setClientSeed(session.getClientSeed());
         round.setNonce(session.getLastShotSeq());
         round.setResultData(writeResultJson(session));
         round.setStatus(STATUS_SETTLED);
+        // 下注時間＝進場（start）時間；派彩時間＝結算當下。
+        if (session.getCreatedAt() != null) {
+            round.setBetAt(LocalDateTime.ofInstant(session.getCreatedAt(), ZoneId.systemDefault()));
+        }
         round.setSettledAt(LocalDateTime.now());
         return round;
     }

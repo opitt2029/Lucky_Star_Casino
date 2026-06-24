@@ -3,3 +3,7 @@
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# 手動驗證截圖（verify run 殘留，勿入庫）
+/verify-*.png
+/verify-*/

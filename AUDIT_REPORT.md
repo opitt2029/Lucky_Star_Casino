@@ -379,8 +379,8 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | T-024 | P0 | 冪等性防重複 | ✅ | debit 與 credit 皆具 idempotencyKey + DB UNIQUE 防重 |
 | T-025 | P0 | 帳務流水查詢 API | ✅ | `GET /api/v1/wallet/transactions`（CQRS MySQL 讀端，分頁/類型/日期過濾）+ Kafka→MySQL 讀端同步，commit b7d4a4f 完成並通過單元測試 |
 | T-026 | P1 | 好友星幣贈送 API | ✅ | `POST /api/v1/wallet/gift`：Redis 當日上限（贈出 5,000／收受 10,000，TTL 到午夜）+ PostgreSQL 雙向分錄（DEBIT/CREDIT GIFT，冪等/樂觀鎖）+ best-effort gift_logs/Kafka，2026-06-01 完成並通過單元測試 |
-| T-027 | P1 | 破產補助 API | ❌ | 無 `/bankruptcy-aid` 端點 |
-| T-028 | P2 | Kafka DLT 處理 | ⚠️ | DLT topic 已於 kafka-init 建立、有 fix/wallet-kafka-dlt 修復，但 Admin 查詢/重試 API 未做 |
+| T-027 | P1 | 破產補助 API | ✅ | `POST /api/v1/wallet/bankruptcy-aid`：`BankruptcyAidService`（總餘額 <100 門檻防凍結套利、Redis SETNX 當日鎖到午夜、credit 冪等鍵 DB 第二道防線），commit c945f97 完成並通過單元測試 |
+| T-028 | P2 | Kafka DLT 處理 | ✅ | `AdminDeadLetterController`（`/internal/wallet/dlt` 查詢分頁 + `POST /{id}/retry` 手動重試）+ `DeadLetterService`，commit 2646cb3 完成並通過單元測試 |
 
 ### A.4 RNG Game Service（組員B）
 
@@ -499,24 +499,25 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 ### A.13 進度統計
 
-> 最後更新：2026-06-17（重新盤點 notification / diamond / 新增任務）
+> 最後更新：2026-06-24（修正 wallet T-027/T-028 漏記——2026-06-01 即已合併卻被標未完）
 
 | 狀態 | 任務數 | 占比 |
 |---|:--:|:--:|
-| ✅ 已完成 | 46 | ~54% |
-| ⚠️ 部分完成 | 11 | ~13% |
-| ❌ 未開始 | 27 | ~32% |
+| ✅ 已完成 | 48 | ~56% |
+| ⚠️ 部分完成 | 10 | ~12% |
+| ❌ 未開始 | 26 | ~31% |
 | ❓ 待確認 | 1 | ~1% |
 | **總計** | **85** | 100% |
 
 > 變動紀錄：
 > - 2026-06-09：T-033~T-037 ❌→✅（game-service 全完成），✅ 24→29，❌ 42→37，總計 78。
 > - 2026-06-17：T-070~T-073 ❌→✅（notification 全完成）、T-100~T-104 / T-107 ❌→✅（鑽石系統全完成）、新增 T-108~T-114 全部 ✅，✅ 29→46，❌ 37→27，總計 78→85。
+> - 2026-06-24：修正漏記——T-027 ❌→✅、T-028 ⚠️→✅（兩者 2026-06-01 即 commit c945f97/2646cb3 併入 develop+main，含測試，6/17 盤點時誤標未完）。✅ 46→48，⚠️ 11→10，❌ 27→26。**wallet-service T-020~T-028 全數完成。**
 
 **按模組完成度概覽：**
 
-- ✅ **完成度高**：全域基礎建設、Member Service、Gateway、Game Service（T-030~T-037）、Rank Service（T-040~T-044）、**Notification Service（T-070~T-073 全完成）**、**鑽石系統（T-100~T-107 全完成）**
-- ⚠️ **進行中**：Wallet Service（破產補助 T-027 / DLT 後台 T-028 未完）、前端（UI 齊全但 rankSlice 等尚未切換真實 API）
-- ❌ **尚未起步**：E2E 整合測試（T-093）、結業簡報（T-096）、破產補助（T-027）
+- ✅ **完成度高**：全域基礎建設、Member Service、Gateway、**Wallet Service（T-020~T-028 全完成）**、Game Service（T-030~T-037）、Rank Service（T-040~T-044）、**Notification Service（T-070~T-073 全完成）**、**鑽石系統（T-100~T-107 全完成）**
+- ⚠️ **進行中**：前端（UI 齊全但 rankSlice 等尚未切換真實 API）
+- ❌ **尚未起步**：E2E 整合測試（T-093）、結業簡報（T-096）
 
-> **結論**：認證、帳號、遊戲對局、排行榜、即時推播、鑽石點數卡系統、Admin GM 手動發幣與 Swagger/OpenAPI 聚合皆已完成；**剩餘空白主要集中在收尾驗證/簡報、少數功能（破產補助）與前端 mock→真實 API 切換**。
+> **結論**：認證、帳號、帳務（含破產補助/DLT 後台）、遊戲對局、排行榜、即時推播、鑽石點數卡系統、Admin GM 手動發幣與 Swagger/OpenAPI 聚合皆已完成；**剩餘空白主要集中在收尾驗證/簡報與前端 mock→真實 API 切換**。

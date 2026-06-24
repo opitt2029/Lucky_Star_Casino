@@ -1,10 +1,10 @@
-import { useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import AppShell from '../components/AppShell'
 import GameRuleCard from '../components/GameRuleCard'
 import MetricCard from '../components/MetricCard'
 import SlotMachine from '../components/SlotMachine'
-import { spinSlot } from '../store/slices/gameSlice'
+import { spinSlot, clearGameResult } from '../store/slices/gameSlice'
 import { setBalance } from '../store/slices/walletSlice'
 import { soundEngine } from '../casino-fx/sound/SoundEngine'
 import { useBgm } from '../casino-fx/sound/useBgm'
@@ -36,6 +36,9 @@ export default function SlotGame() {
   const [visualLock, setVisualLock] = useState(false)
   const [sessionProfit, setSessionProfit] = useState(null)
   const [sessionRounds, setSessionRounds] = useState(0)
+  // 本局結算快照：只在輪停（handleSettled）才更新，讓側欄派彩/命中與轉輪同步揭曉，
+  // 避免直接讀 redux result/winningCells（thunk 一回應就寫入）造成結果比動畫早 ~2 秒劇透。
+  const [settled, setSettled] = useState(null)
   // 慶祝特效觸發器（遞增數字觸發一次性特效）
   const [burstTrigger, setBurstTrigger] = useState(0)
   const [coinTrigger, setCoinTrigger] = useState(0)
@@ -44,20 +47,27 @@ export default function SlotGame() {
   const [banner, setBanner] = useState({ trigger: 0, text: '', level: 1 })
   const balance = useSelector((state) => state.wallet.balance)
   const player = useSelector((state) => state.auth.player)
-  const { status, result, loading, error, slotGrid, winningCells } = useSelector((state) => state.game)
+  const { status, loading, error, slotGrid, winningCells } = useSelector((state) => state.game)
   const fortune = useFortuneMeter('slot', player?.id)
   // 記錄本次轉動發出時幸運值是否已滿（在 addCharge 前讀取，防止 addCharge 的非同步 setState 污染判斷）
   const fortuneReadyOnSpinRef = useRef(false)
   useBgm('slot')
   const resolvedBet = selectedBet === 'MAX' ? Math.max(Math.min(balance, 5000), 100) : selectedBet
   const canAfford = balance >= resolvedBet
-  const lastPayout = result?.game === 'slot' ? result.payout : null
-  const lastMultiplier = result?.game === 'slot' ? result.multiplier : null
+  // 側欄結果一律讀「已結算快照」（輪停才更新），不直接讀 redux，避免動畫未停就揭曉結果。
+  const lastPayout = settled ? settled.payout : null
+  const lastMultiplier = settled ? settled.multiplier : null
   const payoutCaption =
     lastMultiplier === null ? '開始一局後顯示結果' : lastMultiplier > 0 ? `中獎倍率 ${lastMultiplier}x` : '本局未中獎'
   const roundStatus = loading || visualLock ? 'spinning' : status
-  const hasLineWin = winningCells.length > 0
+  const hasLineWin = (settled?.winningCells?.length ?? 0) > 0
   useGameLeaveGuard(loading || visualLock, '轉輪進行中，確定要離開嗎？離開後本局下注不返還。')
+
+  // 「重開即歸零」：進場時清掉上一場殘留的結果與最近派彩；本場損益/局數/結算快照為元件狀態，隨進場歸零。
+  useEffect(() => {
+    dispatch(clearGameResult())
+    setSettled(null)
+  }, [dispatch])
 
   const handleSpinRound = async () => {
     // 餘額不足直接擋下，不發任何請求（後端仍是最後防線）。
@@ -66,15 +76,11 @@ export default function SlotGame() {
     setVisualLock(true)
     fortuneReadyOnSpinRef.current = fortune.full
     fortune.addCharge(resolvedBet)
-    try {
-      const spinResult = await dispatch(spinSlot({ bet: betAtSpin, fortuneReady: fortune.full })).unwrap()
-      dispatch(setBalance(spinResult.wallet))
-      setSessionProfit((prev) => (prev ?? 0) + (spinResult.payout ?? 0) - betAtSpin)
-      setSessionRounds((prev) => prev + 1)
-      return spinResult
-    } finally {
-      window.setTimeout(() => setVisualLock(false), 2900)
-    }
+    // 注意：視覺鎖（visualLock）的解除統一交給 SlotMachine 的 onSpinComplete，
+    // 它綁定 runReels 動畫的真實生命週期（成功/失敗/中止各路徑都會呼叫）。
+    // 不要在此用固定 setTimeout 解鎖——near-miss 慢停動畫長達 3.5s，會比動畫早解鎖造成脫鉤（AGENTS 雷區 13）。
+    // 結算副作用（餘額/損益/局數/快照）一律延到 handleSettled（輪停）才套用，與轉輪同步揭曉、避免劇透。
+    return dispatch(spinSlot({ bet: betAtSpin, fortuneReady: fortune.full })).unwrap()
   }
 
   // 轉輪演出結束的瞬間引爆慶祝（音效 + 大字報 + 金幣特效，依倍率分級）。
@@ -84,6 +90,13 @@ export default function SlotGame() {
     const multiplier = spinResult.multiplier ?? 0
     const payout = spinResult.payout ?? 0
     const won = payout > 0
+
+    // 輪停瞬間才套用結算：揭曉派彩/命中、更新餘額與本場損益，與轉輪畫面同步。
+    setSettled({ payout, multiplier, winningCells: spinResult.winningCells ?? [] })
+    dispatch(setBalance(spinResult.wallet))
+    setSessionProfit((prev) => (prev ?? 0) + payout - (spinResult.bet ?? 0))
+    setSessionRounds((prev) => prev + 1)
+
     fortune.reportRound(won, fortuneReadyOnSpinRef.current)
     if (!won) return
 
