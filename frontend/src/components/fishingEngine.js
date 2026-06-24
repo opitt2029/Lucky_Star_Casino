@@ -124,7 +124,7 @@ export class FishingEngine {
     this.tex = {} // assetId → Texture（preload 後填入）
     this.fish = []
     this.pending = new Map() // shotSeq → { fishId, code, multiplier, tier, x, y }
-    this.idSeq = 0
+    this.idSeq = Date.now() // 跨 session 唯一起點，防引擎重建後 idSeq 碰撞舊 fishDamage key
 
     // 物件池
     this.bulletPool = []
@@ -538,7 +538,7 @@ export class FishingEngine {
     let best = null
     let bestDist = AIM_RADIUS
     for (const f of this.fish) {
-      if (f.caught) continue
+      if (f.caught || f.fleeing) continue
       const dist = Math.hypot(f.x - px, f.y - py)
       if (dist <= bestDist) {
         bestDist = dist
