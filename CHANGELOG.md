@@ -3,6 +3,51 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Fixed] — 2026-06-24 — 老虎機機台面板標示與音效修正（賠付線數、左二同小獎誤播惋惜音）
+
+> 兩個與玩法/體驗一致性相關的問題：
+> (1) 機台面板硬寫「LINES 03」，但引擎（`SlotMachine.evaluate`）只判定中線一條（`PAYLINE_ROW=1`），標示與實際賠付線數不符、誤導玩家以為三排都算。
+> (2) `runReels` 在「前兩格中線同符號、第三格不同」時播 `fishEscape` 惋惜/逃跑音；但本作賠付表所有符號 `pairMultiplier ≥ 1`，該情形恆為**會派彩的左二同小獎**，於是中小獎時先播輸錢音、隨後 `handleSettled` 又播 `winSmall`，贏錢卻播輸錢音、互相矛盾。
+> 決策：維持現有單中線玩法（不擴充賠付線），僅修正標示與音效。
+
+### Fixed
+- `frontend/src/components/SlotMachine.jsx`：
+  - 機台面板「LINES 03」改為「LINE 01」，與單中線引擎一致。
+  - 移除左二同小獎落定時的 `fishEscape` 惋惜音（及不再使用的 `isLineWin` 區域變數）。第三輪 anticipation 慢停＋心跳的張力保留，落定後交由 `handleSettled` 的中獎音收尾。
+
+**為什麼**：標示需反映真實賠付線數；派彩當下不應播失落音（正常娛樂城不會在贏錢時播輸錢音）。因賠付表所有符號 pair 皆 ≥ 1x，`isNearMiss && !isLineWin` 恆為派彩局，惋惜音邏輯實際永遠誤觸發。
+**如何驗證**：`npm run lint`（frontend）全綠；後端與賠付數值未動（RTP/測試/mock 不受影響）。
+
+## [Fixed] — 2026-06-24 — 老虎機側欄結果搶跑（劇透）：結算改在輪停瞬間揭曉
+
+> 問題：`spinSlot.fulfilled`（`gameSlice.js`）在 thunk 一回應（mock ~900ms／真實網路）就寫入 `result`/`slotGrid`/`winningCells`，
+> 但轉輪動畫要 2.6–3.5s 才停。`SlotGame.jsx` 右側面板（最近派彩、中獎倍率、中線命中、本場損益）直接讀 redux，
+> 加上 `dispatch(setBalance)` 與 `sessionProfit` 在 `handleSpinRound` 內即時觸發——於是輪子還在轉時，
+> 側欄與餘額就已揭曉本局派彩/命中，等於劇透結果（轉輪本身有 `Reel` 的 `!isSpinning` 守門、不受影響）。
+
+### Fixed
+- `frontend/src/pages/SlotGame.jsx`：新增本地 `settled` 結算快照，側欄 `lastPayout`/`lastMultiplier`/`hasLineWin` 改讀快照而非 redux `result`/`winningCells`。
+  - 將結算副作用（`setBalance` 餘額、`sessionProfit` 損益、`sessionRounds` 局數、`settled` 快照）一律從 `handleSpinRound` 移至 `handleSettled`——後者由 `SlotMachine` 的 `onSettled` 在 `runReels` 完成（輪停）瞬間呼叫，與轉輪同步揭曉。
+  - 進場 `clearGameResult()` 一併 `setSettled(null)`（重開即歸零）。
+  - 移除已不再使用的 redux `result` 選取；`winningCells` 仍傳給 `SlotMachine`（其格子高亮已由 `Reel` 的 `!isSpinning` 正確守門、輪停才亮）。
+
+**為什麼**：result-leak 來自「結果寫入 redux 的時點」與「轉輪揭曉時點」不一致；把所有 result-derived 顯示與副作用統一綁到輪停（`handleSettled`）即可同步。`onSettled` 在 `onSpinComplete`（解鎖視覺鎖）之前呼叫，故 `settled` 必先填好再顯示，無空窗閃爍。
+**如何驗證**：`npm run lint`（frontend）全綠；後端未動。走查時序：`runReels` → `onSettled`（set settled/balance）→ finally `onSpinComplete`（解鎖）；thunk 失敗時 `onSettled` 不觸發，不誤記損益/局數（與原行為一致）。
+
+## [Fixed] — 2026-06-24 — 老虎機視覺鎖脫鉤：移除魔術數字 `setTimeout(2900)` 解鎖
+
+> 問題：`SlotGame.jsx` 的 `handleSpinRound` 在 `finally` 用固定 `setTimeout(…, 2900)` 解除視覺鎖（visualLock），
+> 但轉輪動畫在 near-miss（前兩輪中線同符號進入 anticipation 慢停）時長達 `2600 + 900 = 3500ms`，
+> 加上 `preloadSymbolImages` 起點更晚。定時器在 2900ms 提早開鎖，造成：
+> (1) 離場守門 `useGameLeaveGuard(loading || visualLock, …)` 提早失效，輪子未停玩家即可離頁、跳不出「本局下注不返還」警告；
+> (2) 右側面板狀態提早從「轉動中」翻成「已結算」，與仍在轉的畫面脫鉤。違反 AGENTS.md 雷區 13「視覺鎖綁定真實流程、禁止固定 setTimeout 魔術數字」。
+
+### Fixed
+- `frontend/src/pages/SlotGame.jsx`：移除 `handleSpinRound` 中 `setTimeout(() => setVisualLock(false), 2900)`，視覺鎖解除統一交給 `SlotMachine` 的 `onSpinComplete`（綁定 `runReels` 動畫真實生命週期，成功/失敗/中止各路徑的 try-catch-finally 都會呼叫，不會卡死）。near-miss 局不再提早解鎖。
+
+**為什麼**：固定 2900ms 與實際動畫長度（一般 2600ms、near-miss 3500ms）不一致，是脫鉤根因；`onSpinComplete` 才是綁定真實流程的解鎖點。
+**如何驗證**：`mvn -q -pl backend/game-service test -Dtest='Slot*'` 全綠（35 案，未動後端）；前端走查 `onSpin` 拋例外（餘額不足/網路失敗）時，`SlotMachine.spin()` 的 catch→finally 仍呼叫 `onSpinComplete`，visualLock 不會卡住。
+
 ## [Added] — 2026-06-24 — 完整遊戲紀錄/注單稽核（流水號 / 局號 / 毫秒時間戳 / 餘額變化）＋遊戲重開小計歸零
 
 > 需求：每筆投注都要可稽核——唯一注單號（流水號）、精確到毫秒的下注/派彩時間、
