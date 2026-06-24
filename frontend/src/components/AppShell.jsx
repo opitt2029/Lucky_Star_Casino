@@ -3,15 +3,16 @@ import { useDispatch, useSelector } from 'react-redux'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import ErrorBoundary from './ErrorBoundary'
 import { fetchProfile, logoutMember } from '../store/slices/authSlice'
-import { clearNotifications } from '../store/slices/gameSlice'
+import { clearNotifications, resetGame } from '../store/slices/gameSlice'
 import { fetchRanks } from '../store/slices/rankSlice'
 import { fetchDiamondBalance, resetDiamond } from '../store/slices/diamondSlice'
 import { dailyCheckIn, fetchWallet, resetWallet } from '../store/slices/walletSlice'
-import { openSupport } from '../store/slices/uiSlice'
+import { openSupport, setPendingNavigation, clearPendingNavigation } from '../store/slices/uiSlice'
 import { getBackgroundStyle } from '../theme/backgroundTheme'
 import CoinRain from './CoinRain'
 import AnnouncementTicker from '../casino-fx/announce/AnnouncementTicker'
 import { startBotFeed } from '../casino-fx/announce/botFeed'
+import LeaveGameModal from './LeaveGameModal'
 
 const navItems = [
   { to: '/', label: '首頁' },
@@ -109,6 +110,7 @@ export default function AppShell({ children }) {
   const diamond = useSelector((state) => state.diamond)
   const balance = wallet.balance
   const notifications = useSelector((state) => state.game.notifications)
+  const leaveGuard = useSelector((state) => state.ui.leaveGuard)
   const playerName = player?.nickname || player?.username || (isAuthenticated ? 'Demo Player' : '訪客')
   const canShowAvatar = player?.avatarUrl && !avatarFailed
   const todayKey = getTaipeiDateKey()
@@ -181,6 +183,8 @@ export default function AppShell({ children }) {
     dispatch(logoutMember()).finally(() => {
       dispatch(resetWallet())
       dispatch(resetDiamond())
+      dispatch(resetGame())
+      sessionStorage.clear()
       navigate('/member')
     })
   }
@@ -209,6 +213,23 @@ export default function AppShell({ children }) {
   const handleOpenSupport = () => {
     setAvatarMenuOpen(false)
     dispatch(openSupport())
+  }
+
+  // 遊戲離開防呆：導航攔截
+  const handleNavClick = (to, event) => {
+    if (!leaveGuard.active) return
+    event.preventDefault()
+    dispatch(setPendingNavigation(to))
+  }
+
+  const handleLeaveConfirm = () => {
+    const path = leaveGuard.pendingPath
+    dispatch(clearPendingNavigation())
+    if (path) navigate(path)
+  }
+
+  const handleLeaveCancel = () => {
+    dispatch(clearPendingNavigation())
   }
 
   return (
@@ -353,6 +374,7 @@ export default function AppShell({ children }) {
                 key={item.to}
                 to={item.to}
                 end={item.to === '/'}
+                onClick={(event) => handleNavClick(item.to, event)}
                 className={({ isActive }) =>
                   [
                     'shrink-0 rounded px-4 py-2 text-sm font-bold transition',
@@ -483,6 +505,12 @@ export default function AppShell({ children }) {
         </section>
       )}
 
+      <LeaveGameModal
+        open={leaveGuard.active && leaveGuard.pendingPath !== null}
+        message={leaveGuard.message}
+        onConfirm={handleLeaveConfirm}
+        onCancel={handleLeaveCancel}
+      />
     </div>
   )
 }

@@ -3,6 +3,95 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Changed] — 2026-06-23 — 捕魚機戰鬥回饋 + 砲台差異化 + 新互動（Phase 3）
+
+> 捕魚機升級第三階段：把 Phase 1 後端已回傳、Phase 2 引擎尚未演出的 `crit/damage/hpRemaining` 接上戰鬥回饋
+> （HP 血條 / 浮動傷害數字 / 暴擊 / 掙脫逃跑），並做出三砲台（銅/銀/金）的美術·子彈·砲口·音調差異與新互動
+> （自動射擊 / 準心十字）。**玩法/契約/帳務/RTP 完全不變**——皆為前端表現層，傷害與捕獲仍由後端權威決定。
+
+### Added
+- `frontend/src/components/fishingEngine.js`：
+  - **戰鬥回饋**：每條魚 HP 血條（命中後依伺服器 `hpRemaining` 遞減、綠→黃→紅、平時隱藏減雜訊）；浮動傷害數字（一般白字、暴擊橘紅放大 +「暴擊!」）；致命一擊未捕獲＝掙脫逃跑演出（加速竄出 + 上抖 + 淡出）。皆走物件池 + 並存上限，尊重 `perfMode`/FPS 守門。
+  - **砲台差異化**：`CANNON_STYLE` 依等級（銅/銀/金）給子彈顏色·大小、砲口火光大小、射擊音調；砲台貼圖依等級換（`setCannon`）。傷害差異在後端，前端只管手感。
+  - **新互動**：自動射擊（`setAutoFire`，自動鎖定畫面內最高倍率魚連發、手動按住時讓位）；準心十字（跟游標/自動目標，鎖定時轉橘紅）。
+- `frontend/src/casino-fx/sound/sfx.js`：新增 `crit` 暴擊音效（比 hit 更尖銳清脆 + 上揚金屬泛音）。
+- `frontend/src/casino-fx/assets/svgArt.jsx`：`Cannon` 重構為可調色盤，新增 `CannonCopper`（銅 L1）/`CannonSilver`（銀 L2）；金炮（L3）視覺與舊版完全等價。
+
+### Changed
+- `frontend/src/components/FishingCanvas.jsx`：新增 `cannonLevel`/`autoFire` props，同步進引擎（init 灌初值 + useEffect 更新）。
+- `frontend/src/pages/Fishing.jsx`：傳 `cannonLevel`/`autoFire`；HUD 加「自動射擊」開關；砲台選擇加傷害/手感說明；規則文案由舊「命中率」模型改為血量/傷害模型（暴擊、掙脫、血量越厚需更多發）。
+- `frontend/src/casino-fx/sound/SoundEngine.js`：`shoot`/`hit`/`crit` 加入 per-id 節流（70/45/45ms），token bucket 之外的第二道防線，防一批 30 發結果同響爆量。
+- `frontend/src/casino-fx/assets/registry.js`：註冊 `cannon-copper`/`cannon-silver`。
+- `frontend/e2e/fishing.spec.js`：修正失效的計畫檔路徑註解（canvas e2e 仍留 Phase 4 重寫）。
+- `AGENTS.md`：雷區 10 補捕魚機 Phase 1/2 進度；雷區 14 更新（捕魚已非「命中率 0.92/倍率」、改血量/傷害模型）；新增雷區 16（捕魚機＝PixiJS 引擎 + 血量/傷害模型架構）。
+- `README.md` / `DEPLOY.md`：技術棧加 PixiJS；DEPLOY §5 提醒「git pull 後新依賴要重跑 npm install」（pixi.js）。
+
+### Fixed
+- `frontend/src/pages/Baccarat.jsx`：補既有空 `catch {}` 的 lint error（`no-empty`，別人百家樂 PR 引入、擋住 develop lint 綠燈），以同檔風格加註解。
+
+### Removed
+- `ui-swift-pumpkin.md`（根目錄）：PR #124「Add files via upload」誤上傳的計畫草稿，非專案產物，清除。
+
+### 為什麼
+- 玩家最初痛點之一是「看不到傷害、魚剩多少血、有沒有暴擊」「砲台沒差別」。Phase 1 後端已算出 `crit/damage/hpRemaining`、Phase 2 引擎就緒，Phase 3 把這些接上演出並做砲台差異化，直接回應痛點；自動射擊/準心提升手感。全為表現層，不動 RTP/PF/帳務（wallet 仍只在 buy-in/結算各動一次）。
+
+### 如何驗證
+- `cd frontend && npm run lint`（0 error）、`npm run build`（綠；pixi 維持獨立 chunk、主 bundle 不含 pixi）。
+- `npm run dev` 進 `/game/fishing`：命中冒傷害數字（暴擊橘紅放大）、魚頭 HP 條遞減、血量歸零捕獲派彩 or 掙脫逃跑；切銅/銀/金砲台見子彈色/大小/砲口/音調差異；開「自動」自動鎖定最高倍率魚連發 + 準心轉橘紅。
+
+---
+
+## [Added] — 2026-06-23 — 遊戲中途離開確認視窗（AppShell 導航攔截 + LeaveGameModal + leaveGuard 狀態）
+
+> 把遊戲進行中的「離開防呆」從瀏覽器原生 `confirm()` 升級成賭場主題的自訂視窗，並把離開意圖收進 Redux
+> （`uiSlice.leaveGuard`），讓頂部導航列能統一攔截站內導航。老虎機、百家樂、捕魚三款共用同一套。
+> 玩法/契約/帳務完全不變，純前端 UX。
+
+### Added
+- `frontend/src/components/LeaveGameModal.jsx`：賭場主題自訂離開確認視窗（`luxury-panel` + 金/紅金按鈕）。開窗播 `click` 音效（走 `soundEngine`，AGENTS 雷區 13）；紅底警示列「離開後將無法退回已下注金額」；兩顆操作「繼續遊戲」（預設 `autoFocus`，避免誤觸）/「確認離開」；帶 `role="dialog"` + `aria-modal` 無障礙標記。由 AppShell 在 `leaveGuard.pendingPath` 有值時渲染。
+- `frontend/src/store/slices/uiSlice.js`：新增 `leaveGuard` 狀態（`active` / `message` / `pendingPath`）與 actions `activateLeaveGuard` / `deactivateLeaveGuard` / `setPendingNavigation` / `clearPendingNavigation`，讓離開意圖變成可被任何元件觀察的全域 UI 狀態。
+
+### Changed
+- `frontend/src/hooks/useGameLeaveGuard.js`：從「自己處理 `window.confirm`」改為 dispatch `activateLeaveGuard` / `deactivateLeaveGuard` 同步 Redux 狀態（掛載/卸載/`active` 變化都同步，避免殘留攔截）。`beforeunload`（關分頁/重整）與 `popstate`（上一頁/手勢返回）保留原生攔截，拆成獨立 `useEffect` 各管各的。
+- `frontend/src/components/AppShell.jsx`：頂部 NavLink 加 `onClick` 攔截——`leaveGuard.active` 時 `preventDefault` 擋下、記住目標路由（`setPendingNavigation`）並彈出 modal；確認 → `Maps(pendingPath)` 真正離開、取消 → `clearPendingNavigation` 留在原頁。離開邏輯集中在 AppShell 一處，三款遊戲共用。
+
+### 為什麼
+- 舊防呆只攔 `beforeunload` / `popstate`，玩家在遊戲進行中直接點頂部導航列就會繞過確認、無聲離場（已下注金額無法退回）。把離開意圖提升為 Redux 全域狀態後，導航列點擊也能納管；同時把原生 `confirm()` 換成賭場質感視窗，提示更清楚、體驗一致。
+
+### 如何驗證
+- `cd frontend && npm run lint`（綠）、`npm run build`（綠）。
+- 手測：老虎機/百家樂/捕魚進行中分別點導航列、上一頁、重整、關分頁，皆正確彈窗；確認後導向目標頁、取消後留在原頁。
+
+## [Changed] — 2026-06-23 — 捕魚機 PixiJS 漁場引擎（Phase 2：取代 DOM 漁場 + 紋理烘焙 + 效能模式 + §6 HUD 飄移修復）
+
+> 捕魚機升級第二階段：把 React-DOM 漁場改成 **PixiJS canvas 遊戲引擎**，根治 H5/手機連發+特效「當機」；
+> 並修掉「底部錢幣 UI 飄移」。**玩法/契約/帳務完全不變**（沿用 Phase 1 的血量/傷害模型與 `fire(fishInstanceId, fishCode)`）。
+> 戰鬥回饋演出（HP 條/傷害數字/暴擊/掙脫）、砲台差異化、Boss 事件仍留 Phase 3~4——本階段戰鬥視覺維持現狀（火花 + 派彩浮字）。
+
+### Added
+- `frontend/src/components/FishingCanvas.jsx`：Pixi 漁場 React 殼（薄）。`Application` async init + StrictMode 雙掛載防護 + 卸載確實 `destroy`；props（phase/betPerShot/fishTable/fire/play/perfMode/callbacks）以 ref 灌進引擎。經 `Fishing.jsx` 用 `React.lazy` 動態載入 → pixi 切成獨立 chunk，不膨脹主 bundle。
+- `frontend/src/components/fishingEngine.js`：非 React 遊戲引擎。魚/子彈/火花/浮字/砲台皆 Pixi 物件，單一 `ticker` 跑生成/移動/壽命；**命中判定全在 canvas 座標**（消滅舊檔每幀 `querySelector`+`getBoundingClientRect`）；子彈/火花/浮字物件池 + 並存上限；**FPS 守門**（持續 <40fps 自動降載）、**效能模式開關**、尊重 `prefers-reduced-motion`、**分頁隱藏暫停 ticker**。沿用舊 `deriveMeta/weightedPick/engageFish/handleResults` 邏輯（手感參數不變）。
+- `frontend/src/casino-fx/assets/bakeTextures.js`：SVG 程式化美術 → `PIXI.Texture` 烘焙快取（`renderToStaticMarkup` 離屏 rasterize）；PNG override 走 `Assets.load`，維持「換 AI 圖零改碼」。
+- `frontend/src/components/Fishing.css`：新增 §6 固定高度 HUD 條（`.fishing-hud*`）與固定槽位橫幅（`.fishing-banner*`）樣式。
+
+### Changed
+- `frontend/src/pages/Fishing.jsx`：`FishingArena` → lazy `FishingCanvas`（`<Suspense>`）。**§6 飄移修復**：把進行中的即時讀數（局內餘額/本場派彩/砲台/收網/效能模式）移到漁場上方**固定高度 HUD 條**（`tabular-nums` 等寬），右側 `aside` 只留靜態（規則/可用星幣/幸運值）→ 不再隨 phase 增減 reflow；Boss/error 橫幅改**固定槽位 opacity 淡入淡出**，不插入/抽走節點。
+- `frontend/src/components/MetricCard.jsx`：數值加 `tabular-nums`（全站等寬，cheap win）。
+- `frontend/src/casino-fx/casino-fx.css`：移除 `.fx-gold-burst__coin` / `.fx-rain__drop` 的 per-frame `filter: drop-shadow`（手機 GPU 殺手，§2.3）。
+- `frontend/src/casino-fx/fx/FallRain.jsx`：`epic` 金幣雨上限 150 → 90（§2.3，降同時動畫節點數）。
+- `frontend/package.json`：新增依賴 `pixi.js` ^8.19。
+
+### Removed
+- `frontend/src/components/FishingArena.jsx`（DOM 漁場，由 Pixi 引擎取代）及 `Fishing.css` 對應的舊魚/子彈/火花/砲台/提示樣式。
+
+### 為什麼
+- 舊 DOM 漁場在 H5/手機連發+特效會當機：14 條魚各跑 CSS infinite animation、每 110ms 對每條魚 `querySelector`+`getBoundingClientRect`（layout thrashing）、每發子彈多次 `setState`+`setTimeout`。改 Pixi 單 canvas + ticker + 物件池 + canvas 座標命中後，這些每幀 DOM 成本歸零，並有 FPS 守門/效能模式保底。底部錢幣 UI 飄移則來自 aside 即時卡片條件渲染 reflow + 非等寬數字，移到固定 HUD 條 + `tabular-nums` 後消除。
+
+### 如何驗證
+- `cd frontend && npm run lint`（綠）、`npm run build`（綠；pixi 切出獨立 `FishingCanvas-*.js` + renderer 子 chunk，主 `index` 未含 pixi）。
+- `npm run dev` 進 `/game/fishing`：進場→連發→命中火花 + 捕獲派彩浮字 + 頁面 FX 分級→收網結算→逐發驗證面板（契約未變）。
+- 效能：手機/H5 連發 + boss + 金幣雨同時不當機；切「效能模式」降載生效；切背景分頁 ticker 暫停。
+
 ## [Changed] — 2026-06-23 — 捕魚機改「血量/傷害」模型（Phase 1：後端引擎 + mock + 測試 + ADR-003）
 
 > 捕魚機升級的第一階段：把「每發獨立判定命中」改為真·血量/傷害模型（魚有血、砲台有傷害、暴擊扣更多血、
@@ -134,6 +223,80 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Verified
 - `npm test -- --test-reporter=spec tests/infra/jmeter.test.js`: 122 infra tests passed, including the T-090 JMeter contract checks.
+
+## [feat] — 2026-06-23 — 百家樂畫面優化（籌碼列 / 顏色區分 / 天牌徽章 / 版面重排）
+
+### Changed
+- `frontend/src/pages/Baccarat.jsx`：移除下拉式面額選單，改為常駐籌碼排（`baccarat-chip-row`，100/200/500/1K/2K/3K/5K，點即套用、有音效）；下注選項加入 `--player/--banker/--tie` 色彩 modifier；HandPanel 新增 `isNatural` 偵測，點數 8/9 時顯示「天牌 Natural」徽章。
+- `frontend/src/index.css`：新增 `.baccarat-chip-row`、`.baccarat-chip`、`.baccarat-chip--selected` 樣式（圓形籌碼、金色選中態、hover 浮起）；新增 `.baccarat-bet-option--player/banker/tie` 左側色條；新增 `.baccarat-natural-badge` 彈入動畫；新增 `@media (min-width: 480px)` 閒/莊並排（`1fr 72px 1fr`）；新增 `@media (min-width: 768px)` 下注+結算雙欄並排。
+
+### Why
+籌碼常駐比下拉式少一次點擊，符合實體百家樂桌面操作習慣；顏色區分提升下注項目辨識度；天牌徽章增強儀式感；版面重排讓平板/寬螢幕利用率更高。
+
+### How to verify
+```bash
+npm run dev -- --mode mock   # 前端用 mock API 離線驗證
+# 瀏覽 /game/baccarat：
+# 1. 下注區下方應有 7 顆圓形籌碼，點擊自動填入金額
+# 2. 閒/莊/和按鈕左側分別顯示藍/紅/綠色線條
+# 3. ≥ 480px：閒家與莊家左右並排
+# 4. ≥ 768px：下注區與結算區左右並排
+# 5. 發牌後若點數為 8 或 9，標題下出現「天牌 Natural」金色徽章
+```
+
+---
+
+## [feat] — 2026-06-23 — 虧損返利排程系統（日返利 + 週返利）
+
+### Added
+- `database/postgres/migration/V9__add_cashback_records.sql`：新增 `cashback_records` 表（去重 + 稽核）、擴充 `wallet_transactions.sub_type` 加入 `CASHBACK`。
+- `database/mysql/migration/V6__add_cashback_subtype.sql`：MySQL 讀端同步擴充 `sub_type`。
+- `backend/game-service/.../entity/CashbackRecord.java`：返利記錄 entity。
+- `backend/game-service/.../repository/CashbackRecordRepository.java`：去重查詢。
+- `backend/game-service/.../repository/GameRoundRepository.java`：新增 `aggregateNetLossPerPlayer` 原生 SQL 查詢。
+- `backend/game-service/.../kafka/CashbackEventPublisher.java`：發 `wallet.credit.request` 入帳指令 + `notification.push` 推播。
+- `backend/game-service/.../service/CashbackService.java`：核心計算邏輯（日/週階梯費率、去重、@Transactional 保護）。
+- `backend/game-service/.../scheduler/DailyCashbackScheduler.java`：cron `0 5 0 * * *`，每日凌晨 00:05 結算前一天虧損。
+- `backend/game-service/.../scheduler/WeeklyCashbackScheduler.java`：cron `0 10 0 * * MON`，每週一凌晨 00:10 結算上週虧損。
+
+### Changed
+- 不需要新增 Kafka topic（複用現有 `wallet.credit.request` / `notification.push`）。
+
+### Rules
+- 日返利：淨虧損 ≥ 1,000 → 5%；≥ 5,000 → 8%；≥ 10,000 → 10%（無上限、直接入帳）
+- 週返利：淨虧損 ≥ 3,000 → 8%；≥ 5,000 → 12%；≥ 10,000 → 15%（比日返更優惠）
+- 日返 + 週返疊加發放，每局結算後翌日/翌週一自動觸發
+
+### Why
+批次排程（方案 A）對平台最有利：控制成本時機、帶動次日/次週回訪、可設發放上限防套利；日返解決短期痛點，週返獎勵長期留存，兩者目的互補故疊加。
+
+### How to verify
+```
+mvn -pl backend/game-service test
+```
+全部 139 個測試通過（含 20 個新增返利測試）。
+
+## [feat] — 2026-06-23 — 百家樂改為反水機制，移除幸運值保底
+
+### Changed
+- `backend/game-service/.../service/BaccaratService.java`：移除 `fortuneReady` 保底邏輯（重試 nonce 找目標結果），改為每局無論輸贏返還下注額 0.5%（最低 1 星幣）反水；credit 呼叫改為永遠執行（派彩 + 反水），wallet 視圖每局必回。
+- `backend/game-service/.../dto/BaccaratResultResponse.java`：新增 `rebate` 欄位。
+- `backend/game-service/.../controller/BaccaratController.java`：`placeBet` 呼叫移除 `fortuneReady` 參數。
+- `frontend/src/services/gameApi.js`：`baccaratBet` 移除 `fortuneReady`，透傳後端 `rebate`。
+- `frontend/src/services/mockApi.js`：`baccaratBet` 加入反水計算，返回 `rebate`。
+- `frontend/src/pages/Baccarat.jsx`：移除 `FortuneMeter`、`LuckyAura`、`useFortuneMeter` 及所有幸運值相關邏輯；結算面板新增「本局反水」列，訊息提示反水金額；遊戲規則說明補充反水說明。
+
+### Fixed
+- `backend/game-service/.../test/BaccaratServiceTest.java`、`BaccaratControllerTest.java`：更新 `placeBet` 簽名（移除第六個 boolean 參數），輸局測試改為驗證 rebate 入帳而非跳過 credit。
+
+### Why
+幸運值保底屬於「暗中讓玩家必中」的機制，與 Provably Fair 精神相悖；反水（流水返點）是業界標準做法，無論輸贏皆透明返還比例，既提升留存率又維持公平性。
+
+### How to verify
+```
+mvn -pl backend/game-service test
+```
+所有 34 個百家樂相關測試均通過。
 
 ## [fix] -- 2026-06-22 -- Complete T-055 GM coin grant API
 

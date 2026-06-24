@@ -42,6 +42,7 @@
 | React Router | 前端路由 |
 | Axios | HTTP API 呼叫 |
 | Tailwind CSS | 樣式工具 |
+| PixiJS 8（WebGL/Canvas） | 捕魚機漁場遊戲引擎（單 canvas + ticker，根治 H5 連發當機；對 fishing 路由 code-split，不膨脹主 bundle） |
 | STOMP over WebSocket | 即時推播（遊戲結果、排行榜） |
 
 ### ⚙️ Backend（微服務）

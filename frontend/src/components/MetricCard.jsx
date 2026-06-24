@@ -1,4 +1,4 @@
-export default function MetricCard({ label, value, caption, tone = 'dark' }) {
+export default function MetricCard({ label, value, caption, tone = 'dark', valueClass = '' }) {
   const isLight = tone === 'light'
 
   return (
@@ -11,7 +11,7 @@ export default function MetricCard({ label, value, caption, tone = 'dark' }) {
       <p className={['text-xs font-black uppercase tracking-[0.25em]', isLight ? 'text-red-950/68' : 'gold-muted'].join(' ')}>
         {label}
       </p>
-      <p className="mt-3 text-2xl font-black tracking-tight">{value}</p>
+      <p className={['mt-3 text-2xl font-black tracking-tight tabular-nums', valueClass].filter(Boolean).join(' ')}>{value}</p>
       {caption ? <p className={['mt-2 text-sm', isLight ? 'text-red-950/72' : 'text-yellow-100/62'].join(' ')}>{caption}</p> : null}
     </div>
   )
