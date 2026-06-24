@@ -6,6 +6,11 @@ export default defineConfig({
   define: {
     global: 'globalThis',
   },
+  // Vitest 單元測試設定（e2e 的 Playwright 走 npm run e2e，與此分開）
+  test: {
+    environment: 'jsdom',
+    include: ['src/**/*.{test,spec}.{js,jsx}'],
+  },
   server: {
     port: 5173,
     proxy: {

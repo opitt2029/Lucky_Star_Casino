@@ -3,6 +3,39 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Added] — 2026-06-24 — 前端導入 Vitest，補 axios 401 攔截器自動續期測試
+
+> 前端先前只有 eslint 與 Playwright e2e，無單元測試框架。為前一筆「401 靜默續期」加上回歸保護，導入 Vitest（vite 專案原生整合）。
+
+### Added
+- `frontend/src/services/api.test.js`：涵蓋 401 攔截器 7 個情境——續期成功並重送原請求、並發 401 single-flight（只續期一次）、續期失敗 → 登出重導、無 refresh token → 直接登出不續期、auth 端點 401／`skipAuthRedirect`／非 401 皆不觸發續期。以自訂 axios adapter + `vi.spyOn(axios,'post')` 驅動，免真實網路。
+- `frontend/package.json`：新增 devDependency `vitest`、`jsdom`，及 `test`（`vitest run`）、`test:watch` script。
+- `frontend/vite.config.js`：新增 `test`（`environment: 'jsdom'`、`include: src/**/*.{test,spec}.{js,jsx}`）。
+- `.github/workflows/ci.yml`：新增 `frontend-test` job（`npm ci` + `npm test`），PR/push 至 main/develop 時擋關。
+
+### 如何驗證
+- `cd frontend && npm test`：7 passed。
+- `npx eslint src/services/api.test.js`：通過。
+
+## [Changed] — 2026-06-24 — 前端 access token 過期改為靜默續期，不再直接踢回登入頁
+
+> 問題：access token 預設只有 15 分鐘（`JWT_ACCESS_TOKEN_EXPIRY_MS:900000`），但前端雖存有 7 天的 refresh token（`JWT_REFRESH_TOKEN_EXPIRY_MS:604800000`）卻從未拿去續期。
+> 結果任何請求一旦回 401，攔截器就 `logout()` + 整頁重導 `/login`，使用者體感「閒置/停留太久就自動登出」。
+> 決策：採「反應式」續期——收到 401 時先用 refresh token 換新 token 並重送原請求，換不到才登出。後端 refresh **會輪替** refresh token（`AuthService.refreshToken` 先 delete 再存新），故前端必須存回新 refresh token，且並發 401 需 single-flight 避免第二個請求 mismatch。
+
+### Changed
+- `frontend/src/services/api.js`：401 回應攔截器改為先嘗試 `POST /api/v1/auth/refresh` 靜默續期再重送原請求；續期失敗（或無 refresh token / mock 模式）才 `logout()` 重導。
+  - single-flight（`refreshPromise`）：並發 401 共用同一次續期，避免後端 refresh token 輪替造成 mismatch。
+  - 用乾淨的 `axios.post`（非 `api` 實例）呼叫 refresh，避免遞迴攔截與帶上過期 token；以 `config._retry` 防無限重試；`skipAuthRedirect`/auth 端點維持原行為（不重導）。
+- `frontend/src/store/slices/authSlice.js`：新增 `tokenRefreshed` reducer，只更新 access/refresh/expiresIn 並寫回 localStorage、**保留 `player`**（不可複用 `loginSuccess`，它會把 `player` 蓋成 undefined）。
+
+### 為什麼
+- 後端早有 `POST /api/v1/auth/refresh`（`AuthController`）與 7 天 refresh token，前端未串接是純體驗缺口；接上後 15 分鐘 access token 到期可無感續期，僅在 refresh 也失效（最長 7 天）時才需重新登入。
+
+### 如何驗證
+- `cd frontend && npx eslint src/services/api.js src/store/slices/authSlice.js`：通過。
+- `npm run build`：成功（`✓ built`）。
+
 ## [Fixed] — 2026-06-24 — 捕魚機四個前端體驗 bug 修正
 
 ### Fixed
