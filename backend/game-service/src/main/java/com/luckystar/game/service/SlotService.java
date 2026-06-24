@@ -150,9 +150,13 @@ public class SlotService {
     private SpinResponse settleInternal(String roundId, long playerId, long bet,
                                         String serverSeed, String serverSeedHash, String clientSeed,
                                         boolean fortuneReady) {
+        // 下注時間（毫秒精度）：單次模式下注與結算同一瞬間，於扣款前取時間戳供注單稽核。
+        LocalDateTime betAt = LocalDateTime.now();
+
         // 1) 扣下注（冪等）。餘額不足會丟 InsufficientBalanceException，於此中止、不產生對局。
         WalletDebitResponse debit = walletClient.debit(
                 playerId, bet, "slot-bet-" + roundId, roundId);
+        Long balanceBefore = debit.balanceBefore();
 
         // 2) 風控優先檢查：若觸發攔截則不使用保底轉動，避免中獎盤面配零派彩的視覺矛盾。
         // shouldIntercept 會佔用並發閘；無論是否攔截，finally 均須呼叫 releaseRiskSlot。
@@ -183,7 +187,8 @@ public class SlotService {
         // 4) 寫對局紀錄（已結算）；以 roundId 去重，重試不重複插入（unique 約束保護）。
         if (roundRepository.findByRoundId(roundId).isEmpty()) {
             try {
-                GameRound round = buildRound(roundId, playerId, bet, serverSeed, serverSeedHash, clientSeed, outcome);
+                GameRound round = buildRound(roundId, playerId, bet, serverSeed, serverSeedHash, clientSeed,
+                        outcome, balanceBefore, balanceAfter, betAt);
                 roundRepository.save(round);
                 // 5) 發布 game.result（best-effort）。僅在首次落地時發布，避免重試重複事件。
                 eventPublisher.publishSlotResult(round, outcome);
@@ -239,19 +244,23 @@ public class SlotService {
     }
 
     private GameRound buildRound(String roundId, long playerId, long bet, String serverSeed,
-                                 String serverSeedHash, String clientSeed, SlotOutcome outcome) {
+                                 String serverSeedHash, String clientSeed, SlotOutcome outcome,
+                                 Long balanceBefore, long balanceAfter, LocalDateTime betAt) {
         GameRound round = new GameRound();
         round.setRoundId(roundId);
         round.setPlayerId(playerId);
         round.setGameType(GAME_TYPE);
         round.setBetAmount(bet);
         round.setWinAmount(outcome.payout());
+        round.setBalanceBefore(balanceBefore);
+        round.setBalanceAfter(balanceAfter);
         round.setServerSeed(serverSeed);
         round.setServerSeedHash(serverSeedHash);
         round.setClientSeed(clientSeed);
         round.setNonce(NONCE);
         round.setResultData(writeResultJson(outcome));
         round.setStatus(STATUS_SETTLED);
+        round.setBetAt(betAt);
         round.setSettledAt(LocalDateTime.now());
         return round;
     }

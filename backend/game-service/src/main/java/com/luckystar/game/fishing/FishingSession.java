@@ -51,6 +51,9 @@ public class FishingSession {
     /** 帶入金額（start 時自 wallet 一次性扣款）。 */
     private Long buyIn;
 
+    /** 投注前錢包餘額（start 扣 buyIn 前），結算落地對局時寫入 game_rounds 供注單稽核。 */
+    private Long balanceBefore;
+
     /** 局內餘額：buyIn − 累計子彈下注 + 累計派彩。end 時 credit 回 wallet。 */
     private Long sessionBalance;
 

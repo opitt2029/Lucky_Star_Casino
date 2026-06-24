@@ -38,6 +38,9 @@ public class GameSession {
     /** 下注金額（星幣）；百家樂為三押注區總額。 */
     private Long betAmount;
 
+    /** 投注前錢包餘額（開局扣款前），結算落地對局時寫入 game_rounds 供注單稽核。 */
+    private Long balanceBefore;
+
     /** 百家樂：押閒金額（其他遊戲為 null）。 */
     private Long betPlayer;
 

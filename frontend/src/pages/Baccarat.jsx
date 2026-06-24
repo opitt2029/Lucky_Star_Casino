@@ -237,25 +237,9 @@ export default function Baccarat() {
   const [isDealing, setIsDealing] = useState(false)
   const [roundProfit, setRoundProfit] = useState(null)
   const [roundBet, setRoundBet] = useState(null)
-  // 本場損益（session 內持續累積，重整不丟）
-  const [sessionProfit, setSessionProfit] = useState(() => {
-    try {
-      const raw = sessionStorage.getItem(SESSION_PROFIT_KEY)
-      if (raw === null) return null
-      const n = Number(raw)
-      return Number.isFinite(n) ? n : null
-    } catch { return null }
-  })
-  // 路單局史（session 內持續累積，重整不丟）
-  const [history, setHistory] = useState(() => {
-    try {
-      const raw = sessionStorage.getItem(ROAD_STORAGE_KEY)
-      const parsed = raw ? JSON.parse(raw) : []
-      return Array.isArray(parsed) ? parsed : []
-    } catch {
-      return []
-    }
-  })
+  // 本場損益 / 路單局史：遊戲「重開」（重新進場或重整）即歸零，只在本次進場內累積。
+  const [sessionProfit, setSessionProfit] = useState(null)
+  const [history, setHistory] = useState([])
   // 咪牌模式（記住玩家偏好，以 playerId 為 JSON 子 key 隔離多帳號）
   const [squeezeMode, setSqueezeModeState] = useState(() => getSqueezeMode(player?.id))
   const [concealed, setConcealed] = useState(false)
@@ -270,21 +254,16 @@ export default function Baccarat() {
   useBgm('baccarat')
   useGameLeaveGuard(isDealing, '下注進行中，確定要離開嗎？')
 
+  // 「重開即歸零」：進場時清掉舊版可能殘留的本場損益/路單快取。
+  // 本場損益與路單僅存在於本次進場的元件狀態，離開或重整即重新計算。
   useEffect(() => {
     try {
-      sessionStorage.setItem(ROAD_STORAGE_KEY, JSON.stringify(history.slice(-200)))
+      sessionStorage.removeItem(SESSION_PROFIT_KEY)
+      sessionStorage.removeItem(ROAD_STORAGE_KEY)
     } catch {
-      // 忽略儲存失敗
+      // 忽略 sessionStorage 不可用
     }
-  }, [history])
-
-  useEffect(() => {
-    try {
-      if (sessionProfit !== null) sessionStorage.setItem(SESSION_PROFIT_KEY, String(sessionProfit))
-    } catch {
-      // 忽略儲存失敗
-    }
-  }, [sessionProfit])
+  }, [])
 
   const numericBetAmount = useMemo(() => Number(betAmount), [betAmount])
   const amountInRange =
