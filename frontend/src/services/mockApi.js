@@ -297,16 +297,85 @@ function currentPlayerId() {
   return readJson(SESSION_KEY, null)?.player?.id || 'demo-player'
 }
 
+// 單張牌的百家樂點數（鏡像後端 Card.value()）：A=1、10/J/Q/K=0、其餘為牌面數字。
+function cardValue(card) {
+  if (card === 'A') return 1
+  if (['J', 'Q', 'K', '10'].includes(card)) return 0
+  return Number(card)
+}
+
 function points(cards) {
-  return cards.reduce((sum, card) => {
-    if (card === 'A') return sum + 1
-    if (['J', 'Q', 'K', '10'].includes(card)) return sum
-    return sum + Number(card)
-  }, 0) % 10
+  return cards.reduce((sum, card) => sum + cardValue(card), 0) % 10
 }
 
 function randomCard() {
   return baccaratValues[Math.floor(Math.random() * baccaratValues.length)]
+}
+
+// 莊家補牌規則（鏡像後端 BaccaratGameService.bankerDraws）。
+// playerThirdValue 為 null 代表閒家未補牌：莊家比照閒家 0~5 補、6~7 停。
+function bankerDrawsMock(bankerScore, playerThirdValue) {
+  if (playerThirdValue === null) return bankerScore <= 5
+  const p3 = playerThirdValue
+  switch (bankerScore) {
+    case 0:
+    case 1:
+    case 2:
+      return true
+    case 3:
+      return p3 !== 8
+    case 4:
+      return p3 >= 2 && p3 <= 7
+    case 5:
+      return p3 >= 4 && p3 <= 7
+    case 6:
+      return p3 >= 6 && p3 <= 7
+    default:
+      return false // 7（含理論上不會到的 >7）
+  }
+}
+
+// 單一押注區派彩（含本金，鏡像後端 BaccaratGameService.payoutFor）。
+// 和局：押中和賠 8:1（本金+8 倍）、押莊/閒退回本金（push）；非和局押錯為 0；
+// 押中莊扣 5% 傭金、押中閒 1:1。
+function baccaratPayout(area, winner, amount) {
+  if (winner === 'tie') {
+    if (area === 'tie') return amount * 9
+    return amount // 押莊/閒：和局退回本金（push）
+  }
+  if (area !== winner) return 0
+  if (area === 'banker') return amount * 2 - Math.floor(amount * 0.05)
+  return amount * 2 // player 1:1
+}
+
+// 發一局百家樂（鏡像後端 BaccaratGameService.play 的補牌流程）。
+function dealBaccarat() {
+  const player = [randomCard(), randomCard()]
+  const banker = [randomCard(), randomCard()]
+  let playerScore = points(player)
+  let bankerScore = points(banker)
+  const playerNatural = playerScore >= 8
+  const bankerNatural = bankerScore >= 8
+
+  // 任一方天牌（8/9）→ 雙方皆不補牌
+  if (!playerNatural && !bankerNatural) {
+    let playerThirdValue = null
+    // 閒家：0~5 補牌，6~7 停牌
+    if (playerScore <= 5) {
+      const third = randomCard()
+      player.push(third)
+      playerThirdValue = cardValue(third)
+      playerScore = points(player)
+    }
+    // 莊家：依補牌表
+    if (bankerDrawsMock(bankerScore, playerThirdValue)) {
+      banker.push(randomCard())
+      bankerScore = points(banker)
+    }
+  }
+
+  const winner = playerScore === bankerScore ? 'tie' : playerScore > bankerScore ? 'player' : 'banker'
+  return { player, banker, playerScore, bankerScore, winner }
 }
 
 // 加權抽樣一個符號（鏡像後端 SlotSymbol.fromWeightedIndex 的累積權重對應）。
@@ -529,13 +598,9 @@ export const mockApi = {
     if (!wallet || wallet.balance < amount) throw new Error('星幣餘額不足')
 
     applyWalletChange(db, playerId, -amount, 'bet', `百家樂下注 ${area}`)
-    const playerCards = [randomCard(), randomCard()]
-    const bankerCards = [randomCard(), randomCard()]
-    const playerPoints = points(playerCards)
-    const bankerPoints = points(bankerCards)
-    const winner = playerPoints === bankerPoints ? 'tie' : playerPoints > bankerPoints ? 'player' : 'banker'
-    const odds = area === 'tie' ? 8 : area === 'banker' ? 0.95 : 1
-    const payout = area === winner ? Math.floor(amount + amount * odds) : 0
+    const { player: playerCards, banker: bankerCards, playerScore: playerPoints, bankerScore: bankerPoints, winner } =
+      dealBaccarat()
+    const payout = baccaratPayout(area, winner, amount)
     if (payout) applyWalletChange(db, playerId, payout, 'payout', '百家樂派彩')
     const rebate = Math.max(1, Math.floor(amount * 0.005))
     applyWalletChange(db, playerId, rebate, 'payout', '百家樂反水')
