@@ -21,11 +21,23 @@ for %%a in (%*) do (
     if /i "%%a"=="infra" set "WITH_INFRA=1"
 )
 
-echo [STOP] killing processes listening on 8080/8081/8082/8083 ...
-powershell -NoProfile -Command "foreach($p in 8080,8081,8082,8083){ $ids = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique; foreach($id in $ids){ try{ Stop-Process -Id $id -Force -ErrorAction Stop; Write-Host ('  stopped PID ' + $id + ' (port ' + $p + ')') }catch{} } }"
-
-REM best-effort: close leftover service windows by title (and their child mvn/java)
-for %%s in (member-service wallet-service game-service gateway-service) do taskkill /FI "WINDOWTITLE eq %%s" /T /F >nul 2>&1
+echo [STOP] stopping backend services (ports 8080/8081/8082/8083/8084/8086/8087) ...
+powershell -NoProfile -Command ^
+  "$ports = @{8080='gateway';8081='member';8082='wallet';8083='game';8084='rank';8086='admin';8087='notification'};" ^
+  "foreach ($port in ($ports.Keys | Sort-Object)) {" ^
+  "  $conn = Get-NetTCPConnection -LocalPort $port -State Listen -EA SilentlyContinue | Select-Object -First 1;" ^
+  "  if (!$conn) { Write-Host \"  [--] $($ports[$port])-service :$port not running\"; continue };" ^
+  "  $pid = $conn.OwningProcess; $psPid = $null; $seen = @{};" ^
+  "  while ($pid -gt 4 -and !$seen[$pid]) {" ^
+  "    $seen[$pid] = $true;" ^
+  "    $proc = Get-Process -Id $pid -EA SilentlyContinue;" ^
+  "    if (!$proc) { break };" ^
+  "    if ($proc.Name -match 'powershell') { $psPid = $pid; break };" ^
+  "    $pid = (Get-CimInstance Win32_Process -Filter \"ProcessId=$pid\" -EA SilentlyContinue).ParentProcessId" ^
+  "  };" ^
+  "  if ($psPid) { Stop-Process -Id $psPid -Force -EA SilentlyContinue; Write-Host \"  [OK] $($ports[$port])-service :$port stopped (window closed)\" }" ^
+  "  else { taskkill /pid $conn.OwningProcess /t /f 2>&1 | Out-Null; Write-Host \"  [OK] $($ports[$port])-service :$port stopped\" }" ^
+  "}"
 
 if defined WITH_INFRA (
     echo [INFRA] docker compose down ...
