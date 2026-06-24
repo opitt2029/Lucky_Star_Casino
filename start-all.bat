@@ -56,7 +56,7 @@ if defined WITH_INFRA (
     pushd "%ROOT%"
     docker compose up -d
     popd
-    echo [HINT] wait until infra is healthy:  docker compose ps
+    call :waitdb
     echo.
 )
 
@@ -83,6 +83,33 @@ echo ===========================================================================
 echo.
 pause
 exit /b 0
+
+REM ---------------------------------------------------------------------------
+REM  Wait for DB containers to report healthy before starting backends.
+REM  Backends connect to DB at boot (Hibernate schema validate); MySQL/Postgres
+REM  take 20-40s to become healthy on first boot. Starting too early crashes the
+REM  service (this is the "login needs two tries" root cause). Poll the existing
+REM  compose healthchecks, up to ~120s, then continue regardless.
+:waitdb
+echo [WAIT] waiting for databases to be healthy ...
+set "TRIES=0"
+:waitdb_loop
+set "MYSQL_H="
+set "PG_H="
+for /f %%s in ('docker inspect --format "{{.State.Health.Status}}" lucky-star-mysql 2^>nul') do set "MYSQL_H=%%s"
+for /f %%s in ('docker inspect --format "{{.State.Health.Status}}" lucky-star-postgres 2^>nul') do set "PG_H=%%s"
+if "%MYSQL_H%"=="healthy" if "%PG_H%"=="healthy" (
+    echo [OK] databases are healthy.
+    exit /b 0
+)
+set /a TRIES+=1
+if %TRIES% geq 40 (
+    echo [WARN] timed out waiting for DB health; starting backends anyway.
+    exit /b 0
+)
+REM ~3s between polls
+ping 127.0.0.1 -n 4 >nul
+goto :waitdb_loop
 
 REM ---------------------------------------------------------------------------
 :startsvc

@@ -51,10 +51,41 @@ Get-Content $envFile | Where-Object { $_ -match '^\s*[^#].*=' } | ForEach-Object
 }
 Write-Host "Loaded $count environment variables from .env" -ForegroundColor Green
 
+# 等待 DB 容器健康後才啟動後端。
+# 後端 (member/game/wallet) 開機就要連 DB 跑 Hibernate schema validate；docker 剛起時
+# MySQL/Postgres 要 20~40s 才 healthy，太早啟動會連不到而崩潰（即「登入要兩次」的根因）。
+# 利用 docker-compose 既有的 healthcheck，輪詢到 healthy 才往下；逾時則印警告仍繼續（不卡死）。
+function Wait-DbHealthy {
+    param(
+        [string[]]$Containers = @('lucky-star-mysql', 'lucky-star-postgres'),
+        [int]$TimeoutSec = 120
+    )
+    Write-Host "Waiting for databases to be healthy..." -ForegroundColor Cyan
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        $allHealthy = $true
+        foreach ($c in $Containers) {
+            $status = (docker inspect --format '{{.State.Health.Status}}' $c 2>$null)
+            if ($status -ne 'healthy') { $allHealthy = $false; break }
+        }
+        if ($allHealthy) {
+            Write-Host "Databases are healthy." -ForegroundColor Green
+            return
+        }
+        Start-Sleep -Seconds 3
+    }
+    Write-Warning "Timed out after ${TimeoutSec}s waiting for DB health; starting backends anyway (they may need a restart)."
+}
+
 if ($WithInfra) {
     Write-Host "Starting infrastructure (docker compose up -d)..." -ForegroundColor Cyan
     docker compose up -d
-    Write-Host "Wait until infra is healthy before backends connect; check with: docker compose ps" -ForegroundColor Yellow
+    Wait-DbHealthy
+}
+else {
+    # 即使未帶 -WithInfra：若 DB 容器已存在（使用者另外起的 docker），仍等它 healthy 再啟動後端。
+    $dbRunning = (docker ps --filter 'name=lucky-star-mysql' --format '{{.Names}}' 2>$null)
+    if ($dbRunning) { Wait-DbHealthy }
 }
 
 # Order: member -> wallet -> game -> (rank) -> (admin) -> gateway (gateway last)
