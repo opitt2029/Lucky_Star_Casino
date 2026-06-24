@@ -48,6 +48,18 @@ public class GameRound {
     @Column(name = "win_amount")
     private Long winAmount;
 
+    /** 投注前錢包餘額（下注扣款前），供注單稽核「餘額變化」。 */
+    @Column(name = "balance_before")
+    private Long balanceBefore;
+
+    /** 派彩後錢包餘額（結算入帳後），供注單稽核「餘額變化」。 */
+    @Column(name = "balance_after")
+    private Long balanceAfter;
+
+    /** 下注時間（毫秒精度）。與 {@code settledAt}（派彩時間）區分，供注單稽核。 */
+    @Column(name = "bet_at")
+    private LocalDateTime betAt;
+
     /** 開獎後揭露的 server seed（Provably Fair）。 */
     @Column(name = "server_seed", length = 255)
     private String serverSeed;

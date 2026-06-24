@@ -93,6 +93,19 @@ export const gameApi = {
     return res.data.data
   },
 
+  // GET /api/v1/game/history → 玩家遊戲紀錄/注單分頁查詢。
+  // 回傳 { items:[{ roundId, gameType, nonce, betAmount, winAmount, profit,
+  //   balanceBefore, balanceAfter, betAt, settledAt, status, ... }], total, page, pageSize }。
+  async gameHistory({ gameType = 'all', page = 1, pageSize = 10 } = {}) {
+    if (useMockApi) {
+      return mockApi.getGameHistory({ gameType, page, pageSize })
+    }
+    const params = { page, pageSize }
+    if (gameType && gameType !== 'all') params.gameType = gameType
+    const res = await api.get('/api/v1/game/history', { params })
+    return res.data.data
+  },
+
   // GET /{sessionId}/verify-shot → 結算後逐發公平性驗證（公開端點，無需登入）。
   // 回傳 { sessionId, shotSeq, fishType, betPerShot, commitmentValid, hit, payout,
   //        serverSeed, serverSeedHash, clientSeed, message }。

@@ -4,6 +4,8 @@ import com.luckystar.game.entity.GameRound;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -15,6 +17,13 @@ public interface GameRoundRepository extends JpaRepository<GameRound, Long> {
 
     /** 依對外 roundId 查詢（供 T-036 公平性驗證等用途）。 */
     Optional<GameRound> findByRoundId(String roundId);
+
+    /** 玩家遊戲紀錄（注單）分頁查詢，依建立時間由新到舊。 */
+    Page<GameRound> findByPlayerIdOrderByCreatedAtDesc(Long playerId, Pageable pageable);
+
+    /** 玩家某遊戲類型的遊戲紀錄（注單）分頁查詢，依建立時間由新到舊。 */
+    Page<GameRound> findByPlayerIdAndGameTypeOrderByCreatedAtDesc(
+            Long playerId, String gameType, Pageable pageable);
 
     /**
      * 統計某遊戲「近 {@code limit} 局」已結算對局的下注/派彩總額與局數（T-037 RTP）。

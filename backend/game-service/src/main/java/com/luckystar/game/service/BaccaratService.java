@@ -8,6 +8,7 @@ import com.luckystar.game.baccarat.BaccaratSettlement;
 import com.luckystar.game.baccarat.Card;
 import com.luckystar.game.client.WalletClient;
 import com.luckystar.game.client.dto.WalletCreditResponse;
+import com.luckystar.game.client.dto.WalletDebitResponse;
 import com.luckystar.game.dto.BaccaratBetResponse;
 import com.luckystar.game.dto.BaccaratResultResponse;
 import com.luckystar.game.dto.WalletView;
@@ -20,6 +21,7 @@ import com.luckystar.game.rng.RandomStream;
 import com.luckystar.game.session.GameSession;
 import com.luckystar.game.session.GameSessionService;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -98,13 +100,14 @@ public class BaccaratService {
                 ? requestedClientSeed : rng.generateClientSeed();
 
         // 扣下注總額（冪等）。餘額不足會丟 InsufficientBalanceException，於此中止、不建 Session。
-        walletClient.debit(playerId, total, "bac-bet-" + roundId, roundId);
+        WalletDebitResponse debit = walletClient.debit(playerId, total, "bac-bet-" + roundId, roundId);
 
         GameSession session = GameSession.builder()
                 .roundId(roundId)
                 .playerId(playerId)
                 .gameType(GAME_TYPE)
                 .betAmount(total)
+                .balanceBefore(debit.balanceBefore())
                 .betPlayer(bp)
                 .betBanker(bb)
                 .betTie(bt)
@@ -198,7 +201,7 @@ public class BaccaratService {
         // 寫對局（以 roundId 去重，重試不重複插入）。
         if (roundRepository.findByRoundId(roundId).isEmpty()) {
             try {
-                GameRound round = buildRound(session, outcome, settlement, actualNonce);
+                GameRound round = buildRound(session, outcome, settlement, actualNonce, credit.balanceAfter());
                 round.setWinAmount(settlement.totalPayout() + rebate);
                 roundRepository.save(round);
                 eventPublisher.publishBaccaratResult(round, outcome);
@@ -241,19 +244,25 @@ public class BaccaratService {
     }
 
     private GameRound buildRound(GameSession session, BaccaratOutcome outcome,
-                                  BaccaratSettlement settlement, long nonce) {
+                                  BaccaratSettlement settlement, long nonce, Long balanceAfter) {
         GameRound round = new GameRound();
         round.setRoundId(session.getRoundId());
         round.setPlayerId(session.getPlayerId());
         round.setGameType(GAME_TYPE);
         round.setBetAmount(settlement.totalBet());
         round.setWinAmount(settlement.totalPayout());
+        round.setBalanceBefore(session.getBalanceBefore());
+        round.setBalanceAfter(balanceAfter);
         round.setServerSeed(session.getServerSeed());
         round.setServerSeedHash(session.getServerSeedHash());
         round.setClientSeed(session.getClientSeed());
         round.setNonce(nonce);
         round.setResultData(writeResultJson(outcome, settlement));
         round.setStatus(STATUS_SETTLED);
+        // 下注時間＝開局（placeBet）時間；派彩時間＝結算當下，兩者區分供注單稽核。
+        if (session.getCreatedAt() != null) {
+            round.setBetAt(LocalDateTime.ofInstant(session.getCreatedAt(), ZoneId.systemDefault()));
+        }
         round.setSettledAt(LocalDateTime.now());
         return round;
     }
