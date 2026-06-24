@@ -267,14 +267,19 @@ export default function Fishing() {
                   >
                     效能模式 {perfMode ? '開' : '關'}
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleEnd}
-                    disabled={phase === 'settling'}
-                    className="gold-button fishing-hud__settle"
-                  >
-                    {phase === 'settling' ? '結算中…' : '收網結算'}
-                  </button>
+                  <div className="flex flex-col items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={handleEnd}
+                      disabled={phase === 'settling'}
+                      className="gold-button fishing-hud__settle"
+                    >
+                      {phase === 'settling' ? '結算中…' : '收網結算'}
+                    </button>
+                    <span className="text-[11px] text-yellow-200/50 leading-none">
+                      剩餘餘額全額退回
+                    </span>
+                  </div>
                 </div>
               </div>
 
