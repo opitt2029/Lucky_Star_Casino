@@ -3,14 +3,12 @@ title Lucky Star — Stopping backends
 echo Stopping Lucky Star Casino backend services...
 echo.
 
-for %%s in (member-service wallet-service game-service rank-service admin-service notification-service gateway-service) do (
-    taskkill /fi "WINDOWTITLE eq %%s" /t /f >nul 2>&1
-    if errorlevel 1 (
-        echo [--] %%s  not running
-    ) else (
-        echo [OK] %%s  stopped
-    )
-)
+powershell -NoProfile -Command ^
+  "$services = 'member-service','wallet-service','game-service','rank-service','admin-service','notification-service','gateway-service';" ^
+  "foreach ($svc in $services) {" ^
+  "  $p = Get-Process powershell -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -eq $svc } | Select-Object -First 1;" ^
+  "  if ($p) { taskkill /pid $($p.Id) /t /f | Out-Null; Write-Host \"[OK] $svc stopped\" } else { Write-Host \"[--] $svc not running\" }" ^
+  "}"
 
 echo.
 echo All done.
