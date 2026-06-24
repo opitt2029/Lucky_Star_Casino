@@ -757,6 +757,10 @@ export const mockApi = {
     const db = getDb()
     const session = (db.fishingSessions || {})[currentPlayerId()]
     if (!session) return null
+    // 引擎 remount 後 idSeq 從 0 重置，舊 fishDamage 的 key 會碰撞到新魚 id，
+    // 導致新魚繼承舊傷害（初次命中 hpRemaining 異常偏低或直接一擊即死）。
+    session.fishDamage = {}
+    saveDb(db)
     return {
       sessionId: session.sessionId,
       roomId: `solo-${session.sessionId}`,
