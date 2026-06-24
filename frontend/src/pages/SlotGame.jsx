@@ -1,10 +1,10 @@
-import { useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import AppShell from '../components/AppShell'
 import GameRuleCard from '../components/GameRuleCard'
 import MetricCard from '../components/MetricCard'
 import SlotMachine from '../components/SlotMachine'
-import { spinSlot } from '../store/slices/gameSlice'
+import { spinSlot, clearGameResult } from '../store/slices/gameSlice'
 import { setBalance } from '../store/slices/walletSlice'
 import { soundEngine } from '../casino-fx/sound/SoundEngine'
 import { useBgm } from '../casino-fx/sound/useBgm'
@@ -58,6 +58,11 @@ export default function SlotGame() {
   const roundStatus = loading || visualLock ? 'spinning' : status
   const hasLineWin = winningCells.length > 0
   useGameLeaveGuard(loading || visualLock, '轉輪進行中，確定要離開嗎？離開後本局下注不返還。')
+
+  // 「重開即歸零」：進場時清掉上一場殘留的結果與最近派彩；本場損益/局數為元件狀態，本就隨進場歸零。
+  useEffect(() => {
+    dispatch(clearGameResult())
+  }, [dispatch])
 
   const handleSpinRound = async () => {
     // 餘額不足直接擋下，不發任何請求（後端仍是最後防線）。

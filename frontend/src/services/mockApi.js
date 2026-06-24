@@ -414,6 +414,15 @@ function applyWalletChange(db, playerId, amount, type, title) {
   return wallet
 }
 
+// 記錄一筆遊戲紀錄/注單（鏡像後端 game_rounds：流水號、局號、毫秒下注/派彩時間、餘額變化）。
+// 預設保留近 200 筆，避免 localStorage 無限膨脹。
+function recordGameRound(db, playerId, record) {
+  db.gameRounds = db.gameRounds || {}
+  const list = db.gameRounds[playerId] || []
+  list.unshift(record)
+  db.gameRounds[playerId] = list.slice(0, 200)
+}
+
 function calculateCheckInReward(days) {
   return DAILY_CHECKIN_REWARD + (checkInMilestoneBonuses[days] || 0)
 }
@@ -557,6 +566,22 @@ export const mockApi = {
     }
   },
 
+  // 遊戲紀錄/注單分頁查詢（鏡像後端 GET /api/v1/game/history）。
+  // gameType：'all' / 'SLOT' / 'BACCARAT' / 'FISHING'。回傳形狀 { items, total, page, pageSize }。
+  async getGameHistory({ gameType = 'all', page = 1, pageSize = 10 } = {}) {
+    await wait(260)
+    const db = getDb()
+    const rows = (db.gameRounds || {})[currentPlayerId()] || []
+    const filtered = rows.filter((row) => gameType === 'all' || row.gameType === gameType)
+    const start = (page - 1) * pageSize
+    return {
+      items: filtered.slice(start, start + pageSize),
+      total: filtered.length,
+      page,
+      pageSize,
+    }
+  },
+
   async spinSlot({ bet, fortuneReady = false }) {
     await wait(900)
     const db = getDb()
@@ -564,6 +589,8 @@ export const mockApi = {
     const wallet = db.wallets[playerId]
     if (!wallet || wallet.balance < bet) throw new Error('星幣餘額不足')
 
+    const balanceBefore = wallet.balance
+    const betAt = new Date().toISOString()
     applyWalletChange(db, playerId, -bet, 'bet', '老虎機下注')
 
     const grid = randomSlotGrid()
@@ -576,10 +603,26 @@ export const mockApi = {
     const { multiplier, winningCells } = evaluateSlotLine(grid)
     const payout = bet * multiplier // 含本金返還；左二同最低 1x 為退本金（push / LDW）
     if (payout) applyWalletChange(db, playerId, payout, 'payout', '老虎機派彩')
+
+    const roundId = `SLOT-${Date.now()}`
+    recordGameRound(db, playerId, {
+      roundId,
+      gameType: 'SLOT',
+      nonce: 0,
+      betAmount: bet,
+      winAmount: payout,
+      profit: payout - bet,
+      balanceBefore,
+      balanceAfter: db.wallets[playerId].balance,
+      betAt,
+      settledAt: new Date().toISOString(),
+      status: 'SETTLED',
+      resultData: JSON.stringify({ grid, multiplier, payout, winningCells }),
+    })
     saveDb(db)
 
     return {
-      roundId: `SLOT-${Date.now()}`,
+      roundId,
       game: 'slot',
       grid,
       bet,
@@ -597,6 +640,8 @@ export const mockApi = {
     const wallet = db.wallets[playerId]
     if (!wallet || wallet.balance < amount) throw new Error('星幣餘額不足')
 
+    const balanceBefore = wallet.balance
+    const betAt = new Date().toISOString()
     applyWalletChange(db, playerId, -amount, 'bet', `百家樂下注 ${area}`)
     const { player: playerCards, banker: bankerCards, playerScore: playerPoints, bankerScore: bankerPoints, winner } =
       dealBaccarat()
@@ -604,10 +649,28 @@ export const mockApi = {
     if (payout) applyWalletChange(db, playerId, payout, 'payout', '百家樂派彩')
     const rebate = Math.max(1, Math.floor(amount * 0.005))
     applyWalletChange(db, playerId, rebate, 'payout', '百家樂反水')
+
+    const roundId = `BAC-${Date.now()}`
+    // 後端 game_rounds.win_amount = 總派彩 + 反水；此處對齊。
+    const winAmount = payout + rebate
+    recordGameRound(db, playerId, {
+      roundId,
+      gameType: 'BACCARAT',
+      nonce: 0,
+      betAmount: amount,
+      winAmount,
+      profit: winAmount - amount,
+      balanceBefore,
+      balanceAfter: db.wallets[playerId].balance,
+      betAt,
+      settledAt: new Date().toISOString(),
+      status: 'SETTLED',
+      resultData: JSON.stringify({ area, winner, payout, rebate, playerPoints, bankerPoints }),
+    })
     saveDb(db)
 
     return {
-      roundId: `BAC-${Date.now()}`,
+      roundId,
       game: 'baccarat',
       area,
       amount,
@@ -741,12 +804,15 @@ export const mockApi = {
     const wallet = db.wallets[playerId]
     if (!wallet || wallet.balance < buyIn) throw new Error('星幣餘額不足')
 
+    const balanceBefore = wallet.balance
     applyWalletChange(db, playerId, -buyIn, 'bet', '捕魚機 buy-in')
     const sessionId = `FISH-${Date.now()}`
     db.fishingSessions[playerId] = {
       sessionId,
       cannonLevel,
       buyIn,
+      balanceBefore,
+      createdAt: new Date().toISOString(),
       sessionBalance: buyIn,
       totalShots: 0,
       totalBet: 0,
@@ -864,6 +930,31 @@ export const mockApi = {
       clientSeed: session.clientSeed,
       shots: session.shotResults || {},
     }
+    // 遊戲紀錄/注單（彙總一場一筆，鏡像後端 fishing buildRound）。
+    const balanceBefore = session.balanceBefore ?? null
+    const balanceAfter =
+      balanceBefore !== null ? balanceBefore - session.buyIn + credited : db.wallets[playerId].balance
+    recordGameRound(db, playerId, {
+      roundId: sessionId,
+      gameType: 'FISHING',
+      nonce: session.lastShotSeq,
+      betAmount: session.totalBet,
+      winAmount: session.totalPayout,
+      profit: session.totalPayout - session.totalBet,
+      balanceBefore,
+      balanceAfter,
+      betAt: session.createdAt ?? null,
+      settledAt: new Date().toISOString(),
+      status: 'SETTLED',
+      resultData: JSON.stringify({
+        buyIn: session.buyIn,
+        credited,
+        totalShots: session.totalShots,
+        totalBet: session.totalBet,
+        totalPayout: session.totalPayout,
+        cannonLevel: session.cannonLevel,
+      }),
+    })
     delete db.fishingSessions[playerId]
     saveDb(db)
 

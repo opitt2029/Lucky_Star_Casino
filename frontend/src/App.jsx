@@ -12,6 +12,7 @@ import Fishing from './pages/Fishing'
 import Rank from './pages/Rank'
 import Profile from './pages/Profile'
 import Transactions from './pages/Transactions'
+import GameHistory from './pages/GameHistory'
 import CasinoShop from './pages/CasinoShop'
 import CheckIn from './pages/CheckIn'
 import Diamond from './pages/Diamond'
@@ -127,6 +128,14 @@ export default function App() {
             element={
               <PrivateRoute>
                 <Transactions />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/game-history"
+            element={
+              <PrivateRoute>
+                <GameHistory />
               </PrivateRoute>
             }
           />
