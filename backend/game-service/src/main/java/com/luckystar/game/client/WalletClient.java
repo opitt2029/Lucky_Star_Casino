@@ -48,10 +48,22 @@ public class WalletClient {
         return env.data();
     }
 
-    /** 派彩（入帳）。{@code subType} 固定為 {@code "WIN"}。 */
+    /** 派彩（入帳）。{@code subType} 固定為 {@code "WIN"}（老虎機 / 百家樂中獎派彩）。 */
     public WalletCreditResponse credit(long playerId, long amount, String idempotencyKey, String referenceId) {
+        return credit(playerId, amount, "WIN", idempotencyKey, referenceId);
+    }
+
+    /**
+     * 入帳（指定帳務子類型）。
+     *
+     * <p>非「中獎派彩」的入帳（如捕魚 buy-in 退款、場次結算返還剩餘局內餘額）必須改用非 {@code "WIN"}
+     * 子型（如 {@code "REFUND"}），否則 rank-service 會把退款／本金返還誤計入「今日贏幣榜」。
+     * {@code subType} 必須是 wallet-service CreditRequest 與 DB CHECK 白名單允許的值。
+     */
+    public WalletCreditResponse credit(long playerId, long amount, String subType,
+                                       String idempotencyKey, String referenceId) {
         WalletCreditRequest body = new WalletCreditRequest(
-                playerId, amount, "WIN", idempotencyKey, referenceId, 0L);
+                playerId, amount, subType, idempotencyKey, referenceId, 0L);
         WalletEnvelope<WalletCreditResponse> env = post(
                 "/internal/wallet/credit", body,
                 new ParameterizedTypeReference<WalletEnvelope<WalletCreditResponse>>() {});

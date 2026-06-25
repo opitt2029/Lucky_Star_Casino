@@ -1,5 +1,4 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
-import { mockApi } from '../../services/mockApi'
 import { walletApi } from '../../services/walletApi'
 import { extractError } from '../../services/memberApi'
 
@@ -60,17 +59,17 @@ export const claimBankruptcyAid = createAsyncThunk(
 
 export const fetchTransactions = createAsyncThunk('wallet/fetchTransactions', async (params, { rejectWithValue }) => {
   try {
-    return await mockApi.getTransactions(params)
+    return await walletApi.getTransactions(params)
   } catch (error) {
-    return rejectWithValue(error.message)
+    return rejectWithValue(extractError(error))
   }
 })
 
 export const giftCoins = createAsyncThunk('wallet/giftCoins', async (payload, { rejectWithValue }) => {
   try {
-    return await mockApi.giftCoins(payload)
+    return await walletApi.giftCoins(payload)
   } catch (error) {
-    return rejectWithValue(error.message)
+    return rejectWithValue(extractError(error))
   }
 })
 

@@ -3,6 +3,43 @@ import { mockApi } from './mockApi'
 
 const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
 
+// 後端 wallet_transactions 只記 type(DEBIT/CREDIT/BONUS) + subType。
+// 前端 UI 篩選器沿用 mock 的細分類型，這裡盡量映回後端可篩的 type；
+// 後端不支援以 subType 篩選，故 checkin/task/payout 都會落在 CREDIT（結果較寬鬆）。
+const TX_TYPE_TO_BACKEND = {
+  bet: 'DEBIT',
+  gift: 'DEBIT',
+  payout: 'CREDIT',
+  checkin: 'CREDIT',
+  task: 'CREDIT',
+}
+
+// subType → 中文標籤（對齊 mock transactionLabels 的呈現）。
+const TX_SUB_TYPE_LABELS = {
+  BET: '下注',
+  WIN: '派彩',
+  CHECKIN: '簽到',
+  TASK: '任務',
+  GIFT: '贈送',
+  GM_REWARD: 'GM 補發',
+  BANKRUPTCY_AID: '破產補助',
+  DIAMOND_EXCHANGE: '鑽石兌換',
+  TOPUP: '加值',
+}
+
+// 後端 WalletTransactionResponse → 前端交易列形狀（Transactions.jsx 讀 id/typeLabel/amount/status/createdAt）。
+// 後端 amount 為正數量值；DEBIT 在前端以負數呈現（沿用 mock 的帶號 amount 慣例）。
+function toTransactionRow(tx) {
+  return {
+    id: tx.id,
+    type: tx.subType,
+    typeLabel: TX_SUB_TYPE_LABELS[tx.subType] || tx.subType || tx.type,
+    amount: tx.type === 'DEBIT' ? -tx.amount : tx.amount,
+    status: '已完成',
+    createdAt: tx.createdAt,
+  }
+}
+
 // 封裝對 wallet-service / member-service（透過 Gateway）真實 API 的呼叫
 export const walletApi = {
   // GET /api/v1/wallet/balance → 回傳目前餘額
@@ -112,5 +149,52 @@ export const walletApi = {
     }
     const res = await api.get('/api/v1/wallet/topup/orders')
     return res.data.data
+  },
+
+  // GET /api/v1/wallet/transactions → 帳務流水（CQRS 讀庫，分頁）。
+  // 前端 page 為 1-based、後端為 0-based；回傳形狀對齊 walletSlice 期望的
+  // { items, total, page(1-based), pageSize }。
+  async getTransactions({ type = 'all', startDate = '', endDate = '', page = 1, pageSize = 8 } = {}) {
+    if (useMockApi) {
+      return mockApi.getTransactions({ type, startDate, endDate, page, pageSize })
+    }
+
+    const params = { page: Math.max(page - 1, 0), size: pageSize }
+    const backendType = TX_TYPE_TO_BACKEND[type]
+    if (backendType) params.type = backendType
+    if (startDate) params.from = startDate
+    if (endDate) params.to = endDate
+
+    const res = await api.get('/api/v1/wallet/transactions', { params })
+    const data = res.data.data // PagedResponse{ content, page, size, totalElements, totalPages }
+    return {
+      items: (data.content || []).map(toTransactionRow),
+      total: data.totalElements,
+      page: data.page + 1,
+      pageSize: data.size,
+    }
+  },
+
+  // POST /api/v1/wallet/gift → 好友贈幣（receiverId/amount/idempotencyKey）。
+  // 贈送方由 gateway 注入的 X-User-Id 決定，不在 body。回應僅含 senderBalanceAfter，
+  // 不含 frozenAmount，故再查一次餘額補齊 walletSlice 期望的 { wallet } 形狀。
+  async giftCoins({ friendId, amount, idempotencyKey } = {}) {
+    if (useMockApi) {
+      return mockApi.giftCoins({ friendId, amount })
+    }
+
+    const body = {
+      receiverId: friendId,
+      amount,
+      idempotencyKey:
+        idempotencyKey || `gift-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    }
+    const res = await api.post('/api/v1/wallet/gift', body)
+    const gift = res.data.data
+    const wallet = await walletApi.getBalance()
+    return {
+      wallet: { balance: wallet.balance, frozenAmount: wallet.frozenAmount },
+      gift,
+    }
   },
 }
