@@ -3,6 +3,22 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Fixed] — 2026-06-25 — stop-all／stop-backend 無法關閉 cmd 服務視窗（啟動端改 cmd、停止端仍只認 PowerShell）
+
+### Fixed
+- `stop-all.ps1`：往上追父程序找「視窗 host」時，原本只比對 `powershell`，改為比對 `^(powershell|pwsh|cmd)$`，並統一用 `taskkill /pid <winPid> /t /f`（連同 mvn/java 子程序一起收）關閉視窗。
+- `stop-backend.bat`：原本內嵌 PowerShell 只 `taskkill` 佔埠 java（更原始、連 walk-up 都沒有，同樣關不掉 cmd 視窗），改為委派 `stop-all.ps1`（單一真相的關窗邏輯）；收尾 `timeout /t 2`（stdin 被重導時會報 `Input redirection is not supported`、exit 1）換成 `ping -n 3`。
+
+### 為什麼 (Why)
+- 現行啟動器 `start-all.bat` 用 `start "svc" cmd /k ...` 把服務開在 **cmd.exe 視窗**，但 `stop-all.ps1` 的關窗邏輯（commit `8ec76f2`/`bf58420`）是為舊啟動器 `start-backend.ps1` 的 **PowerShell 視窗**寫的，只比對 `powershell`。cmd 視窗的父鏈裡沒有 powershell，walk-up 撲空 → 落到只 `taskkill` 佔埠 java 的 fallback：埠釋放了，但 cmd 視窗是 java 的祖先（`/t` 只殺子孫不殺祖先），所以視窗留著沒關。啟動端早已從 ps1 換成 bat，停止端沒同步更新，兩邊對不上。`stop-backend.bat` 是更原始的版本，連 walk-up 都沒有（只 `taskkill` 佔埠 java），同樣只釋放埠、不關視窗，故一併修正並收斂到 `stop-all.ps1`。
+
+### 如何驗證 (Verification)
+- 無頭模擬（`cmd -> ping` 當作「cmd 視窗 -> 佔埠 java」）：walk-up 從葉程序正確命中 cmd 視窗 PID，`taskkill /t /f` 後 cmd 與子程序整棵清空。
+- `stop-all.ps1` 空跑（無服務時）輸出全部 not running，無語法錯誤。
+- `stop-backend.bat` 空跑：正確委派 `stop-all.ps1`，輸出一致、exit 0。
+
+---
+
 ## [Changed] — 2026-06-25 — 捕魚機經濟再平衡（殘血回收／RTP 96%／砲台傷害收斂）＋ 子彈面額玩家自選
 
 > 架構級決策見 [docs/adr/ADR-004.md](docs/adr/ADR-004.md)。

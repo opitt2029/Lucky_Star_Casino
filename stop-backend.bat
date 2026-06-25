@@ -3,14 +3,15 @@ title Lucky Star - Stopping backends
 echo Stopping Lucky Star Casino backend services...
 echo.
 
-powershell -NoProfile -Command ^
-  "$ports = [ordered]@{8080='gateway';8081='member';8082='wallet';8083='game';8084='rank';8086='admin';8087='notification'};" ^
-  "foreach ($entry in $ports.GetEnumerator()) {" ^
-  "  $c = Get-NetTCPConnection -LocalPort $entry.Key -State Listen -EA SilentlyContinue | Select -First 1;" ^
-  "  if ($c) { taskkill /pid $($c.OwningProcess) /t /f 2>&1 | Out-Null; Write-Host \"[OK] $($entry.Value)-service :$($entry.Key) stopped\" }" ^
-  "  else { Write-Host \"[--] $($entry.Value)-service :$($entry.Key) not running\" }" ^
-  "}"
+REM Delegate to stop-all.ps1 -- the single source of truth for the stop / close-window
+REM logic. It walks the parent tree to close the cmd/powershell window that HOSTS each
+REM service (start-all.bat opens cmd windows), not just the java process; otherwise the
+REM port is freed but the terminal window stays open. Keeping the logic in one .ps1 also
+REM avoids cmd ^ / \" escaping hell.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop-all.ps1"
 
 echo.
 echo Done.
-timeout /t 2 >nul
+REM brief pause so the window is readable; ping (not timeout) works even when
+REM stdin is redirected (timeout aborts with "Input redirection is not supported").
+ping -n 3 127.0.0.1 >nul

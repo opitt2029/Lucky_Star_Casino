@@ -22,26 +22,33 @@ foreach ($entry in $ports.GetEnumerator()) {
         continue
     }
 
-    # Walk up parent tree to find the PowerShell window; killing it closes the terminal
-    $curPid = $conn.OwningProcess
-    $psPid  = $null
-    $seen   = @{}
+    # Walk up the parent tree to find the console window that hosts this service,
+    # then kill it (closing the terminal window too).
+    #   - start-all.bat opens each service in a cmd.exe window  (start "svc" cmd /k ...)
+    #   - start-backend.ps1 (legacy) opened PowerShell windows  (Start-Process powershell)
+    # Match either host. The first cmd/powershell ancestor IS the window process
+    # (Maven's mvn.cmd launches java directly, it does not nest another cmd), so this
+    # targets exactly the one window for this port and never the start-all launcher.
+    # taskkill /t reaps the mvn/java children as well -> the port is always freed.
+    $curPid  = $conn.OwningProcess
+    $winPid  = $null
+    $seen    = @{}
     while ($curPid -gt 4 -and -not $seen[$curPid]) {
         $seen[$curPid] = $true
         $proc = Get-Process -Id $curPid -ErrorAction SilentlyContinue
         if (-not $proc) { break }
-        if ($proc.Name -match 'powershell') { $psPid = $curPid; break }
+        if ($proc.Name -match '^(powershell|pwsh|cmd)$') { $winPid = $curPid; break }
         $wmi = Get-CimInstance Win32_Process -Filter "ProcessId=$curPid" -ErrorAction SilentlyContinue
         if (-not $wmi) { break }
         $curPid = $wmi.ParentProcessId
     }
 
-    if ($psPid) {
-        Stop-Process -Id $psPid -Force -ErrorAction SilentlyContinue
+    if ($winPid) {
+        taskkill /pid $winPid /t /f 2>&1 | Out-Null
         Write-Host "  [OK] $svc-service :$port stopped (window closed)"
     } else {
         taskkill /pid $conn.OwningProcess /t /f 2>&1 | Out-Null
-        Write-Host "  [OK] $svc-service :$port stopped"
+        Write-Host "  [OK] $svc-service :$port stopped (process killed; window may remain)"
     }
 }
 
