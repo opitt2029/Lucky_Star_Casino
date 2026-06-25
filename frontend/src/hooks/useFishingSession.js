@@ -3,8 +3,17 @@ import { useDispatch } from 'react-redux'
 import { gameApi } from '../services/gameApi'
 import { setBalance } from '../store/slices/walletSlice'
 
-// 炮台等級固定注額（索引 0 不用，對齊後端 CANNON_BET = {1:10, 2:50, 3:100}）。
-export const CANNON_BET = [0, 10, 50, 100]
+// 子彈面額（單發注額）：玩家進場自選、整場固定，與砲台解耦（ADR-004）。對齊後端 MIN_BET/MAX_BET。
+// 上限為安全天花板；下限避免取整派彩失真。檔位為快選建議值，玩家亦可自訂輸入。
+export const BET_MIN = 10
+export const BET_MAX = 10000
+export const BET_TIERS = [10, 50, 100, 500, 1000]
+// 入場金額：對齊後端 MIN_BUYIN/MAX_BUYIN（上限為安全天花板，實質僅再受錢包餘額約束）。
+export const BUYIN_MIN = 100
+export const BUYIN_MAX = 1000000
+export const BUYIN_TIERS = [1000, 3000, 5000, 10000]
+// 各砲台單發基礎傷害（顯示用；對齊後端 FishingCombat.CANNON_DAMAGE = {1:10, 2:14, 3:18}）。
+export const CANNON_DAMAGE = [0, 10, 14, 18]
 
 // 射速節流：8 發/秒 + 15 發 burst（對齊後端 MAX_SHOTS_PER_SEC / BURST_ALLOWANCE，
 // 本地用 token bucket 限制，避免送出後被後端整批拒絕）。
@@ -50,6 +59,7 @@ export function useFishingSession({ onResults, fortuneReady = false } = {}) {
   const inFlightRef = useRef(false)
   const sessionIdRef = useRef(null)
   const cannonLevelRef = useRef(1)
+  const betPerShotRef = useRef(BET_TIERS[0]) // 玩家進場選定的單發面額（與砲台解耦）
   const onResultsRef = useRef(onResults)
   onResultsRef.current = onResults
 
@@ -82,6 +92,7 @@ export function useFishingSession({ onResults, fortuneReady = false } = {}) {
   function applySessionView(view, resumed) {
     sessionIdRef.current = view.sessionId
     cannonLevelRef.current = view.cannonLevel || 1
+    betPerShotRef.current = view.betPerShot || BET_TIERS[0]
     shotSeqRef.current = view.lastShotSeq || 0
     shotLogRef.current = []
     setBalanceBoth(view.sessionBalance ?? 0)
@@ -89,6 +100,7 @@ export function useFishingSession({ onResults, fortuneReady = false } = {}) {
     setSession({
       sessionId: view.sessionId,
       cannonLevel: view.cannonLevel || 1,
+      betPerShot: view.betPerShot || BET_TIERS[0],
       fishTable: view.fishTable || [],
       serverSeedHash: view.serverSeedHash,
       clientSeed: view.clientSeed,
@@ -101,12 +113,12 @@ export function useFishingSession({ onResults, fortuneReady = false } = {}) {
   }
 
   const startSession = useCallback(
-    async ({ buyIn, cannonLevel }) => {
+    async ({ buyIn, cannonLevel, betPerShot }) => {
       setError(null)
       setPhase('loading')
       try {
         const clientSeed = `cs-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-        const view = await gameApi.fishingStart({ buyIn, cannonLevel, clientSeed })
+        const view = await gameApi.fishingStart({ buyIn, cannonLevel, betPerShot, clientSeed })
         if (view.wallet) dispatch(setBalance(view.wallet))
         applySessionView(view, view.resumed)
       } catch (err) {
@@ -140,7 +152,7 @@ export function useFishingSession({ onResults, fortuneReady = false } = {}) {
    */
   const fire = useCallback((fishInstanceId, fishCode) => {
     if (phase !== 'playing') return { ok: false, reason: 'inactive' }
-    const betPerShot = CANNON_BET[cannonLevelRef.current] || CANNON_BET[1]
+    const betPerShot = betPerShotRef.current || BET_TIERS[0]
     if (balanceRef.current < betPerShot) return { ok: false, reason: 'insufficient' }
     if (!takeToken()) return { ok: false, reason: 'ratelimited' }
 
@@ -264,7 +276,7 @@ export function useFishingSession({ onResults, fortuneReady = false } = {}) {
     settleResult,
     error,
     cannonLevel: session?.cannonLevel ?? cannonLevelRef.current,
-    betPerShot: CANNON_BET[session?.cannonLevel ?? cannonLevelRef.current] || CANNON_BET[1],
+    betPerShot: session?.betPerShot ?? betPerShotRef.current,
     fishTable: session?.fishTable ?? [],
     startSession,
     fire,

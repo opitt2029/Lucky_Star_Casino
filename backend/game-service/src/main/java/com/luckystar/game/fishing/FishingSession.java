@@ -45,8 +45,11 @@ public class FishingSession {
     /** 座位索引 0~3（多人同台預留；單人版固定 0）。 */
     private Integer seatIndex;
 
-    /** 炮台等級 1~3（決定單發注額與射速上限）。 */
+    /** 炮台等級 1~3（決定火力/擊殺速度/變異度與射速上限；注額已與砲台解耦，見 {@link #betPerShot}）。 */
     private Integer cannonLevel;
+
+    /** 子彈面額（單發注額）：玩家進場自選、整場固定，與砲台解耦（ADR-004）。 */
+    private Long betPerShot;
 
     /** 帶入金額（start 時自 wallet 一次性扣款）。 */
     private Long buyIn;

@@ -70,6 +70,7 @@ class FishingSessionStoreTest {
                 .roomId("solo-s-1")
                 .seatIndex(0)
                 .cannonLevel(3)
+                .betPerShot(100L)
                 .buyIn(5000L)
                 .balanceBefore(600000L)
                 .sessionBalance(4800L)
@@ -117,6 +118,9 @@ class FishingSessionStoreTest {
 
         // 保底 shotSeq 必須還原
         assertEquals(7L, loaded.getGuaranteedShotSeq());
+
+        // 子彈面額（玩家自選、整場固定，ADR-004）必須完整還原——漏存會讓跨批 validateBatch 注額對不上、整批被拒
+        assertEquals(100L, loaded.getBetPerShot());
     }
 
     @Test

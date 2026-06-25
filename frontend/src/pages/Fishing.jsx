@@ -4,7 +4,16 @@ import AppShell from '../components/AppShell'
 import GameRuleCard from '../components/GameRuleCard'
 import MetricCard from '../components/MetricCard'
 import { gameApi } from '../services/gameApi'
-import { useFishingSession, CANNON_BET } from '../hooks/useFishingSession'
+import {
+  useFishingSession,
+  BET_TIERS,
+  BET_MIN,
+  BET_MAX,
+  BUYIN_TIERS,
+  BUYIN_MIN,
+  BUYIN_MAX,
+  CANNON_DAMAGE,
+} from '../hooks/useFishingSession'
 import { useSound } from '../casino-fx/sound/useSound'
 import { useBgm } from '../casino-fx/sound/useBgm'
 import GoldBurst from '../casino-fx/fx/GoldBurst'
@@ -19,18 +28,18 @@ import { useGameLeaveGuard } from '../hooks/useGameLeaveGuard'
 // Pixi 漁場 code-split：pixi.js 只在進場時動態載入，不膨脹主 bundle。
 const FishingCanvas = lazy(() => import('../components/FishingCanvas'))
 
-const BUY_IN_OPTIONS = [1000, 3000, 5000]
 const CANNON_OPTIONS = [
-  { level: 1, label: '銅炮', bet: CANNON_BET[1], desc: '傷害 10・穩紮穩打' },
-  { level: 2, label: '銀炮', bet: CANNON_BET[2], desc: '傷害 17・攻守均衡' },
-  { level: 3, label: '金炮', bet: CANNON_BET[3], desc: '傷害 26・大砲速殺' },
+  { level: 1, label: '銅炮', desc: `傷害 ${CANNON_DAMAGE[1]}・穩紮穩打` },
+  { level: 2, label: '銀炮', desc: `傷害 ${CANNON_DAMAGE[2]}・攻守均衡` },
+  { level: 3, label: '金炮', desc: `傷害 ${CANNON_DAMAGE[3]}・速殺高波動` },
 ]
 const fishingRules = [
-  '先選擇 buy-in 金額與炮台等級進場：buy-in 會一次性從星幣扣除，轉為「局內餘額」。',
-  '對魚開火，每發固定消耗炮台注額（銅10／銀50／金100）並造成傷害；魚有血量，傷害累積到血量歸零才結算擊殺。',
-  '砲台越高傷害越大（銅10／銀17／金26）、暴擊扣雙倍血；血量歸零時可能捕獲派彩，也可能掙脫逃跑（高波動）。',
-  '魚種倍率越高血量越厚（需更多發才打死），但每發子彈期望回報相同（RTP 92%）——打大魚是高風險高報酬。',
-  '隨時可「收網結算」，剩餘局內餘額冪等退回星幣錢包，並揭露 server seed 供逐發公平性驗證；餘額不足時請先結算。',
+  '先選擇進場金額、子彈面額與炮台進場：進場金額會一次性從星幣扣除，轉為「局內餘額」。',
+  '子彈面額（每發注額）由你自選、整場固定，與砲台無關——面額越大派彩越高、消耗越快。',
+  '對魚開火造成傷害；魚有血量，傷害累積到血量歸零才結算擊殺。砲台越高傷害越大（銅10／銀14／金18）、暴擊扣雙倍血。',
+  '魚種倍率越高血量越厚（需更多發才打死），但每發子彈期望回報相同（RTP 96%）——打大魚是高風險高報酬。',
+  '魚游走前沒打死也別擔心：結算時會按已造成傷害「殘血回收」退還部分子彈成本（保底回收）。',
+  '隨時可「收網結算」，剩餘局內餘額＋殘血回收冪等退回星幣錢包，並揭露 server seed 供逐發公平性驗證。',
 ]
 const fishingPayouts = [
   { label: '小魚', value: '錦鯉2x／金魚3x／燈籠魚5x／河豚8x' },
@@ -128,9 +137,17 @@ export default function Fishing() {
   const [bossActive, setBossActive] = useState(false)
   const [perfMode, setPerfMode] = useState(false)
   const [autoFire, setAutoFire] = useState(false)
-  const [selectedBuyIn, setSelectedBuyIn] = useState(BUY_IN_OPTIONS[0])
+  // 進場金額／子彈面額皆「檔位 + 自訂輸入」：以字串保存輸入（允許清空編輯），再夾限解析為整數。
+  const [buyInText, setBuyInText] = useState(String(BUYIN_TIERS[0]))
+  const [betText, setBetText] = useState(String(BET_TIERS[0]))
   const [selectedCannon, setSelectedCannon] = useState(1)
   const [sessionBuyIn, setSessionBuyIn] = useState(null)
+
+  const selectedBuyIn = Number.parseInt(buyInText, 10)
+  const selectedBet = Number.parseInt(betText, 10)
+  const buyInValid = Number.isInteger(selectedBuyIn) && selectedBuyIn >= BUYIN_MIN && selectedBuyIn <= BUYIN_MAX
+  const betValid = Number.isInteger(selectedBet) && selectedBet >= BET_MIN && selectedBet <= BET_MAX
+  const canStart = buyInValid && betValid && balance >= selectedBuyIn
 
   // 慶祝特效觸發器
   const [burstTrigger, setBurstTrigger] = useState(0)
@@ -185,10 +202,11 @@ export default function Fishing() {
   }, [fortune])
 
   const handleStart = () => {
+    if (!canStart) return // 餘額/範圍守門（雙保險，按鈕已 disabled）
     play('click')
     fortune.addCharge(selectedBuyIn)
     setSessionBuyIn(selectedBuyIn)
-    session.startSession({ buyIn: selectedBuyIn, cannonLevel: selectedCannon })
+    session.startSession({ buyIn: selectedBuyIn, cannonLevel: selectedCannon, betPerShot: selectedBet })
   }
 
   const handleEnd = () => {
@@ -331,6 +349,17 @@ export default function Fishing() {
                     <MetricCard label="本場派彩" value={settleResult.totalPayout.toLocaleString()} tone="light" />
                     <MetricCard label="總射擊數" value={settleResult.totalShots.toLocaleString()} />
                     <MetricCard label="退回星幣" value={settleResult.credited.toLocaleString()} tone="light" />
+                    {settleResult.residualRecovery > 0 && (
+                      <div className="col-span-2">
+                        <MetricCard
+                          label="殘血回收"
+                          value={`+${settleResult.residualRecovery.toLocaleString()}`}
+                          caption="未打死的魚按已造成傷害退還部分子彈成本（已含於退回星幣）"
+                          tone="light"
+                          valueClass="text-emerald-300"
+                        />
+                      </div>
+                    )}
                     {sessionBuyIn !== null && (() => {
                       const profit = settleResult.credited - sessionBuyIn
                       return (
@@ -363,19 +392,19 @@ export default function Fishing() {
                   <div>
                     <p className="gold-muted text-xs font-black uppercase tracking-[0.3em]">Buy-in</p>
                     <h3 className="brand-title mt-1 text-3xl font-black text-yellow-100">進入漁場</h3>
-                    <p className="mt-2 text-sm font-bold text-yellow-100/64">選擇進場金額與炮台，開始捕魚。</p>
+                    <p className="mt-2 text-sm font-bold text-yellow-100/64">選擇進場金額、子彈面額與炮台，開始捕魚。</p>
                   </div>
 
                   <div className="grid gap-2 text-left">
                     <p className="gold-muted text-xs font-black uppercase tracking-[0.2em]">進場金額</p>
-                    <div className="grid grid-cols-3 gap-2">
-                      {BUY_IN_OPTIONS.map((option) => (
+                    <div className="grid grid-cols-4 gap-2">
+                      {BUYIN_TIERS.map((option) => (
                         <button
                           key={option}
                           type="button"
-                          onClick={() => setSelectedBuyIn(option)}
+                          onClick={() => setBuyInText(String(option))}
                           className={[
-                            'min-h-12 rounded border px-3 text-sm font-black transition',
+                            'min-h-12 rounded border px-2 text-sm font-black transition',
                             selectedBuyIn === option
                               ? 'gold-button'
                               : 'border-yellow-200/15 bg-red-950/70 text-yellow-100/68 hover:border-yellow-200/60',
@@ -385,10 +414,65 @@ export default function Fishing() {
                         </button>
                       ))}
                     </div>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={buyInText}
+                      onChange={(e) => setBuyInText(e.target.value.replace(/\D/g, '').slice(0, 7))}
+                      placeholder={`自訂（${BUYIN_MIN.toLocaleString()}–${BUYIN_MAX.toLocaleString()}）`}
+                      aria-label="自訂進場金額"
+                      className={[
+                        'min-h-11 rounded border bg-red-950/70 px-3 text-sm font-black text-yellow-100 outline-none transition',
+                        buyInValid ? 'border-yellow-200/20 focus:border-yellow-200/70' : 'border-red-400/50',
+                      ].join(' ')}
+                    />
+                    {!buyInValid && (
+                      <p className="text-[11px] font-bold text-red-300">
+                        進場金額需介於 {BUYIN_MIN.toLocaleString()}–{BUYIN_MAX.toLocaleString()} 星幣
+                      </p>
+                    )}
                   </div>
 
                   <div className="grid gap-2 text-left">
-                    <p className="gold-muted text-xs font-black uppercase tracking-[0.2em]">炮台等級</p>
+                    <p className="gold-muted text-xs font-black uppercase tracking-[0.2em]">子彈面額（每發注額）</p>
+                    <div className="grid grid-cols-5 gap-2">
+                      {BET_TIERS.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => setBetText(String(option))}
+                          className={[
+                            'min-h-12 rounded border px-1 text-sm font-black transition',
+                            selectedBet === option
+                              ? 'gold-button'
+                              : 'border-yellow-200/15 bg-red-950/70 text-yellow-100/68 hover:border-yellow-200/60',
+                          ].join(' ')}
+                        >
+                          {option.toLocaleString()}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={betText}
+                      onChange={(e) => setBetText(e.target.value.replace(/\D/g, '').slice(0, 5))}
+                      placeholder={`自訂（${BET_MIN}–${BET_MAX.toLocaleString()}）`}
+                      aria-label="自訂子彈面額"
+                      className={[
+                        'min-h-11 rounded border bg-red-950/70 px-3 text-sm font-black text-yellow-100 outline-none transition',
+                        betValid ? 'border-yellow-200/20 focus:border-yellow-200/70' : 'border-red-400/50',
+                      ].join(' ')}
+                    />
+                    {!betValid && (
+                      <p className="text-[11px] font-bold text-red-300">
+                        子彈面額需介於 {BET_MIN}–{BET_MAX.toLocaleString()} 星幣
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="grid gap-2 text-left">
+                    <p className="gold-muted text-xs font-black uppercase tracking-[0.2em]">炮台（火力）</p>
                     <div className="grid grid-cols-3 gap-2">
                       {CANNON_OPTIONS.map((option) => (
                         <button
@@ -403,7 +487,7 @@ export default function Fishing() {
                           ].join(' ')}
                         >
                           {option.label}
-                          <span className="block text-[11px] font-bold opacity-80">{option.bet}/發・{option.desc}</span>
+                          <span className="block text-[11px] font-bold opacity-80">{option.desc}</span>
                         </button>
                       ))}
                     </div>
@@ -412,10 +496,16 @@ export default function Fishing() {
                   <button
                     type="button"
                     onClick={handleStart}
-                    disabled={balance < selectedBuyIn}
+                    disabled={!canStart}
                     className="red-gold-button rounded px-5 py-3 text-base font-black transition disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {balance < selectedBuyIn ? '星幣不足' : `進場（扣 ${selectedBuyIn.toLocaleString()} 星幣）`}
+                    {!buyInValid
+                      ? '請輸入有效進場金額'
+                      : !betValid
+                        ? '請輸入有效子彈面額'
+                        : balance < selectedBuyIn
+                          ? '星幣不足'
+                          : `進場（扣 ${selectedBuyIn.toLocaleString()} 星幣・每發 ${selectedBet.toLocaleString()}）`}
                   </button>
                   {error && (
                     <p className="rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">{error}</p>

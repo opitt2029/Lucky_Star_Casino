@@ -44,7 +44,7 @@ const FISH_ASSETS = [
   'fish-dragon-king', 'fish-money-tree',
 ]
 // 砲台等級差異化：貼圖 / 子彈顏色 / 子彈半徑 / 射擊音調 / 砲口火光大小（idx0 不用，對齊 cannonLevel 1~3）。
-// 傷害差異在後端（FishingCombat.CANNON_DAMAGE 銅10/銀17/金26）；此處只管「手感與表現」，不影響 RTP。
+// 傷害差異在後端（FishingCombat.CANNON_DAMAGE 銅10/銀14/金18，ADR-004）；此處只管「手感與表現」，不影響 RTP。
 const CANNON_STYLE = [
   null,
   { asset: 'cannon-copper', bullet: 0xffd98a, bulletR: 4, pitch: 0.9, muzzle: 13 }, // 銅炮 L1：小、暖黃、低沉
@@ -55,14 +55,16 @@ const BULLET_BASE_R = 5 // 子彈基準半徑（白圓，實際大小由 cannonS
 const SPARK_BASE_R = 10 // 火花基準半徑
 const PRELOAD_ASSETS = ['cannon', 'cannon-copper', 'cannon-silver', 'coin', ...FISH_ASSETS]
 
-// 各 tier 的渲染基準：體型 / 游速（duration 越大游越慢）/ 辨識光暈強度。
+// 各 tier 的渲染基準：體型 / 游速（duration 越大游越慢、停越久）/ 辨識光暈強度。
 // 體型↔倍率↔HP 正相關、游速↔倍率負相關（大魚慢、好瞄但耐打）、高倍魚加光暈強化辨識（計畫 §5.1）。
+// ADR-004：高倍/Boss/特殊魚過場時間刻意拉長——大魚耐打（金炮 ~12s、銅炮 ~21s 才打完），
+// 停太短會在打死前游走（子彈沉沒）。配合「殘血回收」，給玩家有機會把大魚打完、減少全損挫折。
 const TIER_RENDER = {
   SMALL: { size: 62, durMin: 7, durMax: 9.5, glow: 0 },
   MEDIUM: { size: 96, durMin: 9, durMax: 12, glow: 0 },
-  HIGH: { size: 122, durMin: 11.5, durMax: 14.5, glow: 1 },
-  BOSS: { size: 154, durMin: 13.5, durMax: 17, glow: 1.5 },
-  SPECIAL: { size: 106, durMin: 11, durMax: 14, glow: 1 },
+  HIGH: { size: 122, durMin: 15, durMax: 19, glow: 1 },
+  BOSS: { size: 154, durMin: 20, durMax: 26, glow: 1.5 },
+  SPECIAL: { size: 106, durMin: 15, durMax: 19, glow: 1 },
 }
 
 // 依後端魚種資料（tier/spawnWeight/multiplier）推導渲染參數。

@@ -36,6 +36,7 @@ class FishingServiceTest {
     private static final long PLAYER_ID = 1169L;
     private static final long BUY_IN = 5000L;
     private static final int CANNON_LEVEL = 3;
+    private static final long BET_PER_SHOT = 100L;
 
     private final ProvablyFairRng rng = org.mockito.Mockito.mock(ProvablyFairRng.class);
     private final WalletClient walletClient = org.mockito.Mockito.mock(WalletClient.class);
@@ -69,7 +70,7 @@ class FishingServiceTest {
                 .thenReturn(new WalletCreditResponse(2L, PLAYER_ID, BUY_IN, 595200L, 600200L, 0L, false));
 
         assertThrows(RuntimeException.class,
-                () -> service.start(PLAYER_ID, BUY_IN, CANNON_LEVEL, "client-seed"));
+                () -> service.start(PLAYER_ID, BUY_IN, CANNON_LEVEL, BET_PER_SHOT, "client-seed"));
 
         // 必須觸發退款 credit，且冪等鍵為 fishing-buyin-refund-<sessionId>
         ArgumentCaptor<Long> amount = ArgumentCaptor.forClass(Long.class);
@@ -89,7 +90,7 @@ class FishingServiceTest {
                 .thenThrow(new WalletUnavailableException("wallet down"));
 
         assertThrows(RuntimeException.class,
-                () -> service.start(PLAYER_ID, BUY_IN, CANNON_LEVEL, "client-seed"));
+                () -> service.start(PLAYER_ID, BUY_IN, CANNON_LEVEL, BET_PER_SHOT, "client-seed"));
 
         verify(walletClient).credit(eq(PLAYER_ID), eq(BUY_IN), anyString(), anyString());
     }
@@ -98,9 +99,58 @@ class FishingServiceTest {
     @DisplayName("Session 存檔成功時不應退款")
     void start_whenSaveSucceeds_noRefund() {
         // sessionStore.save 預設不丟例外
-        service.start(PLAYER_ID, BUY_IN, CANNON_LEVEL, "client-seed");
+        service.start(PLAYER_ID, BUY_IN, CANNON_LEVEL, BET_PER_SHOT, "client-seed");
 
         verify(sessionStore).save(any(FishingSession.class));
         verify(walletClient, never()).credit(anyLong(), anyLong(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("面額守門：betPerShot 超出 [MIN_BET, MAX_BET] 時拒絕開場、不扣款")
+    void start_rejectsBetPerShotOutOfRange() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.start(PLAYER_ID, BUY_IN, CANNON_LEVEL, FishingService.MIN_BET - 1, "client-seed"));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.start(PLAYER_ID, BUY_IN, CANNON_LEVEL, FishingService.MAX_BET + 1, "client-seed"));
+        // 守門在扣款前，故 wallet 不應被觸發
+        verify(walletClient, never()).debit(anyLong(), anyLong(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("結算殘血回收：受傷未死的魚退還部分子彈成本，計入 credited 與 totalPayout")
+    void end_creditsResidualRecoveryForDamagedUnkilledFish() {
+        long betPerShot = 100L;
+        int cannonLevel = 1; // 傷害 10
+        java.util.Map<String, Long> fishDamage = new java.util.LinkedHashMap<>();
+        fishDamage.put("f1", 1000L); // 受傷未死
+        fishDamage.put("f2", 500L);
+        FishingSession active = FishingSession.builder()
+                .sessionId("sess-r").playerId(PLAYER_ID).cannonLevel(cannonLevel).betPerShot(betPerShot)
+                .buyIn(BUY_IN).balanceBefore(600000L).sessionBalance(200L)
+                .totalBet(4800L).totalPayout(0L).totalShots(48L).lastShotSeq(48L)
+                .serverSeed("srv").serverSeedHash("hash").clientSeed("cli").state("ACTIVE")
+                .createdAt(java.time.Instant.now()).lastActivityAt(java.time.Instant.now())
+                .fishDamage(fishDamage)
+                .build();
+        when(sessionStore.find(PLAYER_ID)).thenReturn(Optional.of(active));
+        when(roundRepository.findByRoundId("sess-r")).thenReturn(Optional.empty());
+        when(walletClient.credit(anyLong(), anyLong(), anyString(), anyString()))
+                .thenReturn(new WalletCreditResponse(9L, PLAYER_ID, 0L, 200L, 200L, 0L, false));
+
+        var resp = service.end(PLAYER_ID, "sess-r");
+
+        long expectedRecovery =
+                com.luckystar.game.fishing.FishingCombat.recoveryPayout(betPerShot, cannonLevel, 1000L)
+                        + com.luckystar.game.fishing.FishingCombat.recoveryPayout(betPerShot, cannonLevel, 500L);
+        assertTrue(expectedRecovery > 0, "測試資料應產生正回收");
+        assertEquals(expectedRecovery, resp.getResidualRecovery(), "回應應帶殘血回收金額");
+        // credited = 剩餘局內餘額(200) + 回收
+        assertEquals(200L + expectedRecovery, resp.getCredited());
+        // 實際 credit 回 wallet 的金額應含回收
+        ArgumentCaptor<Long> credited = ArgumentCaptor.forClass(Long.class);
+        verify(walletClient).credit(eq(PLAYER_ID), credited.capture(), anyString(), anyString());
+        assertEquals(200L + expectedRecovery, credited.getValue());
+        // totalPayout 計入回收（→ game_rounds.win_amount，RTP 監控涵蓋）
+        assertEquals(expectedRecovery, resp.getTotalPayout());
     }
 }

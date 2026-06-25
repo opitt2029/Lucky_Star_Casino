@@ -18,6 +18,8 @@ public class FishingSessionView {
     String roomId;
     Integer seatIndex;
     Integer cannonLevel;
+    /** 子彈面額（單發注額）：玩家進場自選、整場固定（ADR-004），續玩時前端據此恢復。 */
+    Long betPerShot;
     Long buyIn;
     /** 局內餘額（buy-in − 累計下注 + 累計派彩）。 */
     Long sessionBalance;

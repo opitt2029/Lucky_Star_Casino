@@ -10,7 +10,7 @@ package com.luckystar.game.fishing;
  * <p>HP 與倍率成正比（{@code hp = multiplier × }{@value #HP_PER_MULTIPLIER}），使銅炮的
  * 期望擊殺發數 ≈ 倍率（錦鯉 ~2 發、河豚 ~8 發、金龍 ~60 發、龍王 ~200 發）。實際的捕獲機率
  * {@code pCapture} 由 {@link FishingCombat} 依各魚種/砲台的「期望擊殺發數」反推，使每發子彈的
- * 期望回報恆為 {@link FishingCombat#TARGET_RTP}（92%）——與魚種、砲台皆無關，無「某魚/某砲較划算」
+ * 期望回報恆為 {@link FishingCombat#TARGET_RTP}——與魚種、砲台皆無關，無「某魚/某砲較划算」
  * 的套利漏洞。RNG（暴擊、捕獲、搖錢樹倍率）皆由 (serverSeed, clientSeed, nonce=shotSeq) 確定性
  * 重放（Provably Fair，比照老虎機/百家樂）。
  *

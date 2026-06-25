@@ -67,11 +67,12 @@ export const gameApi = {
   },
 
   // POST /session/start → buy-in 開場（冪等扣款；已有場次則 resumed=true 續玩）。
-  async fishingStart({ buyIn, cannonLevel, clientSeed }) {
+  // betPerShot：玩家自選的單發面額（與砲台解耦，ADR-004）。
+  async fishingStart({ buyIn, cannonLevel, betPerShot, clientSeed }) {
     if (useMockApi) {
-      return mockApi.fishingStart({ buyIn, cannonLevel, clientSeed })
+      return mockApi.fishingStart({ buyIn, cannonLevel, betPerShot, clientSeed })
     }
-    const res = await api.post('/api/v1/game/fishing/session/start', { buyIn, cannonLevel, clientSeed })
+    const res = await api.post('/api/v1/game/fishing/session/start', { buyIn, cannonLevel, betPerShot, clientSeed })
     return res.data.data
   },
 

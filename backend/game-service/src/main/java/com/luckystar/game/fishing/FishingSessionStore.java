@@ -39,6 +39,7 @@ public class FishingSessionStore {
     private static final String F_ROOM_ID = "roomId";
     private static final String F_SEAT_INDEX = "seatIndex";
     private static final String F_CANNON_LEVEL = "cannonLevel";
+    private static final String F_BET_PER_SHOT = "betPerShot";
     private static final String F_BUY_IN = "buyIn";
     private static final String F_BALANCE_BEFORE = "balanceBefore";
     private static final String F_SESSION_BALANCE = "sessionBalance";
@@ -130,6 +131,7 @@ public class FishingSessionStore {
         putIfNotNull(h, F_ROOM_ID, s.getRoomId());
         putIfNotNull(h, F_SEAT_INDEX, s.getSeatIndex());
         putIfNotNull(h, F_CANNON_LEVEL, s.getCannonLevel());
+        putIfNotNull(h, F_BET_PER_SHOT, s.getBetPerShot());
         putIfNotNull(h, F_BUY_IN, s.getBuyIn());
         putIfNotNull(h, F_BALANCE_BEFORE, s.getBalanceBefore());
         putIfNotNull(h, F_SESSION_BALANCE, s.getSessionBalance());
@@ -174,6 +176,7 @@ public class FishingSessionStore {
                 .roomId(h.get(F_ROOM_ID))
                 .seatIndex(parseInt(h.get(F_SEAT_INDEX)))
                 .cannonLevel(parseInt(h.get(F_CANNON_LEVEL)))
+                .betPerShot(parseLong(h.get(F_BET_PER_SHOT)))
                 .buyIn(parseLong(h.get(F_BUY_IN)))
                 .balanceBefore(parseLong(h.get(F_BALANCE_BEFORE)))
                 .sessionBalance(parseLong(h.get(F_SESSION_BALANCE)))
