@@ -3,6 +3,43 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Fixed] — 2026-06-25 — 捕魚機後端跨批累傷未持久化（魚回寫打不死）根因修復
+
+> 玩家反映大魚「會回寫、打不死」——HP 條過一下又跳回滿血，怎麼打都殺不死。
+> 此問題先前只在前端／mock 端處理過（`fishDamage` ID 碰撞、`idSeq` 跨 session 碰撞），**真實後端的根因從未被修掉**。
+
+### Fixed
+- `backend/game-service/.../fishing/FishingSessionStore.java`：**Redis Hash 漏存血量/傷害模型的跨批狀態**。
+  `toHash()`/`fromHash()` 原本完全沒有序列化 `fishDamage`（每條魚 instance 的累積傷害）、`kills`（致命一擊紀錄）、
+  `guaranteedShotSeq`（幸運值保底 shotSeq）這三個欄位。改為注入 `ObjectMapper`，把 `fishDamage`/`kills` 以 JSON 字串
+  存入新 hash 欄位、`guaranteedShotSeq` 以純量欄位存入；讀取時對應反序列化還原，欄位缺失或 JSON 毀損時保守 fallback
+  為空集合（與 `find()` 既有容錯一致）。
+- `frontend/src/components/fishingEngine.js`：**HP 上界防禦護欄**。`handleResults` 更新 `f.hp` 改為
+  `Math.max(0, Math.min(f.maxHp, r.hpRemaining))`，避免任何異常偏高的 `hpRemaining` 造成 HP 條視覺溢出/看似回滿（純防禦，後端權威不變）。
+
+### Added
+- `backend/game-service/.../fishing/FishingSessionStoreTest.java`：**store round-trip 回歸測試**（純 Mockito，
+  以記憶體 Map 模擬 Redis Hash 的 `putAll`/`entries`）。驗證 `fishDamage`/`kills`/`guaranteedShotSeq` 完整 round-trip、
+  未設定時還原為空集合而非 NPE、被擊殺的魚累傷不殘留。先前此 store 的序列化從未被測（`FishingServiceTest` 把它整個 mock 掉），
+  正是 bug 漏網主因。
+
+### 為什麼
+- 捕魚 session 存於 Redis Hash（`game:fishing:session:{playerId}`），每批 `POST /{sessionId}/shots` 都會 `find()`
+  重讀 session。`fishDamage` 沒被序列化 → 每批被 `@Builder.Default` 重置成空 Map → `damageBefore` 永遠是 0 →
+  跨批累傷歸零 → 大魚（如龍王 HP=2000）每批 HP 都「回寫」回滿、永遠打不死。單批內累傷正常，故小魚有時打得死、
+  大魚必死不了，症狀正是「回寫打不死」。mock 路徑不受影響（`mockApi.js` 的 `fishDamage` 存 localStorage，
+  天生跨批持久化），所以此 bug 只在跑真實後端時出現。
+- 一併持久化 `guaranteedShotSeq` 亦修正一個潛在副 bug：保底命中若發生在前一批，原本 reload 後會遺失，
+  導致 `end()` 寫入 `resultData` 的 guaranteed 資訊不正確、`verifyShot` 對該發判定錯誤。
+
+### 如何驗證
+- `mvn -pl backend/game-service test`：新增的 `FishingSessionStoreTest` 綠燈，既有 `FishingServiceTest`/`FishingCombatTest` 不受影響。
+- `cd frontend && npm run lint && npm run build`：綠。
+- 實機（真實後端，`VITE_USE_MOCK_API=false`）：對龍王持續開火數秒（分多批 flush），同一條魚 `hpRemaining` 跨批嚴格遞減、
+  不再回滿，最終 `killed=true`；`redis-cli HGETALL game:fishing:session:{playerId}` 可見 `fishDamage` JSON 欄位隨開火變動。
+
+---
+
 ## [Fixed] — 2026-06-24 — 捕魚機 idSeq 跨 session 碰撞 + 手動點擊 fleeing 魚
 
 ### Fixed

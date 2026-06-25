@@ -693,8 +693,9 @@ export class FishingEngine {
       // 浮動傷害數字（命中即冒，不論死活；暴擊橘紅放大）
       if (r.damage > 0) this._spawnDamage(px, py, r.damage, !!r.crit)
       // HP 條：以伺服器權威 hpRemaining 更新並顯示一段時間
+      // 夾在 [0, maxHp]：純防禦，避免任何異常偏高回傳讓 HP 條視覺溢出/看似回滿
       if (f && typeof r.hpRemaining === 'number') {
-        f.hp = Math.max(0, r.hpRemaining)
+        f.hp = Math.max(0, Math.min(f.maxHp, r.hpRemaining))
         f.hpShownMs = HP_SHOW_MS
       }
 
