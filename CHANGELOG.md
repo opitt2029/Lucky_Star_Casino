@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Fixed] — 2026-06-25 — mock 捕魚 resumed 分支補上 fishDamage 歸零，與 fishingActive 一致
+
+> **問題**：`mockApi.js` 的 `fishingActive()` 已會在回傳前 `session.fishDamage = {}`，避免「引擎 remount 後 idSeq 從 0 重置 → 舊傷害 key 碰撞新魚 id → 新魚繼承舊傷害（初擊即死）」。但 `fishingStart()` 的 `existing`（resumed）分支同樣回傳 `resumed: true`，卻漏了這行重置，形成自我防護不一致。
+> **影響**：罕見競態、且僅限 mock；但若前端走 `fishingStart` 續玩路徑而非 `fishingActive`，仍可能重現初擊即死。
+> **修法**：在 `existing` 分支 `saveDb` 前補 `existing.fishDamage = {}`，與 `fishingActive()` 對齊。
+
+### Fixed
+- `frontend/src/services/mockApi.js`：`fishingStart()` resumed 分支補 `existing.fishDamage = {}`。
+
+### 如何驗證
+- 程式碼審查：兩個 resumed 回傳路徑（`fishingActive` / `fishingStart` existing 分支）現在都會歸零 `fishDamage`。
+
 ## [Fixed] — 2026-06-25 — 風控 RTP 門檻改為 per-game，修正百家樂幾乎每局被強制改判「莊家贏」
 
 > **問題**：`.run-logs-game.txt` 中 `[風控] 全局 RTP 超限 gameType=BACCARAT → 百家樂結果強制改為莊家贏` 幾乎每局都出現，押「閒／和」的玩家近乎必輸、押莊異常常勝（百家樂實質被做弊）。
