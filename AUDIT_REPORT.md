@@ -221,6 +221,7 @@ wallet-service、game-service、rank-service、admin-service **目前僅有 `App
 | # | 檔案 (path:line) | Severity | Category | 說明 | 修正方式 |
 |---|---|---|---|---|---|
 | 30 | game-service `@KafkaListener` 方法 | HIGH | 潛在 Bug ✅ **N/A 已驗證** | `@KafkaListener` 方法無 try/catch，業務邏輯異常將導致消費者重試無限循環；若未配置 Dead Letter Topic，消息直接丟失 | **已驗證**：game-service 目前無 `@KafkaListener` 消費者（只有 publisher）；rank-service / wallet-service 消費者均使用 `throws Exception` 正確將例外傳遞至 `DefaultErrorHandler`（retry 3次 + DLT routing），DLT topics 已在 kafka-init.sh 建立。已驗證 2026-06-23。 |
+| 39 | `backend/game-service/.../service/RiskControlService.java` + `resources/application.yml` | HIGH | 潛在 Bug ✅ **已修** | 風控單一 `global-rtp-limit: 0.95`（含本金口徑）套到所有遊戲，但百家樂含本金 RTP 結構上 ≈ 0.99 永遠 > 0.95，導致風控幾乎每局都判超限、把非莊結果強制改成莊家贏（押閒／和近乎必輸） | **已修**：新增 `RiskProperties`（`@ConfigurationProperties`，per-game `globalRtpLimit` map），`RiskControlService` 改用 `globalRtpLimitFor(gameType)`；`application.yml` 門檻改為 map（default 1.05 / SLOT 0.97 / BACCARAT 1.02 / FISHING 1.00），訂在各遊戲結構性 RTP 之上。commit b731e20，補回歸測試；`mvn -pl backend/game-service test` → **158 passed**（已重跑驗證 2026-06-25）。見 AGENTS.md 雷區 17。 |
 
 ---
 

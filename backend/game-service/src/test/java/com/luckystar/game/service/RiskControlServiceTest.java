@@ -9,15 +9,17 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
+import com.luckystar.game.config.RiskProperties;
 import com.luckystar.game.repository.GameRoundRepository;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.test.util.ReflectionTestUtils;
 
 /** {@link RiskControlService} 單元測試。 */
 class RiskControlServiceTest {
@@ -36,10 +38,19 @@ class RiskControlServiceTest {
         Mockito.when(redisTemplate.opsForValue()).thenReturn(valueOps);
         // 預設：並發閘回傳 1（無並發，正常通過）
         Mockito.when(valueOps.increment(Mockito.anyString(), Mockito.anyLong())).thenReturn(1L);
-        service = new RiskControlService(roundRepository, redisTemplate);
-        ReflectionTestUtils.setField(service, "playerWinLimit", 50000L);
-        ReflectionTestUtils.setField(service, "globalRtpLimit", 0.95d);
-        ReflectionTestUtils.setField(service, "rtpSampleSize", 500);
+
+        RiskProperties riskProperties = new RiskProperties();
+        riskProperties.setPlayerWinLimit(50000L);
+        riskProperties.setRtpSampleSize(500);
+        // per-game 門檻：鏡像 application.yml；SLOT 沿用測試原本的 0.95 以保留判定意圖
+        Map<String, Double> limits = new LinkedHashMap<>();
+        limits.put("default", 1.05d);
+        limits.put(GAME_TYPE, 0.95d);   // SLOT
+        limits.put("BACCARAT", 1.02d);
+        limits.put("FISHING", 1.00d);
+        riskProperties.setGlobalRtpLimit(limits);
+
+        service = new RiskControlService(roundRepository, redisTemplate, riskProperties);
 
         // 預設：全局 RTP 正常（0.5）
         when(roundRepository.aggregateRecent(anyString(), anyInt()))
@@ -78,6 +89,43 @@ class RiskControlServiceTest {
                 .thenReturn(List.<Object[]>of(new Object[]{100L, 96L, 10L}));
 
         assertTrue(service.shouldIntercept(PLAYER_ID, GAME_TYPE));
+    }
+
+    @Test
+    @DisplayName("百家樂結構性含本金 RTP（0.99）低於其 per-game 門檻（1.02） → 不攔截")
+    void shouldIntercept_baccaratStructuralRtp_returnsFalse() {
+        // 回歸測試：修法前單一 0.95 門檻會把百家樂每局都判超限、強制改莊家贏。
+        when(roundRepository.aggregatePlayerToday(anyLong(), anyString(), any()))
+                .thenReturn(List.<Object[]>of(new Object[]{10000L, 10000L, 5L}));
+        // 百家樂全局：totalBet=10000, totalWin=9900 → 含本金 RTP=0.99 < BACCARAT 門檻 1.02
+        when(roundRepository.aggregateRecent(eq("BACCARAT"), anyInt()))
+                .thenReturn(List.<Object[]>of(new Object[]{10000L, 9900L, 100L}));
+
+        assertFalse(service.shouldIntercept(PLAYER_ID, "BACCARAT"));
+    }
+
+    @Test
+    @DisplayName("百家樂全局 RTP 真的超過 per-game 門檻（1.02） → 仍會攔截")
+    void shouldIntercept_baccaratGlobalRtpOverLimit_returnsTrue() {
+        when(roundRepository.aggregatePlayerToday(anyLong(), anyString(), any()))
+                .thenReturn(List.<Object[]>of(new Object[]{10000L, 10000L, 5L}));
+        // 百家樂全局：totalBet=10000, totalWin=10300 → RTP=1.03 >= 1.02
+        when(roundRepository.aggregateRecent(eq("BACCARAT"), anyInt()))
+                .thenReturn(List.<Object[]>of(new Object[]{10000L, 10300L, 100L}));
+
+        assertTrue(service.shouldIntercept(PLAYER_ID, "BACCARAT"));
+    }
+
+    @Test
+    @DisplayName("未列出的遊戲使用 default 門檻（1.05）")
+    void shouldIntercept_unknownGameUsesDefault_returnsTrue() {
+        when(roundRepository.aggregatePlayerToday(anyLong(), anyString(), any()))
+                .thenReturn(List.<Object[]>of(new Object[]{10000L, 10000L, 5L}));
+        // 未知遊戲：RTP=1.06 >= default 1.05
+        when(roundRepository.aggregateRecent(eq("DICE"), anyInt()))
+                .thenReturn(List.<Object[]>of(new Object[]{10000L, 10600L, 100L}));
+
+        assertTrue(service.shouldIntercept(PLAYER_ID, "DICE"));
     }
 
     @Test

@@ -56,6 +56,7 @@
     - **跨批戰鬥狀態必須持久化進 Redis**：捕魚是 buy-in + 批次結算，魚的累傷 `fishDamage`（key=`fishInstanceId`）、致命一擊 `kills`、保底 `guaranteedShotSeq` 都存在 `FishingSession`，每批 `shots()` 都 `find()` 重讀 session。**動 `FishingSession` 欄位時，務必同步在 `FishingSessionStore.toHash()/fromHash()` 補序列化**（集合用 `ObjectMapper` 存 JSON 欄位），否則跨批累傷歸零→**大魚永遠打不死（HP 每批「回寫」回滿）**。此雷曾因 store 漏存三欄位、且 `FishingServiceTest` 把 store 整個 mock 掉而漏網；回歸由 `FishingSessionStoreTest` 守門。
     - **改數值三同步**（比照雷區 15）：動 `FishingCombat`（HP/傷害/暴擊/`pCapture`）→ 同步改 `mockApi.js` 鏡像（雷區 14）+ `FishingCombatTest` 的 RTP band，並跑 `mvn -pl backend/game-service test`。
     - **依賴**：前端用 `pixi.js`（`package.json`）；`git pull` 後若 build 報 `Rollup failed to resolve import "pixi.js"`＝忘了 `npm install`。
+17. **風控全局 RTP 門檻是 per-game 且為「含本金」口徑**（`risk.global-rtp-limit` 為 map，見 `RiskProperties` / `RiskControlService`）：`game_rounds.win_amount` 存的是**含本金**派彩，故 RTP=`win/bet` 的正常水位 ≈ 各遊戲結構性 RTP（老虎機 ≈ 0.94、百家樂 ≈ 0.99）。門檻**必須訂在該遊戲結構性 RTP 之上**，否則風控每局誤判超限、把結果強制改判（百家樂被改成「莊家贏」）—— 這正是 2026-06-25 修掉的 bug。**新增遊戲或調門檻時**：在 `application.yml` 的 `risk.global-rtp-limit` 補該遊戲鍵（未列出走 `default`），值要高於其含本金 RTP；別退回單一標量門檻。
 
 ---
 

@@ -787,6 +787,9 @@ export const mockApi = {
     const existing = db.fishingSessions[playerId]
     if (existing) {
       // 已有進行中場次：續玩、不重複扣款（比照後端 resumed）。
+      // 同 fishingActive()：引擎 remount 後 idSeq 從 0 重置，舊 fishDamage 的 key
+      // 會碰撞到新魚 id，導致新魚繼承舊傷害（初擊即死），故一併歸零。
+      existing.fishDamage = {}
       saveDb(db)
       return {
         sessionId: existing.sessionId,
