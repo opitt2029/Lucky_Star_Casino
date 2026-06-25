@@ -35,6 +35,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### 如何驗證
 - `mvn -pl backend/game-service test`：158 passed（含 `RiskControlServiceTest` 7 筆、`GameServiceApplicationTests` contextLoads 確認 `RiskProperties` 綁定成功）。
 
+## [Fixed] — 2026-06-24 — 捕魚機 idSeq 跨 session 碰撞 + 手動點擊 fleeing 魚
+
+### Fixed
+- `frontend/src/components/fishingEngine.js`：**idSeq 跨 session 碰撞** — `this.idSeq` 初始值從 `0` 改為 `Date.now()`，引擎每次重建的起點都不同，徹底消除舊 `fishDamage` key 被新魚繼承的可能（前次修法只在 hook remount 時清空 fishDamage，HMR 等只重建引擎的場景仍有碰撞風險）。
+- `frontend/src/components/fishingEngine.js`：**手動點擊 fleeing 魚** — `_nearestFish` 補上 `f.fleeing` 過濾，避免用戶點到正在逃跑動畫的魚觸發 `fire()`（浪費注額、在 mockApi 留下錯誤 `fishDamage` 殘留值）。
+
+**為什麼**：`idSeq = 0` 使不同生命週期的引擎 id 空間完全重疊；`Date.now()` 起點讓碰撞機率歸零，不依賴外部清空邏輯。fleeing 魚的 `fishDamage` 在 killed 時已被刪除，重新 fire 會以 damageBefore=0 重算 hpRemaining，後端/mock 認為此魚滿血，邏輯狀態汙染。
+**如何驗證**：
+1. 進捕魚機場，對一條大魚打到低血量
+2. 開啟 DevTools → HMR 觸發引擎重建（或 navigate away 再回來）
+3. 再打同一種類新魚，血量應從滿血開始，不繼承舊傷害
+4. 打到一條魚掙脫逃跑（fleeing），快速點擊逃跑動畫中的魚，確認不扣注、無子彈
+
 ## [Added] — 2026-06-24 — 前端導入 Vitest，補 axios 401 攔截器自動續期測試
 
 > 前端先前只有 eslint 與 Playwright e2e，無單元測試框架。為前一筆「401 靜默續期」加上回歸保護，導入 Vitest（vite 專案原生整合）。
