@@ -76,3 +76,6 @@ coverage/
 # JMeter pressure-test runtime data
 tests/performance/players.csv
 tests/performance/results/
+
+# 本機服務啟動 log（run_in_background 輸出）
+.run-logs-*.txt
