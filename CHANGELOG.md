@@ -3,117 +3,93 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Fixed] — 2026-06-25 — mock 捕魚 resumed 分支補上 fishDamage 歸零，與 fishingActive 一致
-
-> **問題**：`mockApi.js` 的 `fishingActive()` 已會在回傳前 `session.fishDamage = {}`，避免「引擎 remount 後 idSeq 從 0 重置 → 舊傷害 key 碰撞新魚 id → 新魚繼承舊傷害（初擊即死）」。但 `fishingStart()` 的 `existing`（resumed）分支同樣回傳 `resumed: true`，卻漏了這行重置，形成自我防護不一致。
-> **影響**：罕見競態、且僅限 mock；但若前端走 `fishingStart` 續玩路徑而非 `fishingActive`，仍可能重現初擊即死。
-> **修法**：在 `existing` 分支 `saveDb` 前補 `existing.fishDamage = {}`，與 `fishingActive()` 對齊。
+## [Released] — 2026-06-25
 
 ### Fixed
-- `frontend/src/services/mockApi.js`：`fishingStart()` resumed 分支補 `existing.fishDamage = {}`。
-
-### 如何驗證
-- 程式碼審查：兩個 resumed 回傳路徑（`fishingActive` / `fishingStart` existing 分支）現在都會歸零 `fishDamage`。
-
-## [Fixed] — 2026-06-25 — 風控 RTP 門檻改為 per-game，修正百家樂幾乎每局被強制改判「莊家贏」
-
-> **問題**：`.run-logs-game.txt` 中 `[風控] 全局 RTP 超限 gameType=BACCARAT → 百家樂結果強制改為莊家贏` 幾乎每局都出現，押「閒／和」的玩家近乎必輸、押莊異常常勝（百家樂實質被做弊）。
-> **根因**：`RiskControlService.isGlobalRtpOverLimit` 用 `totalWin / totalBet` 比較單一門檻 `risk.global-rtp-limit: 0.95`，但 `game_rounds.win_amount` 是**含本金**派彩（`BaccaratGameService.payoutFor`：莊 ≈ 1.95x 含本金、和局押莊/閒 push 退本金 + 0.5% 反水）。百家樂含本金 RTP 結構上 ≈ 0.99 永遠 > 0.95 → `isGlobalRtpOverLimit("BACCARAT")` 幾乎恆為 true → `BaccaratService` 搜不同 nonce 把非莊結果強制改成莊家贏。老虎機含本金 RTP ≈ 0.938 < 0.95 故只偶爾踩玩家淨贏上限、不踩全局。
-> **決策**：單一門檻套到不同莊家優勢的遊戲必然誤判；改為 **per-game 門檻**（含本金口徑），門檻訂在「該遊戲結構性 RTP 之上」，風控只在實際出現異常莊家虧損（玩家集體大贏）時才觸發。
+- **捕魚機後端跨批累傷未持久化（魚回寫打不死）根因修復**：
+  - `backend/game-service/.../fishing/FishingSessionStore.java`：Redis Hash 漏存血量/傷害模型的跨批狀態。`toHash()`/`fromHash()` 原本完全沒有序列化 `fishDamage`（每條魚 instance 的累積傷害）、`kills`（致命一擊紀錄）、`guaranteedShotSeq`（幸運值保底 shotSeq）這三個欄位。改為注入 `ObjectMapper`，把 `fishDamage`/`kills` 以 JSON 字串存入新 hash 欄位、`guaranteedShotSeq` 以純量欄位存入；讀取時對應反序列化還原，欄位缺失或 JSON 毀損時保守 fallback 為空集合（與 `find()` 既有容錯一致）。
+  - `frontend/src/components/fishingEngine.js`：HP 上界防禦護欄。`handleResults` 更新 `f.hp` 改為 `Math.max(0, Math.min(f.maxHp, r.hpRemaining))`，避免任何異常偏高的 `hpRemaining` 造成 HP 條視覺溢出/看似回滿（純防禦，後端權威不變）。
+- **mock 捕魚 resumed 分支補上 fishDamage 歸零**：
+  - `frontend/src/services/mockApi.js`：`fishingStart()` resumed 分支補 `existing.fishDamage = {}`。原本 `fishingActive()` 已會在回傳前清空，避免「引擎 remount 後 idSeq 從 0 重置 → 舊傷害 key 碰撞新魚 id → 新魚繼承舊傷害（初擊即死）」，但 `fishingStart()` 的 `existing` 分支漏了此重置，現已對齊防護邏輯。
+- **風控 RTP 門檻改為 per-game，修正百家樂幾乎每局被強制改判「莊家贏」**：
+  - `backend/game-service/.../service/RiskControlService.java`：移除 `@Value` 標量欄位，改注入 `RiskProperties`；`isGlobalRtpOverLimit` 改用 `riskProperties.globalRtpLimitFor(gameType)`。修正原本單一門檻 `0.95` 套用到不同莊家優勢遊戲導致的百家樂恆常誤判問題（百家樂含本金 RTP 結構上 ≈ 0.99）。
+  - `backend/game-service/src/main/resources/application.yml`：`risk.global-rtp-limit` 由單一 `0.95` 改為 per-game map（`default: 1.05`、`SLOT: 0.97`、`BACCARAT: 1.02`、`FISHING: 1.00`）。門檻訂在該遊戲結構性 RTP 之上，風控只在實際出現異常莊家虧損時才觸發。
 
 ### Added
-- `backend/game-service/.../config/RiskProperties.java`：`@ConfigurationProperties(prefix="risk")`，承載 `playerWinLimit`、`rtpSampleSize` 與 per-game `globalRtpLimit` Map；`globalRtpLimitFor(gameType)` 先找該遊戲（不分大小寫）、再找 `default`、皆無則後備 1.05。
-- `RiskControlServiceTest`：新增 3 筆——百家樂含本金 RTP 0.99 < 門檻 1.02 不攔截（回歸）、百家樂 RTP 1.03 ≥ 1.02 仍攔截、未列出遊戲走 `default` 1.05。
+- `backend/game-service/.../config/RiskProperties.java`：`@ConfigurationProperties(prefix="risk")`，承載 `playerWinLimit`、`rtpSampleSize` 與 per-game `globalRtpLimit` Map。
+- `backend/game-service/.../fishing/FishingSessionStoreTest.java`：新增 store round-trip 回歸測試（純 Mockito，以記憶體 Map 模擬 Redis Hash 的 `putAll`/`entries`）。驗證跨批狀態完整 round-trip、未設定時還原為空集合而非 NPE、被擊殺的魚累傷不殘留。
+- `RiskControlServiceTest`：新增 3 筆測試——百家樂含本金 RTP 0.99 < 門檻 1.02 不攔截（回歸）、百家樂 RTP 1.03 ≥ 1.02 仍攔截、未列出遊戲走 `default` 1.05。
 
-### Changed
-- `backend/game-service/.../service/RiskControlService.java`：移除 `@Value` 標量欄位，改注入 `RiskProperties`；`isGlobalRtpOverLimit` 改用 `riskProperties.globalRtpLimitFor(gameType)`。
-- `backend/game-service/src/main/resources/application.yml`：`risk.global-rtp-limit` 由單一 `0.95` 改為 per-game map（`default: 1.05`、`SLOT: 0.97`、`BACCARAT: 1.02`、`FISHING: 1.00`）。
+### 為什麼 (Why)
+- **捕魚機大魚不死**：捕魚 session 存於 Redis Hash（`game:fishing:session:{playerId}`），每批 `POST /{sessionId}/shots` 都會 `find()` 重讀 session。`fishDamage` 沒被序列化 → 每批被 `@Builder.Default` 重置成空 Map → `damageBefore` 永遠是 0 → 跨批累傷歸零 → 大魚（如龍王 HP=2000）每批 HP 都「回寫」回滿、永遠打不死。單批內累傷正常，故小魚打得死、大魚必死不了。mock 路徑因存於 localStorage 故先前未暴露此問題。一併持久化 `guaranteedShotSeq` 亦修正了保底命中若發生在前一批，reload 後會遺失的潛在副 bug。
+- **風控門檻優化**：單一門檻（0.95）套用到不同莊家優勢的遊戲必然誤判。改為 per-game 門檻（含本金口徑）後，正常 play 下後端百家樂回歸公平，與前端 mock 一致，不需修改前端 mock（符合 AGENTS 雷區 14）。
 
-### 未動
-- 前端 mock（`mockApi.js`）百家樂本就是公平的、無此風控機制；修法後正常play 下後端百家樂亦回歸公平，兩邊一致，**不需改 mock**（符合 AGENTS 雷區 14）。
+### 如何驗證 (Verification)
+- `mvn -pl backend/game-service test`：158 passed（含新增的 `FishingSessionStoreTest` 與 `RiskControlServiceTest` 7 筆，`GameServiceApplicationTests` contextLoads 確認 `RiskProperties` 綁定成功）。
+- `cd frontend && npm run lint && npm run build`：綠燈通過。
+- **實機測試（真實後端）**：
+  1. 對龍王持續開火數秒（分多批 flush），同一條魚 `hpRemaining` 跨批嚴格遞減、不再回滿，最終 `killed=true`。
+  2. 執行 `redis-cli HGETALL game:fishing:session:{playerId}` 可見 `fishDamage` JSON 欄位隨開火變動。
 
-### 如何驗證
-- `mvn -pl backend/game-service test`：158 passed（含 `RiskControlServiceTest` 7 筆、`GameServiceApplicationTests` contextLoads 確認 `RiskProperties` 綁定成功）。
+---
 
-## [Fixed] — 2026-06-24 — 捕魚機 idSeq 跨 session 碰撞 + 手動點擊 fleeing 魚
+## [Released] — 2026-06-24
 
 ### Fixed
-- `frontend/src/components/fishingEngine.js`：**idSeq 跨 session 碰撞** — `this.idSeq` 初始值從 `0` 改為 `Date.now()`，引擎每次重建的起點都不同，徹底消除舊 `fishDamage` key 被新魚繼承的可能（前次修法只在 hook remount 時清空 fishDamage，HMR 等只重建引擎的場景仍有碰撞風險）。
-- `frontend/src/components/fishingEngine.js`：**手動點擊 fleeing 魚** — `_nearestFish` 補上 `f.fleeing` 過濾，避免用戶點到正在逃跑動畫的魚觸發 `fire()`（浪費注額、在 mockApi 留下錯誤 `fishDamage` 殘留值）。
+- **捕魚機 idSeq 跨 session 碰撞**：
+  - `frontend/src/components/fishingEngine.js`：`this.idSeq` 初始值從 `0` 改為 `Date.now()`。引擎每次重建的起點都不同，徹底消除舊 `fishDamage` key 被新魚繼承的可能（避免 HMR 等只重建引擎但未清空狀態時的碰撞風險）。
+- **手動點擊 fleeing 魚問題修復**：
+  - `frontend/src/components/fishingEngine.js`：`_nearestFish` 補上 `f.fleeing` 過濾，避免用戶點到正在逃跑動畫的魚觸發 `fire()`（浪費注額、且避免在 mockApi 留下錯誤的 `fishDamage` 殘留值）。
+- **捕魚機四個前端體驗 bug 修正**：
+  - `frontend/src/components/fishingEngine.js`：**限流視覺子彈** — 有魚目標但 token bucket 限流時不再生成視覺子彈，消除「大量子彈飛出卻不扣注也不傷魚」的誤解。
+  - `frontend/src/components/fishingEngine.js`：**HP 條計時消失** — 魚有累積傷害（`hp < maxHp`）時 HP 條以半透明（alpha 0.55）持續顯示，確保大魚多發攻擊時玩家可看到傷害積累。
+  - `frontend/src/services/mockApi.js`：**fishDamage ID 碰撞** — `fishingActive()` 恢復場次時先清空 `fishDamage`，防止引擎重建後新魚繼承舊魚傷害。
+  - `frontend/src/pages/Fishing.jsx`：**結算說明不足** — 結算按鈕下方新增「剩餘餘額全額退回」說明，消除玩家必須打光餘額才能離開的心理負擔。
 
-**為什麼**：`idSeq = 0` 使不同生命週期的引擎 id 空間完全重疊；`Date.now()` 起點讓碰撞機率歸零，不依賴外部清空邏輯。fleeing 魚的 `fishDamage` 在 killed 時已被刪除，重新 fire 會以 damageBefore=0 重算 hpRemaining，後端/mock 認為此魚滿血，邏輯狀態汙染。
-**如何驗證**：
-1. 進捕魚機場，對一條大魚打到低血量
-2. 開啟 DevTools → HMR 觸發引擎重建（或 navigate away 再回來）
-3. 再打同一種類新魚，血量應從滿血開始，不繼承舊傷害
-4. 打到一條魚掙脫逃跑（fleeing），快速點擊逃跑動畫中的魚，確認不扣注、無子彈
+### Changed
+- **前端 access token 過期改為靜默續期**：
+  - `frontend/src/services/api.js`：401 回應攔截器改為先嘗試 `POST /api/v1/auth/refresh` 靜默續期再重送原請求；續期失敗（或無 refresh token / mock 模式）才 `logout()` 重導。實作 single-flight（`refreshPromise`）確保並發 401 共用同一次續期，避免後端 refresh token 輪替造成 mismatch。
+  - `frontend/src/store/slices/authSlice.js`：新增 `tokenRefreshed` reducer，只更新 access/refresh/expiresIn 並寫回 localStorage，保留 `player`（不可複用 `loginSuccess`，避免將 `player` 蓋成 undefined）。
+
+### Added
+- **前端導入 Vitest 與自動續期回歸測試**：
+  - `frontend/src/services/api.test.js`：涵蓋 401 攔截器 7 個情境（續期成功重送、並發 single-flight、續期失敗登出、無 token 直接登出、auth 端點不觸發等）。以自訂 axios adapter + `vi.spyOn` 驅動，免真實網路。
+  - `frontend/package.json` & `vite.config.js`：新增 `vitest`、`jsdom` 依賴及相關測試 scripts 與配置。
+  - `.github/workflows/ci.yml`：新增 `frontend-test` job，在 PR/push 至 main/develop 時進行擋關。
+
+### 為什麼 (Why)
+- **idSeq 與 fleeing**：`idSeq = 0` 使不同生命週期的引擎 id 空間完全重疊；改用時間戳起點讓碰撞率歸零。fleeing 魚的 `fishDamage` 在 killed 時已被刪除，重新 fire 會以面目全非的狀態汙染後端/mock 邏輯。
+- **靜默續期**：access token 預設只有 15 分鐘，而 7 天的 refresh token 從未被前端利用，導致用戶頻繁被踢回登入頁。串接後端現有的輪替式 refresh 機制，可大幅提升用戶無感續留體驗。
+
+### 如何驗證 (Verification)
+- `cd frontend && npm test`：7 passed。
+- `npx eslint` 與 `npm run build`：皆綠燈通過。
+- **捕魚機實測**：
+  1. 對大魚打至低血量後觸發 HMR 引擎重建，新魚血量正常從滿血開始，無傷害繼承。
+  2. 魚隻掙脫逃跑時快速點擊，確認不扣注、不發射子彈。
 
 ---
 
 ## [Changed] — 2026-06-23 — 捕魚機魚種視覺對齊後端 + Boss/魚群事件（Phase 4）
 
-> 捕魚機升級第四階段：前端 spawn 改採後端魚種真相（tier/spawnWeight），修正舊版用 multiplier 自行分級
-> 把 HIGH（金龍/貔貅/財神）誤當 boss 的問題；高倍魚加辨識光暈；新增 Boss（龍王）定時降臨與魚群潮事件。
+> 捕魚機升級第四階段：前端 spawn 改採後端魚種真相（tier/spawnWeight），修正舊版用 multiplier 自行分級把 HIGH（金龍/貔貅/財神）誤當 boss 的問題；高倍魚加辨識光暈；新增 Boss（龍王）定時降臨與魚群潮事件。
 > **純前端表現層，後端魚種數值（Phase 1 已按設計表定案）/契約/RTP/帳務皆不變。**
 
 ### Changed
 - `frontend/src/components/fishingEngine.js`：
-  - **魚種視覺對齊後端**：`deriveMeta` 改用後端 `tier`/`spawnWeight`（單一真相）推導體型/游速/出現率，取代舊版用 `multiplier` 自行分級——修正金龍/貔貅/財神（HIGH）被誤判為 boss、體型與龍王相同、誤觸發 Boss 警報的問題。新增 tier 渲染表 `TIER_RENDER`：體型↔倍率正相關、游速↔倍率負相關（大魚慢、好瞄但耐打）。
+  - **魚種視覺對齊後端**：`deriveMeta` 改用後端 `tier`/`spawnWeight`（單一真相）推導體型/游速/出現率，取代舊版用 `multiplier` 自行分級。修正金龍/貔貅/財神（HIGH）被誤判為 boss、體型與龍王相同、誤觸發 Boss 警報的問題。新增 tier 渲染表 `TIER_RENDER`：體型與倍率正相關、游速與倍率負相關。
   - **高倍魚辨識光暈**：HIGH/BOSS/SPECIAL 魚在魚下方加金色脈動光暈（獨立 `glowLayer`，效能模式減半），強化辨識。
   - **Boss 定時降臨**：龍王每 `BOSS_INTERVAL_MS`（58s）在「場上無 boss 時」強制降臨（保證事件節奏，不只靠 spawnWeight=2 隨機），沿用既有 bossAlarm 預警 + boss BGM。
   - **魚群潮**：每 `SWARM_INTERVAL_MS`（36s）短時間密集放小魚（`SWARM_SIZE` 尾），製造 LDW 小額回收手感；受並存上限保護。`_trySpawn` 重構支援指定魚種/小魚/Boss。
   - lockOn 鎖定音擴及 HIGH 魚（原僅 boss/special）。
 
-### 為什麼
-- 玩家要「各種魚的合理性」。後端魚種數值 Phase 1 已按計畫設計表定案（倍率↔HP↔稀有度），Phase 4 把前端視覺對齊這份真相（體型/游速/出現率/辨識度），並補上 Boss/魚群事件變化，讓「打不同魚」有明確分級感受。spawn 在前端僅影響視覺，輸贏仍由後端決定（ADR-003），無套利。
+### 為什麼 (Why)
+- 後端魚種數值 Phase 1 已按計畫設計表定案（倍率↔HP↔稀有度），Phase 4 把前端視覺對齊這份真相，並補上 Boss/魚群事件變化，讓玩家在打不同魚時有明確分級感受。spawn 在前端僅影響視覺，輸贏仍由後端權威決定（ADR-003），無套利風險。
 
-### 如何驗證
+### 如何驗證 (Verification)
 - `cd frontend && npm run lint`（0 error）、`npm run build`（綠）。
-- `npm run dev`：金龍/貔貅/財神體型介於中魚與龍王之間且帶光暈、不再誤觸發 Boss 警報；龍王定時降臨（警報 + BGM 切換）；偶發魚群潮密集小魚。
+- `npm run dev` 實測：金龍/貔貅/財神體型介於中魚與龍王之間且帶光暈、不再誤觸發 Boss 警報；龍王定時降臨（警報 + BGM 切換）；偶發魚群潮密集小魚。
 - 真實後端 fishing API（start→shots→end）回傳 hp/tier/spawnWeight 與 crit/damage/hpRemaining 實測通過。
-
----
-
-## [Added] — 2026-06-24 — 前端導入 Vitest，補 axios 401 攔截器自動續期測試
-
-> 前端先前只有 eslint 與 Playwright e2e，無單元測試框架。為前一筆「401 靜默續期」加上回歸保護，導入 Vitest（vite 專案原生整合）。
-
-### Added
-- `frontend/src/services/api.test.js`：涵蓋 401 攔截器 7 個情境——續期成功並重送原請求、並發 401 single-flight（只續期一次）、續期失敗 → 登出重導、無 refresh token → 直接登出不續期、auth 端點 401／`skipAuthRedirect`／非 401 皆不觸發續期。以自訂 axios adapter + `vi.spyOn(axios,'post')` 驅動，免真實網路。
-- `frontend/package.json`：新增 devDependency `vitest`、`jsdom`，及 `test`（`vitest run`）、`test:watch` script。
-- `frontend/vite.config.js`：新增 `test`（`environment: 'jsdom'`、`include: src/**/*.{test,spec}.{js,jsx}`）。
-- `.github/workflows/ci.yml`：新增 `frontend-test` job（`npm ci` + `npm test`），PR/push 至 main/develop 時擋關。
-
-### 如何驗證
-- `cd frontend && npm test`：7 passed。
-- `npx eslint src/services/api.test.js`：通過。
-
-## [Changed] — 2026-06-24 — 前端 access token 過期改為靜默續期，不再直接踢回登入頁
-
-> 問題：access token 預設只有 15 分鐘（`JWT_ACCESS_TOKEN_EXPIRY_MS:900000`），但前端雖存有 7 天的 refresh token（`JWT_REFRESH_TOKEN_EXPIRY_MS:604800000`）卻從未拿去續期。
-> 結果任何請求一旦回 401，攔截器就 `logout()` + 整頁重導 `/login`，使用者體感「閒置/停留太久就自動登出」。
-> 決策：採「反應式」續期——收到 401 時先用 refresh token 換新 token 並重送原請求，換不到才登出。後端 refresh **會輪替** refresh token（`AuthService.refreshToken` 先 delete 再存新），故前端必須存回新 refresh token，且並發 401 需 single-flight 避免第二個請求 mismatch。
-
-### Changed
-- `frontend/src/services/api.js`：401 回應攔截器改為先嘗試 `POST /api/v1/auth/refresh` 靜默續期再重送原請求；續期失敗（或無 refresh token / mock 模式）才 `logout()` 重導。
-  - single-flight（`refreshPromise`）：並發 401 共用同一次續期，避免後端 refresh token 輪替造成 mismatch。
-  - 用乾淨的 `axios.post`（非 `api` 實例）呼叫 refresh，避免遞迴攔截與帶上過期 token；以 `config._retry` 防無限重試；`skipAuthRedirect`/auth 端點維持原行為（不重導）。
-- `frontend/src/store/slices/authSlice.js`：新增 `tokenRefreshed` reducer，只更新 access/refresh/expiresIn 並寫回 localStorage、**保留 `player`**（不可複用 `loginSuccess`，它會把 `player` 蓋成 undefined）。
-
-### 為什麼
-- 後端早有 `POST /api/v1/auth/refresh`（`AuthController`）與 7 天 refresh token，前端未串接是純體驗缺口；接上後 15 分鐘 access token 到期可無感續期，僅在 refresh 也失效（最長 7 天）時才需重新登入。
-
-### 如何驗證
-- `cd frontend && npx eslint src/services/api.js src/store/slices/authSlice.js`：通過。
-- `npm run build`：成功（`✓ built`）。
-
-## [Fixed] — 2026-06-24 — 捕魚機四個前端體驗 bug 修正
-
-### Fixed
-- `frontend/src/components/fishingEngine.js`：**限流視覺子彈** — 有魚目標但 token bucket 限流時不再生成視覺子彈，消除「大量子彈飛出卻不扣注也不傷魚」誤解。
-- `frontend/src/components/fishingEngine.js`：**HP 條計時消失** — 魚有累積傷害（`hp < maxHp`）時 HP 條以半透明（alpha 0.55）持續顯示，大魚多發攻擊時玩家可看到傷害積累。
-- `frontend/src/services/mockApi.js`：**fishDamage ID 碰撞** — `fishingActive()` 恢復場次時先清空 `fishDamage`，防止引擎重建後新魚繼承舊魚傷害（新魚 hpRemaining 異常或一擊即死）。
-- `frontend/src/pages/Fishing.jsx`：**結算說明不足** — 結算按鈕下方新增「剩餘餘額全額退回」說明，玩家知道無需打光餘額即可隨時結算。
 
 ---
 ## [Fixed] — 2026-06-24 — 老虎機機台面板標示與音效修正（賠付線數、左二同小獎誤播惋惜音）
