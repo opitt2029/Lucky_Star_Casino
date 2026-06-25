@@ -211,13 +211,25 @@ async function main() {
       const ra = await http('GET', '/api/v1/game/fishing/session/active', { token });
       record('GET /api/v1/game/fishing/session/active', ra.status === 200 ? 'PASS' : 'FAIL', `status=${ra.status}`);
 
-      // 用 fishTable 第一個魚種作為射擊目標；betPerShot=10（炮台1級）
-      const fishType = sv?.fishTable?.[0]?.code || 'SMALL';
-      const shots = [1, 2, 3].map((seq) => ({ shotSeq: seq, betPerShot: 10, fishType }));
-      const rsh = await http('POST', `/api/v1/game/fishing/${sessionId}/shots`, { token, body: { shots } });
-      const dsh = dataOf(rsh.json);
-      record('POST /api/v1/game/fishing/{id}/shots', rsh.status === 200 && dsh?.results?.length ? 'PASS' : 'FAIL',
-        `status=${rsh.status} results=${dsh?.results?.length}`);
+      // 同一條大魚（龍王 HP=2000）跨兩批各 2 發，驗證「跨批累傷不回滿」（血量模型核心、ADR-003）。
+      // fishInstanceId 為 @NotBlank 必填（缺了會 400）；betPerShot=10（炮台 1 級）。
+      const fishType = 'DRAGON_KING';
+      const fishInstanceId = `smoke-fish-${stamp}`;
+      const fireBatch = (seqs) => http('POST', `/api/v1/game/fishing/${sessionId}/shots`,
+        { token, body: { shots: seqs.map((seq) => ({ shotSeq: seq, betPerShot: 10, fishType, fishInstanceId })) } });
+      const lastAlive = (j) => [...(dataOf(j)?.results || [])].reverse().find((x) => x.accepted && !x.killed);
+
+      const b1 = await fireBatch([1, 2]);
+      record('POST /api/v1/game/fishing/{id}/shots', b1.status === 200 && dataOf(b1.json)?.results?.length ? 'PASS' : 'FAIL',
+        `status=${b1.status} results=${dataOf(b1.json)?.results?.length}`);
+
+      // 第二批同一條魚再 2 發：hpRemaining 必須延續第一批繼續下降（修復前累傷未持久化會「回寫」回滿）。
+      const b2 = await fireBatch([3, 4]);
+      const a1 = lastAlive(b1.json);
+      const a2 = lastAlive(b2.json);
+      const crossOk = b2.status === 200 && a1 && a2 && a2.hpRemaining < a1.hpRemaining;
+      record('捕魚跨批累傷持久化（hpRemaining 不回滿）', crossOk ? 'PASS' : 'FAIL',
+        a1 && a2 ? `batch1 hp=${a1.hpRemaining} → batch2 hp=${a2.hpRemaining}` : `status=${b2.status}`);
 
       const re = await http('POST', `/api/v1/game/fishing/${sessionId}/end`, { token });
       const de = dataOf(re.json);

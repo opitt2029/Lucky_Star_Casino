@@ -22,6 +22,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   以記憶體 Map 模擬 Redis Hash 的 `putAll`/`entries`）。驗證 `fishDamage`/`kills`/`guaranteedShotSeq` 完整 round-trip、
   未設定時還原為空集合而非 NPE、被擊殺的魚累傷不殘留。先前此 store 的序列化從未被測（`FishingServiceTest` 把它整個 mock 掉），
   正是 bug 漏網主因。
+- `backend/game-service/.../service/FishingServiceCrossBatchTest.java`：**跨批行為層整合測試**（真 store + 真 RNG +
+  記憶體 Redis 假替身）。同一條河豚跨多批單發開火，斷言 `hpRemaining` 跨批嚴格遞減、8 批內被擊殺（修復前永遠打不死，此測試會紅）。
+- `tests/smoke/smoke.mjs`：捕魚段補上必填 `fishInstanceId`（先前缺欄位 → shots 一律 400、實機根本沒測到捕魚射擊），
+  並改為「同一條龍王跨兩批各 2 發」+ 新增「捕魚跨批累傷持久化（hpRemaining 不回滿）」斷言，讓全功能 smoke 也守住此 bug。
 
 ### 為什麼
 - 捕魚 session 存於 Redis Hash（`game:fishing:session:{playerId}`），每批 `POST /{sessionId}/shots` 都會 `find()`
