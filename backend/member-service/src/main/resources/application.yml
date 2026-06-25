@@ -14,6 +14,9 @@ spring:
       maximum-pool-size: 10
       minimum-idle: 2
       connection-timeout: 30000
+      # DB 慢開機韌性：開機時若連不到 MySQL，HikariCP 會重試取得首條連線最多 60s，
+      # 而非立即崩潰退出（避免 docker 剛起、MySQL 尚未 healthy 就啟動 → 整個服務掛掉）。
+      initialization-fail-timeout: ${DB_INIT_FAIL_TIMEOUT:60000}
 
   jpa:
     hibernate:

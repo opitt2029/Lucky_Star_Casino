@@ -83,6 +83,9 @@ CREATE TABLE IF NOT EXISTS game_rounds (
     game_type        VARCHAR(20)  NOT NULL,   -- SLOT / BACCARAT / FISHING
     bet_amount       BIGINT,
     win_amount       BIGINT,
+    balance_before   BIGINT,                  -- 投注前錢包餘額（稽核：餘額變化）
+    balance_after    BIGINT,                  -- 派彩後錢包餘額（稽核：餘額變化）
+    bet_at           TIMESTAMP,               -- 下注時間（毫秒精度；與 settled_at 派彩時間區分）
     server_seed      VARCHAR(255),            -- 開獎後才揭露（Provably Fair）
     server_seed_hash VARCHAR(255),            -- 下注前先公開此雜湊值
     client_seed      VARCHAR(255),            -- 玩家提供的種子

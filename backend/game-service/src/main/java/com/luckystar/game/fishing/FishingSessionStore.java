@@ -36,6 +36,7 @@ public class FishingSessionStore {
     private static final String F_SEAT_INDEX = "seatIndex";
     private static final String F_CANNON_LEVEL = "cannonLevel";
     private static final String F_BUY_IN = "buyIn";
+    private static final String F_BALANCE_BEFORE = "balanceBefore";
     private static final String F_SESSION_BALANCE = "sessionBalance";
     private static final String F_TOTAL_BET = "totalBet";
     private static final String F_TOTAL_PAYOUT = "totalPayout";
@@ -116,6 +117,7 @@ public class FishingSessionStore {
         putIfNotNull(h, F_SEAT_INDEX, s.getSeatIndex());
         putIfNotNull(h, F_CANNON_LEVEL, s.getCannonLevel());
         putIfNotNull(h, F_BUY_IN, s.getBuyIn());
+        putIfNotNull(h, F_BALANCE_BEFORE, s.getBalanceBefore());
         putIfNotNull(h, F_SESSION_BALANCE, s.getSessionBalance());
         putIfNotNull(h, F_TOTAL_BET, s.getTotalBet());
         putIfNotNull(h, F_TOTAL_PAYOUT, s.getTotalPayout());
@@ -143,6 +145,7 @@ public class FishingSessionStore {
                 .seatIndex(parseInt(h.get(F_SEAT_INDEX)))
                 .cannonLevel(parseInt(h.get(F_CANNON_LEVEL)))
                 .buyIn(parseLong(h.get(F_BUY_IN)))
+                .balanceBefore(parseLong(h.get(F_BALANCE_BEFORE)))
                 .sessionBalance(parseLong(h.get(F_SESSION_BALANCE)))
                 .totalBet(parseLong(h.get(F_TOTAL_BET)))
                 .totalPayout(parseLong(h.get(F_TOTAL_PAYOUT)))

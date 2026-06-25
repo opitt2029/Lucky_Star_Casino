@@ -143,7 +143,6 @@ export default function SlotMachine({
       // 結果早已由後端 Provably Fair 決定，這裡只是把「差點贏」的張力放大（表現層）。
       const paylineSymbols = targetColumns.map((column) => column[paylineRow])
       const isNearMiss = sameSymbol(paylineSymbols[0], paylineSymbols[1])
-      const isLineWin = isNearMiss && sameSymbol(paylineSymbols[1], paylineSymbols[2])
 
       const nextTracks = targetColumns.map((column, colIndex) =>
         buildReelTrack({
@@ -202,10 +201,9 @@ export default function SlotMachine({
       setAnticipating(false)
 
       if (!controller.signal.aborted) {
-        if (isNearMiss && !isLineWin) {
-          // 差一格停下：惋惜短音，刺激「下次一定行」。
-          soundEngine.play('fishEscape', { volume: 0.7 })
-        }
+        // 註：本作賠付表所有符號 pairMultiplier ≥ 1，「前兩格同、第三格不同」恆為會派彩的左二同小獎，
+        // 故不在此播惋惜/逃跑音——那會與隨後 handleSettled 的中獎音衝突（贏錢卻播輸錢音）。
+        // 第三輪 anticipation 慢停＋心跳已提供「能否升級三連」的張力，落定後交由中獎音收尾。
         setPhase('idle')
       }
     },
@@ -296,8 +294,8 @@ export default function SlotMachine({
       <div className="slot-console">
         <div className="slot-console__meters" aria-label="Slot machine control display">
           <div>
-            <span>LINES</span>
-            <strong>03</strong>
+            <span>LINE</span>
+            <strong>01</strong>
           </div>
           <div>
             <span>BET</span>

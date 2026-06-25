@@ -487,22 +487,25 @@ export class FishingEngine {
     }
   }
 
-  // HP 條跟隨魚移動；命中後顯示 HP_SHOW_MS，之後淡出隱藏（平時不顯示減雜訊）。顏色依剩餘比例綠→黃→紅。
+  // HP 條跟隨魚移動；命中後全亮顯示，計時結束後若魚仍有傷害則以半透明保持可見。
+  // 無傷害時才完全隱藏（讓玩家清楚看到累積傷害，尤其大魚需多發子彈時）。
   _updateHpBar(f, dtMs) {
     const bar = f.hpBar
     if (!bar) return
-    if (f.hpShownMs <= 0) {
+    const hasDamage = f.hp < f.maxHp
+    if (f.hpShownMs <= 0 && !hasDamage) {
       if (bar.visible) bar.visible = false
       return
     }
-    f.hpShownMs -= dtMs
+    if (f.hpShownMs > 0) f.hpShownMs -= dtMs
     bar.visible = true
     bar.x = f.x
     bar.y = f.y - f.dispSize / 2 - 9
     const ratio = Math.max(0, Math.min(1, f.hp / f.maxHp))
     f.hpFill.scale.x = ratio
     f.hpFill.tint = ratio > 0.5 ? HP_GREEN : ratio > 0.25 ? HP_YELLOW : HP_RED
-    bar.alpha = f.hpShownMs < 360 ? f.hpShownMs / 360 : 1 // 末段淡出
+    // 命中 2.6s 內全亮；之後若有傷害則保持半透明（讓玩家看到累積傷害）
+    bar.alpha = f.hpShownMs > 360 ? 1 : hasDamage ? 0.55 : f.hpShownMs / 360
   }
 
   _removeFishAt(i) {
@@ -611,14 +614,19 @@ export class FishingEngine {
     return 'fired'
   }
 
-  // 朝游標方向開火：瞄到魚就實際開火（扣注）；空海域/限流只放純視覺曳光，不扣注。
+  // 朝游標方向開火：瞄到魚就實際開火（扣注）；空海域才放純視覺曳光，不扣注。
+  // 限流時不生成視覺子彈，避免玩家誤以為大量子彈有效果（實際上未扣注、未傷魚）。
   _fireToward(px, py) {
     if (this.ctx.phase !== 'playing') return
     this.aim = this._aimFor(px, py)
     const f = this._nearestFish(px, py)
-    if (!f || this._engageFish(f) === 'ratelimited') {
+    if (!f) {
+      // 空海域：純視覺曳光
       this.ctx.play?.('shoot', { pitch: this.cannonStyle.pitch + Math.random() * 0.08 })
       this._spawnBullet(px, py)
+    } else {
+      // 有魚：嘗試開火；成功時 _engageFish 內部已呼叫 _spawnBullet；限流時靜默不生成子彈
+      this._engageFish(f)
     }
   }
 

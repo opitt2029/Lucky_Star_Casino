@@ -85,6 +85,17 @@ const authSlice = createSlice({
       localStorage.removeItem('accessToken')
       localStorage.removeItem('refreshToken')
     },
+    // 靜默續期：只更新 token（保留 player，不可用 loginSuccess，它會把 player 蓋掉）。
+    // 後端 refresh 會輪替 refresh token，務必存回新的，否則下次續期會 mismatch。
+    tokenRefreshed(state, action) {
+      const { accessToken, refreshToken, expiresIn } = action.payload
+      state.accessToken = accessToken
+      if (refreshToken) state.refreshToken = refreshToken
+      if (expiresIn != null) state.expiresIn = expiresIn
+      state.isAuthenticated = true
+      localStorage.setItem('accessToken', accessToken)
+      if (refreshToken) localStorage.setItem('refreshToken', refreshToken)
+    },
     setPlayer(state, action) {
       state.player = action.payload
       state.isAuthenticated = true
@@ -144,5 +155,5 @@ const authSlice = createSlice({
   },
 })
 
-export const { loginSuccess, logout, setPlayer, clearAuthError } = authSlice.actions
+export const { loginSuccess, logout, tokenRefreshed, setPlayer, clearAuthError } = authSlice.actions
 export default authSlice.reducer

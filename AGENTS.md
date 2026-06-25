@@ -26,6 +26,8 @@
 | 7 | `docs/幸運星幣城_工作分配表.xlsx` | 任務與分工的**單一真相來源**（T-000~T-107） |
 | 8 | `CHANGELOG.md` | 最近改了什麼、為什麼 |
 
+> ⚠️ **查進度別只信 `AUDIT_REPORT.md`，務必拿程式碼/git 交叉驗證**：它是「手動維護的快照」，更新靠人記得去盤點，所以會落後實際程式碼（已合併的任務常被漏標成未完）。實例：wallet 的 T-027/T-028 早在 2026-06-01 就 commit 併入，卻在 6/17 盤點仍標 ❌/⚠️，害每次查進度都誤報 wallet「進行中」。判定某任務是否完成，至少做一項驗證：對應 Controller/Service 檔是否存在、`git log --oneline -- <檔>` 有無該 `T-0xx` commit、`git branch --contains <sha>` 是否在 develop/main、測試是否存在。發現與 AUDIT_REPORT 不符時，**以程式碼為準並順手更正文件**（依 §3 記 CHANGELOG）。
+
 ---
 
 ## 2. ⚠️ 已知地雷（不讀會踩，務必記住）
