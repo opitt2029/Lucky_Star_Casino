@@ -16,6 +16,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 3. 再打同一種類新魚，血量應從滿血開始，不繼承舊傷害
 4. 打到一條魚掙脫逃跑（fleeing），快速點擊逃跑動畫中的魚，確認不扣注、無子彈
 
+---
+
+## [Changed] — 2026-06-23 — 捕魚機魚種視覺對齊後端 + Boss/魚群事件（Phase 4）
+
+> 捕魚機升級第四階段：前端 spawn 改採後端魚種真相（tier/spawnWeight），修正舊版用 multiplier 自行分級
+> 把 HIGH（金龍/貔貅/財神）誤當 boss 的問題；高倍魚加辨識光暈；新增 Boss（龍王）定時降臨與魚群潮事件。
+> **純前端表現層，後端魚種數值（Phase 1 已按設計表定案）/契約/RTP/帳務皆不變。**
+
+### Changed
+- `frontend/src/components/fishingEngine.js`：
+  - **魚種視覺對齊後端**：`deriveMeta` 改用後端 `tier`/`spawnWeight`（單一真相）推導體型/游速/出現率，取代舊版用 `multiplier` 自行分級——修正金龍/貔貅/財神（HIGH）被誤判為 boss、體型與龍王相同、誤觸發 Boss 警報的問題。新增 tier 渲染表 `TIER_RENDER`：體型↔倍率正相關、游速↔倍率負相關（大魚慢、好瞄但耐打）。
+  - **高倍魚辨識光暈**：HIGH/BOSS/SPECIAL 魚在魚下方加金色脈動光暈（獨立 `glowLayer`，效能模式減半），強化辨識。
+  - **Boss 定時降臨**：龍王每 `BOSS_INTERVAL_MS`（58s）在「場上無 boss 時」強制降臨（保證事件節奏，不只靠 spawnWeight=2 隨機），沿用既有 bossAlarm 預警 + boss BGM。
+  - **魚群潮**：每 `SWARM_INTERVAL_MS`（36s）短時間密集放小魚（`SWARM_SIZE` 尾），製造 LDW 小額回收手感；受並存上限保護。`_trySpawn` 重構支援指定魚種/小魚/Boss。
+  - lockOn 鎖定音擴及 HIGH 魚（原僅 boss/special）。
+
+### 為什麼
+- 玩家要「各種魚的合理性」。後端魚種數值 Phase 1 已按計畫設計表定案（倍率↔HP↔稀有度），Phase 4 把前端視覺對齊這份真相（體型/游速/出現率/辨識度），並補上 Boss/魚群事件變化，讓「打不同魚」有明確分級感受。spawn 在前端僅影響視覺，輸贏仍由後端決定（ADR-003），無套利。
+
+### 如何驗證
+- `cd frontend && npm run lint`（0 error）、`npm run build`（綠）。
+- `npm run dev`：金龍/貔貅/財神體型介於中魚與龍王之間且帶光暈、不再誤觸發 Boss 警報；龍王定時降臨（警報 + BGM 切換）；偶發魚群潮密集小魚。
+- 真實後端 fishing API（start→shots→end）回傳 hp/tier/spawnWeight 與 crit/damage/hpRemaining 實測通過。
+
+---
+
 ## [Added] — 2026-06-24 — 前端導入 Vitest，補 axios 401 攔截器自動續期測試
 
 > 前端先前只有 eslint 與 Playwright e2e，無單元測試框架。為前一筆「401 靜默續期」加上回歸保護，導入 Vitest（vite 專案原生整合）。
@@ -209,7 +235,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - wallet-service 為雙資料源、EntityManagerFactory 在 `DataSourceConfig` 手動建立（AGENTS.md 雷區 5），同樣有 DB 慢開機崩潰風險，但不在本次範圍，待後續評估是否於手動 EMF 加同類重試。
 
 ---
-
 ## [Changed] — 2026-06-23 — 捕魚機戰鬥回饋 + 砲台差異化 + 新互動（Phase 3）
 
 > 捕魚機升級第三階段：把 Phase 1 後端已回傳、Phase 2 引擎尚未演出的 `crit/damage/hpRemaining` 接上戰鬥回饋
@@ -260,7 +285,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - `frontend/src/hooks/useGameLeaveGuard.js`：從「自己處理 `window.confirm`」改為 dispatch `activateLeaveGuard` / `deactivateLeaveGuard` 同步 Redux 狀態（掛載/卸載/`active` 變化都同步，避免殘留攔截）。`beforeunload`（關分頁/重整）與 `popstate`（上一頁/手勢返回）保留原生攔截，拆成獨立 `useEffect` 各管各的。
-- `frontend/src/components/AppShell.jsx`：頂部 NavLink 加 `onClick` 攔截——`leaveGuard.active` 時 `preventDefault` 擋下、記住目標路由（`setPendingNavigation`）並彈出 modal；確認 → `Maps(pendingPath)` 真正離開、取消 → `clearPendingNavigation` 留在原頁。離開邏輯集中在 AppShell 一處，三款遊戲共用。
+- `frontend/src/components/AppShell.jsx`：頂部 NavLink 加 `onClick` 攔截——`leaveGuard.active` 時 `preventDefault` 擋下、記住目標路由（`setPendingNavigation`）並彈出 modal；確認 → `navigate(pendingPath)` 真正離開、取消 → `clearPendingNavigation` 留在原頁。離開邏輯集中在 AppShell 一處，三款遊戲共用。
 
 ### 為什麼
 - 舊防呆只攔 `beforeunload` / `popstate`，玩家在遊戲進行中直接點頂部導航列就會繞過確認、無聲離場（已下注金額無法退回）。把離開意圖提升為 Redux 全域狀態後，導航列點擊也能納管；同時把原生 `confirm()` 換成賭場質感視窗，提示更清楚、體驗一致。
@@ -268,7 +293,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### 如何驗證
 - `cd frontend && npm run lint`（綠）、`npm run build`（綠）。
 - 手測：老虎機/百家樂/捕魚進行中分別點導航列、上一頁、重整、關分頁，皆正確彈窗；確認後導向目標頁、取消後留在原頁。
-
 ## [Changed] — 2026-06-23 — 捕魚機 PixiJS 漁場引擎（Phase 2：取代 DOM 漁場 + 紋理烘焙 + 效能模式 + §6 HUD 飄移修復）
 
 > 捕魚機升級第二階段：把 React-DOM 漁場改成 **PixiJS canvas 遊戲引擎**，根治 H5/手機連發+特效「當機」；
