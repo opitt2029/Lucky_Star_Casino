@@ -3,6 +3,37 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Changed] — 2026-06-25 — 捕魚機經濟再平衡（殘血回收／RTP 96%／砲台傷害收斂）＋ 子彈面額玩家自選
+
+> 架構級決策見 [docs/adr/ADR-004.md](docs/adr/ADR-004.md)。
+
+### Added
+- **殘血部分回收（體感 RTP 地板）**：
+  - `backend/game-service/.../fishing/FishingCombat.java`：新增 `RECOVERY_RATE = 0.70` 與 `recoveryPayout(betPerShot, cannonLevel, cumDamage)`（= `floor(RECOVERY_RATE × betPerShot × cumDamage / (critFactor × 砲台傷害))`）。
+  - `backend/game-service/.../service/FishingService.java`：`settleInternal` 結算時對 `fishDamage` 殘血魚累加回收，折入 `sessionBalance`（credit 回 wallet）與 `totalPayout`（→ `game_rounds.win_amount`，RTP 監控涵蓋）。
+  - `frontend/src/services/mockApi.js`：鏡像回收公式於 `fishingEnd`（雷區 14）。
+  - `dto/FishingEndResponse.java` 新增 `residualRecovery`；前端結算頁顯示「殘血回收 +N」。
+- **子彈面額玩家自選、與砲台解耦**：
+  - `FishingSession` 新增 `betPerShot` 欄位、`FishingSessionStore.toHash/fromHash` 補序列化（雷區 16）；`FishingStartRequest`/`FishingSessionView`/controller/`FishingService.start` 串接；`MIN_BET=10/MAX_BET=10000/MIN_BUYIN=100/MAX_BUYIN=1_000_000` 守門。
+  - 前端 `useFishingSession`（`BET_TIERS/BET_MIN/BET_MAX/BUYIN_*`、`betPerShotRef`）、`Fishing.jsx`（面額/入場「檔位＋自訂輸入」選擇器）、`gameApi.fishingStart` 帶 `betPerShot`。
+- 測試：`FishingCombatTest` 殘血回收不變量（回收 ≤ 投入成本）；`FishingSessionStoreTest` 補 `betPerShot` round-trip；`FishingServiceTest` 面額守門 + 結算回收。
+
+### Changed
+- `FishingCombat.TARGET_RTP` 0.92 → **0.96**（設計值/天花板）；`CANNON_DAMAGE` `{0,10,17,26}` → **`{0,10,14,18}`**（砲台傷害收斂，最低捕獲率 ~0.30→~0.45，減少「血歸零卻掙脫」）。同步 `mockApi.js` 鏡像與 `FishingCombatTest` band（0.86~0.98 → 0.90~1.02）。
+- `application.yml`：`risk.global-rtp-limit.FISHING` `1.00` → **`1.10`**（設計 RTP 升到 0.96 且高變異，門檻留裕度防誤判超限，雷區 17）。
+- `frontend/src/components/fishingEngine.js`：`TIER_RENDER` 拉長 HIGH/BOSS/SPECIAL 過場時間（BOSS 13.5–17s → 20–26s 等），大魚停留更久、減少游走沉沒。
+- `FishingService` 移除 `CANNON_BET`（注額不再綁砲台）；`validateBatch` 改驗 `session.betPerShot`。`FishingStartRequest.buyIn` 上限 50,000 → 1,000,000。
+
+### 為什麼 (Why)
+- 設計 RTP 92% 只在「魚有打死」成立；實戰大魚游走前的子彈全損，使體感 RTP ≈ 46%（虧 ~54%）。殘血回收把每發子彈期望回報夾在 `[RECOVERY_RATE, TARGET_RTP] = [0.70, 0.96]`——形成體感 RTP 地板 70%（最差只虧 30%）、天花板 96%（回收恆 ≤ 投入成本，莊家不超付）。砲台傷害收斂處理「血歸零卻掙脫」的觀感（pCapture 硬地板會使 RTP 破表、不可行，見 ADR-004）。面額解耦讓玩家自選注額（數學上 RTP 與注額無關，恆 96%）。
+
+### 如何驗證 (Verification)
+- `mvn -pl backend/game-service test`：全綠（BUILD SUCCESS）。
+- `cd frontend && npm run lint && npm run build`：lint 無誤、build 成功（`✓ built`）。
+- 手測：進場自選面額/入場額；金炮連打中小魚捕獲率手感（~0.44）；對大魚開火後放走 → 結算見「殘血回收」回袋；單場 totalPayout/totalBet 落在 70%~96%。
+
+---
+
 ## [Released] — 2026-06-25
 
 ### Fixed

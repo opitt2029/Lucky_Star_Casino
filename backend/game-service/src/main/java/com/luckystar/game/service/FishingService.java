@@ -57,7 +57,7 @@ import org.springframework.util.StringUtils;
  *   <li>單批上限 30 發（DTO 驗證）。</li>
  *   <li>射速上限：依距上次批次的間隔換算可受理發數（{@value #MAX_SHOTS_PER_SEC} 發/秒 +
  *       {@value #BURST_ALLOWANCE} 發突發緩衝），超限整批拒絕。</li>
- *   <li>betPerShot 必須等於炮台等級的固定注額（防自訂大注小注混打繞過費率）。</li>
+ *   <li>betPerShot 必須等於進場選定的固定注額（玩家自選面額，整場固定；防自訂大注小注混打繞過費率）。</li>
  * </ul>
  *
  * <p><b>斷線保護</b>：玩家斷線不結算時，閒置排程（每分鐘掃描）會在閒置
@@ -71,8 +71,13 @@ public class FishingService {
     private static final String GAME_TYPE = "FISHING";
     private static final String STATUS_SETTLED = "SETTLED";
 
-    /** 各炮台等級的固定單發注額（1 → 10、2 → 50、3 → 100 星幣）。 */
-    private static final long[] CANNON_BET = {0L, 10L, 50L, 100L};
+    /** 子彈面額（單發注額）下限／上限（星幣）：玩家進場自選，與砲台解耦；上限為安全天花板防單發暴險。 */
+    static final long MIN_BET = 10L;
+    static final long MAX_BET = 10_000L;
+
+    /** 入場金額（buyIn）下限／上限（星幣）：上限為安全天花板（實質不限，僅再受錢包餘額約束）。 */
+    static final long MIN_BUYIN = 100L;
+    static final long MAX_BUYIN = 1_000_000L;
 
     /** 射速上限（發/秒）。 */
     static final int MAX_SHOTS_PER_SEC = 8;
@@ -101,11 +106,20 @@ public class FishingService {
      * 開場（或續玩）：已有進行中場次時直接回傳原場次（resumed=true，不重複扣款）；
      * 否則向 wallet 冪等扣 buyIn 並建立新場次。
      */
-    public FishingSessionView start(long playerId, long buyIn, int cannonLevel, String requestedClientSeed) {
+    public FishingSessionView start(long playerId, long buyIn, int cannonLevel, long betPerShot,
+                                    String requestedClientSeed) {
         Optional<FishingSession> existing = sessionStore.find(playerId);
         if (existing.isPresent() && existing.get().isActive()) {
             log.info("fishing session resumed playerId={} sessionId={}", playerId, existing.get().getSessionId());
             return toView(existing.get(), true, null);
+        }
+
+        // 面額/入場金額守門（玩家自選；DTO 已驗，這裡為直接呼叫與防禦性二保險）
+        if (betPerShot < MIN_BET || betPerShot > MAX_BET) {
+            throw new IllegalArgumentException("子彈面額需介於 " + MIN_BET + "~" + MAX_BET + " 星幣");
+        }
+        if (buyIn < MIN_BUYIN || buyIn > MAX_BUYIN) {
+            throw new IllegalArgumentException("入場金額需介於 " + MIN_BUYIN + "~" + MAX_BUYIN + " 星幣");
         }
 
         String sessionId = UUID.randomUUID().toString();
@@ -125,6 +139,7 @@ public class FishingService {
                 .roomId("solo-" + sessionId)
                 .seatIndex(0)
                 .cannonLevel(cannonLevel)
+                .betPerShot(betPerShot)
                 .buyIn(buyIn)
                 .balanceBefore(debit.balanceBefore())
                 .sessionBalance(buyIn)
@@ -158,8 +173,8 @@ public class FishingService {
             throw ex;
         }
 
-        log.info("fishing session started playerId={} sessionId={} buyIn={} cannonLevel={}",
-                playerId, sessionId, buyIn, cannonLevel);
+        log.info("fishing session started playerId={} sessionId={} buyIn={} cannonLevel={} betPerShot={}",
+                playerId, sessionId, buyIn, cannonLevel, betPerShot);
 
         WalletView wallet = WalletView.builder()
                 .balance(debit.balanceAfter())
@@ -451,12 +466,12 @@ public class FishingService {
 
     /** 整批驗證：注額、序號嚴格遞增、射速上限。任一不符整批拒絕（不動帳）。 */
     private void validateBatch(FishingSession session, List<FishingShotsRequest.Shot> shots) {
-        long allowedBet = CANNON_BET[session.getCannonLevel()];
+        long allowedBet = session.getBetPerShot() == null ? 0L : session.getBetPerShot();
         long previousSeq = session.getLastShotSeq();
         for (FishingShotsRequest.Shot shot : shots) {
             if (shot.getBetPerShot() != allowedBet) {
                 throw new IllegalArgumentException(
-                        "betPerShot 須等於炮台等級 " + session.getCannonLevel() + " 的固定注額 " + allowedBet);
+                        "betPerShot 須等於進場選定的固定注額 " + allowedBet);
             }
             if (shot.getShotSeq() <= previousSeq) {
                 throw new IllegalArgumentException(
@@ -475,6 +490,30 @@ public class FishingService {
         }
     }
 
+    /**
+     * 殘血部分回收總額（ADR-004）：對結算時仍受傷未死的每條魚（fishDamage 的每個 entry），
+     * 累加 {@link FishingCombat#recoveryPayout}。只需 session 級的 cannonLevel/betPerShot ＋ 累傷值，
+     * 不需查 species/HP（致命一擊後該魚已從 fishDamage 移除，故這裡掃到的都是未死殘血魚）。
+     */
+    private long computeResidualRecovery(FishingSession session) {
+        Map<String, Long> fishDamage = session.getFishDamage();
+        if (fishDamage == null || fishDamage.isEmpty()) {
+            return 0L;
+        }
+        Integer cannonLevel = session.getCannonLevel();
+        Long betPerShot = session.getBetPerShot();
+        if (cannonLevel == null || betPerShot == null) {
+            return 0L;
+        }
+        long total = 0L;
+        for (Long dmg : fishDamage.values()) {
+            if (dmg != null) {
+                total += FishingCombat.recoveryPayout(betPerShot, cannonLevel, dmg);
+            }
+        }
+        return total;
+    }
+
     /** 控管同時追蹤傷害的魚 instance 數：超出上限時淘汰最舊（LinkedHashMap 插入序）者。 */
     private void pruneFishDamage(Map<String, Long> fishDamage) {
         while (fishDamage.size() > MAX_LIVE_FISH) {
@@ -486,6 +525,21 @@ public class FishingService {
     private FishingEndResponse settleInternal(FishingSession session, String reason) {
         long playerId = session.getPlayerId();
         String sessionId = session.getSessionId();
+
+        // 殘血部分回收（ADR-004）：結算時 fishDamage 只剩「受傷但未打死」的魚（致命一擊後已移除），
+        // 按已造成傷害換算的期望耗彈成本退還 RECOVERY_RATE 比例，折入局內餘額（會 credit 回 wallet）
+        // 並計入 totalPayout（→ game_rounds.win_amount，admin RTP 監控涵蓋）。回收恆 ≤ 投入成本，RTP 不超付。
+        long recovery = computeResidualRecovery(session);
+        if (recovery > 0) {
+            long base = session.getSessionBalance() == null ? 0L : session.getSessionBalance();
+            session.setSessionBalance(base + recovery);
+            long tp = session.getTotalPayout() == null ? 0L : session.getTotalPayout();
+            session.setTotalPayout(tp + recovery);
+            if (session.getFishDamage() != null) {
+                session.getFishDamage().clear();
+            }
+        }
+
         long credited = session.getSessionBalance() == null ? 0L : session.getSessionBalance();
 
         WalletView wallet = null;
@@ -535,6 +589,7 @@ public class FishingService {
                 .totalPayout(session.getTotalPayout())
                 .totalShots(session.getTotalShots())
                 .credited(credited)
+                .residualRecovery(recovery)
                 .serverSeed(session.getServerSeed())
                 .serverSeedHash(session.getServerSeedHash())
                 .clientSeed(session.getClientSeed())
@@ -607,6 +662,7 @@ public class FishingService {
                 .roomId(session.getRoomId())
                 .seatIndex(session.getSeatIndex())
                 .cannonLevel(session.getCannonLevel())
+                .betPerShot(session.getBetPerShot())
                 .buyIn(session.getBuyIn())
                 .sessionBalance(session.getSessionBalance())
                 .totalShots(session.getTotalShots())

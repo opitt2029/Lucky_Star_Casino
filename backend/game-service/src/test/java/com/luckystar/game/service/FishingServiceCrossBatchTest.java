@@ -43,7 +43,7 @@ class FishingServiceCrossBatchTest {
 
     private static final long PLAYER_ID = 4242L;
     private static final String SESSION_ID = "sess-crossbatch-1";
-    private static final long CANNON_BET = 10L; // 炮台等級 1 的固定單發注額
+    private static final long CANNON_BET = 10L; // 玩家進場選定的單發面額（與砲台解耦，ADR-004）
 
     private final Map<String, Map<String, String>> backing = new HashMap<>();
     private final ProvablyFairRng rng = new ProvablyFairRng();
@@ -83,6 +83,7 @@ class FishingServiceCrossBatchTest {
                 .roomId("solo-" + SESSION_ID)
                 .seatIndex(0)
                 .cannonLevel(1)
+                .betPerShot(CANNON_BET)
                 .buyIn(100000L)
                 .balanceBefore(100000L)
                 .sessionBalance(100000L)

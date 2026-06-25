@@ -26,15 +26,25 @@ import java.util.Map;
  *
  * <p><b>注意</b>：上述為「玩家把每條鎖定的魚都打到死」的設計 RTP；實戰中大魚常在游出畫面前未打死
  * （已投入子彈成本損失），使<i>淨 RTP 略低於</i> {@value #TARGET_RTP}（對莊家安全），由 admin RTP
- * 監控（T-105/106）線上觀測、必要時調整本檔常數。詳見 ADR-003。
+ * 監控（T-105/106）線上觀測、必要時調整本檔常數。詳見 ADR-003 / ADR-004。
+ *
+ * <p><b>殘血部分回收（ADR-004）</b>：{@link com.luckystar.game.service.FishingService} 結算時，對
+ * 「受傷但未打死」的魚按已造成傷害換算的期望耗彈成本退還 {@value #RECOVERY_RATE} 比例（見
+ * {@link #recoveryPayout}）。這把「子彈打在最後逃走的魚上＝全損」的沉沒成本變成部分回收，使每發子彈的
+ * 期望回報被夾在 {@code [RECOVERY_RATE, TARGET_RTP]}＝<b>體感 RTP 地板 {@value #RECOVERY_RATE}、天花板
+ * {@value #TARGET_RTP}</b>：回收永遠 ≤ 打死路徑派彩，故不會讓整體 RTP 超過設計值（莊家安全），但保證玩家
+ * 最差體感也只虧 {@code 1 − RECOVERY_RATE}。
  */
 public final class FishingCombat {
 
     private FishingCombat() {
     }
 
-    /** 設計 RTP（每發子彈期望回報率）。與老虎機/百家樂同屬產品可調常數。 */
-    public static final double TARGET_RTP = 0.92d;
+    /** 設計 RTP（每發子彈期望回報率＝體感 RTP 天花板）。與老虎機/百家樂同屬產品可調常數。 */
+    public static final double TARGET_RTP = 0.96d;
+
+    /** 殘血部分回收率（受傷未死的魚在結算時退還的子彈成本比例＝體感 RTP 地板，ADR-004）。 */
+    public static final double RECOVERY_RATE = 0.70d;
 
     /** 暴擊機率。 */
     public static final double CRIT_CHANCE = 0.20d;
@@ -44,9 +54,11 @@ public final class FishingCombat {
 
     /**
      * 各砲台等級的單發基礎傷害（索引 0 不用）。
-     * 銅 10 / 銀 17 / 金 26——金炮約為銅炮 2.6× 擊殺速度（手感差異），RTP 由 {@code pCapture} 補償一致。
+     * 銅 10 / 銀 14 / 金 18——傷害差距刻意收斂（金炮約銅炮 1.8×）：金炮速殺但不致把中小魚 HP 壓到「1~2 發秒殺」，
+     * 使最低捕獲率不致過低（金炮對中小魚 {@code pCapture} ≈ 0.44，避免「血歸零卻掙脫」過於頻繁），
+     * RTP 仍由 {@code pCapture} 補償一致。注額已與砲台解耦（玩家自選），砲台只決定火力/節奏/變異度。
      */
-    private static final int[] CANNON_DAMAGE = {0, 10, 17, 26};
+    private static final int[] CANNON_DAMAGE = {0, 10, 14, 18};
 
     /** 預先算好的捕獲機率表：species → [cannonLevel] → pCapture。 */
     private static final Map<FishSpecies, double[]> P_CAPTURE = buildCaptureTable();
@@ -73,6 +85,26 @@ public final class FishingCombat {
     /** 暴擊加成因子：{@code 1 + CRIT_CHANCE × (CRIT_MULTIPLIER − 1)}。 */
     public static double critFactor() {
         return 1.0d + CRIT_CHANCE * (CRIT_MULTIPLIER - 1);
+    }
+
+    /**
+     * 殘血部分回收派彩（ADR-004）：對「受傷但未打死」的魚，按已造成傷害換算的期望耗彈成本退還
+     * {@value #RECOVERY_RATE} 比例。
+     *
+     * <p>期望耗彈 {@code ≈ cumDamage / (critFactor × 砲台基礎傷害)}（critFactor 還原暴擊讓每發平均多扣的血），
+     * 故回收 {@code = floor(RECOVERY_RATE × betPerShot × 期望耗彈)}＝「你打在這條逃走的魚上、約 RECOVERY_RATE
+     * 比例的子彈成本退回」。回收恆 ≤ 投入成本，使整體 RTP 不超過 {@value #TARGET_RTP}（見類別 Javadoc）。
+     *
+     * @param betPerShot  該場單發注額（玩家進場選定）
+     * @param cannonLevel 砲台等級（決定基礎傷害）
+     * @param cumDamage   結算時該魚已累積、尚未致命的傷害
+     */
+    public static long recoveryPayout(long betPerShot, int cannonLevel, long cumDamage) {
+        if (cumDamage <= 0 || betPerShot <= 0) {
+            return 0L;
+        }
+        double expectedShots = cumDamage / (critFactor() * cannonDamage(cannonLevel));
+        return (long) Math.floor(RECOVERY_RATE * betPerShot * expectedShots);
     }
 
     /** 指定魚種/砲台的捕獲機率（致命一擊時擲中即派彩）。 */

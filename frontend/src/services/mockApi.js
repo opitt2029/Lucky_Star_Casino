@@ -15,9 +15,11 @@ const SLOT_PAYTABLE = [
 const SLOT_TOTAL_WEIGHT = SLOT_PAYTABLE.reduce((sum, entry) => sum + entry.weight, 0)
 const SLOT_PAYTABLE_BY_SYMBOL = Object.fromEntries(SLOT_PAYTABLE.map((entry) => [entry.symbol, entry]))
 
-// 捕魚機魚種表（血量/傷害模型，鏡像後端 FishSpecies / FishingCombat，ADR-003）。
+// 捕魚機魚種表（血量/傷害模型，鏡像後端 FishSpecies / FishingCombat，ADR-003 / ADR-004）。
 // 重要：此檔是「預設玩家實際體驗」（前端預設走 mock），改後端規則時務必同步此處（AGENTS 雷區 14）。
-const FISHING_TARGET_RTP = 0.92
+const FISHING_TARGET_RTP = 0.96
+// 殘血部分回收率（受傷未死的魚在結算時退還的子彈成本比例＝體感 RTP 地板，ADR-004）
+const FISHING_RECOVERY_RATE = 0.7
 const FISHING_MONEY_TREE_MIN = 10
 const FISHING_MONEY_TREE_MAX = 50
 // HP = multiplier × 此值（對齊後端 FishSpecies.HP_PER_MULTIPLIER）
@@ -25,8 +27,8 @@ const FISHING_HP_PER_MULT = 10
 // 暴擊（對齊後端 FishingCombat）
 const FISHING_CRIT_CHANCE = 0.2
 const FISHING_CRIT_MULT = 2
-// 各砲台單發基礎傷害（索引 0 不用；銅/銀/金，對齊後端 CANNON_DAMAGE）
-const FISHING_CANNON_DAMAGE = [0, 10, 17, 26]
+// 各砲台單發基礎傷害（索引 0 不用；銅/銀/金，對齊後端 CANNON_DAMAGE = {1:10,2:14,3:18}）
+const FISHING_CANNON_DAMAGE = [0, 10, 14, 18]
 const FISH_SPECIES = [
   { code: 'KOI', name: '錦鯉', assetId: 'fish-koi', multiplier: 2, tier: 'SMALL', spawnWeight: 100 },
   { code: 'GOLDFISH', name: '金魚', assetId: 'fish-goldfish', multiplier: 3, tier: 'SMALL', spawnWeight: 90 },
@@ -56,10 +58,21 @@ function fishingExpectedShotsToKill(hp, damage) {
   return g[0]
 }
 
-// 捕獲機率 pCapture（反推使 RTP=92%；對齊後端 FishingCombat.pCapture）。
+// 捕獲機率 pCapture（反推使 RTP=TARGET_RTP；對齊後端 FishingCombat.pCapture）。
 function fishingCapture(fish, cannonLevel) {
   const eN = fishingExpectedShotsToKill(fishHp(fish), FISHING_CANNON_DAMAGE[cannonLevel])
   return Math.min(1, (FISHING_TARGET_RTP * eN) / fish.multiplier)
+}
+
+// 殘血部分回收（鏡像後端 FishingCombat.recoveryPayout，ADR-004）：對「受傷但未打死」的魚，
+// 按已造成傷害換算的期望耗彈成本退還 RECOVERY_RATE 比例。critFactor 還原暴擊讓每發平均多扣的血。
+function fishingCritFactor() {
+  return 1 + FISHING_CRIT_CHANCE * (FISHING_CRIT_MULT - 1)
+}
+function fishingRecoveryPayout(betPerShot, cannonLevel, cumDamage) {
+  if (cumDamage <= 0 || betPerShot <= 0) return 0
+  const expectedShots = cumDamage / (fishingCritFactor() * FISHING_CANNON_DAMAGE[cannonLevel])
+  return Math.floor(FISHING_RECOVERY_RATE * betPerShot * expectedShots)
 }
 
 function fishTableView() {
@@ -766,6 +779,7 @@ export const mockApi = {
       roomId: `solo-${session.sessionId}`,
       seatIndex: 0,
       cannonLevel: session.cannonLevel,
+      betPerShot: session.betPerShot,
       buyIn: session.buyIn,
       sessionBalance: session.sessionBalance,
       totalShots: session.totalShots,
@@ -778,7 +792,7 @@ export const mockApi = {
     }
   },
 
-  async fishingStart({ buyIn, cannonLevel = 1, clientSeed }) {
+  async fishingStart({ buyIn, cannonLevel = 1, betPerShot = 10, clientSeed }) {
     await wait(420)
     const db = getDb()
     const playerId = currentPlayerId()
@@ -796,6 +810,7 @@ export const mockApi = {
         roomId: `solo-${existing.sessionId}`,
         seatIndex: 0,
         cannonLevel: existing.cannonLevel,
+        betPerShot: existing.betPerShot,
         buyIn: existing.buyIn,
         sessionBalance: existing.sessionBalance,
         totalShots: existing.totalShots,
@@ -817,6 +832,7 @@ export const mockApi = {
     db.fishingSessions[playerId] = {
       sessionId,
       cannonLevel,
+      betPerShot,
       buyIn,
       balanceBefore,
       createdAt: new Date().toISOString(),
@@ -835,6 +851,7 @@ export const mockApi = {
       roomId: `solo-${sessionId}`,
       seatIndex: 0,
       cannonLevel,
+      betPerShot,
       buyIn,
       sessionBalance: buyIn,
       totalShots: 0,
@@ -925,6 +942,20 @@ export const mockApi = {
     const session = (db.fishingSessions || {})[playerId]
     if (!session || session.sessionId !== sessionId) throw new Error('場次不存在或已結束')
 
+    // 殘血部分回收（ADR-004）：fishDamage 只剩「受傷但未打死」的魚（致命一擊後已 delete），
+    // 退還 RECOVERY_RATE 比例的子彈成本，折入局內餘額與 totalPayout（鏡像後端 settleInternal）。
+    const cannonLevel = session.cannonLevel || 1
+    const betPerShot = session.betPerShot || 0
+    let residualRecovery = 0
+    for (const dmg of Object.values(session.fishDamage || {})) {
+      residualRecovery += fishingRecoveryPayout(betPerShot, cannonLevel, Number(dmg) || 0)
+    }
+    if (residualRecovery > 0) {
+      session.sessionBalance += residualRecovery
+      session.totalPayout += residualRecovery
+      session.fishDamage = {}
+    }
+
     const credited = session.sessionBalance
     if (credited > 0) applyWalletChange(db, playerId, credited, 'payout', '捕魚機結算')
 
@@ -972,6 +1003,7 @@ export const mockApi = {
       totalPayout: session.totalPayout,
       totalShots: session.totalShots,
       credited,
+      residualRecovery,
       serverSeed,
       serverSeedHash: session.serverSeedHash,
       clientSeed: session.clientSeed,

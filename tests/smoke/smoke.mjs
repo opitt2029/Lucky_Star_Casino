@@ -200,7 +200,7 @@ async function main() {
   // 3d. 捕魚機完整流程
   try {
     const rs = await http('POST', '/api/v1/game/fishing/session/start', {
-      token, body: { buyIn: 200, cannonLevel: 1 },
+      token, body: { buyIn: 200, cannonLevel: 1, betPerShot: 10 },
     });
     const sv = dataOf(rs.json);
     const sessionId = sv?.sessionId;
@@ -212,7 +212,7 @@ async function main() {
       record('GET /api/v1/game/fishing/session/active', ra.status === 200 ? 'PASS' : 'FAIL', `status=${ra.status}`);
 
       // 同一條大魚（龍王 HP=2000）跨兩批各 2 發，驗證「跨批累傷不回滿」（血量模型核心、ADR-003）。
-      // fishInstanceId 為 @NotBlank 必填（缺了會 400）；betPerShot=10（炮台 1 級）。
+      // fishInstanceId 為 @NotBlank 必填（缺了會 400）；betPerShot=10 須等於進場選定面額（ADR-004，與砲台解耦）。
       const fishType = 'DRAGON_KING';
       const fishInstanceId = `smoke-fish-${stamp}`;
       const fireBatch = (seqs) => http('POST', `/api/v1/game/fishing/${sessionId}/shots`,

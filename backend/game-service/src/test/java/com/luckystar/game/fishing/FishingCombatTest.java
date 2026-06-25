@@ -64,7 +64,7 @@ class FishingCombatTest {
     // ------------------------------------------------------------------
 
     @Test
-    @DisplayName("Monte-Carlo：代表性魚種/砲台模擬 RTP 落在 92%±band")
+    @DisplayName("Monte-Carlo：代表性魚種/砲台模擬 RTP 落在 96%±band")
     void monteCarlo_rtpWithinBand() {
         // 取小/中/高倍各一，銅/金兩砲；其餘魚種由上面的解析證明涵蓋。
         assertRtpBand(FishSpecies.KOI, 1, 120_000);
@@ -95,8 +95,8 @@ class FishingCombatTest {
             }
         }
         double rtp = (double) totalPayout / totalBet;
-        assertTrue(rtp > 0.86 && rtp < 0.98,
-                species + " 砲台L" + cannon + " 模擬 RTP=" + rtp + " 應落在 0.86~0.98（目標 0.92）");
+        assertTrue(rtp > 0.90 && rtp < 1.02,
+                species + " 砲台L" + cannon + " 模擬 RTP=" + rtp + " 應落在 0.90~1.02（目標 0.96）");
     }
 
     // ------------------------------------------------------------------
@@ -180,5 +180,34 @@ class FishingCombatTest {
         assertFalse(o.captured());
         assertEquals(0L, o.payout());
         assertEquals(FishSpecies.DRAGON_KING.hp() - o.damage(), o.hpRemaining(), "剩餘血量應為 HP − 本發傷害");
+    }
+
+    // ------------------------------------------------------------------
+    // 殘血部分回收（ADR-004，體感 RTP 地板）
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("殘血回收：退還約 RECOVERY_RATE 比例的子彈成本，且恆 ≤ 投入成本（不超付）")
+    void recoveryPayout_refundsRateOfSpentBullets_neverExceedsCost() {
+        long bet = 100L;
+        int cannon = 1; // 傷害 10
+        long cumDamage = 1000L;
+        long recovery = FishingCombat.recoveryPayout(bet, cannon, cumDamage);
+
+        double expectedShots = cumDamage / (FishingCombat.critFactor() * FishingCombat.cannonDamage(cannon));
+        long expected = (long) Math.floor(FishingCombat.RECOVERY_RATE * bet * expectedShots);
+        assertEquals(expected, recovery, "回收 = floor(RECOVERY_RATE × bet × 期望耗彈)");
+
+        // 不超付：回收恆 ≤ 投入子彈成本（bet × 期望耗彈），這保證整體 RTP ≤ TARGET_RTP
+        assertTrue(recovery <= (long) Math.ceil(bet * expectedShots), "回收不應超過投入子彈成本");
+        // 體感地板語意：回收/成本 ≈ RECOVERY_RATE
+        assertTrue(recovery > 0 && recovery <= bet * expectedShots);
+    }
+
+    @Test
+    @DisplayName("殘血回收：零傷害或零注額回收為 0")
+    void recoveryPayout_zeroWhenNoDamageOrNoBet() {
+        assertEquals(0L, FishingCombat.recoveryPayout(100L, 1, 0L));
+        assertEquals(0L, FishingCombat.recoveryPayout(0L, 1, 500L));
     }
 }
