@@ -1,12 +1,12 @@
 package com.luckystar.game.service;
 
+import com.luckystar.game.config.RiskProperties;
 import com.luckystar.game.repository.GameRoundRepository;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -32,22 +32,11 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class RiskControlService {
 
-    /** 單一玩家今日淨贏上限（星幣）。 */
-    @Value("${risk.player-win-limit:50000}")
-    private long playerWinLimit;
-
-    /** 全局 RTP 上限（0-1 之間的小數）。 */
-    @Value("${risk.global-rtp-limit:0.95}")
-    private double globalRtpLimit;
-
-    /** 計算全局 RTP 時使用的近 N 局樣本數。 */
-    @Value("${risk.rtp-sample-size:500}")
-    private int rtpSampleSize;
-
     private static final Duration INFLIGHT_TTL = Duration.ofSeconds(30);
 
     private final GameRoundRepository roundRepository;
     private final StringRedisTemplate redisTemplate;
+    private final RiskProperties riskProperties;
 
     /**
      * 判斷本局是否應被風控攔截。
@@ -104,18 +93,23 @@ public class RiskControlService {
         long totalBet = toLong(agg[0]);
         long totalWin = toLong(agg[1]);
         long netWin = totalWin - totalBet;
-        return netWin >= playerWinLimit;
+        return netWin >= riskProperties.getPlayerWinLimit();
     }
 
-    /** 近 rtpSampleSize 局的全局 RTP 是否超過上限。 */
+    /**
+     * 近 N 局的全局 RTP（含本金口徑）是否超過該遊戲的上限。
+     *
+     * <p>門檻為 per-game（{@link RiskProperties#globalRtpLimitFor}）：因各遊戲結構性莊家優勢不同，
+     * 含本金 RTP 的正常水位也不同，單一門檻會把低莊優遊戲（百家樂 ≈ 0.99）每局都誤判超限。
+     */
     private boolean isGlobalRtpOverLimit(String gameType) {
         Object[] agg = firstRow(
-                roundRepository.aggregateRecent(gameType, rtpSampleSize));
+                roundRepository.aggregateRecent(gameType, riskProperties.getRtpSampleSize()));
         long totalBet = toLong(agg[0]);
         long totalWin = toLong(agg[1]);
         if (totalBet <= 0) return false;
         double rtp = (double) totalWin / totalBet;
-        return rtp >= globalRtpLimit;
+        return rtp >= riskProperties.globalRtpLimitFor(gameType);
     }
 
     private static Object[] firstRow(java.util.List<Object[]> rows) {

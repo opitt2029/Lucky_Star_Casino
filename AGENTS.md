@@ -55,6 +55,7 @@
     - **數值權威在後端**：傷害累積、致命一擊 `pCapture` 捕獲判定、派彩全由 `FishingCombat`/`FishingService` 算；前端只決定「打哪條、何時打」。後端回傳 `ShotResult{crit,damage,hpRemaining,killed,captured}`，前端**只負責演出**這些欄位。
     - **改數值三同步**（比照雷區 15）：動 `FishingCombat`（HP/傷害/暴擊/`pCapture`）→ 同步改 `mockApi.js` 鏡像（雷區 14）+ `FishingCombatTest` 的 RTP band，並跑 `mvn -pl backend/game-service test`。
     - **依賴**：前端用 `pixi.js`（`package.json`）；`git pull` 後若 build 報 `Rollup failed to resolve import "pixi.js"`＝忘了 `npm install`。
+17. **風控全局 RTP 門檻是 per-game 且為「含本金」口徑**（`risk.global-rtp-limit` 為 map，見 `RiskProperties` / `RiskControlService`）：`game_rounds.win_amount` 存的是**含本金**派彩，故 RTP=`win/bet` 的正常水位 ≈ 各遊戲結構性 RTP（老虎機 ≈ 0.94、百家樂 ≈ 0.99）。門檻**必須訂在該遊戲結構性 RTP 之上**，否則風控每局誤判超限、把結果強制改判（百家樂被改成「莊家贏」）—— 這正是 2026-06-25 修掉的 bug。**新增遊戲或調門檻時**：在 `application.yml` 的 `risk.global-rtp-limit` 補該遊戲鍵（未列出走 `default`），值要高於其含本金 RTP；別退回單一標量門檻。
 
 ---
 

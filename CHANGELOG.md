@@ -3,6 +3,38 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Fixed] — 2026-06-25 — mock 捕魚 resumed 分支補上 fishDamage 歸零，與 fishingActive 一致
+
+> **問題**：`mockApi.js` 的 `fishingActive()` 已會在回傳前 `session.fishDamage = {}`，避免「引擎 remount 後 idSeq 從 0 重置 → 舊傷害 key 碰撞新魚 id → 新魚繼承舊傷害（初擊即死）」。但 `fishingStart()` 的 `existing`（resumed）分支同樣回傳 `resumed: true`，卻漏了這行重置，形成自我防護不一致。
+> **影響**：罕見競態、且僅限 mock；但若前端走 `fishingStart` 續玩路徑而非 `fishingActive`，仍可能重現初擊即死。
+> **修法**：在 `existing` 分支 `saveDb` 前補 `existing.fishDamage = {}`，與 `fishingActive()` 對齊。
+
+### Fixed
+- `frontend/src/services/mockApi.js`：`fishingStart()` resumed 分支補 `existing.fishDamage = {}`。
+
+### 如何驗證
+- 程式碼審查：兩個 resumed 回傳路徑（`fishingActive` / `fishingStart` existing 分支）現在都會歸零 `fishDamage`。
+
+## [Fixed] — 2026-06-25 — 風控 RTP 門檻改為 per-game，修正百家樂幾乎每局被強制改判「莊家贏」
+
+> **問題**：`.run-logs-game.txt` 中 `[風控] 全局 RTP 超限 gameType=BACCARAT → 百家樂結果強制改為莊家贏` 幾乎每局都出現，押「閒／和」的玩家近乎必輸、押莊異常常勝（百家樂實質被做弊）。
+> **根因**：`RiskControlService.isGlobalRtpOverLimit` 用 `totalWin / totalBet` 比較單一門檻 `risk.global-rtp-limit: 0.95`，但 `game_rounds.win_amount` 是**含本金**派彩（`BaccaratGameService.payoutFor`：莊 ≈ 1.95x 含本金、和局押莊/閒 push 退本金 + 0.5% 反水）。百家樂含本金 RTP 結構上 ≈ 0.99 永遠 > 0.95 → `isGlobalRtpOverLimit("BACCARAT")` 幾乎恆為 true → `BaccaratService` 搜不同 nonce 把非莊結果強制改成莊家贏。老虎機含本金 RTP ≈ 0.938 < 0.95 故只偶爾踩玩家淨贏上限、不踩全局。
+> **決策**：單一門檻套到不同莊家優勢的遊戲必然誤判；改為 **per-game 門檻**（含本金口徑），門檻訂在「該遊戲結構性 RTP 之上」，風控只在實際出現異常莊家虧損（玩家集體大贏）時才觸發。
+
+### Added
+- `backend/game-service/.../config/RiskProperties.java`：`@ConfigurationProperties(prefix="risk")`，承載 `playerWinLimit`、`rtpSampleSize` 與 per-game `globalRtpLimit` Map；`globalRtpLimitFor(gameType)` 先找該遊戲（不分大小寫）、再找 `default`、皆無則後備 1.05。
+- `RiskControlServiceTest`：新增 3 筆——百家樂含本金 RTP 0.99 < 門檻 1.02 不攔截（回歸）、百家樂 RTP 1.03 ≥ 1.02 仍攔截、未列出遊戲走 `default` 1.05。
+
+### Changed
+- `backend/game-service/.../service/RiskControlService.java`：移除 `@Value` 標量欄位，改注入 `RiskProperties`；`isGlobalRtpOverLimit` 改用 `riskProperties.globalRtpLimitFor(gameType)`。
+- `backend/game-service/src/main/resources/application.yml`：`risk.global-rtp-limit` 由單一 `0.95` 改為 per-game map（`default: 1.05`、`SLOT: 0.97`、`BACCARAT: 1.02`、`FISHING: 1.00`）。
+
+### 未動
+- 前端 mock（`mockApi.js`）百家樂本就是公平的、無此風控機制；修法後正常play 下後端百家樂亦回歸公平，兩邊一致，**不需改 mock**（符合 AGENTS 雷區 14）。
+
+### 如何驗證
+- `mvn -pl backend/game-service test`：158 passed（含 `RiskControlServiceTest` 7 筆、`GameServiceApplicationTests` contextLoads 確認 `RiskProperties` 綁定成功）。
+
 ## [Fixed] — 2026-06-24 — 捕魚機 idSeq 跨 session 碰撞 + 手動點擊 fleeing 魚
 
 ### Fixed
