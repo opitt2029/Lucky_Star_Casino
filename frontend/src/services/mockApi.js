@@ -595,7 +595,7 @@ export const mockApi = {
     }
   },
 
-  async spinSlot({ bet, fortuneReady = false }) {
+  async spinSlot({ bet }) {
     await wait(900)
     const db = getDb()
     const playerId = currentPlayerId()
@@ -607,12 +607,6 @@ export const mockApi = {
     applyWalletChange(db, playerId, -bet, 'bet', '老虎機下注')
 
     const grid = randomSlotGrid()
-    if (fortuneReady) {
-      // 幸運值全滿保底必中：加權選一符號填滿中線 → 三連大獎（鏡像後端 spinGuaranteedWin）。
-      const guaranteed = pickSlotSymbol()
-      grid[1] = [guaranteed, guaranteed, guaranteed]
-    }
-
     const { multiplier, winningCells } = evaluateSlotLine(grid)
     const payout = bet * multiplier // 含本金返還；左二同最低 1x 為退本金（push / LDW）
     if (payout) applyWalletChange(db, playerId, payout, 'payout', '老虎機派彩')

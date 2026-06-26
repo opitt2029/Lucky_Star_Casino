@@ -3,6 +3,37 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Removed] — 2026-06-26 — 移除老虎機「幸運值保底必中」機制（純 RNG 派彩）
+
+### Removed
+- **後端必中邏輯**：
+  - `backend/game-service/.../slot/SlotMachine.java`：刪除 `spinGuaranteedWin()`（幸運值全滿時填滿中線必中三連）；老虎機一律走 `spin()` 純 RNG 抽樣。
+  - `backend/game-service/.../service/SlotService.java`：`spin()` / `settleInternal()` 移除 `fortuneReady` 參數與 `useGuarantee` 分支；回應移除 `guaranteed` 欄位。風控攔截（打破中線）邏輯保留不變。
+  - `backend/game-service/.../dto/SpinRequest.java`：移除 `fortuneReady` 欄位與 `isFortuneFull()`。
+  - `backend/game-service/.../dto/SpinResponse.java`：移除 `guaranteed` 欄位。
+  - `backend/game-service/.../controller/SlotController.java`：`/spin` 不再讀取/傳遞 `fortuneReady`。
+  - `backend/game-service/.../session/GameSession.java`：移除孤兒欄位 `fortuneReady`（未序列化、無人讀取）。
+- **前端老虎機 UI 與請求**：
+  - `frontend/src/pages/SlotGame.jsx`：移除 `FortuneMeter` 顯示、`useFortuneMeter` 蓄力/必中橫幅；`spinSlot` 不再帶 `fortuneReady`。
+  - `frontend/src/services/gameApi.js`、`frontend/src/services/mockApi.js`：老虎機路徑移除 `fortuneReady`（mock 鏡像同步刪除必中分支，雷區 14）。
+
+### Added
+- `frontend/src/casino-fx/fx/useLuckyAura.js`：抽出獨立的連輸吉兆 hook（純表現層），讓 `SlotGame.jsx` 在不依賴幸運值保底的情況下保留 `LuckyAura`。
+
+### Changed
+- `backend/game-service/.../service/SlotServiceTest.java`：`spin(...)` 改為 3 參數；移除兩支 `fortuneReady`/`guaranteed` 測試，新增「命中但風控攔截→派彩 0、不 credit」純風控測試。
+- `backend/game-service/.../controller/SlotControllerTest.java`：`spin(...)` stub/verify 去除 boolean 參數。
+
+### 為什麼 (Why)
+- 「幸運值滿即保底必中」是隱性破壞老虎機結構性 RTP（≈0.94）的機制：玩家累積到 100% 時下一局強制中三連大獎，使實際派彩高於設計值，且與風控 per-game RTP 門檻（雷區 17）打架。移除後老虎機回到單一真相＝純 RNG 加權抽樣，派彩可由 seed 三元組完整重算驗證（Provably Fair）。
+- **注意範圍**：`useFortuneMeter` / `FortuneMeter` 元件與其 CSS **保留**，因為捕魚機（`Fishing.jsx`）仍使用其自身的幸運值保底；本次僅移除老虎機的使用與後端必中路徑。百家樂的 `fortuneReady` 亦未動。
+
+### 如何驗證 (Verification)
+- `mvn -pl backend/game-service test -Dtest='SlotServiceTest,SlotMachineTest,SlotSymbolTest,SlotControllerTest'` → Tests run: 34, Failures: 0, Errors: 0，BUILD SUCCESS。
+- `frontend`：`npx eslint`（改動檔）無錯；`npx vite build` 1021 modules transformed、built 成功（imports 解析正常）。
+
+---
+
 ## [Fixed] — 2026-06-25 — stop-all／stop-backend 無法關閉 cmd 服務視窗（啟動端改 cmd、停止端仍只認 PowerShell）
 
 ### Fixed

@@ -75,13 +75,13 @@ public class SlotService {
      * @param bet                 下注金額（已由 controller 驗證 [100, 5000]）
      * @param requestedClientSeed 玩家自訂 client seed（可為 null/空白，則由伺服器產生）
      */
-    public SpinResponse spin(long playerId, long bet, String requestedClientSeed, boolean fortuneReady) {
+    public SpinResponse spin(long playerId, long bet, String requestedClientSeed) {
         String roundId = UUID.randomUUID().toString();
         String serverSeed = rng.generateServerSeed();
         String serverSeedHash = rng.commit(serverSeed);
         String clientSeed = resolveClientSeed(requestedClientSeed);
 
-        return settleInternal(roundId, playerId, bet, serverSeed, serverSeedHash, clientSeed, fortuneReady);
+        return settleInternal(roundId, playerId, bet, serverSeed, serverSeedHash, clientSeed);
     }
 
     /**
@@ -136,7 +136,7 @@ public class SlotService {
 
         SpinResponse response = settleInternal(
                 roundId, playerId, session.getBetAmount(),
-                session.getServerSeed(), session.getServerSeedHash(), session.getClientSeed(), false);
+                session.getServerSeed(), session.getServerSeedHash(), session.getClientSeed());
 
         // 揭露 serverSeed 並標記結算（保留 30 分鐘驗證視窗）。
         sessionService.markSettled(playerId, roundId, session.getServerSeed(), NONCE);
@@ -148,8 +148,7 @@ public class SlotService {
      * 供單次模式與 commit-ahead 結算共用；不觸碰 Session（由呼叫端決定是否標記）。
      */
     private SpinResponse settleInternal(String roundId, long playerId, long bet,
-                                        String serverSeed, String serverSeedHash, String clientSeed,
-                                        boolean fortuneReady) {
+                                        String serverSeed, String serverSeedHash, String clientSeed) {
         // 下注時間（毫秒精度）：單次模式下注與結算同一瞬間，於扣款前取時間戳供注單稽核。
         LocalDateTime betAt = LocalDateTime.now();
 
@@ -158,18 +157,13 @@ public class SlotService {
                 playerId, bet, "slot-bet-" + roundId, roundId);
         Long balanceBefore = debit.balanceBefore();
 
-        // 2) 風控優先檢查：若觸發攔截則不使用保底轉動，避免中獎盤面配零派彩的視覺矛盾。
-        // shouldIntercept 會佔用並發閘；無論是否攔截，finally 均須呼叫 releaseRiskSlot。
+        // 2) 風控檢查：shouldIntercept 會佔用並發閘；無論是否攔截，finally 均須呼叫 releaseRiskSlot。
         boolean riskIntercept = riskControlService.shouldIntercept(playerId, GAME_TYPE);
         try {
-        boolean useGuarantee = fortuneReady && !riskIntercept;
-
         RandomStream stream = rng.stream(serverSeed, clientSeed, NONCE);
-        SlotOutcome outcome = useGuarantee
-                ? slotMachine.spinGuaranteedWin(stream, bet)
-                : slotMachine.spin(stream, bet);
+        SlotOutcome outcome = slotMachine.spin(stream, bet);
 
-        // 一般轉動若命中但被風控攔截，打破中線顯示確保盤面與派彩視覺一致（不出現中獎符號配零派彩）。
+        // 轉動若命中但被風控攔截，打破中線顯示確保盤面與派彩視覺一致（不出現中獎符號配零派彩）。
         if (riskIntercept && outcome.win()) {
             outcome = SlotOutcome.noWin(breakPayline(outcome.grid()));
         }
@@ -216,7 +210,6 @@ public class SlotService {
                 .serverSeedHash(serverSeedHash)
                 .clientSeed(clientSeed)
                 .nonce(NONCE)
-                .guaranteed(fortuneReady)
                 .build();
         } finally {
             riskControlService.releaseRiskSlot(playerId);

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import AppShell from '../components/AppShell'
 import GameRuleCard from '../components/GameRuleCard'
@@ -12,8 +12,7 @@ import GoldBurst from '../casino-fx/fx/GoldBurst'
 import { CoinRainPro, RedEnvelopeRain } from '../casino-fx/fx/FallRain'
 import BrushBanner, { pickBannerForMultiplier } from '../casino-fx/fx/BrushBanner'
 import LuckyAura from '../casino-fx/fx/LuckyAura'
-import FortuneMeter from '../casino-fx/fx/FortuneMeter'
-import { useFortuneMeter } from '../casino-fx/fx/useFortuneMeter'
+import { useLuckyAura } from '../casino-fx/fx/useLuckyAura'
 import { announcePlayerWin } from '../casino-fx/announce/announceBus'
 import { useGameLeaveGuard } from '../hooks/useGameLeaveGuard'
 
@@ -48,9 +47,7 @@ export default function SlotGame() {
   const balance = useSelector((state) => state.wallet.balance)
   const player = useSelector((state) => state.auth.player)
   const { status, loading, error, slotGrid, winningCells } = useSelector((state) => state.game)
-  const fortune = useFortuneMeter('slot', player?.id)
-  // 記錄本次轉動發出時幸運值是否已滿（在 addCharge 前讀取，防止 addCharge 的非同步 setState 污染判斷）
-  const fortuneReadyOnSpinRef = useRef(false)
+  const aura = useLuckyAura()
   useBgm('slot')
   const resolvedBet = selectedBet === 'MAX' ? Math.max(Math.min(balance, 5000), 100) : selectedBet
   const canAfford = balance >= resolvedBet
@@ -74,13 +71,11 @@ export default function SlotGame() {
     if (balance < resolvedBet) return null
     const betAtSpin = resolvedBet
     setVisualLock(true)
-    fortuneReadyOnSpinRef.current = fortune.full
-    fortune.addCharge(resolvedBet)
     // 注意：視覺鎖（visualLock）的解除統一交給 SlotMachine 的 onSpinComplete，
     // 它綁定 runReels 動畫的真實生命週期（成功/失敗/中止各路徑都會呼叫）。
     // 不要在此用固定 setTimeout 解鎖——near-miss 慢停動畫長達 3.5s，會比動畫早解鎖造成脫鉤（AGENTS 雷區 13）。
     // 結算副作用（餘額/損益/局數/快照）一律延到 handleSettled（輪停）才套用，與轉輪同步揭曉、避免劇透。
-    return dispatch(spinSlot({ bet: betAtSpin, fortuneReady: fortune.full })).unwrap()
+    return dispatch(spinSlot({ bet: betAtSpin })).unwrap()
   }
 
   // 轉輪演出結束的瞬間引爆慶祝（音效 + 大字報 + 金幣特效，依倍率分級）。
@@ -97,12 +92,10 @@ export default function SlotGame() {
     setSessionProfit((prev) => (prev ?? 0) + payout - (spinResult.bet ?? 0))
     setSessionRounds((prev) => prev + 1)
 
-    fortune.reportRound(won, fortuneReadyOnSpinRef.current)
+    aura.reportRound(won)
     if (!won) return
 
-    const bannerPick = spinResult.guaranteed
-      ? { text: '幸運保底觸發！', level: 3 }
-      : pickBannerForMultiplier(multiplier)
+    const bannerPick = pickBannerForMultiplier(multiplier)
     setBanner((prev) => ({ trigger: prev.trigger + 1, ...bannerPick }))
     setBurstTrigger((n) => n + 1)
 
@@ -130,7 +123,7 @@ export default function SlotGame() {
 
   return (
     <AppShell>
-      <LuckyAura active={fortune.auraActive} />
+      <LuckyAura active={aura.auraActive} />
       <GoldBurst trigger={burstTrigger} origin={{ x: 38, y: 48 }} />
       <CoinRainPro trigger={coinTrigger} density={coinDensity} />
       <RedEnvelopeRain trigger={envelopeTrigger} density="heavy" />
@@ -177,8 +170,6 @@ export default function SlotGame() {
             caption={sessionProfit === null ? '開始第一局後開始記錄' : `本場共 ${sessionRounds} 局`}
             valueClass={sessionProfit === null ? '' : sessionProfit >= 0 ? 'text-emerald-300' : 'text-red-300'}
           />
-          <FortuneMeter value={fortune.value} />
-
           <div className="luxury-panel-soft rounded p-4">
             <p className="gold-muted text-xs font-black uppercase tracking-[0.25em]">Bet</p>
             <h3 className="brand-title mt-1 text-xl font-black">下注面板</h3>
