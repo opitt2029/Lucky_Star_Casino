@@ -163,7 +163,7 @@ public class FishingService {
             log.error("fishing session save failed after debit, refunding playerId={} sessionId={}",
                     playerId, sessionId, ex);
             try {
-                walletClient.credit(playerId, buyIn, "fishing-buyin-refund-" + sessionId, sessionId);
+                walletClient.credit(playerId, buyIn, "REFUND", "fishing-buyin-refund-" + sessionId, sessionId);
                 log.info("fishing buy-in refunded playerId={} sessionId={} amount={}", playerId, sessionId, buyIn);
             } catch (RuntimeException refundEx) {
                 // 退款本身又失敗：記為需人工對帳的嚴重事件（冪等鍵已落地，可日後重放補償）
@@ -548,8 +548,10 @@ public class FishingService {
                 ? session.getBalanceBefore() - session.getBuyIn()
                 : null;
         if (credited > 0) {
+            // 結算返還的是「剩餘局內餘額」（未消耗的 buy-in + 局內累積派彩的混合），不是單純中獎；
+            // 用 REFUND 而非 WIN，避免 rank-service 把本金返還誤計入「今日贏幣榜」（Bug 5）。
             WalletCreditResponse credit = walletClient.credit(
-                    playerId, credited, "fishing-end-" + sessionId, sessionId);
+                    playerId, credited, "REFUND", "fishing-end-" + sessionId, sessionId);
             balanceAfter = credit.balanceAfter();
             wallet = WalletView.builder()
                     .balance(credit.balanceAfter())

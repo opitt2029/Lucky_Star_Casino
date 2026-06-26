@@ -3,6 +3,66 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Fixed] — 2026-06-25 — 捕魚退款／結算本金返還被誤計入「今日贏幣榜」（新增 REFUND 子型）
+
+> **問題**（Bug 5：退款／剩餘本金被算成 WIN）：`game-service` 的 `WalletClient.credit()` 寫死 `subType="WIN"`，而捕魚兩處入帳都走它——(1) buy-in 退款（session 建立失敗補償，`FishingService` line 151）、(2) 場次結算把剩餘局內餘額返還錢包（line 497）。`rank-service` 的 `WalletBalanceChangedConsumer` 只在 `subType=="WIN"` 時 `addDailyWinnings`，於是退款與本金返還被灌進「今日贏幣王」排行榜，污染榜單可信度。
+>
+> **修法**：`WalletClient.credit` 新增帶 `subType` 的多載；中獎派彩（老虎機/百家樂）維持 `WIN`，捕魚兩處改用新子型 `REFUND`（CREDIT 類、非中獎）。rank 端邏輯不動（本來就只認 WIN），REFUND 自然被排除。新增 `REFUND` 至 wallet `CreditRequest.@Pattern` 與兩庫 `chk_wt_sub_type` CHECK 白名單（init.sql + 補丁 migration mysql V7 / postgres V11）。
+>
+> 註：buy-in 制下 wallet 只看得到「結算淨返還」一筆 credit（未消耗本金＋局內累積派彩的混合），無法在錢包事件層拆出純贏額，故捕魚不計入今日贏幣榜；若日後要納入，需另設專屬贏額事件，不在本次修正範圍。
+
+### Fixed
+- `backend/game-service/.../client/WalletClient.java`：新增 `credit(playerId, amount, subType, idempotencyKey, referenceId)` 多載；原 4 參數版本委派並固定 `WIN`（老虎機/百家樂派彩不受影響）。
+- `backend/game-service/.../service/FishingService.java`：buy-in 退款與場次結算返還兩處 credit 改傳 `subType="REFUND"`。
+- `backend/game-service/.../client/dto/WalletCreditRequest.java`：Javadoc 補充 REFUND 用途。
+- `backend/wallet-service/.../dto/CreditRequest.java`：`@Pattern` 與 Javadoc 新增 `REFUND`。
+- `database/{postgres,mysql}/init.sql`：`chk_wt_sub_type` 與欄位註解新增 `REFUND`。
+- `database/mysql/migration/V7__add_refund_subtype.sql`、`database/postgres/migration/V11__add_refund_subtype.sql`：補丁加上 `REFUND`（與 init.sql 末態一致）。
+- `backend/game-service/.../service/FishingServiceTest.java`：退款相關 stub/verify 改用 5 參數多載，並斷言 `subType=="REFUND"`。
+
+### 如何驗證
+- `mvn -pl backend/game-service,backend/wallet-service test`：全綠（game-service 含 FishingServiceTest、wallet-service 含 InternalWalletControllerCreditTest 共 150 測試）。
+- rank 端 `WalletBalanceChangedConsumerTest.handleWalletBalanceChanged_nonWinSubType_doesNotAccumulateDailyWinnings` 既有測試證明非 WIN 子型不累加今日贏幣。
+
+## [Fixed] — 2026-06-25 — fresh DB 缺 CASHBACK 子類型導致返利入帳被 CHECK 約束擋下（init.sql 與補丁/契約對齊）
+
+> **問題**（Bug 4：CASHBACK 白名單不同步）：虧損返利鏈路 `CashbackEventPublisher` 發 `wallet.credit.request`（subType=CASHBACK）→ `WalletCreditRequestListener` → `WalletService.credit` 寫庫。本專案無 Flyway 自動執行，schema 由 docker-entrypoint-initdb.d 載入的 `database/{postgres,mysql}/init.sql` 建立；而兩份 init.sql 的 `chk_wt_sub_type` CHECK 約束**未含 CASHBACK**（MySQL 讀端更落後，連 `DIAMOND_EXCHANGE`/`TOPUP` 都缺）。雖有補丁 V9（postgres）/ V6（mysql）加上 CASHBACK，但 migration 資料夾不被載入 → **fresh DB 上返利入帳會被 CHECK constraint 擋下，讀端同步也會掛**。附帶 `CreditRequest.@Pattern` 也漏列 CASHBACK（Kafka listener 路徑未觸發 bean validation，非運行時阻斷點，但屬契約不一致）。
+
+### Fixed
+- `database/postgres/init.sql`：`chk_wt_sub_type` 與 `sub_type` 欄位註解補上 `CASHBACK`，與補丁 V9 末態一致。
+- `database/mysql/init.sql`：`chk_wt_sub_type` 與註解補上 `DIAMOND_EXCHANGE`/`TOPUP`/`CASHBACK`（讀端原本停在 `BANKRUPTCY_AID`），與補丁 V6 末態一致。
+- `backend/wallet-service/.../dto/CreditRequest.java`：`@Pattern` 與 Javadoc 補上 `CASHBACK`，契約與 DB 約束齊頭。
+
+### 為什麼
+- fresh DB 直接由 init.sql 建表，補丁 migration 不自動執行；init.sql 必須等於「所有補丁套用後的末態」，否則新環境的返利功能直接壞掉。
+
+### 如何驗證
+- 對比 `database/postgres/migration/V9__add_cashback_records.sql` 與 `database/mysql/migration/V6__add_cashback_subtype.sql` 的 CHECK 末態，確認 init.sql 子類型清單完全一致。
+- `mvn -pl backend/wallet-service test`：H2 contextLoads 與既有測試綠燈。
+
+## [Fixed] — 2026-06-25 — 排行榜/錢包流水/贈幣改接真實 API，並修正前端訂閱不存在的 WS topic
+
+> **問題**（前端三處仍走 mock 殘留或訂閱錯誤頻道）：
+> 1. **Rank 頁仍用 mock**：`rankSlice.fetchRanks` 直接 `mockApi.getRank()`，未接 rank-service；且 `upsertRankRows` 以 `nickname` 當去重鍵，與後端即時事件欄位（`playerId`）對不上 → 即時更新錯位。
+> 2. **錢包交易紀錄與贈幣走 mock**：`walletSlice.fetchTransactions/giftCoins` 走 `mockApi`，後端 `GET /api/v1/wallet/transactions`、`POST /gift` 沒被使用（看不到真實流水、贈幣限額/冪等沒驗到）。
+> 3. **訂閱不存在的 WS topic**：`RealtimeBridge` 訂閱 `/topic/wallet`（後端無此頻道）與 `/topic/game/result`（後端遊戲結果走私人佇列 `/user/queue/notifications`，已由 `useWebSocket` 內建處理）→ 錢包/遊戲結果即時更新失效。
+>
+> **修法**：rankSlice / walletSlice 兩個 mock thunk 換成真實 API 並對齊欄位；RealtimeBridge 只保留後端確實會廣播的 `/topic/rank`（先 normalize 成前端列形狀），移除兩個無效訂閱。各 API 維持 `VITE_USE_MOCK_API` 開關（mock 模式行為不變）。
+
+### Added
+- `frontend/src/services/rankApi.js`：封裝 rank-service 真實 API（`GET /api/v1/rank/global`、`/friends`、`/global/{playerId}`），把後端 `RankEntryResponse{playerId,username,rank,score}` 映射成前端列形狀 `{id,nickname,score,rank}`（與 `mockApi.getRank` 對齊）；另含 `normalizeBroadcast` 將 `RankUpdateEvent.entries` 轉同一形狀。`getRanks` 對 `/global/{playerId}` 的 404（未上榜）視為無名次、不擋榜單載入。
+- `frontend/src/services/walletApi.js`：新增 `getTransactions`（`GET /api/v1/wallet/transactions`，前端 1-based page ↔ 後端 0-based、`type` 映回 DEBIT/CREDIT、`from/to` 日期；回傳 `{items,total,page,pageSize}`；DEBIT 以負數呈現、subType→中文標籤）與 `giftCoins`（`POST /api/v1/wallet/gift`，`friendId→receiverId`、自動產生 `idempotencyKey`、補查餘額組 `{wallet}`）。
+
+### Changed
+- `frontend/src/store/slices/rankSlice.js`：`fetchRanks` 改用 `rankApi.getRanks(playerId)`（playerId 取自 `auth.player.id`）；`upsertRankRows` 去重鍵改為 `row.id ?? row.nickname`。
+- `frontend/src/store/slices/walletSlice.js`：`fetchTransactions`/`giftCoins` 改走 `walletApi`，錯誤訊息統一用 `extractError`；移除不再使用的 `mockApi` import。
+- `frontend/src/components/RealtimeBridge.jsx`：只訂閱 `/topic/rank` 並先 `rankApi.normalizeBroadcast`；移除 `/topic/wallet`、`/topic/game/result` 兩個無效訂閱。
+
+### 如何驗證
+- `cd frontend && npx eslint <改動檔>`：無錯誤。
+- `cd frontend && npx vite build`：建置成功（`✓ built`）。
+- mock 模式（預設 `VITE_USE_MOCK_API !== 'false'`）三條路徑仍回退 `mockApi`，玩家體驗不變。
+
 ## [Fixed] — 2026-06-25 — stop-all／stop-backend 無法關閉 cmd 服務視窗（啟動端改 cmd、停止端仍只認 PowerShell）
 
 ### Fixed
