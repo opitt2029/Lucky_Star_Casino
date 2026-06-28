@@ -1,7 +1,7 @@
 import api from './api'
 import { mockApi } from './mockApi'
 
-const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
+const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true'
 
 // 登入流程的逾時放寬：後端冷啟動（DB 連線池/gateway 暖機）首次請求可能超過預設 10s。
 const AUTH_TIMEOUT_MS = 15000

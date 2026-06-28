@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchProfile } from './store/slices/authSlice'
@@ -22,12 +22,29 @@ import QuickToolbar from './components/QuickToolbar'
 import FriendFloatingPanel from './components/FriendFloatingPanel'
 import SupportModal from './components/SupportModal'
 
+const enableDevTools = import.meta.env.VITE_ENABLE_DEV_TOOLS === 'true'
+const IntegrationTestPage = enableDevTools ? lazy(() => import('./pages/IntegrationTestPage')) : null
+
 function PrivateRoute({ children }) {
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
   const location = useLocation()
   return isAuthenticated ? children : <Navigate to="/member?mode=login" replace state={{ from: location }} />
 }
 
+function SiteChrome() {
+  const location = useLocation()
+  const isStandaloneTool = enableDevTools && location.pathname.startsWith('/dev/integration')
+
+  if (isStandaloneTool) return null
+
+  return (
+    <>
+      <QuickToolbar />
+      <FriendFloatingPanel />
+      <SupportModal />
+    </>
+  )
+}
 export default function App() {
   const dispatch = useDispatch()
   const { isAuthenticated, player } = useSelector((state) => state.auth)
@@ -140,13 +157,23 @@ export default function App() {
             }
           />
 
+          {enableDevTools && IntegrationTestPage && (
+            <Route
+              path="/dev/integration"
+              element={
+                <PrivateRoute>
+                  <Suspense fallback={null}>
+                    <IntegrationTestPage />
+                  </Suspense>
+                </PrivateRoute>
+              }
+            />
+          )}
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </PageTransition>
-      <QuickToolbar />
-      <FriendFloatingPanel />
-      <SupportModal />
+      <SiteChrome />
     </BrowserRouter>
   )
 }

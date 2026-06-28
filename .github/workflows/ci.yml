@@ -72,31 +72,39 @@ jobs:
           clean test
 
   # ---------------------------------------------------------------------------
-  # Job 3：前端單元測試（Vitest）
-  #
-  # 範圍：純單元測試（不含 Playwright e2e，e2e 走 npm run e2e 另行執行）。
-  #   目前覆蓋 src/services/api.test.js —— axios 401 攔截器的自動續期/single-flight/
-  #   續期失敗登出等流程。新增前端單元測試只要放 src/**/*.test.{js,jsx} 即會被納入。
+  # Job 3: frontend quality gate (lint / unit / build / browser smoke)
   # ---------------------------------------------------------------------------
   frontend-test:
-    name: 前端單元測試
+    name: Frontend quality gate
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontend
     steps:
-      - name: Checkout 程式碼
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 安裝 Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: 安裝相依
+      - name: Install dependencies
         run: npm ci
 
-      - name: 執行 Vitest
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run Vitest
         run: npm test
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright smoke
+        run: npm run e2e

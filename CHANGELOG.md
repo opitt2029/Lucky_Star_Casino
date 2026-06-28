@@ -1,3 +1,56 @@
+## [changed] — 2026-06-28 — 前端正式模式與 CI 擋關收斂
+
+### Added
+- `frontend/e2e/smoke.spec.js`：新增 Playwright smoke，使用 mock 模式登入並走過遊戲大廳、鑽石錢包、遊戲紀錄。
+
+### Changed
+- `frontend/src/services/{api,memberApi,walletApi,rankApi,gameApi,diamondApi,integrationTestApi}.js`：mock API 改成只有 `VITE_USE_MOCK_API=true` 才啟用，避免正式環境未設定時誤走假資料。
+- `frontend/src/App.jsx`：`/dev/integration` 改由 `VITE_ENABLE_DEV_TOOLS=true` 顯式開啟，正式 build 不再產出整合測試頁 chunk。
+- `frontend/.env.development`、`frontend/.env.mock`、`.env.example`：補齊 mock/dev tools 旗標設定。
+- `.github/workflows/ci.yml`：前端 CI 從單跑 Vitest 擴充為 lint、Vitest、production build、Playwright smoke。
+
+### 為什麼
+- 正式站應預設打真實 Gateway，不可因環境變數漏設而回退 mock；開發診斷頁也不應暴露在一般玩家路由或正式資產中。
+- CI 需要實際驗證前端可 lint、可測、可建置、可由瀏覽器啟動並完成核心玩家流程。
+
+### 如何驗證
+- `node --test tests/infra/*.test.js`（127 passed）
+- `mvn -B -ntp -pl backend/gateway-service,backend/member-service,backend/wallet-service clean test`（150 passed，BUILD SUCCESS）
+- `cd frontend && npm run lint`
+- `cd frontend && npm run test`（7 passed）
+- `cd frontend && npm run build`
+- `cd frontend && npm run e2e`（1 passed, 1 skipped）
+## [changed] — 2026-06-27 — 整合測試面板改為獨立工具頁
+
+### Changed
+- `frontend/src/pages/IntegrationTestPage.jsx`：移除 `AppShell` 包裝，改為獨立 full-screen 工具頁。
+- `frontend/src/App.jsx`：`/dev/integration` 保持受保護路由，但在此路徑不渲染 QuickToolbar、好友浮窗與客服 modal。
+
+### 為什麼
+- 整合測試面板是開發/驗收工具，不應出現在玩家網站體驗中；保留直接網址方便前後端串接測試。
+
+### 如何驗證
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+
+## [feat] — 2026-06-27 — 新增前後端整合測試面板
+
+### Added
+- `frontend/src/services/integrationTestApi.js`：新增 Gateway / member / wallet / game / rank 的瀏覽器端探針，記錄 HTTP 狀態、耗時與摘要。
+- `frontend/src/pages/IntegrationTestPage.jsx`：新增 `/dev/integration` 受保護頁，可執行安全讀取檢查，並提供破產補助與老虎機下注兩個明確的手動整合動作。
+
+### Changed
+- `frontend/src/App.jsx`：接上 `/dev/integration` 受保護路由；此工具不加入網站導覽入口。
+
+### 為什麼
+- 既有 `tests/smoke/smoke.mjs` 適合命令列全流程驗證；前端日常對接還需要一個可視化入口，快速分辨 gateway、JWT、CORS、服務路由或業務 API 哪一層出問題。
+
+### 如何驗證
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+
 # Changelog — Lucky Star Casino
 
 All notable changes to this project are documented here.

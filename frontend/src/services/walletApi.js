@@ -1,7 +1,7 @@
 import api from './api'
 import { mockApi } from './mockApi'
 
-const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
+const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true'
 
 // 後端 wallet_transactions 只記 type(DEBIT/CREDIT/BONUS) + subType。
 // 前端 UI 篩選器沿用 mock 的細分類型，這裡盡量映回後端可篩的 type；
