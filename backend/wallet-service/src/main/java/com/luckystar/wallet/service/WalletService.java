@@ -87,7 +87,8 @@ public class WalletService {
             WalletTransaction txToSave = WalletTransaction.builder()
                     .playerId(request.getPlayerId())
                     .type("DEBIT")
-                    .subType("BET")
+                    // subType 選填：未帶（如 game-service 下注）預設 BET，商城兌換帶 SHOP_PURCHASE
+                    .subType(request.getSubType() != null ? request.getSubType() : "BET")
                     .amount(request.getAmount())
                     .balanceBefore(balanceBefore)
                     .balanceAfter(wallet.getBalance())

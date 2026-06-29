@@ -110,6 +110,20 @@ public class GlobalExceptionHandler {
         return ApiResponse.error(ex.getMessage());
     }
 
+    /** 商城商品代號不存在（ADR-006）→ 404。 */
+    @ExceptionHandler(ShopItemNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ApiResponse<Void> handleShopItemNotFound(ShopItemNotFoundException ex) {
+        return ApiResponse.error(ex.getMessage());
+    }
+
+    /** 商城商品已下架，不可兌換（ADR-006）→ 422。 */
+    @ExceptionHandler(ShopItemUnavailableException.class)
+    @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+    public ApiResponse<Void> handleShopItemUnavailable(ShopItemUnavailableException ex) {
+        return ApiResponse.error(ex.getMessage());
+    }
+
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public ApiResponse<Void> handleOptimisticLock(ObjectOptimisticLockingFailureException ex) {

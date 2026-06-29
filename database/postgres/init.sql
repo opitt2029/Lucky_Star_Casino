@@ -39,13 +39,36 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
     created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_wallet_transactions PRIMARY KEY (id),
     CONSTRAINT chk_wt_type     CHECK (type    IN ('DEBIT', 'CREDIT', 'BONUS')),
-    CONSTRAINT chk_wt_sub_type CHECK (sub_type IN ('BET', 'WIN', 'CHECKIN', 'TASK', 'GIFT', 'GM_REWARD', 'BANKRUPTCY_AID', 'DIAMOND_EXCHANGE', 'TOPUP', 'CASHBACK', 'REFUND', 'MONTHLY_REWARD')),
+    CONSTRAINT chk_wt_sub_type CHECK (sub_type IN ('BET', 'WIN', 'CHECKIN', 'TASK', 'GIFT', 'GM_REWARD', 'BANKRUPTCY_AID', 'DIAMOND_EXCHANGE', 'TOPUP', 'CASHBACK', 'REFUND', 'MONTHLY_REWARD', 'SHOP_PURCHASE')),
     CONSTRAINT chk_wt_amount   CHECK (amount > 0)
 );
 
 CREATE INDEX IF NOT EXISTS idx_wallet_transactions_player_id   ON wallet_transactions (player_id);
 CREATE INDEX IF NOT EXISTS idx_wallet_transactions_created_at  ON wallet_transactions (created_at);
 CREATE INDEX IF NOT EXISTS idx_wallet_transactions_player_time ON wallet_transactions (player_id, created_at DESC);
+
+-- -------------------------------------------------------
+-- shop_redemptions：禮品商城兌換紀錄（帳務寫端，ADR-006）
+-- 每筆＝某玩家兌換某商品一次，與星幣扣款（sub_type=SHOP_PURCHASE）同一交易原子寫入。
+-- 為帳務真相＋玩家背包來源；目錄 shop_items 在 MySQL（admin 管理）。
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS shop_redemptions (
+    id               BIGSERIAL    NOT NULL,
+    player_id        BIGINT       NOT NULL,
+    item_code        VARCHAR(50)  NOT NULL,
+    item_name        VARCHAR(100) NOT NULL,
+    star_spent       BIGINT       NOT NULL,
+    balance_before   BIGINT,
+    balance_after    BIGINT,
+    idempotency_key  VARCHAR(100) UNIQUE,
+    status           VARCHAR(20)  NOT NULL DEFAULT 'COMPLETED',
+    created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_shop_redemptions    PRIMARY KEY (id),
+    CONSTRAINT chk_shop_star_positive CHECK (star_spent > 0),
+    CONSTRAINT chk_shop_status        CHECK (status IN ('COMPLETED', 'PENDING', 'FAILED'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_shop_redemptions_player_time ON shop_redemptions (player_id, created_at DESC);
 
 -- -------------------------------------------------------
 -- topup_orders：玩家自助加值訂單（模擬支付，無真實金流）

@@ -58,8 +58,9 @@
     - **改數值四同步**（比照雷區 15）：動 `FishingCombat`（HP/傷害/暴擊/`pCapture`/`RECOVERY_RATE`）→ 同步 ① `mockApi.js` 鏡像（雷區 14）② `FishingCombatTest` 的 RTP band ③ `risk.global-rtp-limit` 的 `FISHING` 門檻（雷區 17），並跑 `mvn -pl backend/game-service test`。
     - **依賴**：前端用 `pixi.js`（`package.json`）；`git pull` 後若 build 報 `Rollup failed to resolve import "pixi.js"`＝忘了 `npm install`。
 17. **風控全局 RTP 門檻是 per-game 且為「含本金」口徑**（`risk.global-rtp-limit` 為 map，見 `RiskProperties` / `RiskControlService`）：`game_rounds.win_amount` 存的是**含本金**派彩，故 RTP=`win/bet` 的正常水位 ≈ 各遊戲結構性 RTP（老虎機 ≈ 0.94、百家樂 ≈ 0.99、捕魚機設計 RTP 0.96 含殘血回收，ADR-004）。門檻**必須訂在該遊戲結構性 RTP 之上**，否則風控每局誤判超限、把結果強制改判（百家樂被改成「莊家贏」）—— 這正是 2026-06-25 修掉的 bug。捕魚為高變異（大魚捕獲單局 RTP 可遠超 1），門檻 `FISHING: 1.10` 留足裕度。**新增遊戲或調門檻時**：在 `application.yml` 的 `risk.global-rtp-limit` 補該遊戲鍵（未列出走 `default`），值要高於其含本金 RTP；別退回單一標量門檻。
-18. **新增 wallet credit 子型（`sub_type` 字串非 enum）要四同步**：① `backend/wallet-service/.../dto/CreditRequest.java` 的 `@Pattern` regex 與訊息 ② `database/postgres/init.sql` 的 `chk_wt_sub_type` + 新 migration（仿 `V11`/`V12`）③ `database/mysql/init.sql` 的 `chk_wt_sub_type` + 新 migration（仿 `V7`/`V9`，注意 MySQL 是 `DROP CHECK`、Postgres 是 `DROP CONSTRAINT IF EXISTS`）。漏任一處：wallet 入帳會在 `@Pattern` 被擋（400）或在讀庫/寫庫撞 CHECK。rank-service 只認 `WIN` 計分，其餘子型（含 `MONTHLY_REWARD`/`CHECKIN`/`REFUND`）不污染排行。範例：月度簽到獎勵 `MONTHLY_REWARD`（2026-06-29，ADR-005）。
+18. **新增 wallet 帳務子型（`sub_type` 字串非 enum）要四同步**：① DTO 的 `@Pattern` regex 與訊息——CREDIT 子型改 `dto/CreditRequest.java`、**DEBIT 子型改 `dto/DebitRequest.java`** ② `database/postgres/init.sql` 的 `chk_wt_sub_type` + 新 migration（仿 `V12`/`V13`）③ `database/mysql/init.sql` 的 `chk_wt_sub_type` + 新 migration（仿 `V9`/`V10`，注意 MySQL 是 `DROP CHECK`、Postgres 是 `DROP CONSTRAINT IF EXISTS`）。漏任一處：wallet 帳務會在 `@Pattern` 被擋（400）或在讀庫/寫庫撞 CHECK。rank-service 只認 `WIN` 計分，其餘子型（含 `MONTHLY_REWARD`/`CHECKIN`/`REFUND`/`SHOP_PURCHASE`）不污染排行。範例：月度簽到獎勵 `MONTHLY_REWARD`（CREDIT，ADR-005）；商城兌換 `SHOP_PURCHASE`（DEBIT，ADR-006）。⚠️ `debit()` 的 subType 原寫死 `BET`，現改為 `DebitRequest.subType` 可選帶入（預設 BET）；game-service 不帶 → 仍記 BET，行為不變。
 19. **member-service 的端點若落在 `/api/v1/wallet/**` 路徑下，必須加進 gateway 的 `member-checkin` 路由 `Path`（且排在 `wallet` catch-all 之前）**：`backend/gateway-service/src/main/resources/application.yml` 的 `member-checkin`（`uri=MEMBER_SERVICE_URL`）目前是 `Path=/api/v1/wallet/daily-checkin,/api/v1/wallet/checkin/**`。新增 member 的 wallet 子路徑（如簽到狀態/月度獎勵）要補進這條，否則被下方 `Path=/api/v1/wallet/**` 攔截轉發到 wallet-service → 404（wallet 沒這些端點）。Spring Cloud Gateway 路由按宣告順序比對，**具體路徑必須排在 catch-all 之前**。
+20. **禮品商城＝wallet-service 內（非獨立服務，ADR-006）**：玩家端兌換/目錄/背包在 wallet-service，端點 `/api/v1/wallet/shop/**`（被既有 `wallet` 路由吃下，**免改 gateway**；因路徑在 wallet 服務內，不像雷區 19 那樣需另立路由）。兌換＝單一 Postgres 交易內「`WalletService.debit(SHOP_PURCHASE)` + 寫 `shop_redemptions`」原子完成，重用 debit 冪等/樂觀鎖（範本＝`DiamondExchangeService`）。目錄 `shop_items` 在 **MySQL**（admin-service CRUD、wallet 讀；跨資料源讀目錄拆 `ShopCatalogService` 用 `mysqlTransactionManager`，比照 `DiamondRedeemService`，**勿合併進 postgres 交易方法**，自我呼叫會讓 `@Transactional` 失效）。後台目錄管理在 admin-service（`hasRole('ADMIN')`，寫 `admin_action_logs` 稽核）。改數值/目錄要同步前端 mock `mockApi.SHOP_CATALOG`（雷區 14）。子型 `SHOP_PURCHASE` 四同步見雷區 18。
 
 ---
 
@@ -91,7 +92,7 @@
 
 ```bash
 # 後端：跑已實作服務的測試（用 H2，免外部基礎設施）
-mvn -pl backend/gateway-service,backend/member-service,backend/wallet-service test
+mvn -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/admin-service test
 
 # 基礎設施腳本測試
 node --test tests/infra/*.test.js

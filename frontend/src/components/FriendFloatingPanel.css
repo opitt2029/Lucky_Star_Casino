@@ -1,7 +1,8 @@
 .friend-float {
   position: fixed;
-  right: 18px;
-  bottom: 18px;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
   z-index: 60;
   width: min(320px, calc(100vw - 28px));
   pointer-events: none;
@@ -13,16 +14,18 @@
 }
 
 .friend-float__trigger {
-  display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) 22px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 10px;
-  width: 246px;
-  min-height: 58px;
+  width: 44px;
+  min-height: 168px;
   margin-left: auto;
   border: 1px solid rgba(255, 234, 160, 0.68);
-  border-radius: 999px;
-  padding: 8px 12px 8px 16px;
+  border-right: none;
+  border-radius: 14px 0 0 14px;
+  padding: 16px 8px;
   background:
     linear-gradient(135deg, rgba(201, 13, 24, 0.98), rgba(76, 2, 7, 0.96) 58%, rgba(22, 1, 4, 0.98)),
     radial-gradient(circle at 26% 12%, rgba(255, 234, 160, 0.24), transparent 36%);
@@ -113,33 +116,38 @@
 }
 
 .friend-float__trigger-copy {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-  text-align: left;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 0;
+  /* 直書：讓「好友列表」沿垂直方向排列，貼合右緣細長標籤 */
+  writing-mode: vertical-rl;
+  text-orientation: upright;
 }
 
 .friend-float__trigger-copy strong {
   overflow: hidden;
   color: #fff6c8;
-  font-size: 0.98rem;
+  font-size: 0.96rem;
   font-weight: 900;
+  letter-spacing: 0.12em;
   line-height: 1.05;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .friend-float__trigger-copy small {
   color: rgba(255, 232, 150, 0.68);
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   font-weight: 800;
+  letter-spacing: 0.08em;
   line-height: 1.1;
 }
 
 .friend-float__panel {
   position: absolute;
-  right: 0;
-  bottom: 72px;
+  right: 52px;
+  top: 50%;
+  bottom: auto;
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   width: min(320px, calc(100vw - 28px));
@@ -156,8 +164,8 @@
     0 0 0 1px rgba(255, 255, 255, 0.04),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
   opacity: 0;
-  transform: translateY(18px) scale(0.96);
-  transform-origin: bottom right;
+  transform: translateY(-50%) translateX(20px) scale(0.96);
+  transform-origin: right center;
   visibility: hidden;
   transition:
     opacity 0.2s ease,
@@ -167,7 +175,7 @@
 
 .friend-float__panel--open {
   opacity: 1;
-  transform: translateY(0) scale(1);
+  transform: translateY(-50%) translateX(0) scale(1);
   visibility: visible;
 }
 
@@ -717,34 +725,21 @@
 }
 
 @media (max-width: 760px) {
-  .friend-float {
-    left: auto;
-    right: 10px;
-    top: calc(12px + env(safe-area-inset-top, 0px));
-    bottom: auto;
-    width: min(300px, calc(100vw - 20px));
-  }
-
+  /* 小螢幕沿用右緣垂直置中的細長標籤，僅縮小尺寸並讓面板往左展開時不超出畫面 */
   .friend-float__trigger {
-    width: min(176px, calc(100vw - 20px));
-    min-height: 46px;
-    margin-left: auto;
-    padding: 6px 10px 6px 13px;
+    width: 40px;
+    min-height: 150px;
+    padding: 14px 6px;
   }
 
   .friend-float__panel {
-    left: auto;
-    right: 0;
-    top: 58px;
-    bottom: auto;
-    width: min(320px, calc(100vw - 20px));
-    height: min(420px, calc(100vh - 178px - env(safe-area-inset-bottom, 0px)));
-    transform: translateY(-12px) scale(0.96);
-    transform-origin: top right;
+    right: 48px;
+    width: min(300px, calc(100vw - 64px));
+    height: min(420px, calc(100vh - 40px));
   }
 
   .friend-float__panel--guest {
-    height: min(250px, calc(100vh - 178px - env(safe-area-inset-bottom, 0px)));
+    height: 250px;
   }
 
   .friend-float__detail-avatar {
@@ -755,22 +750,8 @@
 }
 
 @media (max-width: 390px) {
-  .friend-float__trigger {
-    width: min(158px, calc(100vw - 20px));
-    min-height: 44px;
-  }
-
   .friend-float__filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .friend-float__panel {
-    top: 54px;
-    height: min(420px, calc(100vh - 170px - env(safe-area-inset-bottom, 0px)));
-  }
-
-  .friend-float__panel--guest {
-    height: min(250px, calc(100vh - 170px - env(safe-area-inset-bottom, 0px)));
   }
 
   .friend-float__detail-actions {
