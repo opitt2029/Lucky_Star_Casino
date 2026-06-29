@@ -147,20 +147,11 @@ public final class FishingCombat {
      */
     public static ShotOutcome resolveShot(RandomStream stream, FishSpecies species, int cannonLevel,
                                           long damageTakenBefore, long betPerShot) {
-        return resolve(stream, species, cannonLevel, damageTakenBefore, betPerShot, false);
-    }
-
-    /**
-     * 幸運值保底：致命一擊<b>強制捕獲</b>（仍消耗捕獲判定的 RNG，使串流位置與一般路徑對齊，
-     * verifyShot 可正確重放）。非致命發與 {@link #resolveShot} 完全相同。
-     */
-    public static ShotOutcome resolveShotGuaranteed(RandomStream stream, FishSpecies species, int cannonLevel,
-                                                    long damageTakenBefore, long betPerShot) {
-        return resolve(stream, species, cannonLevel, damageTakenBefore, betPerShot, true);
+        return resolve(stream, species, cannonLevel, damageTakenBefore, betPerShot);
     }
 
     private static ShotOutcome resolve(RandomStream stream, FishSpecies species, int cannonLevel,
-                                       long damageTakenBefore, long betPerShot, boolean forceCapture) {
+                                       long damageTakenBefore, long betPerShot) {
         boolean crit = stream.nextDouble() < CRIT_CHANCE;
         long damage = (long) cannonDamage(cannonLevel) * (crit ? CRIT_MULTIPLIER : 1);
         long after = damageTakenBefore + damage;
@@ -171,9 +162,8 @@ public final class FishingCombat {
             return new ShotOutcome(crit, damage, after, hp - after, false, false, 0L);
         }
 
-        // 致命一擊：擲捕獲（保底則強制成功，但仍消耗同一個 nextDouble 對齊串流）
-        boolean captureRoll = stream.nextDouble() < pCapture(species, cannonLevel);
-        boolean captured = forceCapture || captureRoll;
+        // 致命一擊：擲捕獲判定。
+        boolean captured = stream.nextDouble() < pCapture(species, cannonLevel);
         if (!captured) {
             return new ShotOutcome(crit, damage, after, 0L, true, false, 0L);
         }

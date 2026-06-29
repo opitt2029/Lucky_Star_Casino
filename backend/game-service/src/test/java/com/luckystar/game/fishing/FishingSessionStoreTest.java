@@ -26,8 +26,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
  * {@link FishingSessionStore} 的 Redis Hash round-trip 單元測試（純 Mockito，免外部 Redis）。
  *
  * <p>守住「魚回寫打不死」的根因回歸：血量/傷害模型的跨批狀態
- * （{@code fishDamage} / {@code kills} / {@code guaranteedShotSeq}）必須完整序列化進 Redis、
- * 並能反序列化還原。先前 {@code toHash/fromHash} 漏掉這三個欄位，導致每批 shots 重讀 session 後
+ * （{@code fishDamage} / {@code kills}）必須完整序列化進 Redis、
+ * 並能反序列化還原。先前 {@code toHash/fromHash} 漏掉這些欄位，導致每批 shots 重讀 session 後
  * 累傷歸零、大魚永遠打不死。
  *
  * <p>以記憶體 {@link Map} 模擬 Redis Hash：{@code putAll} 寫入（合併欄位，與真實 HSET 同語意）、
@@ -88,7 +88,7 @@ class FishingSessionStoreTest {
     }
 
     @Test
-    @DisplayName("save → find 完整 round-trip fishDamage / kills / guaranteedShotSeq（魚回寫打不死回歸守門）")
+    @DisplayName("save → find 完整 round-trip fishDamage / kills（魚回寫打不死回歸守門）")
     void roundTripsCombatState() {
         Map<String, Long> fishDamage = new LinkedHashMap<>();
         fishDamage.put("f1", 15L);
@@ -97,7 +97,6 @@ class FishingSessionStoreTest {
         kills.add(new FishingSession.KillRecord(7L, "DRAGON_KING", 1990L));
 
         store.save(baseSession()
-                .guaranteedShotSeq(7L)
                 .fishDamage(fishDamage)
                 .kills(kills)
                 .build());
@@ -116,9 +115,6 @@ class FishingSessionStoreTest {
         assertEquals("DRAGON_KING", k.getFishType());
         assertEquals(1990L, k.getDamageBefore());
 
-        // 保底 shotSeq 必須還原
-        assertEquals(7L, loaded.getGuaranteedShotSeq());
-
         // 子彈面額（玩家自選、整場固定，ADR-004）必須完整還原——漏存會讓跨批 validateBatch 注額對不上、整批被拒
         assertEquals(100L, loaded.getBetPerShot());
     }
@@ -132,7 +128,6 @@ class FishingSessionStoreTest {
 
         assertTrue(loaded.getFishDamage().isEmpty(), "fishDamage 應為空表");
         assertTrue(loaded.getKills().isEmpty(), "kills 應為空清單");
-        assertNull(loaded.getGuaranteedShotSeq(), "未觸發保底時 guaranteedShotSeq 應為 null");
     }
 
     @Test

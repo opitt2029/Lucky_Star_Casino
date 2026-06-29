@@ -1,6 +1,8 @@
 package com.luckystar.member.exception;
 
 import com.luckystar.member.dto.ApiResponse;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -110,6 +112,41 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleAlreadyCheckedIn(AlreadyCheckedInException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidMonthlyMilestoneException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidMonthlyMilestone(InvalidMonthlyMilestoneException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(MonthlyRewardNotEligibleException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMonthlyRewardNotEligible(MonthlyRewardNotEligibleException ex) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(MonthlyRewardAlreadyClaimedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMonthlyRewardAlreadyClaimed(MonthlyRewardAlreadyClaimedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    // DB 唯一鍵/約束衝突的安全網：併發 find-then-insert（註冊撞 username/email、簽到撞當日唯一鍵等）
+    // 落到此處時回 409 而非 500。訊息保持中性——好友併發已在 FriendshipService 內精準轉為
+    // FriendshipAlreadyExistsException（回「好友關係已存在」），這裡不可寫死好友訊息以免誤標其他衝突。
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error("資料衝突，請稍後再試"));
+    }
+
+    // 樂觀鎖衝突（Friendship.@Version）：同一申請被併發接受/拒絕、或上限競態時，
+    // 後手交易回 409 讓前端重試，而非 500。
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOptimisticLockingFailure(ObjectOptimisticLockingFailureException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error("好友關係已被其他請求更新，請重試"));
     }
 
     @ExceptionHandler(Exception.class)

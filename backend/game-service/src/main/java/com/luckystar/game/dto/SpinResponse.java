@@ -49,7 +49,4 @@ public class SpinResponse {
 
     /** 本局 nonce。 */
     private long nonce;
-
-    /** 本局是否由幸運值保底觸發（前端據此顯示「幸運保底觸發！」橫幅）。 */
-    private boolean guaranteed;
 }

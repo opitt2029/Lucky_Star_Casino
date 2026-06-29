@@ -10,6 +10,7 @@ import com.luckystar.member.exception.*;
 import com.luckystar.member.repository.FriendshipRepository;
 import com.luckystar.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -66,7 +67,17 @@ public class FriendshipService {
         friendship.setRequesterId(requesterId);
         friendship.setReceiverId(receiverId);
         friendship.setStatus(FriendshipStatus.PENDING);
-        return toResponse(friendshipRepository.save(friendship));
+        try {
+            Friendship saved = friendshipRepository.save(friendship);
+            // 立即 flush 讓 UNIQUE(requester_id, receiver_id) 衝突在此 try 內浮出，
+            // 否則約束違反會延後到交易 commit、跳過下面的 catch。
+            friendshipRepository.flush();
+            return toResponse(saved);
+        } catch (DataIntegrityViolationException e) {
+            // 併發下兩個請求同時通過上方 existing 檢查並各自 insert，後手撞 UNIQUE，
+            // 精準轉成 409「好友關係已存在」（而非落到全域 handler 的中性訊息）。
+            throw new FriendshipAlreadyExistsException();
+        }
     }
 
     @Transactional

@@ -25,6 +25,7 @@ const TX_SUB_TYPE_LABELS = {
   BANKRUPTCY_AID: '破產補助',
   DIAMOND_EXCHANGE: '鑽石兌換',
   TOPUP: '加值',
+  MONTHLY_REWARD: '每月簽到獎勵',
 }
 
 // 後端 WalletTransactionResponse → 前端交易列形狀（Transactions.jsx 讀 id/typeLabel/amount/status/createdAt）。
@@ -76,6 +77,35 @@ export const walletApi = {
     return {
       reward: data.rewardAmount,
       consecutiveDays: data.consecutiveDays,
+      wallet,
+    }
+  },
+
+  // GET /api/v1/wallet/checkin/status（端點實作在 member-service）→ 簽到狀態（後端權威）
+  // 回傳 { month, signedDates[], monthCheckinDays, consecutiveDays, checkedInToday, milestones[] }。
+  // 月曆已簽日期、本月累計天數、月度里程碑領取旗標皆以此為準（取代脆弱的 localStorage）。
+  async getCheckInStatus(month) {
+    if (useMockApi) {
+      return mockApi.getCheckInStatus(month)
+    }
+    const params = month ? { month } : undefined
+    const res = await api.get('/api/v1/wallet/checkin/status', { params })
+    return res.data.data
+  },
+
+  // POST /api/v1/wallet/checkin/monthly-reward（端點實作在 member-service）→ 領取月度累計簽到獎勵。
+  // 回應只含里程碑/金額，不含最新餘額，故領取成功後再查一次餘額組成 { reward, milestoneDays, wallet }。
+  async claimMonthlyReward(milestoneDays) {
+    if (useMockApi) {
+      return mockApi.claimMonthlyReward(milestoneDays)
+    }
+    const res = await api.post('/api/v1/wallet/checkin/monthly-reward', { milestoneDays })
+    const data = res.data.data
+    const wallet = await walletApi.getBalance()
+    return {
+      reward: data.rewardAmount,
+      milestoneDays: data.milestoneDays,
+      monthCheckinDays: data.monthCheckinDays,
       wallet,
     }
   },
@@ -178,6 +208,9 @@ export const walletApi = {
   // POST /api/v1/wallet/gift → 好友贈幣（receiverId/amount/idempotencyKey）。
   // 贈送方由 gateway 注入的 X-User-Id 決定，不在 body。回應僅含 senderBalanceAfter，
   // 不含 frozenAmount，故再查一次餘額補齊 walletSlice 期望的 { wallet } 形狀。
+  // ⚠️ 冪等鍵：後端以 idempotencyKey 去重防雙扣（wallet_transactions UNIQUE）。
+  //   逾時/網路錯誤要「重試同一筆贈送」時，呼叫端**必須複用上一次的 idempotencyKey**，
+  //   否則會生成新鍵被後端視為新交易→雙扣。未傳入才由此處生成一次性鍵（單發場景）。
   async giftCoins({ friendId, amount, idempotencyKey } = {}) {
     if (useMockApi) {
       return mockApi.giftCoins({ friendId, amount })

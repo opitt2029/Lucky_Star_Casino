@@ -20,9 +20,31 @@ const initialState = {
     consecutiveDays: null,
     message: '',
   },
+  // 簽到狀態（後端權威）：月曆已簽日期、本月累計天數、月度里程碑領取旗標
+  checkInStatus: {
+    loading: false,
+    month: '',
+    signedDates: [],
+    monthCheckinDays: 0,
+    consecutiveDays: 0,
+    checkedInToday: false,
+    milestones: [],
+    error: null,
+  },
+  // 領取月度累計簽到獎勵的狀態
+  monthlyReward: {
+    claiming: false,
+    message: '',
+    error: null,
+  },
   bankruptcyAid: {
     loading: false,
     amount: null,
+    message: '',
+    error: null,
+  },
+  gift: {
+    loading: false,
     message: '',
     error: null,
   },
@@ -38,13 +60,41 @@ export const fetchWallet = createAsyncThunk('wallet/fetchWallet', async (_, { re
   }
 })
 
-export const dailyCheckIn = createAsyncThunk('wallet/dailyCheckIn', async (_, { rejectWithValue }) => {
+export const dailyCheckIn = createAsyncThunk('wallet/dailyCheckIn', async (_, { dispatch, rejectWithValue }) => {
   try {
-    return await walletApi.dailyCheckIn()
+    const result = await walletApi.dailyCheckIn()
+    // 簽到成功後刷新後端權威狀態（月曆/累計天數/里程碑），CheckIn.jsx 不再可能漏存日期
+    dispatch(fetchCheckInStatus())
+    return result
   } catch (error) {
     return rejectWithValue(extractError(error))
   }
 })
+
+export const fetchCheckInStatus = createAsyncThunk(
+  'wallet/fetchCheckInStatus',
+  async (month, { rejectWithValue }) => {
+    try {
+      return await walletApi.getCheckInStatus(month)
+    } catch (error) {
+      return rejectWithValue(extractError(error))
+    }
+  },
+)
+
+export const claimMonthlyReward = createAsyncThunk(
+  'wallet/claimMonthlyReward',
+  async (milestoneDays, { dispatch, rejectWithValue }) => {
+    try {
+      const result = await walletApi.claimMonthlyReward(milestoneDays)
+      // 領取成功後刷新簽到狀態，讓里程碑改為「已領取」
+      dispatch(fetchCheckInStatus())
+      return result
+    } catch (error) {
+      return rejectWithValue(extractError(error))
+    }
+  },
+)
 
 export const claimBankruptcyAid = createAsyncThunk(
   'wallet/claimBankruptcyAid',
@@ -109,6 +159,14 @@ const walletSlice = createSlice({
       state.bankruptcyAid.amount = null
       state.bankruptcyAid.error = null
     },
+    clearGiftNotice(state) {
+      state.gift.message = ''
+      state.gift.error = null
+    },
+    clearMonthlyRewardNotice(state) {
+      state.monthlyReward.message = ''
+      state.monthlyReward.error = null
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -142,6 +200,39 @@ const walletSlice = createSlice({
         state.checkIn.loading = false
         state.error = action.payload || '簽到失敗'
       })
+      .addCase(fetchCheckInStatus.pending, (state) => {
+        state.checkInStatus.loading = true
+        state.checkInStatus.error = null
+      })
+      .addCase(fetchCheckInStatus.fulfilled, (state, action) => {
+        const p = action.payload
+        state.checkInStatus.loading = false
+        state.checkInStatus.month = p.month
+        state.checkInStatus.signedDates = p.signedDates || []
+        state.checkInStatus.monthCheckinDays = p.monthCheckinDays ?? 0
+        state.checkInStatus.consecutiveDays = p.consecutiveDays ?? 0
+        state.checkInStatus.checkedInToday = p.checkedInToday ?? false
+        state.checkInStatus.milestones = p.milestones || []
+      })
+      .addCase(fetchCheckInStatus.rejected, (state, action) => {
+        state.checkInStatus.loading = false
+        state.checkInStatus.error = action.payload || '簽到狀態讀取失敗'
+      })
+      .addCase(claimMonthlyReward.pending, (state) => {
+        state.monthlyReward.claiming = true
+        state.monthlyReward.message = ''
+        state.monthlyReward.error = null
+      })
+      .addCase(claimMonthlyReward.fulfilled, (state, action) => {
+        state.monthlyReward.claiming = false
+        state.balance = action.payload.wallet.balance
+        state.frozenAmount = action.payload.wallet.frozenAmount ?? 0
+        state.monthlyReward.message = `已領取每月簽到獎勵 ${action.payload.reward.toLocaleString()} 星幣`
+      })
+      .addCase(claimMonthlyReward.rejected, (state, action) => {
+        state.monthlyReward.claiming = false
+        state.monthlyReward.error = action.payload || '每月簽到獎勵領取失敗'
+      })
       .addCase(claimBankruptcyAid.pending, (state) => {
         state.bankruptcyAid.loading = true
         state.bankruptcyAid.message = ''
@@ -173,9 +264,20 @@ const walletSlice = createSlice({
         state.loading = false
         state.error = action.payload || '交易紀錄讀取失敗'
       })
+      .addCase(giftCoins.pending, (state) => {
+        state.gift.loading = true
+        state.gift.message = ''
+        state.gift.error = null
+      })
       .addCase(giftCoins.fulfilled, (state, action) => {
+        state.gift.loading = false
         state.balance = action.payload.wallet.balance
         state.frozenAmount = action.payload.wallet.frozenAmount ?? 0
+        state.gift.message = '贈送成功'
+      })
+      .addCase(giftCoins.rejected, (state, action) => {
+        state.gift.loading = false
+        state.gift.error = action.payload || '贈送失敗'
       })
   },
 })
@@ -189,5 +291,7 @@ export const {
   setTransactionPage,
   clearWalletNotice,
   clearBankruptcyNotice,
+  clearGiftNotice,
+  clearMonthlyRewardNotice,
 } = walletSlice.actions
 export default walletSlice.reducer

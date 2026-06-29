@@ -109,6 +109,14 @@ const checkInMilestoneBonuses = {
   30: 5000,
 }
 
+// 月度「累計」簽到里程碑（鏡像後端 MonthlyRewardService.MILESTONES）：
+// 當月累計簽到天數達門檻可手動領取大獎，與連續天數里程碑（上方）獨立。
+const MONTHLY_REWARD_MILESTONES = [
+  { days: 10, reward: 2000 },
+  { days: 20, reward: 5000 },
+  { days: 28, reward: 12000 },
+]
+
 const TEST_ACCOUNT = {
   password: 'test1234',
   player: {
@@ -211,6 +219,15 @@ function createInitialDb() {
       ],
       [TEST_ACCOUNT.player.id]: [],
     },
+    // 後端權威簽到日期（每元素 'yyyy-MM-dd'，台北時區）與月度累計獎勵領取紀錄
+    checkinDates: {
+      [player.id]: [],
+      [TEST_ACCOUNT.player.id]: [],
+    },
+    monthlyRewardClaims: {
+      [player.id]: [],
+      [TEST_ACCOUNT.player.id]: [],
+    },
     ranks: [{ id: TEST_ACCOUNT.player.id, name: TEST_ACCOUNT.player.nickname, nickname: TEST_ACCOUNT.player.nickname, score: 50000, trend: '+0%' }, ...createRankRows()],
   }
 }
@@ -222,6 +239,8 @@ function ensureTestAccount(db) {
   db.transactions = db.transactions || {}
   db.friends = db.friends || {}
   db.ranks = db.ranks || []
+  db.checkinDates = db.checkinDates || {}
+  db.monthlyRewardClaims = db.monthlyRewardClaims || {}
 
   let user = db.users.find((item) => item.player?.username === TEST_ACCOUNT.player.username)
   if (!user) {
@@ -440,6 +459,12 @@ function calculateCheckInReward(days) {
   return DAILY_CHECKIN_REWARD + (checkInMilestoneBonuses[days] || 0)
 }
 
+// 台北（UTC+8）日界的 yyyy-MM-dd（鏡像後端 LocalDate.now(Asia/Taipei)）。
+// 後端簽到/結算一律以台北時區判日，mock 必須一致，否則跨時區日界會與後端分歧。
+function getTaipeiDateKey(date = new Date()) {
+  return new Date(date.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
 export function readStoredSession() {
   return readJson(SESSION_KEY, null)
 }
@@ -518,18 +543,96 @@ export const mockApi = {
     const db = getDb()
     const playerId = currentPlayerId()
     const user = db.users.find((item) => item.player.id === playerId)
-    const today = new Date().toISOString().slice(0, 10)
+    const today = getTaipeiDateKey()
     if (user?.player.lastCheckInDate === today) {
       throw new Error('今天已經簽到過了')
     }
 
-    const days = (user?.player.consecutiveCheckInDays || 0) + 1
+    // 連續天數：上次簽到非「台北昨日」則重置為 1（鏡像後端 CheckinService 的缺日重置）
+    const yesterday = getTaipeiDateKey(new Date(Date.now() - 24 * 60 * 60 * 1000))
+    const days =
+      user?.player.lastCheckInDate === yesterday
+        ? (user?.player.consecutiveCheckInDays || 0) + 1
+        : 1
     const reward = calculateCheckInReward(days)
     user.player.consecutiveCheckInDays = days
     user.player.lastCheckInDate = today
+
+    // 後端權威：把當日加入 checkinDates（供月曆/月度累計），去重後升冪
+    const dates = db.checkinDates[playerId] || []
+    if (!dates.includes(today)) dates.push(today)
+    dates.sort()
+    db.checkinDates[playerId] = dates
+
     const wallet = applyWalletChange(db, playerId, reward, 'checkin', `每日簽到第 ${days} 天`)
     saveDb(db)
     return { wallet, player: user.player, reward, consecutiveDays: days }
+  },
+
+  // GET /api/v1/wallet/checkin/status 的 mock（鏡像後端 MonthlyRewardService.getStatus）。
+  // 回傳與後端 CheckinStatusResponse 同形：月曆已簽日期、本月累計天數、連續天數、月度里程碑旗標。
+  async getCheckInStatus(month) {
+    await wait(200)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const user = db.users.find((item) => item.player.id === playerId)
+    const currentMonth = getTaipeiDateKey().slice(0, 7)
+    const targetMonth = /^\d{4}-\d{2}$/.test(month || '') ? month : currentMonth
+    const isCurrentMonth = targetMonth === currentMonth
+
+    const allDates = db.checkinDates[playerId] || []
+    const signedDates = allDates.filter((d) => d.slice(0, 7) === targetMonth).sort()
+    const monthCheckinDays = signedDates.length
+
+    const today = getTaipeiDateKey()
+    const yesterday = getTaipeiDateKey(new Date(Date.now() - 24 * 60 * 60 * 1000))
+    const last = user?.player.lastCheckInDate
+    const checkedInToday = last === today
+    const consecutiveDays =
+      last === today || last === yesterday ? user?.player.consecutiveCheckInDays || 0 : 0
+
+    const claims = db.monthlyRewardClaims[playerId] || []
+    const milestones = MONTHLY_REWARD_MILESTONES.map(({ days, reward }) => {
+      const reached = monthCheckinDays >= days
+      const claimed = claims.some((c) => c.rewardMonth === targetMonth && c.milestoneDays === days)
+      return {
+        milestoneDays: days,
+        rewardAmount: reward,
+        reached,
+        claimed,
+        claimable: reached && !claimed && isCurrentMonth,
+      }
+    })
+
+    return { month: targetMonth, signedDates, monthCheckinDays, consecutiveDays, checkedInToday, milestones }
+  },
+
+  // POST /api/v1/wallet/checkin/monthly-reward 的 mock（鏡像後端 MonthlyRewardService.claimMonthlyReward）。
+  // 僅限台北當月；達標未領才可領，重複領/未達標/無效里程碑皆 throw。
+  async claimMonthlyReward(milestoneDays) {
+    await wait()
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const def = MONTHLY_REWARD_MILESTONES.find((m) => m.days === milestoneDays)
+    if (!def) throw new Error('無效的簽到里程碑')
+
+    const month = getTaipeiDateKey().slice(0, 7)
+    const allDates = db.checkinDates[playerId] || []
+    const monthCheckinDays = allDates.filter((d) => d.slice(0, 7) === month).length
+    if (monthCheckinDays < milestoneDays) {
+      throw new Error(`本月累計簽到未達 ${milestoneDays} 天，尚不可領取`)
+    }
+
+    const claims = db.monthlyRewardClaims[playerId] || []
+    if (claims.some((c) => c.rewardMonth === month && c.milestoneDays === milestoneDays)) {
+      throw new Error('本月此里程碑獎勵已領取')
+    }
+
+    claims.push({ rewardMonth: month, milestoneDays, rewardAmount: def.reward })
+    db.monthlyRewardClaims[playerId] = claims
+    const wallet = applyWalletChange(db, playerId, def.reward, 'checkin', '每月簽到獎勵')
+    saveDb(db)
+    return { reward: def.reward, milestoneDays, monthCheckinDays, wallet }
   },
 
   // 破產補助（對應後端 POST /api/v1/wallet/bankruptcy-aid）：
@@ -595,7 +698,7 @@ export const mockApi = {
     }
   },
 
-  async spinSlot({ bet, fortuneReady = false }) {
+  async spinSlot({ bet }) {
     await wait(900)
     const db = getDb()
     const playerId = currentPlayerId()
@@ -607,12 +710,6 @@ export const mockApi = {
     applyWalletChange(db, playerId, -bet, 'bet', '老虎機下注')
 
     const grid = randomSlotGrid()
-    if (fortuneReady) {
-      // 幸運值全滿保底必中：加權選一符號填滿中線 → 三連大獎（鏡像後端 spinGuaranteedWin）。
-      const guaranteed = pickSlotSymbol()
-      grid[1] = [guaranteed, guaranteed, guaranteed]
-    }
-
     const { multiplier, winningCells } = evaluateSlotLine(grid)
     const payout = bet * multiplier // 含本金返還；左二同最低 1x 為退本金（push / LDW）
     if (payout) applyWalletChange(db, playerId, payout, 'payout', '老虎機派彩')

@@ -133,30 +133,8 @@ class FishingCombatTest {
     }
 
     // ------------------------------------------------------------------
-    // 保底 + Provably Fair 重放
+    // Provably Fair 重放
     // ------------------------------------------------------------------
-
-    @Test
-    @DisplayName("resolveShotGuaranteed 對致命一擊強制捕獲（即使自然 roll 為掙脫）")
-    void resolveShotGuaranteed_forcesCaptureOnKillingBlow() {
-        // KOI HP=20，damageBefore=18 → 任何一發（≥10）都是致命一擊
-        long damageBefore = 18L;
-        int forcedCaptures = 0;
-        int naturalFlees = 0;
-        for (int n = 1; n <= 200; n++) {
-            FishingCombat.ShotOutcome guaranteed = FishingCombat.resolveShotGuaranteed(
-                    RNG.stream(SERVER_SEED, CLIENT_SEED, n), FishSpecies.KOI, 1, damageBefore, 100L);
-            assertTrue(guaranteed.killed(), "damageBefore=18 應為致命一擊");
-            assertTrue(guaranteed.captured(), "保底必捕獲：nonce=" + n);
-            forcedCaptures++;
-
-            FishingCombat.ShotOutcome natural = FishingCombat.resolveShot(
-                    RNG.stream(SERVER_SEED, CLIENT_SEED, n), FishSpecies.KOI, 1, damageBefore, 100L);
-            if (natural.killed() && !natural.captured()) naturalFlees++;
-        }
-        assertEquals(200, forcedCaptures);
-        assertTrue(naturalFlees > 0, "自然路徑應至少有一次掙脫，才能證明保底有覆蓋作用");
-    }
 
     @Test
     @DisplayName("Provably Fair：相同 seed/nonce/damageBefore 必得相同結果（確定性重放）")

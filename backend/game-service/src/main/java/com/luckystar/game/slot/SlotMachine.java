@@ -52,26 +52,6 @@ public class SlotMachine {
     }
 
     /**
-     * 幸運值全滿保底轉動：以加權隨機選出必中符號後填滿中線，非中線格仍以 RNG 正常抽樣。
-     * 符號選取保持原本的加權分布（CHERRY 最常見、SEVEN 最稀有），只保證三連必中。
-     */
-    public SlotOutcome spinGuaranteedWin(RandomStream stream, long bet) {
-        if (stream == null) throw new IllegalArgumentException("stream 不可為 null");
-        if (bet <= 0) throw new IllegalArgumentException("bet 必須為正數，實際為 " + bet);
-
-        SlotSymbol paylineSymbol = SlotSymbol.fromWeightedIndex(stream.nextInt(SlotSymbol.TOTAL_WEIGHT));
-        SlotSymbol[][] board = new SlotSymbol[ROWS][REELS];
-        for (int col = 0; col < REELS; col++) {
-            for (int row = 0; row < ROWS; row++) {
-                board[row][col] = (row == PAYLINE_ROW)
-                        ? paylineSymbol
-                        : SlotSymbol.fromWeightedIndex(stream.nextInt(SlotSymbol.TOTAL_WEIGHT));
-            }
-        }
-        return evaluate(board, bet);
-    }
-
-    /**
      * 對給定盤面評估中線輸贏（純函式，由左到右兩階賠付）。
      *
      * <p>判定順序：三格相同 → 三連大獎（命中格為中線三格）；否則左二格相同 → 左二同小獎

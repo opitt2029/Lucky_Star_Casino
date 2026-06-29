@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import AppShell from '../components/AppShell'
 import MetricCard from '../components/MetricCard'
 import { fetchProfile, updateProfile } from '../store/slices/authSlice'
-import { dailyCheckIn } from '../store/slices/walletSlice'
+import { useDailyCheckIn } from '../hooks/useDailyCheckIn'
 import {
   getSocialBindings,
   setSocialBinding,
@@ -18,8 +18,7 @@ import casinoMaleSlotChampion from '../assets/avatars/casino-male-slot-champion.
 
 const MAX_AVATAR_SIZE = 300 * 1024
 const allowedAvatarTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-const CHECKIN_DATES_KEY = 'lucky-star-checkin-dates-v1'
-const DAILY_CHECKIN_REWARD = 100
+// 連續簽到里程碑（純展示：進度條與里程碑清單；簽到日期/累計天數已改後端權威）
 const checkInMilestones = [
   { day: 7, bonus: 1000 },
   { day: 14, bonus: 2000 },
@@ -52,52 +51,6 @@ function readAssetAsDataUrl(src) {
     )
 }
 
-function readJson(key, fallback) {
-  try {
-    const value = localStorage.getItem(key)
-    return value ? JSON.parse(value) : fallback
-  } catch {
-    return fallback
-  }
-}
-
-function writeJson(key, value) {
-  localStorage.setItem(key, JSON.stringify(value))
-}
-
-function getTaipeiDateKey(date = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Taipei',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date)
-  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]))
-  return `${value.year}-${value.month}-${value.day}`
-}
-
-function getMonthDays(monthKey) {
-  const [year, month] = monthKey.split('-').map(Number)
-  return new Date(year, month, 0).getDate()
-}
-
-function getStoredCheckInDates(playerId) {
-  const allDates = readJson(CHECKIN_DATES_KEY, {})
-  return Array.isArray(allDates[playerId]) ? allDates[playerId] : []
-}
-
-function saveStoredCheckInDate(playerId, dateKey) {
-  const allDates = readJson(CHECKIN_DATES_KEY, {})
-  const nextDates = Array.from(new Set([...(allDates[playerId] || []), dateKey])).sort()
-  writeJson(CHECKIN_DATES_KEY, { ...allDates, [playerId]: nextDates })
-  return nextDates
-}
-
-function calculateCheckInReward(consecutiveDays) {
-  const milestone = checkInMilestones.find((item) => item.day === consecutiveDays)
-  return DAILY_CHECKIN_REWARD + (milestone?.bonus || 0)
-}
-
 export default function Profile() {
   const dispatch = useDispatch()
   const player = useSelector((state) => state.auth.player)
@@ -109,16 +62,18 @@ export default function Profile() {
   const [avatarPreviewError, setAvatarPreviewError] = useState(false)
   const [socialBindings, setSocialBindings] = useState({})
   const [checkInOpen, setCheckInOpen] = useState(false)
-  const [checkInDates, setCheckInDates] = useState([])
-  const todayKey = getTaipeiDateKey()
-  const currentMonthKey = todayKey.slice(0, 7)
-  const currentMonthSignedDates = checkInDates.filter((date) => date.startsWith(currentMonthKey))
-  const signedDayNumbers = new Set(currentMonthSignedDates.map((date) => Number(date.slice(8, 10))))
-  const monthDays = getMonthDays(currentMonthKey)
-  const currentConsecutiveDays = wallet.checkIn.consecutiveDays ?? player?.consecutiveCheckInDays ?? 0
-  const hasCheckedInToday = checkInDates.includes(todayKey) || player?.lastCheckInDate === todayKey
-  const upcomingConsecutiveDays = hasCheckedInToday ? currentConsecutiveDays : currentConsecutiveDays + 1
-  const projectedReward = calculateCheckInReward(Math.max(upcomingConsecutiveDays, 1))
+  // 簽到（後端權威）：月曆/累計天數/連續天數/月度里程碑領取皆來自 hook
+  const checkin = useDailyCheckIn()
+  const {
+    monthDays,
+    monthLabel,
+    signedDayNumbers,
+    monthCheckinDays,
+    consecutiveDays: currentConsecutiveDays,
+    hasCheckedInToday,
+    projectedReward,
+    milestones,
+  } = checkin
   const nextMilestone = checkInMilestones.find((item) => item.day > currentConsecutiveDays)
   const previousMilestoneDay = [...checkInMilestones]
     .reverse()
@@ -130,7 +85,6 @@ export default function Profile() {
         100,
       )
     : 100
-  const monthLabel = `${Number(currentMonthKey.slice(5, 7))} 月`
 
   useEffect(() => {
     dispatch(fetchProfile())
@@ -144,13 +98,6 @@ export default function Profile() {
     setAvatarPreviewError(false)
     if (player?.id) {
       setSocialBindings(getSocialBindings(player.id))
-      const storedDates = getStoredCheckInDates(player.id)
-      const seededDates = player.lastCheckInDate
-        ? Array.from(new Set([...storedDates, player.lastCheckInDate])).sort()
-        : storedDates
-      setCheckInDates(seededDates)
-    } else {
-      setCheckInDates([])
     }
   }, [player])
 
@@ -213,17 +160,13 @@ export default function Profile() {
   }
 
   const handleDailyCheckIn = async () => {
-    if (!player?.id) return
-    try {
-      const result = await dispatch(dailyCheckIn()).unwrap()
-      const nextDates = saveStoredCheckInDate(player.id, todayKey)
-      setCheckInDates(nextDates)
-      dispatch(fetchProfile())
+    const result = await checkin.checkInToday()
+    if (result) {
       setNotice(
         `簽到成功，連續 ${result.consecutiveDays} 天，獲得 ${result.reward.toLocaleString()} 星幣`,
       )
-    } catch (error) {
-      setNotice(error || '簽到失敗，請稍後再試')
+    } else {
+      setNotice('簽到失敗，請稍後再試')
     }
   }
 
@@ -351,7 +294,7 @@ export default function Profile() {
                 />
               </div>
               <p className="gold-muted mt-2 text-xs font-bold">
-                本月已簽到 {currentMonthSignedDates.length} 天
+                本月已簽到 {monthCheckinDays} 天
               </p>
             </button>
 
@@ -377,7 +320,7 @@ export default function Profile() {
                   <div className="rounded border border-yellow-200/15 bg-red-950/70 p-3">
                     <p className="gold-muted text-xs font-bold">本月天數</p>
                     <p className="mt-1 text-2xl font-black text-yellow-100">
-                      {currentMonthSignedDates.length}
+                      {monthCheckinDays}
                       <span className="ml-1 text-sm text-yellow-100/60">天</span>
                     </p>
                   </div>
@@ -421,21 +364,40 @@ export default function Profile() {
                   })}
                 </div>
 
-                <div className="mt-4 grid gap-2">
-                  {checkInMilestones.map((item) => {
-                    const reached = currentConsecutiveDays >= item.day
-                    return (
-                      <div
-                        key={item.day}
-                        className="flex items-center justify-between rounded border border-yellow-200/15 bg-red-950/70 px-3 py-2 text-sm"
+                {/* 月度累計簽到獎勵：達標可手動領取 */}
+                <p className="mt-4 gold-muted text-xs font-black uppercase tracking-[0.25em]">本月累計獎勵</p>
+                {(checkin.claimMessage || checkin.claimError) && (
+                  <p
+                    className={[
+                      'mt-2 rounded px-3 py-2 text-xs font-bold',
+                      checkin.claimError
+                        ? 'border border-red-400/30 bg-red-500/10 text-red-200'
+                        : 'border border-emerald-400/30 bg-emerald-500/10 text-emerald-200',
+                    ].join(' ')}
+                  >
+                    {checkin.claimError || checkin.claimMessage}
+                  </p>
+                )}
+                <div className="mt-2 grid gap-2">
+                  {milestones.map((m) => (
+                    <div
+                      key={m.milestoneDays}
+                      className="flex items-center justify-between rounded border border-yellow-200/15 bg-red-950/70 px-3 py-2 text-sm"
+                    >
+                      <span className={m.reached ? 'font-black text-yellow-100' : 'font-bold text-yellow-100/62'}>
+                        累計 {m.milestoneDays} 天
+                        <span className="ml-2 font-black text-yellow-200">+{m.rewardAmount.toLocaleString()}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => checkin.claimReward(m.milestoneDays)}
+                        disabled={!m.claimable || checkin.claiming}
+                        className="gold-button rounded px-3 py-1 text-xs font-black transition disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        <span className={reached ? 'font-black text-yellow-100' : 'font-bold text-yellow-100/62'}>
-                          連續 {item.day} 天
-                        </span>
-                        <span className="font-black text-yellow-200">+{item.bonus.toLocaleString()}</span>
-                      </div>
-                    )
-                  })}
+                        {m.claimed ? '已領取' : m.claimable ? '領取' : '未達標'}
+                      </button>
+                    </div>
+                  ))}
                 </div>
 
                 {wallet.error && (

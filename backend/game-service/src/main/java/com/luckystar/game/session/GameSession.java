@@ -65,9 +65,6 @@ public class GameSession {
     /** Session 狀態：STARTED / SETTLED。 */
     private GameSessionState state;
 
-    /** 幸運值是否已滿（下注時傳入，結算時用來決定是否保底必中）。 */
-    private Boolean fortuneReady;
-
     /** 開局時間（毫秒 epoch），供稽核與排序。 */
     private Instant createdAt;
 }

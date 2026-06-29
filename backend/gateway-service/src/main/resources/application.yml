@@ -139,12 +139,12 @@ spring:
               args:
                 name: member-service
                 fallbackUri: forward:/fallback/member
-        # 每日簽到（需 JWT）：端點實作在 member-service，路徑落在 /api/v1/wallet 底下，
+        # 每日簽到 + 簽到狀態/月度獎勵（需 JWT）：端點實作在 member-service，路徑落在 /api/v1/wallet 底下，
         # 必須排在下方 wallet 路由「之前」，否則會被 /api/v1/wallet/** 攔截轉發到 wallet-service。
         - id: member-checkin
           uri: ${MEMBER_SERVICE_URL:http://localhost:8081}
           predicates:
-            - Path=/api/v1/wallet/daily-checkin
+            - Path=/api/v1/wallet/daily-checkin,/api/v1/wallet/checkin/**
           filters:
             - name: CircuitBreaker
               args:
