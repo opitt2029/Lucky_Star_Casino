@@ -11,8 +11,6 @@ import { useBgm } from '../casino-fx/sound/useBgm'
 import GoldBurst from '../casino-fx/fx/GoldBurst'
 import { CoinRainPro, RedEnvelopeRain } from '../casino-fx/fx/FallRain'
 import BrushBanner, { pickBannerForMultiplier } from '../casino-fx/fx/BrushBanner'
-import LuckyAura from '../casino-fx/fx/LuckyAura'
-import { useLuckyAura } from '../casino-fx/fx/useLuckyAura'
 import { announcePlayerWin } from '../casino-fx/announce/announceBus'
 import { useGameLeaveGuard } from '../hooks/useGameLeaveGuard'
 
@@ -47,7 +45,6 @@ export default function SlotGame() {
   const balance = useSelector((state) => state.wallet.balance)
   const player = useSelector((state) => state.auth.player)
   const { status, loading, error, slotGrid, winningCells } = useSelector((state) => state.game)
-  const aura = useLuckyAura()
   useBgm('slot')
   const resolvedBet = selectedBet === 'MAX' ? Math.max(Math.min(balance, 5000), 100) : selectedBet
   const canAfford = balance >= resolvedBet
@@ -92,7 +89,6 @@ export default function SlotGame() {
     setSessionProfit((prev) => (prev ?? 0) + payout - (spinResult.bet ?? 0))
     setSessionRounds((prev) => prev + 1)
 
-    aura.reportRound(won)
     if (!won) return
 
     const bannerPick = pickBannerForMultiplier(multiplier)
@@ -123,7 +119,6 @@ export default function SlotGame() {
 
   return (
     <AppShell>
-      <LuckyAura active={aura.auraActive} />
       <GoldBurst trigger={burstTrigger} origin={{ x: 38, y: 48 }} />
       <CoinRainPro trigger={coinTrigger} density={coinDensity} />
       <RedEnvelopeRain trigger={envelopeTrigger} density="heavy" />

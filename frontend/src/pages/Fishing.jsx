@@ -19,9 +19,6 @@ import { useBgm } from '../casino-fx/sound/useBgm'
 import GoldBurst from '../casino-fx/fx/GoldBurst'
 import { CoinRainPro, RedEnvelopeRain } from '../casino-fx/fx/FallRain'
 import BrushBanner, { pickBannerForMultiplier } from '../casino-fx/fx/BrushBanner'
-import LuckyAura from '../casino-fx/fx/LuckyAura'
-import FortuneMeter from '../casino-fx/fx/FortuneMeter'
-import { useFortuneMeter } from '../casino-fx/fx/useFortuneMeter'
 import { announcePlayerWin } from '../casino-fx/announce/announceBus'
 import { useGameLeaveGuard } from '../hooks/useGameLeaveGuard'
 
@@ -132,7 +129,6 @@ export default function Fishing() {
   const balance = useSelector((state) => state.wallet.balance)
   const player = useSelector((state) => state.auth.player)
   const { play } = useSound()
-  const fortune = useFortuneMeter('fishing', player?.id)
 
   const [bossActive, setBossActive] = useState(false)
   const [perfMode, setPerfMode] = useState(false)
@@ -159,13 +155,8 @@ export default function Fishing() {
   const arenaResultsRef = useRef(null)
   const session = useFishingSession({
     onResults: (results, ctx) => {
-      // 風控攔截保底批次時，整批無命中但幸運值已消耗，需重置防止鎖死在 100
-      if (ctx?.fortuneConsumed && !results.some((r) => r.accepted && r.payout > 0)) {
-        fortune.reportRound(false, true)
-      }
       arenaResultsRef.current?.(results, ctx)
     },
-    fortuneReady: fortune.full,
   })
 
   // BGM：進場深海主題；Boss 在場切中式大鼓主題。
@@ -173,7 +164,6 @@ export default function Fishing() {
 
   const handleCatch = useCallback(
     ({ payout, effMult }) => {
-      fortune.reportRound(true)
       const bannerPick = pickBannerForMultiplier(effMult)
       setBanner((prev) => ({ trigger: prev.trigger + 1, ...bannerPick }))
       setBurstTrigger((n) => n + 1)
@@ -194,17 +184,12 @@ export default function Fishing() {
         setCoinTrigger((n) => n + 1)
       }
     },
-    [fortune, play, player],
+    [play, player],
   )
-
-  const handleMiss = useCallback(() => {
-    fortune.reportRound(false)
-  }, [fortune])
 
   const handleStart = () => {
     if (!canStart) return // 餘額/範圍守門（雙保險，按鈕已 disabled）
     play('click')
-    fortune.addCharge(selectedBuyIn)
     setSessionBuyIn(selectedBuyIn)
     session.startSession({ buyIn: selectedBuyIn, cannonLevel: selectedCannon, betPerShot: selectedBet })
   }
@@ -222,7 +207,6 @@ export default function Fishing() {
 
   return (
     <AppShell>
-      <LuckyAura active={fortune.auraActive} />
       <GoldBurst trigger={burstTrigger} origin={{ x: 50, y: 52 }} />
       <CoinRainPro trigger={coinTrigger} density={coinDensity} />
       <RedEnvelopeRain trigger={envelopeTrigger} density="heavy" />
@@ -321,7 +305,6 @@ export default function Fishing() {
                     arenaResultsRef.current = fn
                   }}
                   onCatch={handleCatch}
-                  onMiss={handleMiss}
                   onBossChange={setBossActive}
                 />
               </Suspense>
@@ -524,7 +507,6 @@ export default function Fishing() {
             rules={fishingRules}
             payouts={fishingPayouts}
           />
-          <FortuneMeter value={fortune.value} />
         </aside>
       </section>
     </AppShell>

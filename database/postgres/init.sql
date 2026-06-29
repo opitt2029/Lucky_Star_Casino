@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
     id               BIGSERIAL    NOT NULL,
     player_id        BIGINT       NOT NULL,
     type             VARCHAR(10)  NOT NULL,   -- DEBIT / CREDIT / BONUS
-    sub_type         VARCHAR(20)  NOT NULL,   -- BET / WIN / CHECKIN / TASK / GIFT / GM_REWARD / BANKRUPTCY_AID / DIAMOND_EXCHANGE / TOPUP
+    sub_type         VARCHAR(20)  NOT NULL,   -- BET / WIN / CHECKIN / TASK / GIFT / GM_REWARD / BANKRUPTCY_AID / DIAMOND_EXCHANGE / TOPUP / CASHBACK / REFUND
     amount           BIGINT       NOT NULL,
     balance_before   BIGINT,
     balance_after    BIGINT,
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
     created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_wallet_transactions PRIMARY KEY (id),
     CONSTRAINT chk_wt_type     CHECK (type    IN ('DEBIT', 'CREDIT', 'BONUS')),
-    CONSTRAINT chk_wt_sub_type CHECK (sub_type IN ('BET', 'WIN', 'CHECKIN', 'TASK', 'GIFT', 'GM_REWARD', 'BANKRUPTCY_AID', 'DIAMOND_EXCHANGE', 'TOPUP')),
+    CONSTRAINT chk_wt_sub_type CHECK (sub_type IN ('BET', 'WIN', 'CHECKIN', 'TASK', 'GIFT', 'GM_REWARD', 'BANKRUPTCY_AID', 'DIAMOND_EXCHANGE', 'TOPUP', 'CASHBACK', 'REFUND', 'MONTHLY_REWARD')),
     CONSTRAINT chk_wt_amount   CHECK (amount > 0)
 );
 

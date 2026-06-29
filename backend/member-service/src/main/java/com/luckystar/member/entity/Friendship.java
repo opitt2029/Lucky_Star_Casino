@@ -34,6 +34,12 @@ public class Friendship {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    // 樂觀鎖（ADR-001 / AGENTS.md 雷區 8）：保護同一申請的併發接受/拒絕、
+    // REJECTED→PENDING 重置、好友上限競態，衝突時丟 ObjectOptimisticLockingFailureException → 409。
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
     @PrePersist
     void prePersist() {
         createdAt = updatedAt = LocalDateTime.now();

@@ -33,12 +33,13 @@ public class CreditRequest {
 
     /**
      * 帳務子類型，必須是 DB 約束允許的 CREDIT 類子型之一。
-     * 對應 schema：sub_type CHECK IN ('BET','WIN','CHECKIN','TASK','GIFT','GM_REWARD','BANKRUPTCY_AID')。
-     * BET 屬於扣款，不在此允許清單。
+     * 對應 schema：sub_type CHECK IN ('BET','WIN','CHECKIN','TASK','GIFT','GM_REWARD','BANKRUPTCY_AID','DIAMOND_EXCHANGE','TOPUP','CASHBACK','REFUND','MONTHLY_REWARD')。
+     * BET 屬於扣款，不在此允許清單。REFUND 用於退款／本金返還（如捕魚 buy-in 退款、場次結算返還剩餘局內餘額）。
+     * MONTHLY_REWARD 用於月度累計簽到獎勵（非 WIN，避免污染 rank 今日贏幣榜）。
      */
     @NotBlank
-    @Pattern(regexp = "WIN|CHECKIN|TASK|GIFT|GM_REWARD|BANKRUPTCY_AID|DIAMOND_EXCHANGE|TOPUP",
-             message = "subType must be one of WIN/CHECKIN/TASK/GIFT/GM_REWARD/BANKRUPTCY_AID/DIAMOND_EXCHANGE/TOPUP")
+    @Pattern(regexp = "WIN|CHECKIN|TASK|GIFT|GM_REWARD|BANKRUPTCY_AID|DIAMOND_EXCHANGE|TOPUP|CASHBACK|REFUND|MONTHLY_REWARD",
+             message = "subType must be one of WIN/CHECKIN/TASK/GIFT/GM_REWARD/BANKRUPTCY_AID/DIAMOND_EXCHANGE/TOPUP/CASHBACK/REFUND/MONTHLY_REWARD")
     private String subType;
 
     /**

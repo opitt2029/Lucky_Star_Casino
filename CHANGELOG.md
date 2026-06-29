@@ -3,36 +3,127 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Removed] — 2026-06-26 — 移除老虎機「幸運值保底必中」機制（純 RNG 派彩）
+## [feat] — 2026-06-29 — 每月累計簽到獎勵 + 簽到月曆改後端權威
 
-### Removed
-- **後端必中邏輯**：
-  - `backend/game-service/.../slot/SlotMachine.java`：刪除 `spinGuaranteedWin()`（幸運值全滿時填滿中線必中三連）；老虎機一律走 `spin()` 純 RNG 抽樣。
-  - `backend/game-service/.../service/SlotService.java`：`spin()` / `settleInternal()` 移除 `fortuneReady` 參數與 `useGuarantee` 分支；回應移除 `guaranteed` 欄位。風控攔截（打破中線）邏輯保留不變。
-  - `backend/game-service/.../dto/SpinRequest.java`：移除 `fortuneReady` 欄位與 `isFortuneFull()`。
-  - `backend/game-service/.../dto/SpinResponse.java`：移除 `guaranteed` 欄位。
-  - `backend/game-service/.../controller/SlotController.java`：`/spin` 不再讀取/傳遞 `fortuneReady`。
-  - `backend/game-service/.../session/GameSession.java`：移除孤兒欄位 `fortuneReady`（未序列化、無人讀取）。
-- **前端老虎機 UI 與請求**：
-  - `frontend/src/pages/SlotGame.jsx`：移除 `FortuneMeter` 顯示、`useFortuneMeter` 蓄力/必中橫幅；`spinSlot` 不再帶 `fortuneReady`。
-  - `frontend/src/services/gameApi.js`、`frontend/src/services/mockApi.js`：老虎機路徑移除 `fortuneReady`（mock 鏡像同步刪除必中分支，雷區 14）。
+> **背景**：玩家回報「每天簽到的星幣沒辦法累計進『每月登入/本月簽到』，所以拿不到獎勵」。調查確認三層問題：① **直接 bug**：`frontend/src/pages/CheckIn.jsx` 簽到後沒把日期寫進 localStorage（AppShell/Profile 兩份同名 handler 有寫，三頁各自複製貼上、其中一份漏掉）→ 從 `/checkin` 簽到的日子不會累計；② **設計脆弱**：月度歷史只存 localStorage，清快取/換裝置即歸零，後端 `daily_checkins` 有資料卻無讀端點；③ **功能缺失**：全專案沒有可領取的「月度累計獎勵」，「本月簽到」只是顯示文字。
+>
+> **解法**：新增「本月累計簽到滿 N 天 → 領大獎」機制，並把簽到月曆/天數改為**後端權威來源**（前端讀後端、mock 鏡像、移除 localStorage 日期存儲，從根本消除漏存 bug）。里程碑（當月累計天數，非連續）：**10 天→2,000 / 20 天→5,000 / 28 天（全勤）→12,000**，手動領取、僅限當月、達標未領才可領。決策見 `docs/adr/ADR-005.md`。
+>
+> **帳務鏈（ADR-002）**：領取走 member 寫 claim 紀錄 + 同交易 `outboxService.save("wallet.credit.request", …)`，wallet 入帳；新 credit 子型 `MONTHLY_REWARD`（非 WIN，不污染 rank 今日贏幣榜）。冪等：claim 表 `UNIQUE(player_id, reward_month, milestone_days)` + `idempotencyKey=monthly-reward-{playerId}-{yyyy-MM}-{milestoneDays}`。
 
 ### Added
-- `frontend/src/casino-fx/fx/useLuckyAura.js`：抽出獨立的連輸吉兆 hook（純表現層），讓 `SlotGame.jsx` 在不依賴幸運值保底的情況下保留 `LuckyAura`。
+- member-service：`entity/MonthlyRewardClaim`（表 `monthly_reward_claims`，`reward_month` 刻意避開 MySQL 關鍵字 `YEAR_MONTH`）、`repository/MonthlyRewardClaimRepository`、`service/MonthlyRewardService`（`MILESTONES={10:2000,20:5000,28:12000}`、`getStatus`、`@Transactional claimMonthlyReward`）；DTO `CheckinStatusResponse`/`MonthlyMilestoneStatus`/`MonthlyRewardClaimResponse`/`MonthlyRewardClaimRequest`；例外 `InvalidMonthlyMilestoneException`(400)/`MonthlyRewardNotEligibleException`(422)/`MonthlyRewardAlreadyClaimedException`(409) + `GlobalExceptionHandler`。
+- member-service 端點（`CheckinController`，掛在 `/api/v1/wallet`）：`GET /api/v1/wallet/checkin/status`（可選 `?month=YYYY-MM`，預設台北當月）、`POST /api/v1/wallet/checkin/monthly-reward`（body `{milestoneDays}`）。
+- DB：MySQL `migration/V9__add_monthly_reward.sql`（建表 + `chk_wt_sub_type` 加 `MONTHLY_REWARD`）、Postgres `migration/V12__add_monthly_reward_subtype.sql`；同步 `database/mysql/init.sql`、`database/postgres/init.sql`。
+- 前端：`utils/checkInDates.js`（單一 `getTaipeiDateKey`/`getMonthDays`/`calculateDailyCheckInReward`）、`hooks/useDailyCheckIn.js`（後端權威狀態 + 簽到/領取動作）、`walletApi.getCheckInStatus`/`claimMonthlyReward` + `TX_SUB_TYPE_LABELS.MONTHLY_REWARD`、`walletSlice` 的 `checkInStatus`/`monthlyReward` 狀態與 thunks；`mockApi` 鏡像（`MONTHLY_REWARD_MILESTONES`、`db.checkinDates`/`db.monthlyRewardClaims`、`getCheckInStatus`/`claimMonthlyReward`）。
+- 測試：`DailyCheckinRepositoryTest`、`MonthlyRewardClaimRepositoryTest`、`MonthlyRewardServiceTest`、`frontend/src/services/mockApi.test.js`。
 
 ### Changed
-- `backend/game-service/.../service/SlotServiceTest.java`：`spin(...)` 改為 3 參數；移除兩支 `fortuneReady`/`guaranteed` 測試，新增「命中但風控攔截→派彩 0、不 credit」純風控測試。
-- `backend/game-service/.../controller/SlotControllerTest.java`：`spin(...)` stub/verify 去除 boolean 參數。
+- 簽到月曆/本月天數/連續天數**改讀後端 `checkin/status`**：`CheckIn.jsx`、`AppShell.jsx` 簽到彈窗、`Profile.jsx` 側欄三頁統一改用 `useDailyCheckIn`，並新增「領取月度獎勵」按鈕（可領→啟用、已領→`已領取`、未達標→`未達標`）。
+- wallet-service `dto/CreditRequest` 的 `@Pattern` 與訊息加入 `MONTHLY_REWARD`。
+- gateway `application.yml`：`member-checkin` 路由 Path 改為 `/api/v1/wallet/daily-checkin,/api/v1/wallet/checkin/**`（仍排在 wallet catch-all 之前）。
 
-### 為什麼 (Why)
-- 「幸運值滿即保底必中」是隱性破壞老虎機結構性 RTP（≈0.94）的機制：玩家累積到 100% 時下一局強制中三連大獎，使實際派彩高於設計值，且與風控 per-game RTP 門檻（雷區 17）打架。移除後老虎機回到單一真相＝純 RNG 加權抽樣，派彩可由 seed 三元組完整重算驗證（Provably Fair）。
-- **注意範圍**：`useFortuneMeter` / `FortuneMeter` 元件與其 CSS **保留**，因為捕魚機（`Fishing.jsx`）仍使用其自身的幸運值保底；本次僅移除老虎機的使用與後端必中路徑。百家樂的 `fortuneReady` 亦未動。
+### Fixed
+- **簽到累計 bug**：`mockApi.checkIn()` 改用台北日界 + 缺日重置連續天數 + 把當日寫入 `checkinDates`（原本用 UTC 日界、連續天數只加不重置、且不存每日日期）。
+- **去重**：移除 AppShell/Profile 重複的 `CHECKIN_DATES_KEY`/`getStoredCheckInDates`/`saveStoredCheckInDate`/`getTaipeiDateKey`/`getMonthDays`/`calculateCheckInReward` 與 localStorage 日期 seeding，根治「某頁 handler 漏存」類 bug（保留純 UI 的 `CHECKIN_AUTO_OPEN_KEY`）。
 
-### 如何驗證 (Verification)
-- `mvn -pl backend/game-service test -Dtest='SlotServiceTest,SlotMachineTest,SlotSymbolTest,SlotControllerTest'` → Tests run: 34, Failures: 0, Errors: 0，BUILD SUCCESS。
-- `frontend`：`npx eslint`（改動檔）無錯；`npx vite build` 1021 modules transformed、built 成功（imports 解析正常）。
+### 如何驗證
+- `mvn -pl backend/member-service test`：83 passed（含新 3 個測試類）。
+- `mvn -pl backend/gateway-service,backend/wallet-service test`：150 passed。
+- `node --test tests/infra/*.test.js`：127 passed（未動 Kafka topic）。
+- 前端 `npm run lint`/`npm run build`/`npm run test`：lint 乾淨、build 成功、vitest 15 passed。
+- 跑真實後端前須套用 MySQL V9 / Postgres V12 migration（否則 member `validate` 啟動失敗、wallet 讀庫撞 `chk_wt_sub_type`）。
 
----
+## [Removed/Fixed] — 2026-06-29 — 移除老虎機/捕魚機殘留幸運值保底 + 好友併發 409 + 送禮前端防呆
+
+> **背景**：原以為「幸運值」已從所有遊戲移除，實際只有百家樂清乾淨；**老虎機與捕魚機的幸運值仍在運作**——前端 `useFortuneMeter` 蓄滿後送 `fortuneReady`，後端據此**強制必中**（老虎機保底中線三連 `spinGuaranteedWin`、捕魚機本批保底捕獲 `resolveShotGuaranteed`），真實影響結算與 RTP，並非純視覺。本次將其前後端機制、視覺、死碼、測試、mock 全部移除。順帶修好友併發 500→409 與送禮前端防呆。
+>
+> **RTP 影響**：移除「對玩家有利」的保底後，老虎機/捕魚機 RTP 回到結構性水位（老虎機 ≈0.94、捕魚 ≈0.96 含殘血回收），仍在 `risk.global-rtp-limit` 門檻下，**不需調門檻**。
+>
+> **已知可接受後果**：歷史「保底」捕魚對局的 verify-shot 重放會走一般路徑（sim 環境舊資料極少，無真實影響）。
+>
+> **交易系統**：玩家間交易/市場在 repo 中**完全不存在**（無後端 service/entity、無前端元件），本次不實作，僅在此記錄現況；日後若要做需另開任務（schema + service + Kafka + UI）。
+
+### Removed
+- 幸運值後端（game-service）：`SlotService.spin/settleInternal` 移除 `fortuneReady` 參數與 `useGuarantee` 分支（固定 `slotMachine.spin`）；`SlotMachine.spinGuaranteedWin()` 刪除；`FishingService.shots/verifyShot/writeResultJson` 移除 `fortuneReady`/`guaranteedShotSeq`/保底分支（固定 `resolveShot`）；`FishingCombat.resolveShotGuaranteed()` 刪除、`resolve()` 去掉 `forceCapture` 參數。
+- DTO：`SpinRequest.fortuneReady`、`SpinResponse.guaranteed`、`FishingShotsRequest.fortuneReady`、`BaccaratBetRequest.fortuneReady`（死碼）、`GameSession.fortuneReady`（死碼）。
+- `FishingSession.guaranteedShotSeq` 欄位 + `FishingSessionStore` 的 `F_GUARANTEED_SHOT_SEQ` 序列化（雷區 16）。
+- 幸運值前端：刪 `casino-fx/fx/useFortuneMeter.js`、`FortuneMeter.jsx`、`LuckyAura.jsx`，移除 `casino-fx/index.js` export 與 `casino-fx.css` 對應樣式；`SlotGame.jsx`/`Fishing.jsx` 移除 meter/aura/`fortuneReady`/保底橫幅；`useFishingSession.js` 移除 `fortuneReady` 追蹤；`gameApi.js`/`mockApi.js` 移除 `fortuneReady`（mock 鏡像同步，雷區 14）。
+- 對應測試：`SlotServiceTest`（刪 2 案例＋更新簽章）、`FishingServiceCrossBatchTest`（更新簽章）、`FishingCombatTest`（刪 `resolveShotGuaranteed` 案例）、`FishingSessionStoreTest`（round-trip 移除 `guaranteedShotSeq`）。
+
+### Fixed
+- 好友併發重複申請 500→409：`FriendshipService.sendFriendRequest` 在新 insert 處 `save+flush` 並 catch `DataIntegrityViolationException` → 轉 `FriendshipAlreadyExistsException`（精準回 409「好友關係已存在」）；`GlobalExceptionHandler` 另加 `@ExceptionHandler(DataIntegrityViolationException.class)` 作**中性 409 安全網**（訊息「資料衝突，請稍後再試」，**不寫死好友訊息**——否則註冊撞 username/email、簽到撞當日唯一鍵等併發衝突會被誤標成好友）。新增 `FriendshipServiceTest` race 案例守門。
+- 好友樂觀鎖強化：`entity/Friendship` 新增 `@Version private Long version`（保護同一申請併發接受/拒絕、REJECTED→PENDING 重置、好友上限競態，ADR-001/雷區 8）；`GlobalExceptionHandler` 新增 `ObjectOptimisticLockingFailureException` → 409。Schema：`database/mysql/init.sql` 加 `version` 欄位 + 補丁 `migration/V8__add_friendship_version.sql`。
+
+### Changed
+- 送禮前端防呆（後端 `GiftService`/`GiftTransferService` 未動）：`store/slices/walletSlice` 為 `giftCoins` 補 `pending`/`rejected` handler 與獨立 `gift:{loading,message,error}` 狀態 + `clearGiftNotice` reducer；`services/walletApi.giftCoins` 補強冪等鍵註解（**逾時重試須複用同一 idempotencyKey** 防雙扣）。
+
+### 如何驗證
+- `mvn -pl backend/game-service test`：幸運值移除後 RTP band / session store / combat 測試全綠。
+- `mvn -pl backend/member-service test`：好友單元測試（純 Mockito，不驗 schema）全綠；`@Version` 不影響既有案例。
+- `mvn -pl backend/wallet-service test`：送禮後端未動，回歸確認。
+- 前端 `npm run lint` + `npm run build`：刪檔後無殘留 import，Rollup 不報 missing module。
+- grep `fortune|guaranteedShotSeq|FortuneMeter|LuckyAura`：`frontend/src` 與 `backend/game-service/src` 皆無活躍引用。
+
+## [Fixed] — 2026-06-25 — 捕魚退款／結算本金返還被誤計入「今日贏幣榜」（新增 REFUND 子型）
+
+> **問題**（Bug 5：退款／剩餘本金被算成 WIN）：`game-service` 的 `WalletClient.credit()` 寫死 `subType="WIN"`，而捕魚兩處入帳都走它——(1) buy-in 退款（session 建立失敗補償，`FishingService` line 151）、(2) 場次結算把剩餘局內餘額返還錢包（line 497）。`rank-service` 的 `WalletBalanceChangedConsumer` 只在 `subType=="WIN"` 時 `addDailyWinnings`，於是退款與本金返還被灌進「今日贏幣王」排行榜，污染榜單可信度。
+>
+> **修法**：`WalletClient.credit` 新增帶 `subType` 的多載；中獎派彩（老虎機/百家樂）維持 `WIN`，捕魚兩處改用新子型 `REFUND`（CREDIT 類、非中獎）。rank 端邏輯不動（本來就只認 WIN），REFUND 自然被排除。新增 `REFUND` 至 wallet `CreditRequest.@Pattern` 與兩庫 `chk_wt_sub_type` CHECK 白名單（init.sql + 補丁 migration mysql V7 / postgres V11）。
+>
+> 註：buy-in 制下 wallet 只看得到「結算淨返還」一筆 credit（未消耗本金＋局內累積派彩的混合），無法在錢包事件層拆出純贏額，故捕魚不計入今日贏幣榜；若日後要納入，需另設專屬贏額事件，不在本次修正範圍。
+
+### Fixed
+- `backend/game-service/.../client/WalletClient.java`：新增 `credit(playerId, amount, subType, idempotencyKey, referenceId)` 多載；原 4 參數版本委派並固定 `WIN`（老虎機/百家樂派彩不受影響）。
+- `backend/game-service/.../service/FishingService.java`：buy-in 退款與場次結算返還兩處 credit 改傳 `subType="REFUND"`。
+- `backend/game-service/.../client/dto/WalletCreditRequest.java`：Javadoc 補充 REFUND 用途。
+- `backend/wallet-service/.../dto/CreditRequest.java`：`@Pattern` 與 Javadoc 新增 `REFUND`。
+- `database/{postgres,mysql}/init.sql`：`chk_wt_sub_type` 與欄位註解新增 `REFUND`。
+- `database/mysql/migration/V7__add_refund_subtype.sql`、`database/postgres/migration/V11__add_refund_subtype.sql`：補丁加上 `REFUND`（與 init.sql 末態一致）。
+- `backend/game-service/.../service/FishingServiceTest.java`：退款相關 stub/verify 改用 5 參數多載，並斷言 `subType=="REFUND"`。
+
+### 如何驗證
+- `mvn -pl backend/game-service,backend/wallet-service test`：全綠（game-service 含 FishingServiceTest、wallet-service 含 InternalWalletControllerCreditTest 共 150 測試）。
+- rank 端 `WalletBalanceChangedConsumerTest.handleWalletBalanceChanged_nonWinSubType_doesNotAccumulateDailyWinnings` 既有測試證明非 WIN 子型不累加今日贏幣。
+
+## [Fixed] — 2026-06-25 — fresh DB 缺 CASHBACK 子類型導致返利入帳被 CHECK 約束擋下（init.sql 與補丁/契約對齊）
+
+> **問題**（Bug 4：CASHBACK 白名單不同步）：虧損返利鏈路 `CashbackEventPublisher` 發 `wallet.credit.request`（subType=CASHBACK）→ `WalletCreditRequestListener` → `WalletService.credit` 寫庫。本專案無 Flyway 自動執行，schema 由 docker-entrypoint-initdb.d 載入的 `database/{postgres,mysql}/init.sql` 建立；而兩份 init.sql 的 `chk_wt_sub_type` CHECK 約束**未含 CASHBACK**（MySQL 讀端更落後，連 `DIAMOND_EXCHANGE`/`TOPUP` 都缺）。雖有補丁 V9（postgres）/ V6（mysql）加上 CASHBACK，但 migration 資料夾不被載入 → **fresh DB 上返利入帳會被 CHECK constraint 擋下，讀端同步也會掛**。附帶 `CreditRequest.@Pattern` 也漏列 CASHBACK（Kafka listener 路徑未觸發 bean validation，非運行時阻斷點，但屬契約不一致）。
+
+### Fixed
+- `database/postgres/init.sql`：`chk_wt_sub_type` 與 `sub_type` 欄位註解補上 `CASHBACK`，與補丁 V9 末態一致。
+- `database/mysql/init.sql`：`chk_wt_sub_type` 與註解補上 `DIAMOND_EXCHANGE`/`TOPUP`/`CASHBACK`（讀端原本停在 `BANKRUPTCY_AID`），與補丁 V6 末態一致。
+- `backend/wallet-service/.../dto/CreditRequest.java`：`@Pattern` 與 Javadoc 補上 `CASHBACK`，契約與 DB 約束齊頭。
+
+### 為什麼
+- fresh DB 直接由 init.sql 建表，補丁 migration 不自動執行；init.sql 必須等於「所有補丁套用後的末態」，否則新環境的返利功能直接壞掉。
+
+### 如何驗證
+- 對比 `database/postgres/migration/V9__add_cashback_records.sql` 與 `database/mysql/migration/V6__add_cashback_subtype.sql` 的 CHECK 末態，確認 init.sql 子類型清單完全一致。
+- `mvn -pl backend/wallet-service test`：H2 contextLoads 與既有測試綠燈。
+
+## [Fixed] — 2026-06-25 — 排行榜/錢包流水/贈幣改接真實 API，並修正前端訂閱不存在的 WS topic
+
+> **問題**（前端三處仍走 mock 殘留或訂閱錯誤頻道）：
+> 1. **Rank 頁仍用 mock**：`rankSlice.fetchRanks` 直接 `mockApi.getRank()`，未接 rank-service；且 `upsertRankRows` 以 `nickname` 當去重鍵，與後端即時事件欄位（`playerId`）對不上 → 即時更新錯位。
+> 2. **錢包交易紀錄與贈幣走 mock**：`walletSlice.fetchTransactions/giftCoins` 走 `mockApi`，後端 `GET /api/v1/wallet/transactions`、`POST /gift` 沒被使用（看不到真實流水、贈幣限額/冪等沒驗到）。
+> 3. **訂閱不存在的 WS topic**：`RealtimeBridge` 訂閱 `/topic/wallet`（後端無此頻道）與 `/topic/game/result`（後端遊戲結果走私人佇列 `/user/queue/notifications`，已由 `useWebSocket` 內建處理）→ 錢包/遊戲結果即時更新失效。
+>
+> **修法**：rankSlice / walletSlice 兩個 mock thunk 換成真實 API 並對齊欄位；RealtimeBridge 只保留後端確實會廣播的 `/topic/rank`（先 normalize 成前端列形狀），移除兩個無效訂閱。各 API 維持 `VITE_USE_MOCK_API` 開關（mock 模式行為不變）。
+
+### Added
+- `frontend/src/services/rankApi.js`：封裝 rank-service 真實 API（`GET /api/v1/rank/global`、`/friends`、`/global/{playerId}`），把後端 `RankEntryResponse{playerId,username,rank,score}` 映射成前端列形狀 `{id,nickname,score,rank}`（與 `mockApi.getRank` 對齊）；另含 `normalizeBroadcast` 將 `RankUpdateEvent.entries` 轉同一形狀。`getRanks` 對 `/global/{playerId}` 的 404（未上榜）視為無名次、不擋榜單載入。
+- `frontend/src/services/walletApi.js`：新增 `getTransactions`（`GET /api/v1/wallet/transactions`，前端 1-based page ↔ 後端 0-based、`type` 映回 DEBIT/CREDIT、`from/to` 日期；回傳 `{items,total,page,pageSize}`；DEBIT 以負數呈現、subType→中文標籤）與 `giftCoins`（`POST /api/v1/wallet/gift`，`friendId→receiverId`、自動產生 `idempotencyKey`、補查餘額組 `{wallet}`）。
+
+### Changed
+- `frontend/src/store/slices/rankSlice.js`：`fetchRanks` 改用 `rankApi.getRanks(playerId)`（playerId 取自 `auth.player.id`）；`upsertRankRows` 去重鍵改為 `row.id ?? row.nickname`。
+- `frontend/src/store/slices/walletSlice.js`：`fetchTransactions`/`giftCoins` 改走 `walletApi`，錯誤訊息統一用 `extractError`；移除不再使用的 `mockApi` import。
+- `frontend/src/components/RealtimeBridge.jsx`：只訂閱 `/topic/rank` 並先 `rankApi.normalizeBroadcast`；移除 `/topic/wallet`、`/topic/game/result` 兩個無效訂閱。
+
+### 如何驗證
+- `cd frontend && npx eslint <改動檔>`：無錯誤。
+- `cd frontend && npx vite build`：建置成功（`✓ built`）。
+- mock 模式（預設 `VITE_USE_MOCK_API !== 'false'`）三條路徑仍回退 `mockApi`，玩家體驗不變。
 
 ## [Fixed] — 2026-06-25 — stop-all／stop-backend 無法關閉 cmd 服務視窗（啟動端改 cmd、停止端仍只認 PowerShell）
 

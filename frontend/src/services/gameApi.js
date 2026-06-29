@@ -77,11 +77,11 @@ export const gameApi = {
   },
 
   // POST /{sessionId}/shots → 批次射擊（只動局內餘額）。
-  async fishingShots({ sessionId, shots, fortuneReady }) {
+  async fishingShots({ sessionId, shots }) {
     if (useMockApi) {
       return mockApi.fishingShots({ sessionId, shots })
     }
-    const res = await api.post(`/api/v1/game/fishing/${sessionId}/shots`, { shots, fortuneReady })
+    const res = await api.post(`/api/v1/game/fishing/${sessionId}/shots`, { shots })
     return res.data.data
   },
 

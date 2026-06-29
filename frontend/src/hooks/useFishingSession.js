@@ -35,11 +35,8 @@ const SHOT_LOG_CAP = 50
  * @param {(results, ctx) => void} onResults 每批 fishingShots 回應觸發；results 為逐發判定，
  *        ctx = { sessionBalance, fishBySeq }，供頁面播放命中/逃跑音效與派彩特效。
  */
-export function useFishingSession({ onResults, fortuneReady = false } = {}) {
+export function useFishingSession({ onResults } = {}) {
   const dispatch = useDispatch()
-
-  const fortuneReadyRef = useRef(fortuneReady)
-  fortuneReadyRef.current = fortuneReady  // 每次 render 同步最新值，避免閉包過期
 
   const [phase, setPhase] = useState('loading') // 'loading' | 'idle' | 'playing' | 'settling' | 'settled'
   const [session, setSession] = useState(null) // { sessionId, cannonLevel, fishTable, serverSeedHash, clientSeed }
@@ -180,9 +177,8 @@ export function useFishingSession({ onResults, fortuneReady = false } = {}) {
     if (!sessionId) return
     inFlightRef.current = true
     const batch = bufferRef.current.splice(0, MAX_BATCH)
-    const wasFortuneReady = fortuneReadyRef.current
     try {
-      const res = await gameApi.fishingShots({ sessionId, shots: batch, fortuneReady: wasFortuneReady })
+      const res = await gameApi.fishingShots({ sessionId, shots: batch })
       let delta = 0
       let payoutSum = 0
       let acceptedShots = 0
@@ -214,7 +210,7 @@ export function useFishingSession({ onResults, fortuneReady = false } = {}) {
         setStats((prev) => ({ totalShots: prev.totalShots + acceptedShots, totalPayout: prev.totalPayout + payoutSum }))
       }
       const fishBySeq = fishBySeqRef.current
-      onResultsRef.current?.(res.results, { sessionBalance: res.sessionBalance, fishBySeq, fortuneConsumed: wasFortuneReady })
+      onResultsRef.current?.(res.results, { sessionBalance: res.sessionBalance, fishBySeq })
       res.results.forEach((r) => fishBySeq.delete(r.shotSeq))
     } catch (err) {
       // 送出失敗：退回整批樂觀扣注，避免局內餘額被卡住。

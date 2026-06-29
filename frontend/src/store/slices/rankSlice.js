@@ -1,5 +1,5 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
-import { mockApi } from '../../services/mockApi'
+import { rankApi } from '../../services/rankApi'
 
 const initialState = {
   globalRank: [],
@@ -12,9 +12,10 @@ const initialState = {
   error: null,
 }
 
-export const fetchRanks = createAsyncThunk('rank/fetchRanks', async (_, { rejectWithValue }) => {
+export const fetchRanks = createAsyncThunk('rank/fetchRanks', async (_, { getState, rejectWithValue }) => {
   try {
-    return await mockApi.getRank()
+    const playerId = getState().auth.player?.id
+    return await rankApi.getRanks(playerId)
   } catch (error) {
     return rejectWithValue(error.message)
   }
@@ -51,7 +52,8 @@ const rankSlice = createSlice({
     upsertRankRows(state, action) {
       const incomingRows = action.payload.items || action.payload
       const merged = [...incomingRows, ...state.globalRank]
-      const uniqueRows = Array.from(new Map(merged.map((row) => [row.id || row.nickname, row])).values())
+      // 以 playerId（id）為去重鍵；後端即時事件帶 playerId，暱稱可能重複/變動，不適合當鍵。
+      const uniqueRows = Array.from(new Map(merged.map((row) => [row.id ?? row.nickname, row])).values())
       state.globalRank = uniqueRows.sort((a, b) => b.score - a.score).slice(0, 100)
     },
   },

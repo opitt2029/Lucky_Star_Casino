@@ -163,7 +163,7 @@ public class FishingService {
             log.error("fishing session save failed after debit, refunding playerId={} sessionId={}",
                     playerId, sessionId, ex);
             try {
-                walletClient.credit(playerId, buyIn, "fishing-buyin-refund-" + sessionId, sessionId);
+                walletClient.credit(playerId, buyIn, "REFUND", "fishing-buyin-refund-" + sessionId, sessionId);
                 log.info("fishing buy-in refunded playerId={} sessionId={} amount={}", playerId, sessionId, buyIn);
             } catch (RuntimeException refundEx) {
                 // 退款本身又失敗：記為需人工對帳的嚴重事件（冪等鍵已落地，可日後重放補償）
@@ -197,7 +197,7 @@ public class FishingService {
      * @throws IllegalArgumentException 序號/注額/射速驗證失敗（整批拒絕，不動帳）
      */
     public FishingShotsResponse shots(long playerId, String sessionId,
-                                      List<FishingShotsRequest.Shot> shots, boolean fortuneReady) {
+                                      List<FishingShotsRequest.Shot> shots) {
         FishingSession session = requireActiveSession(playerId, sessionId);
 
         validateBatch(session, shots);
@@ -224,9 +224,6 @@ public class FishingService {
             kills = new ArrayList<>();
             session.setKills(kills);
         }
-
-        // 幸運值全滿且未被風控攔截時，本批第一個「致命一擊」強制捕獲（用完即止）。
-        boolean fortuneAvailable = fortuneReady && !intercepted;
 
         List<FishingShotsResponse.ShotResult> results = new ArrayList<>(shots.size());
         for (FishingShotsRequest.Shot shot : shots) {
@@ -258,10 +255,8 @@ public class FishingService {
             RandomStream stream = rng.stream(session.getServerSeed(), session.getClientSeed(), shot.getShotSeq());
 
             // 風控攔截時仍正常消耗 RNG stream，確保 seed 可重放驗證（Provably Fair）。
-            boolean forceThisShot = fortuneAvailable;
-            FishingCombat.ShotOutcome outcome = forceThisShot
-                    ? FishingCombat.resolveShotGuaranteed(stream, species, cannonLevel, damageBefore, shot.getBetPerShot())
-                    : FishingCombat.resolveShot(stream, species, cannonLevel, damageBefore, shot.getBetPerShot());
+            FishingCombat.ShotOutcome outcome =
+                    FishingCombat.resolveShot(stream, species, cannonLevel, damageBefore, shot.getBetPerShot());
 
             // 風控攔截：致命一擊的捕獲一律改判「掙脫」、派彩 0（RNG 已照常消耗）。
             boolean captured = outcome.captured() && !intercepted;
@@ -274,11 +269,6 @@ public class FishingService {
                     kills.remove(0);
                 }
                 fishDamage.remove(instanceId);
-                if (forceThisShot) {
-                    // fortune 真正用在一個致命一擊上 → 標記供 verifyShot 選用 guaranteed 路徑。
-                    session.setGuaranteedShotSeq(shot.getShotSeq());
-                    fortuneAvailable = false;
-                }
             } else {
                 // 未死：累積傷害（並控管並存 instance 數，淘汰最舊者）。
                 fishDamage.put(instanceId, outcome.damageTakenAfter());
@@ -382,10 +372,9 @@ public class FishingService {
 
         boolean commitmentValid = rng.verifyCommitment(round.getServerSeed(), round.getServerSeedHash());
 
-        // 讀取場次結算時記錄的：砲台等級、風控旗標、保底 shotSeq、各致命一擊（shotSeq→damageBefore/魚種）
+        // 讀取場次結算時記錄的：砲台等級、風控旗標、各致命一擊（shotSeq→damageBefore/魚種）
         int cannonLevel = 1;
         boolean riskControlled = false;
-        Long guaranteedShotSeq = null;
         Map<Long, Long> killDamageBefore = new HashMap<>();
         Map<Long, String> killSpecies = new HashMap<>();
         try {
@@ -394,8 +383,6 @@ public class FishingService {
             Object cl = resultData.get("cannonLevel");
             if (cl instanceof Number) cannonLevel = ((Number) cl).intValue();
             riskControlled = Boolean.TRUE.equals(resultData.get("riskControlled"));
-            Object gsq = resultData.get("guaranteedShotSeq");
-            if (gsq instanceof Number) guaranteedShotSeq = ((Number) gsq).longValue();
             Object killsObj = resultData.get("kills");
             if (killsObj instanceof List<?> list) {
                 for (Object entry : list) {
@@ -416,12 +403,10 @@ public class FishingService {
         boolean killingBlow = killDamageBefore.containsKey(shotSeq);
         FishSpecies species = FishSpecies.fromCode(killSpecies.getOrDefault(shotSeq, fishType));
         long damageBefore = killingBlow ? killDamageBefore.get(shotSeq) : 0L;
-        boolean guaranteed = guaranteedShotSeq != null && guaranteedShotSeq == shotSeq;
 
         RandomStream stream = rng.stream(round.getServerSeed(), round.getClientSeed(), shotSeq);
-        FishingCombat.ShotOutcome outcome = guaranteed
-                ? FishingCombat.resolveShotGuaranteed(stream, species, cannonLevel, damageBefore, betPerShot)
-                : FishingCombat.resolveShot(stream, species, cannonLevel, damageBefore, betPerShot);
+        FishingCombat.ShotOutcome outcome =
+                FishingCombat.resolveShot(stream, species, cannonLevel, damageBefore, betPerShot);
 
         String message;
         if (!commitmentValid) {
@@ -548,8 +533,10 @@ public class FishingService {
                 ? session.getBalanceBefore() - session.getBuyIn()
                 : null;
         if (credited > 0) {
+            // 結算返還的是「剩餘局內餘額」（未消耗的 buy-in + 局內累積派彩的混合），不是單純中獎；
+            // 用 REFUND 而非 WIN，避免 rank-service 把本金返還誤計入「今日贏幣榜」（Bug 5）。
             WalletCreditResponse credit = walletClient.credit(
-                    playerId, credited, "fishing-end-" + sessionId, sessionId);
+                    playerId, credited, "REFUND", "fishing-end-" + sessionId, sessionId);
             balanceAfter = credit.balanceAfter();
             wallet = WalletView.builder()
                     .balance(credit.balanceAfter())
@@ -633,8 +620,6 @@ public class FishingService {
             result.put("roomId", session.getRoomId());
             // verifyShot 用：此場次是否曾有批次被風控攔截（命中時實際派彩為 0）
             result.put("riskControlled", Boolean.TRUE.equals(session.getIntercepted()));
-            // verifyShot 用：幸運值保底命中的 shotSeq（null 代表未觸發）
-            result.put("guaranteedShotSeq", session.getGuaranteedShotSeq());
             // verifyShot 用：各致命一擊的 shotSeq / 魚種 / 該發前累積傷害，供重放捕獲判定
             result.put("kills", session.getKills());
             return objectMapper.writeValueAsString(result);

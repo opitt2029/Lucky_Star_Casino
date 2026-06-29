@@ -66,16 +66,16 @@ class FishingServiceTest {
     void start_whenSessionSaveFails_refundsBuyIn() {
         org.mockito.Mockito.doThrow(new RuntimeException("redis down"))
                 .when(sessionStore).save(any(FishingSession.class));
-        when(walletClient.credit(anyLong(), anyLong(), anyString(), anyString()))
+        when(walletClient.credit(anyLong(), anyLong(), anyString(), anyString(), anyString()))
                 .thenReturn(new WalletCreditResponse(2L, PLAYER_ID, BUY_IN, 595200L, 600200L, 0L, false));
 
         assertThrows(RuntimeException.class,
                 () -> service.start(PLAYER_ID, BUY_IN, CANNON_LEVEL, BET_PER_SHOT, "client-seed"));
 
-        // 必須觸發退款 credit，且冪等鍵為 fishing-buyin-refund-<sessionId>
+        // 必須觸發退款 credit，subType=REFUND（非 WIN，避免被 rank 計入贏幣榜），冪等鍵為 fishing-buyin-refund-<sessionId>
         ArgumentCaptor<Long> amount = ArgumentCaptor.forClass(Long.class);
         ArgumentCaptor<String> idemKey = ArgumentCaptor.forClass(String.class);
-        verify(walletClient).credit(eq(PLAYER_ID), amount.capture(), idemKey.capture(), anyString());
+        verify(walletClient).credit(eq(PLAYER_ID), amount.capture(), eq("REFUND"), idemKey.capture(), anyString());
         assertEquals(BUY_IN, amount.getValue());
         assertTrue(idemKey.getValue().startsWith("fishing-buyin-refund-"),
                 "退款冪等鍵應為 fishing-buyin-refund- 前綴，實際=" + idemKey.getValue());
@@ -86,13 +86,13 @@ class FishingServiceTest {
     void start_whenRefundAlsoFails_stillThrowsOriginal() {
         org.mockito.Mockito.doThrow(new RuntimeException("redis down"))
                 .when(sessionStore).save(any(FishingSession.class));
-        when(walletClient.credit(anyLong(), anyLong(), anyString(), anyString()))
+        when(walletClient.credit(anyLong(), anyLong(), anyString(), anyString(), anyString()))
                 .thenThrow(new WalletUnavailableException("wallet down"));
 
         assertThrows(RuntimeException.class,
                 () -> service.start(PLAYER_ID, BUY_IN, CANNON_LEVEL, BET_PER_SHOT, "client-seed"));
 
-        verify(walletClient).credit(eq(PLAYER_ID), eq(BUY_IN), anyString(), anyString());
+        verify(walletClient).credit(eq(PLAYER_ID), eq(BUY_IN), eq("REFUND"), anyString(), anyString());
     }
 
     @Test
@@ -102,7 +102,7 @@ class FishingServiceTest {
         service.start(PLAYER_ID, BUY_IN, CANNON_LEVEL, BET_PER_SHOT, "client-seed");
 
         verify(sessionStore).save(any(FishingSession.class));
-        verify(walletClient, never()).credit(anyLong(), anyLong(), anyString(), anyString());
+        verify(walletClient, never()).credit(anyLong(), anyLong(), anyString(), anyString(), anyString());
     }
 
     @Test
@@ -134,7 +134,7 @@ class FishingServiceTest {
                 .build();
         when(sessionStore.find(PLAYER_ID)).thenReturn(Optional.of(active));
         when(roundRepository.findByRoundId("sess-r")).thenReturn(Optional.empty());
-        when(walletClient.credit(anyLong(), anyLong(), anyString(), anyString()))
+        when(walletClient.credit(anyLong(), anyLong(), anyString(), anyString(), anyString()))
                 .thenReturn(new WalletCreditResponse(9L, PLAYER_ID, 0L, 200L, 200L, 0L, false));
 
         var resp = service.end(PLAYER_ID, "sess-r");
@@ -148,7 +148,7 @@ class FishingServiceTest {
         assertEquals(200L + expectedRecovery, resp.getCredited());
         // 實際 credit 回 wallet 的金額應含回收
         ArgumentCaptor<Long> credited = ArgumentCaptor.forClass(Long.class);
-        verify(walletClient).credit(eq(PLAYER_ID), credited.capture(), anyString(), anyString());
+        verify(walletClient).credit(eq(PLAYER_ID), credited.capture(), eq("REFUND"), anyString(), anyString());
         assertEquals(200L + expectedRecovery, credited.getValue());
         // totalPayout 計入回收（→ game_rounds.win_amount，RTP 監控涵蓋）
         assertEquals(expectedRecovery, resp.getTotalPayout());
