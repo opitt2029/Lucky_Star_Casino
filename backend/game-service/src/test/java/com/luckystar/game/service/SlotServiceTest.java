@@ -180,6 +180,19 @@ class SlotServiceTest {
     }
 
     @Test
+    @DisplayName("spin 命中但風控攔截：派彩為 0、不呼叫 credit、中線被打破")
+    void spin_winButRiskIntercept_noPayout() {
+        when(riskControlService.shouldIntercept(anyLong(), anyString())).thenReturn(true);
+        when(slotMachine.spin(any(), eq(BET))).thenReturn(winOutcome());
+
+        SpinResponse res = service.spin(PLAYER_ID, BET, null);
+
+        assertEquals(0L, res.getPayout(), "風控攔截後派彩應為 0");
+        assertEquals(0, res.getMultiplier(), "風控攔截後倍率應為 0");
+        verify(walletClient, never()).credit(anyLong(), anyLong(), anyString(), anyString());
+    }
+
+    @Test
     @DisplayName("spin 餘額不足：debit 拋例外即中止，不執行 RNG / 派彩 / 寫庫")
     void spin_insufficientBalance_abortsEarly() {
         when(walletClient.debit(eq(PLAYER_ID), eq(BET), anyString(), anyString()))
