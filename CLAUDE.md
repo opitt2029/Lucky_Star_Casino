@@ -61,3 +61,7 @@ Define success criteria. Verify before declaring done.
   executing.
 * **Upgrade later**: Once I reach the testing chapter of my plan (JUnit / TDD),
   upgrade this section to "write tests first, then make them pass".
+
+---
+
+@AGENTS.md
