@@ -256,7 +256,8 @@ export default function FriendFloatingPanel() {
           <small>{isAuthenticated ? `${friends.length} 位好友` : '未登入'}</small>
         </span>
         <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d={isOpen ? 'M18 15 12 9l-6 6' : 'm6 9 6 6 6-6'} />
+          {/* 收合時指左＝點一下往左展開；展開時指右＝點一下往右收回 */}
+          <path d={isOpen ? 'M9 6l6 6-6 6' : 'M15 18l-6-6 6-6'} />
         </svg>
       </button>
     </section>

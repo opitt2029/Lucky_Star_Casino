@@ -65,10 +65,10 @@ jobs:
           java-version: '21'
           cache: maven   # 快取 ~/.m2，加速後續執行
 
-      - name: 執行後端測試（gateway / member / wallet）
+      - name: 執行後端測試（gateway / member / wallet / admin）
         run: >-
           mvn -B -ntp
-          -pl backend/gateway-service,backend/member-service,backend/wallet-service
+          -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/admin-service
           clean test
 
   # ---------------------------------------------------------------------------

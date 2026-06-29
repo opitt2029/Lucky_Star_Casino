@@ -97,6 +97,7 @@ const transactionLabels = {
   checkin: '簽到',
   task: '任務',
   gift: '贈送',
+  shop: '商城兌換',
 }
 const DAILY_CHECKIN_REWARD = 100
 // 破產補助：餘額低於門檻才可領、固定發放金額（與後端 BankruptcyAidService 一致）
@@ -115,6 +116,14 @@ const MONTHLY_REWARD_MILESTONES = [
   { days: 10, reward: 2000 },
   { days: 20, reward: 5000 },
   { days: 28, reward: 12000 },
+]
+
+// 禮品商城目錄（鏡像後端 shop_items seed / database/mysql/init.sql，ADR-006）。
+// 後端後台可改目錄；mock 為預設玩家體驗，改後端 seed 時同步此處。
+const SHOP_CATALOG = [
+  { itemCode: 'vip-ticket', name: 'VIP 入場券', caption: '可兌換活動或限時桌台資格', cost: 12000, assetKey: 'shopPrizeA' },
+  { itemCode: 'avatar-frame', name: '會員頭像框', caption: '讓會員頭像更有辨識度', cost: 8000, assetKey: 'shopPrizeB' },
+  { itemCode: 'bonus-box', name: '幸運禮盒', caption: '適合兌換活動獎勵或驚喜禮品', cost: 20000, assetKey: 'shopPrizeC' },
 ]
 
 const TEST_ACCOUNT = {
@@ -858,6 +867,44 @@ export const mockApi = {
     applyWalletChange(db, playerId, -amount, 'gift', `贈送星幣給 ${friend?.nickname || '好友'}`)
     saveDb(db)
     return { wallet: db.wallets[playerId], friends: db.friends[playerId] || [] }
+  },
+
+  // ---- 禮品商城（鏡像後端 wallet-service shop 模組，ADR-006）----
+
+  // 目錄：上架商品（鏡像後端 GET /api/v1/wallet/shop/catalog）。
+  async getShopCatalog() {
+    await wait(200)
+    return SHOP_CATALOG.map((item) => ({ ...item }))
+  },
+
+  // 兌換禮品：依 itemCode 查價，以星幣扣款（負數 amount）並寫一筆「商城兌換」交易，物品收進背包。
+  async redeemShopItem({ itemCode }) {
+    await wait()
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const item = SHOP_CATALOG.find((i) => i.itemCode === itemCode)
+    if (!item) throw new Error('商品不存在')
+    const wallet = db.wallets[playerId]
+    if (!wallet || wallet.balance < item.cost) throw new Error('星幣不足')
+    applyWalletChange(db, playerId, -item.cost, 'shop', `商城兌換－${item.name}`)
+    db.inventory = db.inventory || {}
+    const record = {
+      id: `INV-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+      itemCode: item.itemCode,
+      title: item.name,
+      cost: item.cost,
+      redeemedAt: new Date().toISOString(),
+    }
+    db.inventory[playerId] = [record, ...(db.inventory[playerId] || [])]
+    saveDb(db)
+    return { wallet: db.wallets[playerId], item: record }
+  },
+
+  // 取得玩家背包（兌換到的禮品，新到舊；鏡像後端 GET /api/v1/wallet/shop/inventory）。
+  async getInventory() {
+    await wait(220)
+    const db = getDb()
+    return (db.inventory || {})[currentPlayerId()] || []
   },
 
   // ---- 捕魚機（buy-in 制 + 局內餘額 + 批次結算；對齊 game-service fishing 模組） ----

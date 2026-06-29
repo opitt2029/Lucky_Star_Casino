@@ -1,5 +1,6 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import { walletApi } from '../../services/walletApi'
+import { shopApi } from '../../services/shopApi'
 import { extractError } from '../../services/memberApi'
 
 const initialState = {
@@ -44,6 +45,11 @@ const initialState = {
     error: null,
   },
   gift: {
+    loading: false,
+    message: '',
+    error: null,
+  },
+  redeem: {
     loading: false,
     message: '',
     error: null,
@@ -123,6 +129,19 @@ export const giftCoins = createAsyncThunk('wallet/giftCoins', async (payload, { 
   }
 })
 
+// 禮品商城兌換：以 itemCode 扣星幣並把物品收進背包。
+// shopApi.redeemItem 已正規化回 { itemName, balanceAfter }（mock / 真實後端一致）。
+export const redeemShopItem = createAsyncThunk(
+  'wallet/redeemShopItem',
+  async (item, { rejectWithValue }) => {
+    try {
+      return await shopApi.redeemItem({ itemCode: item.itemCode })
+    } catch (error) {
+      return rejectWithValue(extractError(error))
+    }
+  },
+)
+
 const walletSlice = createSlice({
   name: 'wallet',
   initialState,
@@ -162,6 +181,10 @@ const walletSlice = createSlice({
     clearGiftNotice(state) {
       state.gift.message = ''
       state.gift.error = null
+    },
+    clearRedeemNotice(state) {
+      state.redeem.message = ''
+      state.redeem.error = null
     },
     clearMonthlyRewardNotice(state) {
       state.monthlyReward.message = ''
@@ -279,6 +302,20 @@ const walletSlice = createSlice({
         state.gift.loading = false
         state.gift.error = action.payload || '贈送失敗'
       })
+      .addCase(redeemShopItem.pending, (state) => {
+        state.redeem.loading = true
+        state.redeem.message = ''
+        state.redeem.error = null
+      })
+      .addCase(redeemShopItem.fulfilled, (state, action) => {
+        state.redeem.loading = false
+        state.balance = action.payload.balanceAfter
+        state.redeem.message = `已兌換 ${action.payload.itemName}，星幣已從餘額扣除。`
+      })
+      .addCase(redeemShopItem.rejected, (state, action) => {
+        state.redeem.loading = false
+        state.redeem.error = action.payload || '兌換失敗'
+      })
   },
 })
 
@@ -292,6 +329,7 @@ export const {
   clearWalletNotice,
   clearBankruptcyNotice,
   clearGiftNotice,
+  clearRedeemNotice,
   clearMonthlyRewardNotice,
 } = walletSlice.actions
 export default walletSlice.reducer
