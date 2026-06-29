@@ -178,6 +178,9 @@ export const walletApi = {
   // POST /api/v1/wallet/gift → 好友贈幣（receiverId/amount/idempotencyKey）。
   // 贈送方由 gateway 注入的 X-User-Id 決定，不在 body。回應僅含 senderBalanceAfter，
   // 不含 frozenAmount，故再查一次餘額補齊 walletSlice 期望的 { wallet } 形狀。
+  // ⚠️ 冪等鍵：後端以 idempotencyKey 去重防雙扣（wallet_transactions UNIQUE）。
+  //   逾時/網路錯誤要「重試同一筆贈送」時，呼叫端**必須複用上一次的 idempotencyKey**，
+  //   否則會生成新鍵被後端視為新交易→雙扣。未傳入才由此處生成一次性鍵（單發場景）。
   async giftCoins({ friendId, amount, idempotencyKey } = {}) {
     if (useMockApi) {
       return mockApi.giftCoins({ friendId, amount })

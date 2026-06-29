@@ -24,13 +24,6 @@ public class FishingShotsRequest {
     @Valid
     private List<Shot> shots;
 
-    /** 幸運值是否已滿（true = 本批第一發保底命中）；前端在 fortune.full 時傳入。 */
-    private Boolean fortuneReady;
-
-    public boolean isFortuneFull() {
-        return Boolean.TRUE.equals(fortuneReady);
-    }
-
     /** 單發子彈。 */
     @Data
     public static class Shot {

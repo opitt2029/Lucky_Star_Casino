@@ -33,11 +33,4 @@ public class BaccaratBetRequest {
     /** 玩家自訂 client seed（選填）；未提供時由伺服器產生。 */
     @Size(max = 200, message = "clientSeed 長度上限 200")
     private String clientSeed;
-
-    /** 幸運值是否已滿（true = 本局保底必中）；前端在 fortune.full 時傳入。 */
-    private Boolean fortuneReady;
-
-    public boolean isFortuneFull() {
-        return Boolean.TRUE.equals(fortuneReady);
-    }
 }

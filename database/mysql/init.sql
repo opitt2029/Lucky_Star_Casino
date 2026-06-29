@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS friendships (
     status        VARCHAR(10)  NOT NULL DEFAULT 'PENDING',  -- PENDING / ACCEPTED / REJECTED
     created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    version       BIGINT       NOT NULL DEFAULT 0,             -- 樂觀鎖（@Version）：防併發接受/拒絕競態
     CONSTRAINT pk_friendships            PRIMARY KEY (id),
     CONSTRAINT uq_friendships_pair       UNIQUE (requester_id, receiver_id),
     CONSTRAINT chk_friendships_status    CHECK (status IN ('PENDING', 'ACCEPTED', 'REJECTED')),

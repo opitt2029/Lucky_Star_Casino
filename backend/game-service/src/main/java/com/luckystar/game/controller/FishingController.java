@@ -78,7 +78,7 @@ public class FishingController {
         if (playerId == null) {
             return badPlayerId(playerIdStr);
         }
-        FishingShotsResponse response = fishingService.shots(playerId, sessionId, request.getShots(), request.isFortuneFull());
+        FishingShotsResponse response = fishingService.shots(playerId, sessionId, request.getShots());
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 

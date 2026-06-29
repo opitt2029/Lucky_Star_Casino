@@ -3,6 +3,37 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Removed/Fixed] — 2026-06-29 — 移除老虎機/捕魚機殘留幸運值保底 + 好友併發 409 + 送禮前端防呆
+
+> **背景**：原以為「幸運值」已從所有遊戲移除，實際只有百家樂清乾淨；**老虎機與捕魚機的幸運值仍在運作**——前端 `useFortuneMeter` 蓄滿後送 `fortuneReady`，後端據此**強制必中**（老虎機保底中線三連 `spinGuaranteedWin`、捕魚機本批保底捕獲 `resolveShotGuaranteed`），真實影響結算與 RTP，並非純視覺。本次將其前後端機制、視覺、死碼、測試、mock 全部移除。順帶修好友併發 500→409 與送禮前端防呆。
+>
+> **RTP 影響**：移除「對玩家有利」的保底後，老虎機/捕魚機 RTP 回到結構性水位（老虎機 ≈0.94、捕魚 ≈0.96 含殘血回收），仍在 `risk.global-rtp-limit` 門檻下，**不需調門檻**。
+>
+> **已知可接受後果**：歷史「保底」捕魚對局的 verify-shot 重放會走一般路徑（sim 環境舊資料極少，無真實影響）。
+>
+> **交易系統**：玩家間交易/市場在 repo 中**完全不存在**（無後端 service/entity、無前端元件），本次不實作，僅在此記錄現況；日後若要做需另開任務（schema + service + Kafka + UI）。
+
+### Removed
+- 幸運值後端（game-service）：`SlotService.spin/settleInternal` 移除 `fortuneReady` 參數與 `useGuarantee` 分支（固定 `slotMachine.spin`）；`SlotMachine.spinGuaranteedWin()` 刪除；`FishingService.shots/verifyShot/writeResultJson` 移除 `fortuneReady`/`guaranteedShotSeq`/保底分支（固定 `resolveShot`）；`FishingCombat.resolveShotGuaranteed()` 刪除、`resolve()` 去掉 `forceCapture` 參數。
+- DTO：`SpinRequest.fortuneReady`、`SpinResponse.guaranteed`、`FishingShotsRequest.fortuneReady`、`BaccaratBetRequest.fortuneReady`（死碼）、`GameSession.fortuneReady`（死碼）。
+- `FishingSession.guaranteedShotSeq` 欄位 + `FishingSessionStore` 的 `F_GUARANTEED_SHOT_SEQ` 序列化（雷區 16）。
+- 幸運值前端：刪 `casino-fx/fx/useFortuneMeter.js`、`FortuneMeter.jsx`、`LuckyAura.jsx`，移除 `casino-fx/index.js` export 與 `casino-fx.css` 對應樣式；`SlotGame.jsx`/`Fishing.jsx` 移除 meter/aura/`fortuneReady`/保底橫幅；`useFishingSession.js` 移除 `fortuneReady` 追蹤；`gameApi.js`/`mockApi.js` 移除 `fortuneReady`（mock 鏡像同步，雷區 14）。
+- 對應測試：`SlotServiceTest`（刪 2 案例＋更新簽章）、`FishingServiceCrossBatchTest`（更新簽章）、`FishingCombatTest`（刪 `resolveShotGuaranteed` 案例）、`FishingSessionStoreTest`（round-trip 移除 `guaranteedShotSeq`）。
+
+### Fixed
+- 好友併發重複申請 500→409：`member-service/exception/GlobalExceptionHandler` 新增 `@ExceptionHandler(DataIntegrityViolationException.class)` → 409（修 `sendFriendRequest` find-then-insert 競態撞 UNIQUE 落到 handleGeneral 變 500）。
+- 好友樂觀鎖強化：`entity/Friendship` 新增 `@Version private Long version`（保護同一申請併發接受/拒絕、REJECTED→PENDING 重置、好友上限競態，ADR-001/雷區 8）；`GlobalExceptionHandler` 新增 `ObjectOptimisticLockingFailureException` → 409。Schema：`database/mysql/init.sql` 加 `version` 欄位 + 補丁 `migration/V8__add_friendship_version.sql`。
+
+### Changed
+- 送禮前端防呆（後端 `GiftService`/`GiftTransferService` 未動）：`store/slices/walletSlice` 為 `giftCoins` 補 `pending`/`rejected` handler 與獨立 `gift:{loading,message,error}` 狀態 + `clearGiftNotice` reducer；`services/walletApi.giftCoins` 補強冪等鍵註解（**逾時重試須複用同一 idempotencyKey** 防雙扣）。
+
+### 如何驗證
+- `mvn -pl backend/game-service test`：幸運值移除後 RTP band / session store / combat 測試全綠。
+- `mvn -pl backend/member-service test`：好友單元測試（純 Mockito，不驗 schema）全綠；`@Version` 不影響既有案例。
+- `mvn -pl backend/wallet-service test`：送禮後端未動，回歸確認。
+- 前端 `npm run lint` + `npm run build`：刪檔後無殘留 import，Rollup 不報 missing module。
+- grep `fortune|guaranteedShotSeq|FortuneMeter|LuckyAura`：`frontend/src` 與 `backend/game-service/src` 皆無活躍引用。
+
 ## [Fixed] — 2026-06-25 — 捕魚退款／結算本金返還被誤計入「今日贏幣榜」（新增 REFUND 子型）
 
 > **問題**（Bug 5：退款／剩餘本金被算成 WIN）：`game-service` 的 `WalletClient.credit()` 寫死 `subType="WIN"`，而捕魚兩處入帳都走它——(1) buy-in 退款（session 建立失敗補償，`FishingService` line 151）、(2) 場次結算把剩餘局內餘額返還錢包（line 497）。`rank-service` 的 `WalletBalanceChangedConsumer` 只在 `subType=="WIN"` 時 `addDailyWinnings`，於是退款與本金返還被灌進「今日贏幣王」排行榜，污染榜單可信度。

@@ -136,7 +136,7 @@ class FishingServiceCrossBatchTest {
         shot.setBetPerShot(CANNON_BET);
         shot.setFishType("PUFFER");
         shot.setFishInstanceId("fishA");
-        FishingShotsResponse resp = service.shots(PLAYER_ID, SESSION_ID, List.of(shot), false);
+        FishingShotsResponse resp = service.shots(PLAYER_ID, SESSION_ID, List.of(shot));
         return resp.getResults().get(0);
     }
 }

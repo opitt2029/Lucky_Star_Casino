@@ -91,9 +91,6 @@ public class FishingSession {
     /** 場次中是否有任何批次曾被風控攔截（verifyShot 警示用）。 */
     private Boolean intercepted;
 
-    /** 幸運值保底命中的 shotSeq（null 表示本場未觸發保底）。verifyShot 據此選擇正確的 resolve 方法。 */
-    private Long guaranteedShotSeq;
-
     /**
      * 血量/傷害模型：每條魚 instance（key = 前端產生的 fishInstanceId）目前已累積的傷害。
      * 致命一擊（累傷達 HP）後該 entry 移除。並存上限由 {@code FishingService} 控管以防灌量。

@@ -1,6 +1,8 @@
 package com.luckystar.member.exception;
 
 import com.luckystar.member.dto.ApiResponse;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -110,6 +112,22 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleAlreadyCheckedIn(AlreadyCheckedInException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    // 併發重複申請：sendFriendRequest 的 find-then-insert 在競態下同時插入會撞 UNIQUE(requester_id, receiver_id)，
+    // 此時應回 409（好友關係已存在）而非落到 handleGeneral 變成 500。
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error("好友關係已存在"));
+    }
+
+    // 樂觀鎖衝突（Friendship.@Version）：同一申請被併發接受/拒絕、或上限競態時，
+    // 後手交易回 409 讓前端重試，而非 500。
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOptimisticLockingFailure(ObjectOptimisticLockingFailureException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error("好友關係已被其他請求更新，請重試"));
     }
 
     @ExceptionHandler(Exception.class)

@@ -26,6 +26,11 @@ const initialState = {
     message: '',
     error: null,
   },
+  gift: {
+    loading: false,
+    message: '',
+    error: null,
+  },
   loading: false,
   error: null,
 }
@@ -109,6 +114,10 @@ const walletSlice = createSlice({
       state.bankruptcyAid.amount = null
       state.bankruptcyAid.error = null
     },
+    clearGiftNotice(state) {
+      state.gift.message = ''
+      state.gift.error = null
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -173,9 +182,20 @@ const walletSlice = createSlice({
         state.loading = false
         state.error = action.payload || '交易紀錄讀取失敗'
       })
+      .addCase(giftCoins.pending, (state) => {
+        state.gift.loading = true
+        state.gift.message = ''
+        state.gift.error = null
+      })
       .addCase(giftCoins.fulfilled, (state, action) => {
+        state.gift.loading = false
         state.balance = action.payload.wallet.balance
         state.frozenAmount = action.payload.wallet.frozenAmount ?? 0
+        state.gift.message = '贈送成功'
+      })
+      .addCase(giftCoins.rejected, (state, action) => {
+        state.gift.loading = false
+        state.gift.error = action.payload || '贈送失敗'
       })
   },
 })
@@ -189,5 +209,6 @@ export const {
   setTransactionPage,
   clearWalletNotice,
   clearBankruptcyNotice,
+  clearGiftNotice,
 } = walletSlice.actions
 export default walletSlice.reducer

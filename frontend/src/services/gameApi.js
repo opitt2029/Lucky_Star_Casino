@@ -9,12 +9,12 @@ export const gameApi = {
   // POST /api/v1/game/slot/spin → 單次下注並轉動老虎機（同一回應揭露 serverSeed）。
   // 後端回應 data 形狀已與前端期望一致：
   // { roundId, game, grid, bet, multiplier, payout, winningCells, wallet:{balance,frozenAmount}, serverSeed, ... }
-  async spinSlot({ bet, clientSeed, fortuneReady }) {
+  async spinSlot({ bet, clientSeed }) {
     if (useMockApi) {
-      return mockApi.spinSlot({ bet, fortuneReady })
+      return mockApi.spinSlot({ bet })
     }
 
-    const res = await api.post('/api/v1/game/slot/spin', { bet, clientSeed, fortuneReady })
+    const res = await api.post('/api/v1/game/slot/spin', { bet, clientSeed })
     return res.data.data
   },
 
@@ -77,11 +77,11 @@ export const gameApi = {
   },
 
   // POST /{sessionId}/shots → 批次射擊（只動局內餘額）。
-  async fishingShots({ sessionId, shots, fortuneReady }) {
+  async fishingShots({ sessionId, shots }) {
     if (useMockApi) {
       return mockApi.fishingShots({ sessionId, shots })
     }
-    const res = await api.post(`/api/v1/game/fishing/${sessionId}/shots`, { shots, fortuneReady })
+    const res = await api.post(`/api/v1/game/fishing/${sessionId}/shots`, { shots })
     return res.data.data
   },
 

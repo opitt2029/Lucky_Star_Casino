@@ -54,7 +54,6 @@ public class FishingSessionStore {
     private static final String F_CREATED_AT = "createdAt";
     private static final String F_LAST_ACTIVITY_AT = "lastActivityAt";
     private static final String F_INTERCEPTED = "intercepted";
-    private static final String F_GUARANTEED_SHOT_SEQ = "guaranteedShotSeq";
     private static final String F_FISH_DAMAGE = "fishDamage";
     private static final String F_KILLS = "kills";
 
@@ -150,7 +149,6 @@ public class FishingSessionStore {
             h.put(F_LAST_ACTIVITY_AT, s.getLastActivityAt().toString());
         }
         putIfNotNull(h, F_INTERCEPTED, s.getIntercepted());
-        putIfNotNull(h, F_GUARANTEED_SHOT_SEQ, s.getGuaranteedShotSeq());
         // 血量/傷害模型的跨批狀態：以 JSON 持久化，缺了會讓每批重讀後累傷歸零（魚永遠打不死）。
         writeJson(h, F_FISH_DAMAGE, s.getFishDamage());
         writeJson(h, F_KILLS, s.getKills());
@@ -191,7 +189,6 @@ public class FishingSessionStore {
                 .createdAt(parseInstant(h.get(F_CREATED_AT)))
                 .lastActivityAt(parseInstant(h.get(F_LAST_ACTIVITY_AT)))
                 .intercepted(parseBoolean(h.get(F_INTERCEPTED)))
-                .guaranteedShotSeq(parseLong(h.get(F_GUARANTEED_SHOT_SEQ)))
                 .fishDamage(readFishDamage(h.get(F_FISH_DAMAGE)))
                 .kills(readKills(h.get(F_KILLS)))
                 .build();
