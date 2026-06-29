@@ -110,6 +110,23 @@ class FriendshipServiceTest {
         verify(friendshipRepository, times(1)).save(any(Friendship.class));
     }
 
+    @Test
+    void sendFriendRequest_concurrentInsertHitsUniqueConstraint_throwsFriendshipAlreadyExists() {
+        when(memberRepository.existsById(2L)).thenReturn(true);
+        when(friendshipRepository.countAcceptedFriends(1L)).thenReturn(0L);
+        when(friendshipRepository.findByRequesterIdAndReceiverId(1L, 2L)).thenReturn(Optional.empty());
+        when(friendshipRepository.findByRequesterIdAndReceiverId(2L, 1L)).thenReturn(Optional.empty());
+        when(friendshipRepository.save(any(Friendship.class)))
+                .thenReturn(buildFriendship(12L, 1L, 2L, FriendshipStatus.PENDING));
+        // 併發後手 insert：flush 時撞 UNIQUE(requester_id, receiver_id)
+        doThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate"))
+                .when(friendshipRepository).flush();
+
+        // 應被精準轉成 FriendshipAlreadyExistsException（→ 409 好友關係已存在），而非外洩 DataIntegrityViolationException
+        assertThatThrownBy(() -> friendshipService.sendFriendRequest(1L, 2L))
+                .isInstanceOf(FriendshipAlreadyExistsException.class);
+    }
+
     // ── acceptFriendRequest ──────────────────────────────────────────────
 
     @Test

@@ -177,7 +177,7 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
     created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_wallet_transactions PRIMARY KEY (id),
     CONSTRAINT chk_wt_type     CHECK (type    IN ('DEBIT', 'CREDIT', 'BONUS')),
-    CONSTRAINT chk_wt_sub_type CHECK (sub_type IN ('BET', 'WIN', 'CHECKIN', 'TASK', 'GIFT', 'GM_REWARD', 'BANKRUPTCY_AID', 'DIAMOND_EXCHANGE', 'TOPUP', 'CASHBACK', 'REFUND')),
+    CONSTRAINT chk_wt_sub_type CHECK (sub_type IN ('BET', 'WIN', 'CHECKIN', 'TASK', 'GIFT', 'GM_REWARD', 'BANKRUPTCY_AID', 'DIAMOND_EXCHANGE', 'TOPUP', 'CASHBACK', 'REFUND', 'MONTHLY_REWARD')),
     CONSTRAINT chk_wt_amount   CHECK (amount > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -206,3 +206,23 @@ CREATE TABLE IF NOT EXISTS diamond_cards (
 
 CREATE INDEX idx_diamond_cards_is_redeemed ON diamond_cards (is_redeemed);
 CREATE INDEX idx_diamond_cards_redeemed_by ON diamond_cards (redeemed_by);
+
+-- -------------------------------------------------------
+-- monthly_reward_claims：月度累計簽到獎勵領取紀錄
+-- 玩家當月「累計」（非連續）簽到天數達里程碑（10/20/28 天）可手動領取大獎
+-- UNIQUE(player_id, reward_month, milestone_days) 防止重複領取
+-- reward_month 命名刻意避開 MySQL 關鍵字 YEAR_MONTH
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS monthly_reward_claims (
+    id             BIGINT       NOT NULL AUTO_INCREMENT,
+    player_id      BIGINT       NOT NULL,
+    reward_month   VARCHAR(7)   NOT NULL,                          -- 格式 yyyy-MM（台北時區）
+    milestone_days INT          NOT NULL,                          -- 累計天數里程碑：10 / 20 / 28
+    reward_amount  BIGINT       NOT NULL,
+    claimed_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_monthly_reward_claims      PRIMARY KEY (id),
+    CONSTRAINT uq_mrc_player_month_milestone UNIQUE (player_id, reward_month, milestone_days),
+    CONSTRAINT chk_mrc_reward_amount         CHECK (reward_amount > 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE INDEX idx_mrc_player_month ON monthly_reward_claims (player_id, reward_month);

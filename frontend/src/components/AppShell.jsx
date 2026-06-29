@@ -2,12 +2,14 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import ErrorBoundary from './ErrorBoundary'
-import { fetchProfile, logoutMember } from '../store/slices/authSlice'
+import { logoutMember } from '../store/slices/authSlice'
 import { clearNotifications, resetGame } from '../store/slices/gameSlice'
 import { fetchRanks } from '../store/slices/rankSlice'
 import { fetchDiamondBalance, resetDiamond } from '../store/slices/diamondSlice'
-import { dailyCheckIn, fetchWallet, resetWallet } from '../store/slices/walletSlice'
+import { fetchWallet, resetWallet } from '../store/slices/walletSlice'
 import { openSupport, setPendingNavigation, clearPendingNavigation } from '../store/slices/uiSlice'
+import { useDailyCheckIn } from '../hooks/useDailyCheckIn'
+import { getTaipeiDateKey } from '../utils/checkInDates'
 import { getBackgroundStyle } from '../theme/backgroundTheme'
 import CoinRain from './CoinRain'
 import AnnouncementTicker from '../casino-fx/announce/AnnouncementTicker'
@@ -27,17 +29,10 @@ const navItems = [
 ]
 
 const RealtimeBridge = lazy(() => import('./RealtimeBridge'))
-const CHECKIN_DATES_KEY = 'lucky-star-checkin-dates-v1'
+// 純 UI：記住「今天是否已自動彈出過簽到視窗」，避免每次換頁都彈。簽到日期已改後端權威。
 const CHECKIN_AUTO_OPEN_KEY = 'lucky-star-checkin-auto-open-v1'
-const DAILY_CHECKIN_REWARD = 100
 // 破產補助門檻（與後端 BankruptcyAidService.BALANCE_THRESHOLD 一致）：總餘額低於此值才可領取。
 const BANKRUPTCY_AID_THRESHOLD = 100
-const checkInMilestones = [
-  { day: 7, bonus: 1000 },
-  { day: 14, bonus: 2000 },
-  { day: 21, bonus: 3000 },
-  { day: 30, bonus: 5000 },
-]
 
 function readJson(key, fallback) {
   try {
@@ -52,34 +47,6 @@ function writeJson(key, value) {
   localStorage.setItem(key, JSON.stringify(value))
 }
 
-function getTaipeiDateKey(date = new Date()) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Taipei',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date)
-  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]))
-  return `${value.year}-${value.month}-${value.day}`
-}
-
-function getMonthDays(monthKey) {
-  const [year, month] = monthKey.split('-').map(Number)
-  return new Date(year, month, 0).getDate()
-}
-
-function getStoredCheckInDates(playerId) {
-  const allDates = readJson(CHECKIN_DATES_KEY, {})
-  return Array.isArray(allDates[playerId]) ? allDates[playerId] : []
-}
-
-function saveStoredCheckInDate(playerId, dateKey) {
-  const allDates = readJson(CHECKIN_DATES_KEY, {})
-  const nextDates = Array.from(new Set([...(allDates[playerId] || []), dateKey])).sort()
-  writeJson(CHECKIN_DATES_KEY, { ...allDates, [playerId]: nextDates })
-  return nextDates
-}
-
 function hasAutoOpenedCheckIn(playerId, dateKey) {
   const openedDates = readJson(CHECKIN_AUTO_OPEN_KEY, {})
   return openedDates[playerId] === dateKey
@@ -90,11 +57,6 @@ function markAutoOpenedCheckIn(playerId, dateKey) {
   writeJson(CHECKIN_AUTO_OPEN_KEY, { ...openedDates, [playerId]: dateKey })
 }
 
-function calculateCheckInReward(consecutiveDays) {
-  const milestone = checkInMilestones.find((item) => item.day === consecutiveDays)
-  return DAILY_CHECKIN_REWARD + (milestone?.bonus || 0)
-}
-
 export default function AppShell({ children }) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
@@ -103,8 +65,6 @@ export default function AppShell({ children }) {
   const [isScrolled, setIsScrolled] = useState(false)
   const [avatarFailed, setAvatarFailed] = useState(false)
   const [checkInModalOpen, setCheckInModalOpen] = useState(false)
-  const [checkInDates, setCheckInDates] = useState([])
-  const [checkInDatesReady, setCheckInDatesReady] = useState(false)
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
   const player = useSelector((state) => state.auth.player)
   const wallet = useSelector((state) => state.wallet)
@@ -114,16 +74,22 @@ export default function AppShell({ children }) {
   const leaveGuard = useSelector((state) => state.ui.leaveGuard)
   const playerName = player?.nickname || player?.username || (isAuthenticated ? 'Demo Player' : '訪客')
   const canShowAvatar = player?.avatarUrl && !avatarFailed
+
+  // 簽到（後端權威）：月曆/累計天數/連續天數/月度里程碑領取皆來自 hook
+  const checkin = useDailyCheckIn()
   const todayKey = getTaipeiDateKey()
-  const currentMonthKey = todayKey.slice(0, 7)
-  const monthDays = getMonthDays(currentMonthKey)
-  const currentMonthSignedDates = checkInDates.filter((date) => date.startsWith(currentMonthKey))
-  const signedDayNumbers = new Set(currentMonthSignedDates.map((date) => Number(date.slice(8, 10))))
-  const currentConsecutiveDays = wallet.checkIn.consecutiveDays ?? player?.consecutiveCheckInDays ?? 0
-  const hasCheckedInToday = checkInDates.includes(todayKey) || player?.lastCheckInDate === todayKey
-  const upcomingConsecutiveDays = hasCheckedInToday ? currentConsecutiveDays : currentConsecutiveDays + 1
-  const projectedReward = calculateCheckInReward(Math.max(upcomingConsecutiveDays, 1))
-  const monthLabel = `${Number(currentMonthKey.slice(5, 7))} 月`
+  const {
+    monthDays,
+    monthLabel,
+    signedDayNumbers,
+    monthCheckinDays,
+    consecutiveDays: currentConsecutiveDays,
+    hasCheckedInToday,
+    projectedReward,
+    milestones,
+    statusLoading,
+    statusLoaded,
+  } = checkin
   const checkInDismissLabel = hasCheckedInToday || wallet.checkIn.message ? '關閉' : '稍後'
 
   useEffect(() => {
@@ -143,24 +109,13 @@ export default function AppShell({ children }) {
     setAvatarFailed(false)
   }, [player?.avatarUrl])
 
-  useEffect(() => {
-    if (!player?.id) {
-      setCheckInDates([])
-      setCheckInDatesReady(false)
-      return
-    }
-    const storedDates = getStoredCheckInDates(player.id)
-    const seededDates = player.lastCheckInDate
-      ? Array.from(new Set([...storedDates, player.lastCheckInDate])).sort()
-      : storedDates
-    setCheckInDates(seededDates)
-    setCheckInDatesReady(true)
-  }, [player])
-
+  // 自動彈出簽到視窗（純 UI）：必須等後端狀態「成功載入」（statusLoaded）後再判斷，
+  // 否則初始空狀態會讓 hasCheckedInToday=false 而對已簽到玩家誤彈、且誤標今日已彈過。
   useEffect(() => {
     if (
       !player?.id ||
-      !checkInDatesReady ||
+      statusLoading ||
+      !statusLoaded ||
       hasCheckedInToday ||
       hasAutoOpenedCheckIn(player.id, todayKey)
     ) {
@@ -168,7 +123,7 @@ export default function AppShell({ children }) {
     }
     setCheckInModalOpen(true)
     markAutoOpenedCheckIn(player.id, todayKey)
-  }, [checkInDatesReady, hasCheckedInToday, player?.id, todayKey])
+  }, [statusLoading, statusLoaded, hasCheckedInToday, player?.id, todayKey])
 
   useEffect(() => {
     const handleScroll = () => {
@@ -194,19 +149,7 @@ export default function AppShell({ children }) {
     navigate('/member?mode=login')
   }
 
-  const handleDailyCheckIn = async () => {
-    if (!player?.id) return
-    try {
-      const result = await dispatch(dailyCheckIn()).unwrap()
-      const nextDates = saveStoredCheckInDate(player.id, todayKey)
-      setCheckInDates(nextDates)
-      dispatch(fetchProfile())
-      dispatch(fetchWallet())
-      return result
-    } catch {
-      return null
-    }
-  }
+  const handleDailyCheckIn = () => checkin.checkInToday()
 
   const isBankruptcyEligible = isAuthenticated && balance < BANKRUPTCY_AID_THRESHOLD
 
@@ -424,7 +367,7 @@ export default function AppShell({ children }) {
               <div className="rounded border border-yellow-200/15 bg-red-950/70 p-3">
                 <p className="gold-muted text-xs font-bold">本月簽到</p>
                 <p className="mt-1 text-2xl font-black text-yellow-100">
-                  {currentMonthSignedDates.length}
+                  {monthCheckinDays}
                   <span className="ml-1 text-sm text-yellow-100/60">天</span>
                 </p>
               </div>
@@ -486,21 +429,40 @@ export default function AppShell({ children }) {
               })}
             </div>
 
-            <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              {checkInMilestones.map((item) => {
-                const reached = currentConsecutiveDays >= item.day
-                return (
-                  <div
-                    key={item.day}
-                    className="flex items-center justify-between rounded border border-yellow-200/15 bg-red-950/70 px-3 py-2 text-sm"
+            {/* 月度累計簽到獎勵：達標可手動領取 */}
+            <p className="mt-5 gold-muted text-xs font-black uppercase tracking-[0.25em]">本月累計獎勵</p>
+            {(checkin.claimMessage || checkin.claimError) && (
+              <p
+                className={[
+                  'mt-2 rounded px-3 py-2 text-sm font-bold',
+                  checkin.claimError
+                    ? 'border border-red-400/30 bg-red-500/10 text-red-200'
+                    : 'border border-emerald-400/30 bg-emerald-500/10 text-emerald-200',
+                ].join(' ')}
+              >
+                {checkin.claimError || checkin.claimMessage}
+              </p>
+            )}
+            <div className="mt-2 grid gap-2">
+              {milestones.map((m) => (
+                <div
+                  key={m.milestoneDays}
+                  className="flex items-center justify-between rounded border border-yellow-200/15 bg-red-950/70 px-3 py-2 text-sm"
+                >
+                  <span className={m.reached ? 'font-black text-yellow-100' : 'font-bold text-yellow-100/62'}>
+                    累計 {m.milestoneDays} 天
+                    <span className="ml-2 font-black text-yellow-200">+{m.rewardAmount.toLocaleString()}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => checkin.claimReward(m.milestoneDays)}
+                    disabled={!m.claimable || checkin.claiming}
+                    className="gold-button rounded px-3 py-1 text-xs font-black transition disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <span className={reached ? 'font-black text-yellow-100' : 'font-bold text-yellow-100/62'}>
-                      連續 {item.day} 天
-                    </span>
-                    <span className="font-black text-yellow-200">+{item.bonus.toLocaleString()}</span>
-                  </div>
-                )
-              })}
+                    {m.claimed ? '已領取' : m.claimable ? '領取' : '未達標'}
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         </section>
