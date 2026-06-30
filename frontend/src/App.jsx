@@ -14,6 +14,7 @@ import Profile from './pages/Profile'
 import Transactions from './pages/Transactions'
 import GameHistory from './pages/GameHistory'
 import CasinoShop from './pages/CasinoShop'
+import Inventory from './pages/Inventory'
 import CheckIn from './pages/CheckIn'
 import Diamond from './pages/Diamond'
 import Topup from './pages/Topup'
@@ -120,6 +121,14 @@ export default function App() {
             element={
               <PrivateRoute>
                 <Profile />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/inventory"
+            element={
+              <PrivateRoute>
+                <Inventory />
               </PrivateRoute>
             }
           />

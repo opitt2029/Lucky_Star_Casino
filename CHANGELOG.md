@@ -19,6 +19,52 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - 對應檔案存在性與內容已逐項 grep/glob 確認（`rankApi`/`walletApi.getTransactions` 引用、`docs/adr/ADR-003~005.md` 存在）。
 - 純文件更動，不影響程式行為，無需跑測試。
 
+## [feat] — 2026-06-29 — 後端禮品商城服務（兌換 / 後台目錄 / LOG 紀錄）
+
+> **背景**：上一筆把商城兌換做成前端/mock（不持久、無紀錄、不發物品）。本次後端化成真正服務：星幣結算走帳務（原子扣款、冪等、樂觀鎖）、留持久兌換紀錄與業務 LOG、目錄由後台管理。決策見 `docs/adr/ADR-006.md`。
+>
+> **架構**：不另開微服務——比照鑽石功能併入既有服務。玩家端（目錄/兌換/背包）在 **wallet-service**，端點 `/api/v1/wallet/shop/**`（被 gateway 既有 wallet 路由吃下，**免改 gateway**）；後台目錄 CRUD 在 **admin-service**（`hasRole('ADMIN')`）。兌換＝單一 Postgres 交易內「`WalletService.debit(SHOP_PURCHASE)` 扣星幣 + 寫 `shop_redemptions`」，原子、冪等。目錄 `shop_items` 在 MySQL（CQRS 讀端）。
+
+### Added
+- DB：Postgres `migration/V13__add_shop.sql`（`shop_redemptions` 表 + `chk_wt_sub_type` 加 `SHOP_PURCHASE`）、MySQL `migration/V10__add_shop_items.sql`（`shop_items` 表 + seed 三項 + `chk_wt_sub_type` 加 `SHOP_PURCHASE`）；同步 `database/{postgres,mysql}/init.sql`。
+- wallet-service：`mysql/entity/ShopItem`+repo、`postgres/entity/ShopRedemption`+repo、`service/ShopCatalogService`（MySQL 讀目錄/驗價）、`service/ShopRedemptionService`（Postgres 原子兌換 + 背包）、`controller/ShopController`（`/api/v1/wallet/shop/catalog|redeem|inventory`，X-User-Id）、DTO（`ShopItemView`/`ShopRedeemRequest`/`ShopRedeemResponse`/`ShopInventoryItem`）、例外 `ShopItemNotFoundException`(404)/`ShopItemUnavailableException`(422) + `GlobalExceptionHandler`。
+- admin-service：`mysql/entity/ShopItem`+repo、`service/AdminShopService`（CRUD + 寫 `admin_action_logs` 稽核）、`controller/AdminShopController`（`POST/PUT/GET /admin/shop/items`，`hasRole('ADMIN')`）、DTO（`ShopItemRequest`/`ShopItemUpdateRequest`/`ShopItemView`）。
+- 前端：`services/shopApi.js` 接真實後端（catalog/redeem/inventory）並保留 mock；`mockApi.SHOP_CATALOG`/`getShopCatalog` 鏡像後端 seed。
+- 測試：wallet `ShopRedemptionServiceTest`（Mockito：成功扣款＋寫紀錄／未知商品 404／下架 422／餘額不足／冪等重放不重扣）、`ShopRedemptionIntegrationTest`（**真實雙 H2 跨資料源**：原子兌換、餘額不足整批回滾、冪等同鍵只扣一次、目錄只回上架品）、admin `AdminShopServiceTest`（建立/重複 409/部分更新/不存在 404 + 寫稽核）。
+
+### Changed
+- wallet-service：`DebitRequest` 新增選填 `subType`（`@Pattern BET|SHOP_PURCHASE`，預設 BET）、`WalletService.debit()` 改用之（game-service 不帶 subType → 仍記 BET，**行為不變**）。
+- 前端：`CasinoShop.jsx` 目錄改讀 `shopApi.getCatalog()`（不再用靜態 `shopCatalog`）；`walletSlice.redeemShopItem` thunk 改帶 `itemCode`、fulfilled 讀正規化的 `balanceAfter`/`itemName`；`Inventory.jsx` 改以 `itemCode` 聚合。
+- CI：`.github/workflows/ci.yml` 後端測試 `-pl` 清單加入 `backend/admin-service`（跑新 admin 商城測試）。
+- wallet-service `DataSourceConfig`：Hibernate 方言改為可由 system property（`jpa.dialect.postgres`/`jpa.dialect.mysql`）覆寫，**正式環境預設 PostgreSQL/MySQL 方言不變**；surefire 設 `H2Dialect`，比照 admin-service。**為什麼**：原本寫死 `PostgreSQLDialect` 對 H2 會發 `insert ... returning id`（H2 不支援），導致 wallet 寫入路徑無法做真實 DB 整合測試（既有測試全 mock repo）；此調整讓 `ShopRedemptionIntegrationTest` 能實際驗證跨資料源交易。
+
+### 為什麼/如何驗證
+- **為什麼併入而非新微服務**：商城本質是「星幣 sink + 紀錄」，wallet 已有全部帳務機件；獨立微服務需跨服務 HTTP 扣款＋大量樣板，與鑽石/加值/贈送同住 wallet 的慣例不符。
+- **如何驗證**：`mvn -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/admin-service test` → wallet 155 + admin 75 全綠（BUILD SUCCESS）。整合：套用 V10/V13 migration、起服務、前端 `VITE_USE_MOCK_API=false`，`/shop` 兌換 → 星幣降且重整不還原、`/transactions` 出現 `SHOP_PURCHASE`、`/inventory` 見禮品；後台 `POST /admin/shop/items` 新增即時反映。前端 `npm run lint && build` 綠。
+
+## [feat] — 2026-06-29 — 禮品商城兌換落地 + 我的背包頁 + 好友浮窗改右側標籤
+
+> **背景**：玩家回報 `/shop` 禮品商城兩個問題：① 右下角「好友列表」浮窗的觸發膠囊（246px 寬）壓住第三張卡片的「兌換」鈕，點不到；② 按「兌換」沒有真實效果——鑽石/星幣沒扣、也沒拿到物品。
+>
+> **調查結論**：商城用**星幣**結算（非鑽石，玩家誤會）。原 `CasinoShop.handleRedeem` 只做 `dispatch(setBalance(...))` 本地改值——header 與商城同源所以有扣，但**不持久**（重抓錢包/重新整理即被後端值蓋回）、**不寫交易紀錄**、**不發物品**，等於假流程。後端**沒有商城微服務**（整個商城是純前端，商品清單寫在 `theme/backgroundTheme.js`），故採前端/mock 落地（單一真相＝mock，AGENTS 雷區 14 精神）。
+>
+> **解法**：兌換改走 redux thunk → `shopApi` → mock，重用既有 `applyWalletChange()`（扣星幣並寫一筆「商城兌換」交易），物品收進新的 `db.inventory` 並於新「我的背包」頁瀏覽；好友浮窗改為貼右緣垂直置中的可收合直立標籤，面板往左展開。
+
+### Added
+- 前端：`services/shopApi.js`（`redeemItem`/`getInventory`；mock 模式委派 `mockApi`，真實 API 模式拋「後端尚未提供商城服務」明確錯誤）。
+- 前端：`pages/Inventory.jsx`（我的背包，仿 `FriendFloatingPanel` 用 local state 抓 `shopApi.getInventory()`，同款禮品聚合顯示數量與最近兌換時間）；`App.jsx` 加 `/inventory` PrivateRoute；`AppShell.jsx` 導覽列加「我的背包」（排在禮品商城後）。
+- 前端：`mockApi.redeemShopItem`/`getInventory`（`db.inventory` 惰性初始化，仿 `gameRounds`）、`transactionLabels.shop='商城兌換'`。
+- 前端：`walletSlice` 的 `redeemShopItem` thunk、`redeem` 狀態區塊與 `clearRedeemNotice`。
+
+### Changed
+- `CasinoShop.jsx`：`handleRedeem` 改 dispatch `redeemShopItem` thunk（保留餘額守門雙保險、兌換中按鈕 disabled 顯示「兌換中…」、成功/失敗訊息改讀 store、成功後提供「前往我的背包」連結），移除原本直接 `setBalance` 的假流程。
+- `FriendFloatingPanel.css`：浮窗由右下角膠囊改為**右緣垂直置中的細長直立標籤**（直書 `writing-mode: vertical-rl`、只左側圓角貼齊邊緣），面板改從右緣往左水平展開；同步重整 RWD 區塊使手機沿用一致定位（移除原右上橫膠囊覆寫，避免與新 base 的 `translateY(-50%)` 衝突）。
+- `FriendFloatingPanel.jsx`：觸發鈕內容改直向堆疊、chevron 改左右方向語意（收合指左＝往左展開）。**收合/展開邏輯未動。**
+
+### 為什麼/如何驗證
+- **為什麼前端落地**：後端無商城服務，且本次需求是修玩家體感問題、非新建微服務；維持 mock 預設體驗一致。
+- **如何驗證**：mock 模式 `cd frontend && npm run dev` → `/shop` 按兌換，header 星幣即時下降且**重新整理仍維持**；`/transactions` 出現「商城兌換－<品名>」負數紀錄；`/inventory` 看到禮品；星幣不足時按鈕 disabled。靜態檢查 `npm run lint && npm run build` 綠燈。
+
 ## [feat] — 2026-06-29 — 每月累計簽到獎勵 + 簽到月曆改後端權威
 
 > **背景**：玩家回報「每天簽到的星幣沒辦法累計進『每月登入/本月簽到』，所以拿不到獎勵」。調查確認三層問題：① **直接 bug**：`frontend/src/pages/CheckIn.jsx` 簽到後沒把日期寫進 localStorage（AppShell/Profile 兩份同名 handler 有寫，三頁各自複製貼上、其中一份漏掉）→ 從 `/checkin` 簽到的日子不會累計；② **設計脆弱**：月度歷史只存 localStorage，清快取/換裝置即歸零，後端 `daily_checkins` 有資料卻無讀端點；③ **功能缺失**：全專案沒有可領取的「月度累計獎勵」，「本月簽到」只是顯示文字。

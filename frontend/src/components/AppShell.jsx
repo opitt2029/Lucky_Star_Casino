@@ -22,6 +22,7 @@ const navItems = [
   { to: '/diamond', label: '鑽石錢包' },
   { to: '/topup', label: '自助加值' },
   { to: '/shop', label: '禮品商城' },
+  { to: '/inventory', label: '我的背包' },
   { to: '/rank', label: '排行榜' },
   { to: '/transactions', label: '交易紀錄' },
   { to: '/game-history', label: '遊戲紀錄' },
