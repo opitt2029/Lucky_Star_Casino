@@ -3,6 +3,22 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [docs] — 2026-06-30 — 校正 AUDIT_REPORT 過時進度標記（以程式碼為準）
+
+> **背景**：盤點待辦時發現 `AUDIT_REPORT.md` 數處標記落後實際程式碼（AGENTS.md §1 已知問題）。逐項以程式碼/檔案交叉驗證後更正，並依 §1 規定「以程式碼為準並順手更正文件」。
+
+### Changed
+- `AUDIT_REPORT.md` A.9/A.10/A.13：
+  - **T-085 ⚠️→✅**：`frontend/src/store/slices/rankSlice.js` 已改用 `rankApi.getRanks()` 呼叫真實 `/api/v1/rank/*`（2026-06-25 BUG-001 修正），非「直接寫死 `mockApi.getRank()`」。
+  - **T-086 ⚠️→✅**：`frontend/src/store/slices/walletSlice.js` 已用 `walletApi.getTransactions()` 串接真實端點（2026-06-25 BUG-002 修正）。
+  - **T-095 ⚠️→✅**：`docs/adr/ADR-003`（捕魚血量/傷害）、`ADR-004`（經濟再平衡）、`ADR-005`（月度簽到獎勵）皆已產出，非「未產出」。
+  - **T-093 ❌→⚠️**：後端服務多已實作、`feature/e2e-tests` 已有 Playwright e2e；理由「多數後端服務未實作」過時，改為「尚缺跨服務全鏈路整合」。
+  - A.13 統計同步：✅ 48→51、⚠️ 10→8、❌ 26→25（總計 85 不變）。
+
+### 如何驗證
+- 對應檔案存在性與內容已逐項 grep/glob 確認（`rankApi`/`walletApi.getTransactions` 引用、`docs/adr/ADR-003~005.md` 存在）。
+- 純文件更動，不影響程式行為，無需跑測試。
+
 ## [feat] — 2026-06-29 — 後端禮品商城服務（兌換 / 後台目錄 / LOG 紀錄）
 
 > **背景**：上一筆把商城兌換做成前端/mock（不持久、無紀錄、不發物品）。本次後端化成真正服務：星幣結算走帳務（原子扣款、冪等、樂觀鎖）、留持久兌換紀錄與業務 LOG、目錄由後台管理。決策見 `docs/adr/ADR-006.md`。
