@@ -3,6 +3,22 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [docs] — 2026-06-30 — 校正 AUDIT_REPORT 過時進度標記（以程式碼為準）
+
+> **背景**：盤點待辦時發現 `AUDIT_REPORT.md` 數處標記落後實際程式碼（AGENTS.md §1 已知問題）。逐項以程式碼/檔案交叉驗證後更正，並依 §1 規定「以程式碼為準並順手更正文件」。
+
+### Changed
+- `AUDIT_REPORT.md` A.9/A.10/A.13：
+  - **T-085 ⚠️→✅**：`frontend/src/store/slices/rankSlice.js` 已改用 `rankApi.getRanks()` 呼叫真實 `/api/v1/rank/*`（2026-06-25 BUG-001 修正），非「直接寫死 `mockApi.getRank()`」。
+  - **T-086 ⚠️→✅**：`frontend/src/store/slices/walletSlice.js` 已用 `walletApi.getTransactions()` 串接真實端點（2026-06-25 BUG-002 修正）。
+  - **T-095 ⚠️→✅**：`docs/adr/ADR-003`（捕魚血量/傷害）、`ADR-004`（經濟再平衡）、`ADR-005`（月度簽到獎勵）皆已產出，非「未產出」。
+  - **T-093 ❌→⚠️**：後端服務多已實作、`feature/e2e-tests` 已有 Playwright e2e；理由「多數後端服務未實作」過時，改為「尚缺跨服務全鏈路整合」。
+  - A.13 統計同步：✅ 48→51、⚠️ 10→8、❌ 26→25（總計 85 不變）。
+
+### 如何驗證
+- 對應檔案存在性與內容已逐項 grep/glob 確認（`rankApi`/`walletApi.getTransactions` 引用、`docs/adr/ADR-003~005.md` 存在）。
+- 純文件更動，不影響程式行為，無需跑測試。
+
 ## [feat] — 2026-06-29 — 每月累計簽到獎勵 + 簽到月曆改後端權威
 
 > **背景**：玩家回報「每天簽到的星幣沒辦法累計進『每月登入/本月簽到』，所以拿不到獎勵」。調查確認三層問題：① **直接 bug**：`frontend/src/pages/CheckIn.jsx` 簽到後沒把日期寫進 localStorage（AppShell/Profile 兩份同名 handler 有寫，三頁各自複製貼上、其中一份漏掉）→ 從 `/checkin` 簽到的日子不會累計；② **設計脆弱**：月度歷史只存 localStorage，清快取/換裝置即歸零，後端 `daily_checkins` 有資料卻無讀端點；③ **功能缺失**：全專案沒有可領取的「月度累計獎勵」，「本月簽到」只是顯示文字。
