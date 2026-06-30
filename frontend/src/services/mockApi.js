@@ -917,7 +917,7 @@ export const mockApi = {
       }
       // 記錄逐發結果供結算後 verify-shot 重放（mock 無真正 RNG 種子，改以對局存檔回放）。
       session.shotResults = session.shotResults || {}
-      session.shotResults[String(shot.shotSeq)] = { fishType: fish.code, betPerShot: bet, crit, damage, killed, captured, payout }
+      session.shotResults[String(shot.shotSeq)] = { fishType: fish.code, betPerShot: bet, cannonLevel, crit, damage, killed, captured, payout }
       results.push({
         shotSeq: shot.shotSeq, accepted: true, hit: true, crit,
         damage, hpRemaining, killed, captured, payout,
@@ -932,6 +932,40 @@ export const mockApi = {
       sessionBalance: session.sessionBalance,
       totalShots: session.totalShots,
       lastShotSeq: session.lastShotSeq,
+    }
+  },
+
+  async fishingTopUp({ sessionId, amount, clientRequestId }) {
+    await wait(220)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const session = (db.fishingSessions || {})[playerId]
+    if (!session || session.sessionId !== sessionId) throw new Error('?????????')
+    const topUpAmount = Number(amount)
+    if (!Number.isInteger(topUpAmount) || topUpAmount <= 0) throw new Error('?????????')
+    session.topUpRequestIds = session.topUpRequestIds || []
+    if (clientRequestId && session.topUpRequestIds.includes(clientRequestId)) {
+      return {
+        sessionId,
+        amount: 0,
+        buyIn: session.buyIn,
+        sessionBalance: session.sessionBalance,
+        wallet: db.wallets[playerId],
+      }
+    }
+    const wallet = db.wallets[playerId]
+    if (!wallet || wallet.balance < topUpAmount) throw new Error('????')
+    applyWalletChange(db, playerId, -topUpAmount, 'bet', '???????')
+    session.buyIn += topUpAmount
+    session.sessionBalance += topUpAmount
+    if (clientRequestId) session.topUpRequestIds.push(clientRequestId)
+    saveDb(db)
+    return {
+      sessionId,
+      amount: topUpAmount,
+      buyIn: session.buyIn,
+      sessionBalance: session.sessionBalance,
+      wallet: db.wallets[playerId],
     }
   },
 

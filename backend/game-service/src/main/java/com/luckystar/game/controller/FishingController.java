@@ -7,6 +7,8 @@ import com.luckystar.game.dto.FishingShotVerifyResponse;
 import com.luckystar.game.dto.FishingShotsRequest;
 import com.luckystar.game.dto.FishingShotsResponse;
 import com.luckystar.game.dto.FishingStartRequest;
+import com.luckystar.game.dto.FishingTopUpRequest;
+import com.luckystar.game.dto.FishingTopUpResponse;
 import com.luckystar.game.service.FishingService;
 import jakarta.validation.Valid;
 import java.util.Optional;
@@ -22,15 +24,15 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 捕魚機 API。對外前綴 {@code /api/v1/game/fishing}，由 gateway 路由並驗證 JWT，
- * 玩家身分取自注入的 {@code X-User-Id} header（比照 slot / baccarat）。
+ * ??璈?API??憭?蝬?{@code /api/v1/game/fishing}嚗 gateway 頝舐銝阡?霅?JWT嚗?
+ * ?拙振頨怠??瘜典??{@code X-User-Id} header嚗???slot / baccarat嚗?
  *
  * <ul>
- *   <li>{@code POST /session/start}：buy-in 開場（冪等扣款；已有場次則續玩）。</li>
- *   <li>{@code GET  /session/active}：查進行中場次（斷線重連恢復）。</li>
- *   <li>{@code POST /{sessionId}/shots}：批次射擊（只動局內餘額）。</li>
- *   <li>{@code POST /{sessionId}/end}：結算（剩餘局內餘額回 wallet、揭露 serverSeed）。</li>
- *   <li>{@code GET  /{sessionId}/verify-shot}：結算後逐發公平性驗證。</li>
+ *   <li>{@code POST /session/start}嚗uy-in ?嚗蝑甈橘?撌脫??湔活???抬???/li>
+ *   <li>{@code GET  /session/active}嚗?脰?銝剖甈∴??瑞???敺抬???/li>
+ *   <li>{@code POST /{sessionId}/shots}嚗甈∪????芸?撅?折?憿???/li>
+ *   <li>{@code POST /{sessionId}/end}嚗?蝞??拚?撅?折?憿? wallet???serverSeed嚗?/li>
+ *   <li>{@code GET  /{sessionId}/verify-shot}嚗?蝞???砍像?折?霅?/li>
  * </ul>
  */
 @RestController
@@ -64,7 +66,7 @@ public class FishingController {
             return badPlayerId(playerIdStr);
         }
         Optional<FishingSessionView> view = fishingService.findActive(playerId);
-        // 無進行中場次回 data=null（前端據此顯示 buy-in 面板）
+        // ?⊿脰?銝剖甈∪? data=null嚗?蝡舀?甇日＊蝷?buy-in ?Ｘ嚗?
         return ResponseEntity.ok(ApiResponse.ok(view.orElse(null)));
     }
 
@@ -82,6 +84,22 @@ public class FishingController {
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
+
+    @PostMapping("/{sessionId}/top-up")
+    public ResponseEntity<ApiResponse<FishingTopUpResponse>> topUp(
+            @RequestHeader(value = "X-User-Id", required = false) String playerIdStr,
+            @PathVariable String sessionId,
+            @Valid @RequestBody FishingTopUpRequest request) {
+
+        Long playerId = parsePlayerId(playerIdStr);
+        if (playerId == null) {
+            return badPlayerId(playerIdStr);
+        }
+        FishingTopUpResponse response = fishingService.topUp(
+                playerId, sessionId, request.getAmount(), request.getClientRequestId());
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
     @PostMapping("/{sessionId}/end")
     public ResponseEntity<ApiResponse<FishingEndResponse>> end(
             @RequestHeader(value = "X-User-Id", required = false) String playerIdStr,
@@ -95,7 +113,7 @@ public class FishingController {
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
-    /** 結算後逐發公平性驗證（唯讀，不需登入者本人也可驗）。 */
+    /** 蝯?敺?砍像?折?霅??航?嚗???餃?鈭箔??舫?嚗?*/
     @GetMapping("/{sessionId}/verify-shot")
     public ResponseEntity<ApiResponse<FishingShotVerifyResponse>> verifyShot(
             @PathVariable String sessionId,

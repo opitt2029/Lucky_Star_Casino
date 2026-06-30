@@ -95,11 +95,14 @@ class FishingSessionStoreTest {
         fishDamage.put("f2", 40L);
         List<FishingSession.KillRecord> kills = new ArrayList<>();
         kills.add(new FishingSession.KillRecord(7L, "DRAGON_KING", 1990L));
+        List<String> topUpRequestIds = new ArrayList<>();
+        topUpRequestIds.add("topup-1");
 
         store.save(baseSession()
                 .guaranteedShotSeq(7L)
                 .fishDamage(fishDamage)
                 .kills(kills)
+                .topUpRequestIds(topUpRequestIds)
                 .build());
 
         FishingSession loaded = store.find(PLAYER_ID).orElseThrow();
@@ -121,6 +124,7 @@ class FishingSessionStoreTest {
 
         // 子彈面額（玩家自選、整場固定，ADR-004）必須完整還原——漏存會讓跨批 validateBatch 注額對不上、整批被拒
         assertEquals(100L, loaded.getBetPerShot());
+        assertEquals(List.of("topup-1"), loaded.getTopUpRequestIds());
     }
 
     @Test

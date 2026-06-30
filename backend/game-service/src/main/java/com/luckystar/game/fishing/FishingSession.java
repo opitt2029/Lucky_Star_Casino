@@ -108,6 +108,10 @@ public class FishingSession {
     @Builder.Default
     private List<KillRecord> kills = new ArrayList<>();
 
+    /** Idempotency keys for in-session top-up requests. */
+    @Builder.Default
+    private List<String> topUpRequestIds = new ArrayList<>();
+
     public boolean isActive() {
         return "ACTIVE".equals(state);
     }

@@ -1,3 +1,345 @@
+## [changed] -- 2026-07-01 -- Fishing ammo dock and shortage top-up modal
+### Changed
+- `frontend/src/pages/Fishing.jsx`: rebuilt the in-canvas fishing control dock into ammo amount summary, three ammo choices, cannon bay, and settle action; removed the always-visible live top-up field.
+- `frontend/src/data/fishingGameData.js`: removed the old `FISHING_MULTIPLIERS` x1/x5/x10/x20 data because firing cost now comes from the selected ammo type.
+- `frontend/src/components/Fishing.css`: removed active `fishing-dock-chip` styling, added unified red-gold ammo buttons, in-stage settle button layout, cannon bay spacing, shortage top-up modal, and responsive dock rules.
+- `frontend/src/components/fishingEngine.js`: raised the Pixi cannon zone so the cannon sits above the in-canvas control dock instead of being covered by it.
+
+### Why
+- The fishing table controls should match the current ammo-based gameplay, keep the cannon visible, and show temporary top-up only when the player runs out of usable session balance.
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+
+## [changed] -- 2026-07-01 -- Fishing in-stage controls and live top-up
+### Added
+- `backend/game-service/src/main/java/com/luckystar/game/dto/FishingTopUpRequest.java` and `FishingTopUpResponse.java`: added request/response DTOs for live fishing session top-up.
+- `backend/game-service/src/main/java/com/luckystar/game/controller/FishingController.java`: added `POST /api/v1/game/fishing/{sessionId}/top-up` for adding session balance during active play.
+
+### Changed
+- `frontend/src/pages/Fishing.jsx`: moved `.fishing-control-dock` into the fishing stage frame so cannon, bullet, skill, and live top-up controls appear inside the game canvas area.
+- `frontend/src/components/Fishing.css`: added in-stage control dock layout, responsive top-up controls, and compact stage-safe spacing around the settle button.
+- `frontend/src/hooks/useFishingSession.js`, `frontend/src/services/gameApi.js`, and `frontend/src/services/mockApi.js`: added live top-up flow that drains pending shots, debits wallet/session balance, updates Redux wallet state, and mirrors behavior in mock mode.
+- `backend/game-service/src/main/java/com/luckystar/game/service/FishingService.java`: added idempotent live top-up handling with wallet debit and refund-on-save-failure behavior.
+- `backend/game-service/src/main/java/com/luckystar/game/fishing/FishingSession.java` and `FishingSessionStore.java`: persisted top-up request IDs in Redis so repeated client request IDs remain idempotent across session reloads.
+- `backend/game-service/src/test/java/com/luckystar/game/fishing/FishingSessionStoreTest.java`: covered top-up request ID round-trip persistence.
+
+### Why
+- Players should not need to settle the fishing round before adding more funds, and the control surface should feel like part of the fishing table instead of a detached panel below it.
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+- `mvn -pl backend/game-service test`
+
+## [changed] -- 2026-06-30 -- Fishing buy-in flow and cannon switching
+### Changed
+- `frontend/src/pages/Fishing.jsx`: changed the fishing entry flow so players enter only a buy-in amount before the round, then switch bullet amount and cannon type inside the game control panel.
+- `frontend/src/hooks/useFishingSession.js`: added in-session bet and cannon setters, and tagged buffered shots with the currently selected cannon level for frontend/mock play.
+- `frontend/src/services/mockApi.js`: made mock fishing shots honor per-shot cannon level and current bullet amount during the default mock experience.
+- `frontend/src/components/fishingEngine.js`: scaled Pixi cannon visuals by cannon level so copper is smaller, silver is medium, and gold is larger with stronger muzzle/deck energy.
+- `frontend/src/components/Fishing.css`: styled the buy-in guidance note and active gold/black in-game cannon controls, with distinct copper/silver/gold button sizes.
+
+### Why
+- Match the requested arcade fishing flow: buy in first, then freely adjust cannon and firing settings during play, with higher-grade cannons looking more powerful.
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+- Playwright smoke: unauthenticated users are redirected to login; after login, /game/fishing shows buy-in-only entry, no old locked-settings copy, active bullet/cannon controls after entering the stage, and no page errors.
+
+## [changed] -- 2026-06-30 -- Fishing Traditional Chinese copy polish
+### Changed
+- `frontend/src/pages/Fishing.jsx`: rewrote the visible `/game/fishing` copy in Traditional Chinese, including hero text, HUD labels, buy-in flow, settlement screen, rule dialog content, fish table labels, skill panel text, and verification messages.
+- `frontend/src/data/fishingGameData.js`: localized fishing multipliers, skill labels, species names, rarity labels, descriptions, and jackpot text to Traditional Chinese.
+- `frontend/src/components/Fishing.css`: centered the contents of `.fishing-hud__metric` cards for easier scanning.
+### Why
+- Remove mojibake/unclear copy and make the fishing game interface easier for players to understand at a glance.
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+- Playwright smoke: `/game/fishing` hero/rules/HUD copy renders in Traditional Chinese, the rules dialog opens, HUD metric content is centered, and no page errors were emitted.
+## [changed] -- 2026-06-30 -- Fishing viewport stat strip and ray targeting cleanup
+### Changed
+- `frontend/src/pages/Fishing.jsx`: removed the `fishing-stat-strip` summary row above the fishing table.
+- `frontend/src/components/Fishing.css`: removed stale stat-strip and energy-readout styles after the row was removed from the page.
+- `frontend/src/components/fishingEngine.js`: fish no longer bounce off the top/bottom swim bounds and can now leave through the top or bottom of the playfield; shooting now extends from the cannon through the pointer direction to the stage edge instead of stopping at the cursor point.
+### Why
+- Keep the fishing table visually focused, make fish movement feel less boxed-in, and make cannon targeting behave like a directional shot across the whole playfield.
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+- Playwright smoke: `/game/fishing` has no `.fishing-stat-strip`, the Pixi canvas loads, the in-stage settle control remains present, and no page errors were emitted.
+## [changed] -- 2026-06-30 -- Fishing settle control integrated into stage
+### Changed
+- `frontend/src/pages/Fishing.jsx`: moved the fishing settle action from the external cannon dock into the game stage frame so it appears as an in-game lower-right control.
+- `frontend/src/components/Fishing.css`: added in-stage settle button positioning and reduced the cannon dock back to multiplier/cannon controls only.
+- `frontend/.env.development`: changed local dev default to `VITE_USE_MOCK_API=true` while keeping `VITE_ENABLE_WS=false`, so running the frontend without gateway 8080 does not spam `ERR_CONNECTION_REFUSED`.
+### Why
+- The settle action should feel integrated with the active fishing table, and local UI work should not require backend services unless explicitly opted in.
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+- Playwright smoke: `/game/fishing` starts in mock mode without localhost 8080 refused requests; the settle button is visible inside `.fishing-stage-frame` and absent from `.fishing-control-dock`.
+## [fixed] -- 2026-06-30 -- Fishing rules dialog visibility
+### Fixed
+- `frontend/src/components/GameRuleCard.jsx`: renders the rules dialog through `createPortal(document.body)` so `/game/fishing` side-panel child-order CSS cannot hide the modal after pressing the rules button.
+- `frontend/src/components/GameRuleCard.jsx`: added Escape-to-close and background scroll locking while the rules dialog is open.
+### Why
+- The fishing page moves and hides side-panel children with `nth-child` rules; the old inline dialog became a hidden side-panel child instead of a visible prompt window.
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+- Playwright smoke: `/game/fishing` Guide button opens a visible `[role="dialog"]` with `display: grid`, and Escape closes it.
+## [changed] -- 2026-06-30 -- Fishing cannon console status cleanup
+### Changed
+- `frontend/src/pages/Fishing.jsx`: removed the Auto fire controls, moved boss/error/settling table feedback into the `aria-label="Fishing table status"` marquee, and relocated the settle action to the far-right side of the cannon console.
+- `frontend/src/components/FishingCanvas.jsx` / `frontend/src/components/fishingEngine.js`: removed the unused Auto fire prop, ticker branch, target selection, and reticle lock path so the current fishing table is manual-only.
+- `frontend/src/components/Fishing.css`: added marquee status emphasis styles and a gold casino-style settle button for the cannon control area; removed stale banner-slot and Auto-toggle selectors.
+### Why
+- Keep fishing controls focused on manual aiming, avoid duplicated table status banners, and make settlement feel like part of the cannon console instead of a separate HUD action.
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+## [changed] — 2026-06-30 — 捕魚規則區上移並精簡下方資訊
+
+### Changed
+- `frontend/src/pages/Fishing.jsx`: 將場內砲台控制列補上砲台 / 子彈類別狀態按鈕，與既有倍率按鈕同區呈現。
+- `frontend/src/components/Fishing.css`: 將遊戲規則卡排序到舞台上方，下方資訊區只保留魚種倍率表與技能面板，隱藏餘額、Fortune 與 Premium Jackpot 卡。
+- `frontend/src/components/Fishing.css`: 將砲台區倍率與砲台類別按鈕改為金色按鈕、黑色字體，讓控制區更像娛樂城機台操作面板。
+
+### Why
+- 回應使用者希望規則區放到遊戲上方、下方只保留魚種倍率與技能面板，並把倍率與子彈類別切換按鈕整合到砲台區的需求。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+## [changed] — 2026-06-30 — 捕魚舞台加寬並將資訊面板移至下方
+
+### Changed
+- `frontend/src/components/Fishing.css`: 強制 `/game/fishing` 主版面改為單欄，主遊戲舞台置於上方，原側邊資訊面板改為下方自適應卡片區。
+- `frontend/src/components/Fishing.css`: 放大捕魚舞台最大寬度與高度，桌機版使用更沉浸式的寬版 canvas，平板與手機維持響應式高度避免破版。
+- `frontend/src/components/Fishing.css`: 下方資訊區改為 12 欄自適應 grid，魚種表、規則、Jackpot、技能與 Fortune 資訊不再擠在右側窄欄。
+
+### Why
+- 回應使用者希望遊戲畫面加長加寬，並將旁邊資訊欄位移至下方的需求，讓捕魚主舞台成為頁面焦點。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+## [fixed] — 2026-06-29 — 捕魚垂直生成改為視窗外進場
+
+### Fixed
+- `frontend/src/components/fishingEngine.js`: 上方與下方生成的魚改從 canvas 視窗外出生，不再貼著畫面內邊界重生。
+- `frontend/src/components/fishingEngine.js`: 新增 `entrySide` 進場狀態，魚游進可活動水域後才啟用上下邊界反彈，避免剛生成就被 clamp 回畫面內。
+
+### Why
+- 使用者指出魚在畫面邊界內重生很違和；捕魚機魚群應從視窗外游入，讓垂直與斜角生成更自然。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+## [changed] — 2026-06-29 — 捕魚新增垂直與斜角生成位置
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: 魚生成時新增左右、上方水域、下方水域等進場模式，讓魚群可從垂直方向與斜角位置切入舞台。
+- `frontend/src/components/fishingEngine.js`: 魚的面向改由實際水平速度 `vx` 決定，保留正確游向並搭配斜向路徑移動。
+
+### Why
+- 回應 `/game/fishing` 魚群生成位置需要新增垂直方向與斜角的需求，避免魚群永遠只從左右水平邊界出生，提升場景流動感。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+## [changed] — 2026-06-29 — 捕魚魚群加入上下與斜向游動
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: 魚生成時加入垂直速度與活動水域上下界，魚群會沿斜向路徑移動並在水域邊界反彈。
+- `frontend/src/components/fishingEngine.js`: 魚身旋轉角度會依斜向速度微調，讓游動姿態更接近深海魚群而不是單純水平滑動。
+
+### Why
+- 回應 `/game/fishing` 視覺升級需求，讓魚群移動增加上下與斜角變化，提升捕魚機舞台的生命感與打擊路徑判讀一致性。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+## [changed] — 2026-06-29 — 捕魚射擊改為彈道路徑優先碰撞
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: 將手動與自動射擊的目標判定從「游標附近最近魚」改為「砲口到目標點的彈道路徑碰撞」，若路徑上有魚阻擋，會優先射擊最先碰到子彈的魚。
+- `frontend/src/components/fishingEngine.js`: 新增砲口來源點、魚體碰撞半徑與路徑投影判定，保留既有 `useFishingSession.fire(fishInstanceId, fishCode)` 流程，不改後端傷害、捕獲或派彩模型。
+
+### Why
+- 使用者要求射擊應遵守捕魚機彈道路徑邏輯：子彈若被前方魚擋住，應先擊中路徑上第一條魚，而不是直接命中滑鼠位置附近或被點選的魚。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+## [fixed] — 2026-06-29 — 收斂前端 console 警告與捕魚頁首載樣式
+
+### Fixed
+- `frontend/src/App.jsx`: 為 `BrowserRouter` 啟用 `v7_startTransition` 與 `v7_relativeSplatPath` future flags，消除 React Router v7 升級提示。
+- `frontend/src/pages/Fishing.jsx` / `frontend/src/components/FishingCanvas.jsx`: 將 `Fishing.css` 改由捕魚頁本體載入，不再依賴 lazy canvas chunk，避免首次進入 `/game/fishing` 停在 lobby 時 `fishing-hero-copy`、`fishing-hero-actions`、`fishing-stat-strip` 等樣式尚未套用。
+- `frontend/src/hooks/useWebSocket.js`: WebSocket 改為 mock API 時走 mock WS，且本機 dev 預設不連實體 `/ws`，避免 gateway/notification 服務未啟動時持續產生 `ERR_CONNECTION_REFUSED`。
+- `frontend/.env.development` / `frontend/.env.mock`: 新增 `VITE_ENABLE_WS` / `VITE_USE_MOCK_WS` 設定，讓 realtime WebSocket 在本機開發可明確 opt-in。
+
+### Why
+- 使用者回報 console 出現 React Router future warning、`localhost:8080/ws/info` connection refused，以及捕魚頁部分資訊區樣式在首次進入網站時消失；本次修正聚焦開發體驗與 lazy CSS 載入時序。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+- Playwright mock console check: React Router future warning 消失、無 `/ws/info` failed request；首次進入 `/game/fishing` lobby 時 `.fishing-stat-strip` 已套用 grid 樣式。
+## [fixed] — 2026-06-29 — 重做捕魚機 canvas 底部砲台區
+
+### Fixed
+- `frontend/src/components/fishingEngine.js`: 將 Pixi canvas 內原本意義不明的底部裝飾改為更小的砲台座、中央能量核心與左右儀表導軌，並進一步縮小砲台尺寸與後座位移，讓底部視覺明確響應開火脈衝。
+- `frontend/src/components/Fishing.css`: 關閉舞台內重複疊在 canvas 底部的 CSS 裝飾條，避免與 Pixi 砲台座互相干擾。
+
+### Why
+- 使用者多次回報遊戲畫面底部裝飾沒有對應砲台、視覺意義不明，且砲台仍顯得過大；實際應修改 Pixi 引擎內的底部砲台區，而不是只調整外層頁面控制列。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+- Playwright mock smoke: mock 登入後可進 `/game/fishing` 並載入 Pixi canvas；頁面無水平 overflow、無 page error。
+## [changed] — 2026-06-29 — 重構捕魚機紅金深海娛樂城介面
+
+### Changed
+- `frontend/src/pages/Fishing.jsx`: 新增紅金深海頁面外殼、頁首風格標籤、正式遊戲舞台框、桌台狀態銘牌、底部倍率控制台標題與側欄 Premium Table 資訊卡，保留既有 Pixi 捕魚玩法、射擊、結算與登入保護流程。
+- `frontend/src/components/Fishing.css`: 新增 red-gold deep sea casino skin，強化紅金金屬框、深海玻璃 HUD、16:9 舞台外框、控制台燈條、Jackpot 卡與 RWD 呈現。
+
+### Why
+- 使用者選擇「紅金深海娛樂城」風格，希望 `/game/fishing` 從 demo 感提升為符合 Lucky Star Casino 主題的正式娛樂城捕魚機畫面。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+- Playwright mock smoke: 未登入 `/game/fishing` 導向 `/member?mode=login`；mock 登入後可進場並載入 Pixi canvas；390/430/768/1024/1440 viewport 無水平 overflow、無 page error。
+## [fixed] — 2026-06-29 — 停用捕魚命中後全頁掉落特效
+
+### Fixed
+- `frontend/src/pages/Fishing.jsx`: 移除命中魚後觸發的 `GoldBurst`、`CoinRainPro`、`RedEnvelopeRain` 與 `BrushBanner` 頁面級特效，避免金幣雨圖層殘留在遊戲畫面中央或延續到結算畫面。
+
+### Why
+- 使用者回報金幣雨首次出現後會卡在 `/game/fishing` 畫面中央；先關閉命中後生成的全頁 FX layer，保留射擊、命中判定、分數、音效與結算流程。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+## [fixed] — 2026-06-29 — 修正捕魚結算金幣雨殘留與砲台縮放覆蓋
+
+### Fixed
+- `frontend/src/pages/Fishing.jsx`: 將 `CoinRainPro` / `RedEnvelopeRain` 限定只在 `phase === "playing"` 時掛載，離開遊戲中狀態後立即卸載，避免金幣雨殘留到結算畫面。
+- `frontend/src/components/fishingEngine.js`: 修正砲台縮放順序，移除覆蓋 `width/height` 的 `scale.set()`，改用 `cannonDisplaySize` 控制實際顯示尺寸，讓砲台真正縮小並保留開火 recoil。
+
+### Why
+- 使用者回報擊殺後的金幣雨會卡在畫面中間並延續到結算頁，以及發射子彈的大砲沒有實際變小；本次修正聚焦視覺層生命週期與 Pixi sprite 尺寸覆蓋問題。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`（Vitest 7 passed）
+- Playwright mock verification：進場後 canvas 非空渲染；點結算後 `.fx-layer` 數量為 0，確認金幣雨不殘留到結算畫面。
+## [fixed] — 2026-06-29 — 修正捕魚機金幣殘留、魚面向與砲台比例
+
+### Fixed
+- `frontend/src/components/fishingEngine.js`: 移除固定在舞台中下方的永久金幣裝飾，避免看起來像未消失的金幣圖層。
+- `frontend/src/components/fishingEngine.js`: 修正 SVG 魚素材的左右翻面邏輯，讓魚的頭部朝游動方向。
+- `frontend/src/components/fishingEngine.js`: 縮小砲台尺寸並改為依舞台大小響應，砲座改成每幀依 `cannonPulse` 更新能量燈與軌道，讓底部裝飾與開火狀態有明確關聯。
+
+### Why
+- 使用者回報捕魚畫面中央有不消失的金幣層、魚倒著游、砲台過大且底部裝飾意義不明；本次修正聚焦視覺清理與互動語意，不更動下注、傷害、派彩或 session 流程。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`（Vitest 7 passed）
+- Playwright mock verification：未登入 `/game/fishing` 導向 `/member?mode=login`；已登入可進場、點擊舞台、顯示 control dock；390/430/768/1024/1440 無 horizontal overflow，canvas 非空渲染，新 SVG 魚素材載入 5 個，無 page error。
+## [changed] — 2026-06-29 — 重製捕魚機魚群素材與舞台打擊感
+
+### Added
+- `frontend/public/images/game/fishing/*.svg`: 新增小丑魚、藍寶石魚、黃金魚、水晶魟魚、彩金鯨王 5 組本地高質感 SVG 魚素材。
+
+### Changed
+- `frontend/src/casino-fx/assets/registry.js`: 將現有捕魚 `fish-*` assetId 映射到本地 SVG 素材，保留既有 fishTable / 後端魚種契約。
+- `frontend/src/components/fishingEngine.js`: 強化 Pixi 舞台景深、海底寶箱/金幣前景、魚群游動擺身、砲台 recoil、能量彈拖尾與高倍率命中 burst。
+- `frontend/src/pages/Fishing.jsx`: 新增場內 arcade control dock 結構，呈現鎖定倍率、自動射擊與技能狀態。
+- `frontend/src/components/Fishing.css`: 補上場內 control dock、倍率晶片、技能按鈕與 16:9 舞台收斂樣式，提升手機與桌機的一致性。
+
+### Why
+- 讓 `/game/fishing` 的實際遊戲畫面從 demo 感提升為正式娛樂城捕魚機視覺，同時不改下注、派彩、RTP 或 session 權威流程。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`（Vitest 7 passed）
+## [changed] — 2026-06-29 — 強化 /game/fishing 深海彩金捕魚介面
+
+### Added
+- `frontend/src/data/fishingGameData.js`: 新增集中式捕魚 UI 展示資料，包含 x1/x5/x10/x20 快速倍率、Demo 技能、五種魚種倍率表與 Jackpot 狀態。
+
+### Changed
+- `frontend/src/pages/Fishing.jsx`: 沿用既有 `AppShell`、登入保護、`useFishingSession` 與 Pixi canvas，引入頁首、返回大廳、資訊列、快速倍率、技能面板與魚種說明。
+- `frontend/src/components/Fishing.css`: 補強深海紅金娛樂城視覺、玻璃 HUD、彩金晶片、倍率按鈕、魚種卡片、技能按鈕與 390/430/768/1024/1440 RWD 收斂。
+- `frontend/src/components/fishingEngine.js`: 保留 Pixi 漁場引擎並延續先前加入的深海背景、氣泡、水波、海床與霓虹舞台層，讓主舞台更接近市面捕魚機視覺。
+
+### Why
+- 捕魚機需要從功能型頁面提升為高級線上娛樂城體驗，同時遵守專案既有規則：路由登入保護不變、錢包不在 UI demo 直接扣款、下注/戰鬥流程仍由現有 session hook 與後端鏡像 mock 掌控。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`（Vitest 7 passed）
+- Playwright mock verification：未登入 `/game/fishing` 導向 `/member?mode=login`；已登入可切 x5、進場、等待 Pixi canvas、點擊舞台發射；390/430/768/1024/1440 viewport 無 horizontal overflow，canvas 皆有非空渲染。未啟動後端時僅忽略既有 realtime/API 資源 `ERR_CONNECTION_REFUSED` 訊息。
+## [changed] — 2026-06-29 — 捕魚機畫面升級為街機海底風格
+
+### Changed
+- `frontend/src/pages/Fishing.jsx`: 為捕魚主頁、入場面板與側欄加入穩定樣式掛點，方便建立完整機台外觀。
+- `frontend/src/components/Fishing.css`: 強化 `/game/fishing` 的街機框體、霓虹 HUD、海底場景邊框、入場控制台與 RWD 排版。
+- `frontend/src/components/fishingEngine.js`: 新增 Pixi 背景/裝飾層，包含海底深度、光束、泡泡、海床珊瑚與底部砲座。
+
+### Why
+- 讓捕魚機畫面更接近市面 H5/街機捕魚遊戲的視覺密度與機台氛圍，同時保持前端只負責演出，不改下注、派彩、RTP 或後端權威流程。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- Playwright mock flow: 登入測試帳號後進入 `/game/fishing`、開局、確認 canvas/HUD 顯示、無 page error，並以臨時截圖確認畫面。
+
+## [changed] — 2026-06-28 — 前端路由層級 lazy loading
+
+### Changed
+- `frontend/src/App.jsx`：保留首頁與會員頁同步載入，其餘玩家頁、遊戲頁、商店頁改為 route-level lazy loading。
+- `frontend/src/App.jsx`：新增共用 `LazyPage` / `ProtectedPage` 包裝，避免每個 protected route 重複處理 `PrivateRoute` 與 `Suspense`。
+- `frontend/src/index.css`：新增 route fallback 載入狀態與 reduced-motion 對應。
+
+### 為什麼
+- 降低首頁與登入頁初始 bundle 負擔，讓遊戲、錢包、排行榜等非首屏頁面在需要時再載入。
+- route guard 先於 lazy chunk 執行，未登入使用者不會為 protected pages 下載不必要頁面程式碼。
+
+### 如何驗證
+- `cd frontend && npm run lint`
+- `cd frontend && npm run test`（7 passed）
+- `cd frontend && npm run build`（主 JS 約 441 kB / gzip 140 kB → 310 kB / gzip 103 kB）
+- `cd frontend && npm run e2e`（1 passed, 1 skipped）
 ## [changed] — 2026-06-28 — 前端正式模式與 CI 擋關收斂
 
 ### Added

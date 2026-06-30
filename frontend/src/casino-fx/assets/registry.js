@@ -29,8 +29,19 @@ import {
 } from './svgArt'
 
 // AI 圖替換表：assetId → public 路徑。預設空，逐步填入。
-const ART_OVERRIDES = {}
-
+const ART_OVERRIDES = {
+  'fish-koi': '/images/game/fishing/fish-clown-3d.svg',
+  'fish-goldfish': '/images/game/fishing/fish-gold-3d.svg',
+  'fish-lantern': '/images/game/fishing/fish-sapphire-3d.svg',
+  'fish-puffer': '/images/game/fishing/fish-sapphire-3d.svg',
+  'fish-angelfish': '/images/game/fishing/fish-sapphire-3d.svg',
+  'fish-devil-ray': '/images/game/fishing/fish-ray-crystal.svg',
+  'fish-gold-dragon': '/images/game/fishing/fish-gold-3d.svg',
+  'fish-pixiu': '/images/game/fishing/fish-gold-3d.svg',
+  'fish-caishen': '/images/game/fishing/fish-boss-whale.svg',
+  'fish-dragon-king': '/images/game/fishing/fish-boss-whale.svg',
+  'fish-money-tree': '/images/game/fishing/fish-gold-3d.svg',
+}
 const SVG_COMPONENTS = {
   // 老虎機符號（華人財富意象）
   'slot-ingot': GoldIngot,

@@ -86,6 +86,14 @@ export const gameApi = {
   },
 
   // POST /{sessionId}/end → 結算（剩餘局內餘額 credit 回 wallet、揭露 serverSeed）。
+  async fishingTopUp({ sessionId, amount, clientRequestId }) {
+    if (useMockApi) {
+      return mockApi.fishingTopUp({ sessionId, amount, clientRequestId })
+    }
+    const res = await api.post(`/api/v1/game/fishing/${sessionId}/top-up`, { amount, clientRequestId })
+    return res.data.data
+  },
+
   async fishingEnd({ sessionId }) {
     if (useMockApi) {
       return mockApi.fishingEnd({ sessionId })

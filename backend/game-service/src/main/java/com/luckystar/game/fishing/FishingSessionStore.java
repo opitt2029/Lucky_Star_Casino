@@ -20,12 +20,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 /**
- * 捕魚機 Session 的 Redis 存取層。Key：{@code game:fishing:session:{playerId}}（Hash），
- * 每位玩家同時最多一個進行中場次。
+ * ??璈?Session ??Redis 摮?撅扎ey嚗@code game:fishing:session:{playerId}}嚗ash嚗?
+ * 瘥??拙振???憭??脰?銝剖甈～?
  *
- * <p>TTL 取 24 小時作為安全網——實際回收由 {@link FishingService} 的閒置排程在
- * 閒置 10 分鐘時主動結算（把剩餘局內餘額還回 wallet），TTL 只防排程長期失效時 Redis 堆積。
- * 比照 {@code GameSessionService} 的 Hash 儲存風格。
+ * <p>TTL ??24 撠?雿摰蝬聆祕???嗥 {@link FishingService} ??蝵格?蝔
+ * ?蔭 10 ???蜓??蝞??擗??折?憿???wallet嚗?TTL ?芷???瑟?憭望???Redis ????
+ * 瘥 {@code GameSessionService} ??Hash ?脣?憸冽??
  */
 @Slf4j
 @Component
@@ -57,10 +57,13 @@ public class FishingSessionStore {
     private static final String F_GUARANTEED_SHOT_SEQ = "guaranteedShotSeq";
     private static final String F_FISH_DAMAGE = "fishDamage";
     private static final String F_KILLS = "kills";
+    private static final String F_TOP_UP_REQUEST_IDS = "topUpRequestIds";
 
     private static final TypeReference<LinkedHashMap<String, Long>> FISH_DAMAGE_TYPE =
             new TypeReference<>() {};
     private static final TypeReference<List<FishingSession.KillRecord>> KILLS_TYPE =
+            new TypeReference<>() {};
+    private static final TypeReference<List<String>> TOP_UP_IDS_TYPE =
             new TypeReference<>() {};
 
     private final StringRedisTemplate redisTemplate;
@@ -73,14 +76,14 @@ public class FishingSessionStore {
         this.objectMapper = objectMapper;
     }
 
-    /** 寫入（覆蓋）整個 Session 並重設 TTL。 */
+    /** 撖怠嚗????游?Session 銝阡?閮?TTL??*/
     public void save(FishingSession session) {
         String key = key(session.getPlayerId());
         hashOps.putAll(key, toHash(session));
         redisTemplate.expire(key, TTL);
     }
 
-    /** 取得玩家目前的捕魚 Session（不存在/毀損回空）。 */
+    /** ???拙振?桀???擳?Session嚗?摮/瘥??蝛綽???*/
     public Optional<FishingSession> find(long playerId) {
         Map<String, String> hash = hashOps.entries(key(playerId));
         if (hash == null || hash.isEmpty()) {
@@ -89,7 +92,7 @@ public class FishingSessionStore {
         try {
             return Optional.of(fromHash(hash));
         } catch (RuntimeException ex) {
-            log.warn("解析 fishing session 失敗 playerId={}: {}", playerId, ex.toString());
+            log.warn("閫?? fishing session 憭望? playerId={}: {}", playerId, ex.toString());
             return Optional.empty();
         }
     }
@@ -99,10 +102,10 @@ public class FishingSessionStore {
     }
 
     /**
-     * 列出所有捕魚 Session 的玩家 ID（閒置回收排程用）。
+     * ????擳?Session ?摰?ID嚗?蝵桀??嗆?蝔嚗?
      *
-     * <p>以 {@code SCAN} 游標分批掃描（非阻塞），避免 {@code KEYS} 在 key 量大時阻塞整個 Redis。
-     * 每位玩家最多一個 key，掃描結果即在線場次清單。
+     * <p>隞?{@code SCAN} 皜豢????嚗??餃?嚗??踹? {@code KEYS} ??key ?之?憛??Redis??
+     * 瘥??拙振?憭???key嚗?????函??湔活皜??
      */
     public List<Long> listPlayerIds() {
         List<Long> playerIds = new ArrayList<>();
@@ -113,7 +116,7 @@ public class FishingSessionStore {
                 try {
                     playerIds.add(Long.parseLong(key.substring(KEY_PREFIX.length())));
                 } catch (NumberFormatException ignored) {
-                    // 非預期格式的 key，跳過
+                    // ???撘? key嚗歲??
                 }
             }
         }
@@ -151,13 +154,14 @@ public class FishingSessionStore {
         }
         putIfNotNull(h, F_INTERCEPTED, s.getIntercepted());
         putIfNotNull(h, F_GUARANTEED_SHOT_SEQ, s.getGuaranteedShotSeq());
-        // 血量/傷害模型的跨批狀態：以 JSON 持久化，缺了會讓每批重讀後累傷歸零（魚永遠打不死）。
+        // 銵???瑕拿璅∪??楊?寧???隞?JSON ????蝻箔???瘥??敺敞?瑟飛?塚?擳偶??銝香嚗?
         writeJson(h, F_FISH_DAMAGE, s.getFishDamage());
         writeJson(h, F_KILLS, s.getKills());
+        writeJson(h, F_TOP_UP_REQUEST_IDS, s.getTopUpRequestIds());
         return h;
     }
 
-    /** 把集合/物件序列化成 JSON 字串欄位；序列化失敗只記 warn 並略過該欄，不讓整筆 save 失敗。 */
+    /** ?????拐辣摨??? JSON 摮葡甈?嚗???憭望??芾? warn 銝衣?府甈?銝??渡? save 憭望???*/
     private void writeJson(Map<String, String> h, String field, Object value) {
         if (value == null) {
             return;
@@ -165,7 +169,7 @@ public class FishingSessionStore {
         try {
             h.put(field, objectMapper.writeValueAsString(value));
         } catch (JsonProcessingException ex) {
-            log.warn("序列化 fishing session 欄位 {} 失敗，略過: {}", field, ex.toString());
+            log.warn("摨???fishing session 甈? {} 憭望?嚗?? {}", field, ex.toString());
         }
     }
 
@@ -194,10 +198,11 @@ public class FishingSessionStore {
                 .guaranteedShotSeq(parseLong(h.get(F_GUARANTEED_SHOT_SEQ)))
                 .fishDamage(readFishDamage(h.get(F_FISH_DAMAGE)))
                 .kills(readKills(h.get(F_KILLS)))
+                .topUpRequestIds(readTopUpRequestIds(h.get(F_TOP_UP_REQUEST_IDS)))
                 .build();
     }
 
-    /** 還原跨批累傷表；欄位缺失或 JSON 毀損時保守回空 Map（不讓整場崩潰）。 */
+    /** ??頝冽蝝臬銵剁?甈?蝻箏仃??JSON 瘥??靽??征 Map嚗?霈?游援瞏堆???*/
     private Map<String, Long> readFishDamage(String json) {
         if (!StringUtils.hasText(json)) {
             return new LinkedHashMap<>();
@@ -206,12 +211,25 @@ public class FishingSessionStore {
             Map<String, Long> parsed = objectMapper.readValue(json, FISH_DAMAGE_TYPE);
             return parsed != null ? parsed : new LinkedHashMap<>();
         } catch (JsonProcessingException ex) {
-            log.warn("反序列化 fishing fishDamage 失敗，改用空表: {}", ex.toString());
+            log.warn("???? fishing fishDamage 憭望?嚗?函征銵? {}", ex.toString());
             return new LinkedHashMap<>();
         }
     }
 
-    /** 還原致命一擊紀錄；欄位缺失或 JSON 毀損時保守回空 List。 */
+    /** ???游銝????甈?蝻箏仃??JSON 瘥??靽??征 List??*/
+    private List<String> readTopUpRequestIds(String json) {
+        if (!StringUtils.hasText(json)) {
+            return new ArrayList<>();
+        }
+        try {
+            List<String> parsed = objectMapper.readValue(json, TOP_UP_IDS_TYPE);
+            return parsed != null ? parsed : new ArrayList<>();
+        } catch (JsonProcessingException ex) {
+            log.warn("Failed to read fishing topUpRequestIds: {}", ex.toString());
+            return new ArrayList<>();
+        }
+    }
+
     private List<FishingSession.KillRecord> readKills(String json) {
         if (!StringUtils.hasText(json)) {
             return new ArrayList<>();
@@ -220,7 +238,7 @@ public class FishingSessionStore {
             List<FishingSession.KillRecord> parsed = objectMapper.readValue(json, KILLS_TYPE);
             return parsed != null ? parsed : new ArrayList<>();
         } catch (JsonProcessingException ex) {
-            log.warn("反序列化 fishing kills 失敗，改用空清單: {}", ex.toString());
+            log.warn("???? fishing kills 憭望?嚗?函征皜: {}", ex.toString());
             return new ArrayList<>();
         }
     }
