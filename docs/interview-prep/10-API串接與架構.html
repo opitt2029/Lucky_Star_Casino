@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>10 — API 串接與架構</title>
+<style>
+  :root { --accent:#b91c1c; --gold:#a16207; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Microsoft JhengHei','Noto Sans TC',system-ui,sans-serif;
+         margin:0; color:#1f2937; background:#f6f4ef; line-height:1.75; }
+  #doc { max-width: 960px; margin: 0 auto; padding: 40px 32px; background:#fff;
+         box-shadow: 0 0 24px rgba(0,0,0,.08); }
+  h1 { color: var(--accent); border-bottom: 4px solid var(--gold); padding-bottom:.4em; }
+  h2 { color: var(--accent); border-bottom: 2px solid #e5e7eb; padding-bottom:.3em; margin-top:2.2em; }
+  h3 { color: var(--gold); margin-top:1.8em; }
+  a { color: var(--accent); }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: .92em; }
+  th, td { border: 1px solid #d1d5db; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #fdf3f3; }
+  tr:nth-child(even) td { background: #fafaf8; }
+  code { background:#f3f0e8; padding:1px 5px; border-radius:4px; font-size:.9em; }
+  pre code { display:block; padding:12px; overflow-x:auto; background:#f3f0e8; }
+  blockquote { border-left: 4px solid var(--gold); margin: 1em 0; padding: .3em 1em;
+               background:#fdfaf2; color:#57534e; }
+  .mermaid { background:#fff; text-align:center; margin: 1em 0; }
+  .mermaid svg { max-width:100%; height:auto; }
+  hr { border: none; border-top: 1px solid #e5e7eb; margin: 2.5em 0; }
+</style>
+</head>
+<body>
+<div id="doc"><h1 id="10--api-串接與架構">10 — API 串接與架構</h1>
+<blockquote>
+<p>這份專講「一個請求怎麼從前端一路串到底層」：前端 axios → Gateway 路由與 JWT → 服務間同步 REST → Kafka 非同步事件。
+前半（§1–§4）是技術參考（結構表 / 路由表 / 片段），後半（§5–§7）是面試「為什麼這樣串」與被追問怎麼答。
+想看「怎麼在本機把它跑起來」翻 <code>../LOCAL_API_INTEGRATION_GUIDE.md</code>；想看規格與服務邊界翻 <code>../architecture.md</code>；決策原文在 <code>../adr/ADR-001.md</code>（CQRS）、<code>../adr/ADR-002.md</code>（指令/事件分離）。本檔不重複那些，只用面試口吻把它們串成一條線。</p>
+</blockquote>
+<blockquote>
+<p>📖 <strong>圖怎麼看</strong>：本檔的流程圖是 <strong>mermaid 彩色圖</strong>——藍＝前端、黃＝Gateway、綠＝後端服務、紫＝Kafka 事件。同目錄有一份 <code>10-API串接與架構.html</code>（離線自帶，打開即有彩圖、不需連網），用瀏覽器 <code>Ctrl+P</code> 可直接轉 PDF。</p>
+</blockquote>
+<hr>
+<h2 id="1-一張圖看懂全鏈路">1. 一張圖看懂全鏈路</h2>
+<blockquote>
+<p>🎯 <strong>一句話重點</strong>：API 串接分三種介面——<strong>前端↔後端</strong>（經 Gateway + JWT）、<strong>服務↔服務同步</strong>（RestClient + internal secret）、<strong>服務↔服務非同步</strong>（Kafka 指令/事件）。全檔都是在展開這三條。</p>
+</blockquote>
+<p>整個系統的 API 串接分成<strong>三種「介面」</strong>，各有各的鑑權方式與同步/非同步語意。先記住這張總表，其餘章節都是在展開它：</p>
+<table>
+<thead>
+<tr>
+<th>串接介面</th>
+<th>用在哪</th>
+<th>協定</th>
+<th>鑑權方式</th>
+<th>同步/非同步</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>前端 ↔ 後端</strong></td>
+<td>React 頁面呼叫任何 API</td>
+<td>REST / HTTP，一律經 Gateway</td>
+<td><code>Authorization: Bearer &lt;JWT&gt;</code></td>
+<td>同步</td>
+</tr>
+<tr>
+<td><strong>服務 ↔ 服務（同步）</strong></td>
+<td>game 下注要即時扣款/派彩</td>
+<td>REST 打 <code>/internal/**</code></td>
+<td><code>X-Internal-Secret</code> header</td>
+<td>同步</td>
+</tr>
+<tr>
+<td><strong>服務 ↔ 服務（非同步）</strong></td>
+<td>帳務變動要通知排行/推播</td>
+<td>Kafka topic</td>
+<td>網路邊界內信任</td>
+<td>非同步（事件驅動）</td>
+</tr>
+</tbody></table>
+<p>一條完整請求（以玩老虎機一局為例）的鏈路：</p>
+<div class="mermaid"><svg id="mmd-0" width="100%" xmlns="http://www.w3.org/2000/svg" class="flowchart" style="max-width: 828.7421875px;" viewBox="0 0 828.7421875 1318" role="graphics-document document" aria-roledescription="flowchart-v2"><style>#mmd-0{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;fill:#000000;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mmd-0 .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mmd-0 .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mmd-0 .error-icon{fill:#552222;}#mmd-0 .error-text{fill:#552222;stroke:#552222;}#mmd-0 .edge-thickness-normal{stroke-width:1px;}#mmd-0 .edge-thickness-thick{stroke-width:3.5px;}#mmd-0 .edge-pattern-solid{stroke-dasharray:0;}#mmd-0 .edge-thickness-invisible{stroke-width:0;fill:none;}#mmd-0 .edge-pattern-dashed{stroke-dasharray:3;}#mmd-0 .edge-pattern-dotted{stroke-dasharray:2;}#mmd-0 .marker{fill:#666;stroke:#666;}#mmd-0 .marker.cross{stroke:#666;}#mmd-0 svg{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;}#mmd-0 p{margin:0;}#mmd-0 .label{font-family:"trebuchet ms",verdana,arial,sans-serif;color:#000000;}#mmd-0 .cluster-label text{fill:#333;}#mmd-0 .cluster-label span{color:#333;}#mmd-0 .cluster-label span p{background-color:transparent;}#mmd-0 .label text,#mmd-0 span{fill:#000000;color:#000000;}#mmd-0 .node rect,#mmd-0 .node circle,#mmd-0 .node ellipse,#mmd-0 .node polygon,#mmd-0 .node path{fill:#eee;stroke:#999;stroke-width:1px;}#mmd-0 .rough-node .label text,#mmd-0 .node .label text,#mmd-0 .image-shape .label,#mmd-0 .icon-shape .label{text-anchor:middle;}#mmd-0 .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#mmd-0 .rough-node .label,#mmd-0 .node .label,#mmd-0 .image-shape .label,#mmd-0 .icon-shape .label{text-align:center;}#mmd-0 .node.clickable{cursor:pointer;}#mmd-0 .root .anchor path{fill:#666!important;stroke-width:0;stroke:#666;}#mmd-0 .arrowheadPath{fill:#333333;}#mmd-0 .edgePath .path{stroke:#666;stroke-width:1px;}#mmd-0 .flowchart-link{stroke:#666;fill:none;}#mmd-0 .edgeLabel{background-color:white;text-align:center;}#mmd-0 .edgeLabel p{background-color:white;}#mmd-0 .edgeLabel rect{opacity:0.5;background-color:white;fill:white;}#mmd-0 .labelBkg{background-color:rgba(255, 255, 255, 0.5);}#mmd-0 .cluster rect{fill:hsl(0, 0%, 98.9215686275%);stroke:#707070;stroke-width:1px;}#mmd-0 .cluster text{fill:#333;}#mmd-0 .cluster span{color:#333;}#mmd-0 div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:12px;background:hsl(-160, 0%, 93.3333333333%);border:1px solid #707070;border-radius:2px;pointer-events:none;z-index:100;}#mmd-0 .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#000000;}#mmd-0 rect.text{fill:none;stroke-width:0;}#mmd-0 .icon-shape,#mmd-0 .image-shape{background-color:white;text-align:center;}#mmd-0 .icon-shape p,#mmd-0 .image-shape p{background-color:white;padding:2px;}#mmd-0 .icon-shape .label rect,#mmd-0 .image-shape .label rect{opacity:0.5;background-color:white;fill:white;}#mmd-0 .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#mmd-0 .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#mmd-0 .node .neo-node{stroke:#999;}#mmd-0 [data-look="neo"].node rect,#mmd-0 [data-look="neo"].cluster rect,#mmd-0 [data-look="neo"].node polygon{stroke:url(#mmd-0-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mmd-0 [data-look="neo"].swimlane.cluster rect{filter:none;}#mmd-0 [data-look="neo"].node path{stroke:url(#mmd-0-gradient);stroke-width:1px;}#mmd-0 [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mmd-0 [data-look="neo"].node .neo-line path{stroke:#999;filter:none;}#mmd-0 [data-look="neo"].node circle{stroke:url(#mmd-0-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mmd-0 [data-look="neo"].node circle .state-start{fill:#000000;}#mmd-0 [data-look="neo"].icon-shape .icon{fill:url(#mmd-0-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mmd-0 [data-look="neo"].icon-shape .icon-neo path{stroke:url(#mmd-0-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mmd-0 :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}#mmd-0 .fe&gt;*{fill:rgb(219, 234, 254)!important;stroke:rgb(59, 130, 246)!important;color:rgb(30, 58, 138)!important;}#mmd-0 .fe span{fill:rgb(219, 234, 254)!important;stroke:rgb(59, 130, 246)!important;color:rgb(30, 58, 138)!important;}#mmd-0 .fe tspan{fill:rgb(30, 58, 138)!important;}#mmd-0 .gw&gt;*{fill:rgb(254, 243, 199)!important;stroke:rgb(217, 119, 6)!important;color:rgb(120, 53, 15)!important;}#mmd-0 .gw span{fill:rgb(254, 243, 199)!important;stroke:rgb(217, 119, 6)!important;color:rgb(120, 53, 15)!important;}#mmd-0 .gw tspan{fill:rgb(120, 53, 15)!important;}#mmd-0 .svc&gt;*{fill:rgb(220, 252, 231)!important;stroke:rgb(22, 163, 74)!important;color:rgb(20, 83, 45)!important;}#mmd-0 .svc span{fill:rgb(220, 252, 231)!important;stroke:rgb(22, 163, 74)!important;color:rgb(20, 83, 45)!important;}#mmd-0 .svc tspan{fill:rgb(20, 83, 45)!important;}#mmd-0 .kafka&gt;*{fill:rgb(250, 232, 255)!important;stroke:rgb(162, 28, 175)!important;color:rgb(112, 26, 117)!important;}#mmd-0 .kafka span{fill:rgb(250, 232, 255)!important;stroke:rgb(162, 28, 175)!important;color:rgb(112, 26, 117)!important;}#mmd-0 .kafka tspan{fill:rgb(112, 26, 117)!important;}</style><g><marker id="mmd-0_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="mmd-0_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="mmd-0_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></path></marker><marker id="mmd-0_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></polygon></marker><marker id="mmd-0_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="mmd-0_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="mmd-0_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="mmd-0_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="mmd-0_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="mmd-0_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="mmd-0_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"></path></marker><marker id="mmd-0_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"></path></marker><g class="root"><g class="clusters"></g><g class="edgePaths"><path d="M274.406,110L274.406,114.167C274.406,118.333,274.406,126.667,274.406,134.333C274.406,142,274.406,149,274.406,152.5L274.406,156" id="mmd-0-L_A_B_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_A_B_0" data-points="W3sieCI6Mjc0LjQwNjI1LCJ5IjoxMTB9LHsieCI6Mjc0LjQwNjI1LCJ5IjoxMzV9LHsieCI6Mjc0LjQwNjI1LCJ5IjoxNjB9XQ==" data-look="classic" marker-end="url(#mmd-0_flowchart-v2-pointEnd)"></path><path d="M274.406,238L274.406,242.167C274.406,246.333,274.406,254.667,274.406,262.333C274.406,270,274.406,277,274.406,280.5L274.406,284" id="mmd-0-L_B_G_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_B_G_0" data-points="W3sieCI6Mjc0LjQwNjI1LCJ5IjoyMzh9LHsieCI6Mjc0LjQwNjI1LCJ5IjoyNjN9LHsieCI6Mjc0LjQwNjI1LCJ5IjoyODh9XQ==" data-look="classic" marker-end="url(#mmd-0_flowchart-v2-pointEnd)"></path><path d="M274.406,342L274.406,346.167C274.406,350.333,274.406,358.667,274.406,366.333C274.406,374,274.406,381,274.406,384.5L274.406,388" id="mmd-0-L_G_G1_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_G_G1_0" data-points="W3sieCI6Mjc0LjQwNjI1LCJ5IjozNDJ9LHsieCI6Mjc0LjQwNjI1LCJ5IjozNjd9LHsieCI6Mjc0LjQwNjI1LCJ5IjozOTJ9XQ==" data-look="classic" marker-end="url(#mmd-0_flowchart-v2-pointEnd)"></path><path d="M274.406,470L274.406,474.167C274.406,478.333,274.406,486.667,274.406,494.333C274.406,502,274.406,509,274.406,512.5L274.406,516" id="mmd-0-L_G1_G2_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_G1_G2_0" data-points="W3sieCI6Mjc0LjQwNjI1LCJ5Ijo0NzB9LHsieCI6Mjc0LjQwNjI1LCJ5Ijo0OTV9LHsieCI6Mjc0LjQwNjI1LCJ5Ijo1MjB9XQ==" data-look="classic" marker-end="url(#mmd-0_flowchart-v2-pointEnd)"></path><path d="M274.406,622L274.406,626.167C274.406,630.333,274.406,638.667,274.406,646.333C274.406,654,274.406,661,274.406,664.5L274.406,668" id="mmd-0-L_G2_G3_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_G2_G3_0" data-points="W3sieCI6Mjc0LjQwNjI1LCJ5Ijo2MjJ9LHsieCI6Mjc0LjQwNjI1LCJ5Ijo2NDd9LHsieCI6Mjc0LjQwNjI1LCJ5Ijo2NzJ9XQ==" data-look="classic" marker-end="url(#mmd-0_flowchart-v2-pointEnd)"></path><path d="M274.406,726L274.406,730.167C274.406,734.333,274.406,742.667,274.406,750.333C274.406,758,274.406,765,274.406,768.5L274.406,772" id="mmd-0-L_G3_G4_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_G3_G4_0" data-points="W3sieCI6Mjc0LjQwNjI1LCJ5Ijo3MjZ9LHsieCI6Mjc0LjQwNjI1LCJ5Ijo3NTF9LHsieCI6Mjc0LjQwNjI1LCJ5Ijo3NzZ9XQ==" data-look="classic" marker-end="url(#mmd-0_flowchart-v2-pointEnd)"></path><path d="M274.406,854L274.406,858.167C274.406,862.333,274.406,870.667,274.406,878.333C274.406,886,274.406,893,274.406,896.5L274.406,900" id="mmd-0-L_G4_S_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_G4_S_0" data-points="W3sieCI6Mjc0LjQwNjI1LCJ5Ijo4NTR9LHsieCI6Mjc0LjQwNjI1LCJ5Ijo4Nzl9LHsieCI6Mjc0LjQwNjI1LCJ5Ijo5MDR9XQ==" data-look="classic" marker-end="url(#mmd-0_flowchart-v2-pointEnd)"></path><path d="M213.953,982L201.295,990.167C188.636,998.333,163.318,1014.667,150.659,1030.333C138,1046,138,1061,138,1068.5L138,1076" id="mmd-0-L_S_W_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_S_W_0" data-points="W3sieCI6MjEzLjk1MzQ4MDExMzYzNjM3LCJ5Ijo5ODJ9LHsieCI6MTM4LCJ5IjoxMDMxfSx7IngiOjEzOCwieSI6MTA4MH1d" data-look="classic" marker-end="url(#mmd-0_flowchart-v2-pointEnd)"></path><path d="M351.007,982L367.048,990.167C383.088,998.333,415.169,1014.667,431.288,1033.667C447.407,1052.667,447.564,1074.333,447.643,1085.167L447.721,1096" id="mmd-0-L_S_K_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_S_K_0" data-points="W3sieCI6MzUxLjAwNzQ1NzM4NjM2MzYsInkiOjk4Mn0seyJ4Ijo0NDcuMjUsInkiOjEwMzF9LHsieCI6NDQ3Ljc1LCJ5IjoxMTAwfV0=" data-look="classic" marker-end="url(#mmd-0_flowchart-v2-pointEnd)"></path><path d="M335.475,1177.449L305.599,1186.374C275.723,1195.299,215.971,1213.15,186.095,1225.575C156.219,1238,156.219,1245,156.219,1248.5L156.219,1252" id="mmd-0-L_K_R_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_K_R_0" data-points="W3sieCI6MzM1LjQ3NDUzNTk1NzQ2NjYsInkiOjExNzcuNDQ5MDcxOTE0OTMzM30seyJ4IjoxNTYuMjE4NzUsInkiOjEyMzF9LHsieCI6MTU2LjIxODc1LCJ5IjoxMjU2fV0=" data-look="classic" marker-end="url(#mmd-0_flowchart-v2-pointEnd)"></path><path d="M438.744,1187L437.125,1194.333C435.507,1201.667,432.269,1216.333,430.65,1227.167C429.031,1238,429.031,1245,429.031,1248.5L429.031,1252" id="mmd-0-L_K_N_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_K_N_0" data-points="W3sieCI6NDM4Ljc0NDE0MDYyNSwieSI6MTE4N30seyJ4Ijo0MjkuMDMxMjUsInkiOjEyMzF9LHsieCI6NDI5LjAzMTI1LCJ5IjoxMjU2fV0=" data-look="classic" marker-end="url(#mmd-0_flowchart-v2-pointEnd)"></path><path d="M558.73,1180.039L584.697,1188.533C610.664,1197.026,662.598,1214.013,688.564,1226.007C714.531,1238,714.531,1245,714.531,1248.5L714.531,1252" id="mmd-0-L_K_AD_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_K_AD_0" data-points="W3sieCI6NTU4LjczMDM0ODM1ODU5ODYsInkiOjExODAuMDM5MzAzMjgyODAyOH0seyJ4Ijo3MTQuNTMxMjUsInkiOjEyMzF9LHsieCI6NzE0LjUzMTI1LCJ5IjoxMjU2fV0=" data-look="classic" marker-end="url(#mmd-0_flowchart-v2-pointEnd)"></path></g><g class="edgeLabels"><g class="edgeLabel"><g class="label" data-id="L_A_B_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_B_G_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_G_G1_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_G1_G2_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_G2_G3_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_G3_G4_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_G4_S_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(138, 1031)"><g class="label" data-id="L_S_W_0" transform="translate(-100, -24)"><foreignObject width="200" height="48"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;"><span class="edgeLabel "><p>同步 REST・X-Internal-Secret</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(447.25, 1031)"><g class="label" data-id="L_S_K_0" transform="translate(-46.4140625, -12)"><foreignObject width="92.828125" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel "><p>非同步 Kafka</p></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_K_R_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_K_N_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel "></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" data-id="L_K_AD_0" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel "></span></div></foreignObject></g></g></g><g class="nodes"><g class="node default fe " id="mmd-0-flowchart-A-0" data-look="classic" transform="translate(274.40625, 59)"><rect class="basic label-container" style="fill:#dbeafe !important;stroke:#3b82f6 !important" x="-130" y="-51" width="260" height="102"></rect><g class="label" style="color:#1e3a8a !important" transform="translate(-100, -36)"><rect></rect><foreignObject width="200" height="72"><div style="color: rgb(30, 58, 138) !important; display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#1e3a8a !important" class="nodeLabel "><p>React 頁面<br>dispatch spinSlot（Redux thunk）</p></span></div></foreignObject></g></g><g class="node default fe " id="mmd-0-flowchart-B-1" data-look="classic" transform="translate(274.40625, 199)"><rect class="basic label-container" style="fill:#dbeafe !important;stroke:#3b82f6 !important" x="-129.7734375" y="-39" width="259.546875" height="78"></rect><g class="label" style="color:#1e3a8a !important" transform="translate(-99.7734375, -24)"><rect></rect><foreignObject width="199.546875" height="48"><div style="color: rgb(30, 58, 138) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#1e3a8a !important" class="nodeLabel "><p>api.js 共用 axios<br>請求攔截器注入 Bearer JWT</p></span></div></foreignObject></g></g><g class="node default gw " id="mmd-0-flowchart-G-3" data-look="classic" transform="translate(274.40625, 315)"><rect class="basic label-container" style="fill:#fef3c7 !important;stroke:#d97706 !important" x="-128.25" y="-27" width="256.5" height="54"></rect><g class="label" style="color:#78350f !important" transform="translate(-98.25, -12)"><rect></rect><foreignObject width="196.5" height="24"><div style="color: rgb(120, 53, 15) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#78350f !important" class="nodeLabel "><p>🚪 Gateway 8080 統一入口</p></span></div></foreignObject></g></g><g class="node default gw " id="mmd-0-flowchart-G1-5" data-look="classic" transform="translate(274.40625, 431)"><rect class="basic label-container" style="fill:#fef3c7 !important;stroke:#d97706 !important" x="-83.296875" y="-39" width="166.59375" height="78"></rect><g class="label" style="color:#78350f !important" transform="translate(-53.296875, -24)"><rect></rect><foreignObject width="106.59375" height="48"><div style="color: rgb(120, 53, 15) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#78350f !important" class="nodeLabel "><p>① IP 限流 -200<br>先擋暴力請求</p></span></div></foreignObject></g></g><g class="node default gw " id="mmd-0-flowchart-G2-7" data-look="classic" transform="translate(274.40625, 571)"><rect class="basic label-container" style="fill:#fef3c7 !important;stroke:#d97706 !important" x="-130" y="-51" width="260" height="102"></rect><g class="label" style="color:#78350f !important" transform="translate(-100, -36)"><rect></rect><foreignObject width="200" height="72"><div style="color: rgb(120, 53, 15) !important; display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#78350f !important" class="nodeLabel "><p>② 驗 JWT + Redis 撤銷檢查<br>注入 X-User-Id / X-User-Role</p></span></div></foreignObject></g></g><g class="node default gw " id="mmd-0-flowchart-G3-9" data-look="classic" transform="translate(274.40625, 699)"><rect class="basic label-container" style="fill:#fef3c7 !important;stroke:#d97706 !important" x="-94.1484375" y="-27" width="188.296875" height="54"></rect><g class="label" style="color:#78350f !important" transform="translate(-64.1484375, -12)"><rect></rect><foreignObject width="128.296875" height="24"><div style="color: rgb(120, 53, 15) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#78350f !important" class="nodeLabel "><p>③ 每玩家限流 -50</p></span></div></foreignObject></g></g><g class="node default gw " id="mmd-0-flowchart-G4-11" data-look="classic" transform="translate(274.40625, 815)"><rect class="basic label-container" style="fill:#fef3c7 !important;stroke:#d97706 !important" x="-130" y="-39" width="260" height="78"></rect><g class="label" style="color:#78350f !important" transform="translate(-100, -24)"><rect></rect><foreignObject width="200" height="48"><div style="color: rgb(120, 53, 15) !important; display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#78350f !important" class="nodeLabel "><p>④ 路由比對（宣告順序）+ 熔斷</p></span></div></foreignObject></g></g><g class="node default svc " id="mmd-0-flowchart-S-13" data-look="classic" transform="translate(274.40625, 943)"><rect class="basic label-container" style="fill:#dcfce7 !important;stroke:#16a34a !important" x="-123.0078125" y="-39" width="246.015625" height="78"></rect><g class="label" style="color:#14532d !important" transform="translate(-93.0078125, -24)"><rect></rect><foreignObject width="186.015625" height="48"><div style="color: rgb(20, 83, 45) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#14532d !important" class="nodeLabel "><p>🎮 game-service 8083<br>讀 X-User-Id，不再驗 JWT</p></span></div></foreignObject></g></g><g class="node default svc " id="mmd-0-flowchart-W-15" data-look="classic" transform="translate(138, 1143)"><rect class="basic label-container" style="fill:#dcfce7 !important;stroke:#16a34a !important" x="-130" y="-63" width="260" height="126"></rect><g class="label" style="color:#14532d !important" transform="translate(-100, -48)"><rect></rect><foreignObject width="200" height="96"><div style="color: rgb(20, 83, 45) !important; display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#14532d !important" class="nodeLabel "><p>💰 wallet /internal/wallet/*<br>debit 下注 / credit 派彩<br>冪等鍵 + 樂觀鎖</p></span></div></foreignObject></g></g><g class="node default kafka " id="mmd-0-flowchart-K-17" data-look="classic" transform="translate(447.25, 1143)"><polygon points="21.75,0 236.75,0 258.5,-43.5 236.75,-87 21.75,-87 0,-43.5" class="label-container" transform="translate(-129.25,43.5)" style="fill:#fae8ff !important;stroke:#a21caf !important"></polygon><g class="label" style="color:#701a75 !important" transform="translate(-100, -36)"><rect></rect><foreignObject width="200" height="72"><div style="color: rgb(112, 26, 117) !important; display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#701a75 !important" class="nodeLabel "><p>Kafka 事件<br>game.result / wallet.credit / wallet.debit</p></span></div></foreignObject></g></g><g class="node default svc " id="mmd-0-flowchart-R-19" data-look="classic" transform="translate(156.21875, 1283)"><rect class="basic label-container" style="fill:#dcfce7 !important;stroke:#16a34a !important" x="-93.5234375" y="-27" width="187.046875" height="54"></rect><g class="label" style="color:#14532d !important" transform="translate(-63.5234375, -12)"><rect></rect><foreignObject width="127.046875" height="24"><div style="color: rgb(20, 83, 45) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#14532d !important" class="nodeLabel "><p>🏆 rank 更新排行</p></span></div></foreignObject></g></g><g class="node default svc " id="mmd-0-flowchart-N-21" data-look="classic" transform="translate(429.03125, 1283)"><rect class="basic label-container" style="fill:#dcfce7 !important;stroke:#16a34a !important" x="-129.2890625" y="-27" width="258.578125" height="54"></rect><g class="label" style="color:#14532d !important" transform="translate(-99.2890625, -12)"><rect></rect><foreignObject width="198.578125" height="24"><div style="color: rgb(20, 83, 45) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#14532d !important" class="nodeLabel "><p>🔔 notification STOMP 推播</p></span></div></foreignObject></g></g><g class="node default svc " id="mmd-0-flowchart-AD-23" data-look="classic" transform="translate(714.53125, 1283)"><rect class="basic label-container" style="fill:#dcfce7 !important;stroke:#16a34a !important" x="-106.2109375" y="-27" width="212.421875" height="54"></rect><g class="label" style="color:#14532d !important" transform="translate(-76.2109375, -12)"><rect></rect><foreignObject width="152.421875" height="24"><div style="color: rgb(20, 83, 45) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#14532d !important" class="nodeLabel "><p>🛠️ admin 報表 / RTP</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="mmd-0-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><defs><filter id="mmd-0-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><linearGradient id="mmd-0-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="hsl(0, 0%, 83.3333333333%)" stop-opacity="1"></stop><stop offset="100%" stop-color="hsl(0, 0%, 88.9215686275%)" stop-opacity="1"></stop></linearGradient></svg></div>
+<blockquote>
+<p><strong>面試怎麼講（一句話版）</strong>：「我們的 API 串接分三層——對外只開 Gateway 一個入口、用 JWT；服務間要即時結果就走帶 internal secret 的 REST；不需要即時、只是要通知別人的，就走 Kafka 事件。」</p>
+</blockquote>
+<hr>
+<h2 id="2-前端如何串接後端">2. 前端如何串接後端</h2>
+<blockquote>
+<p>🎯 <strong>一句話重點</strong>：前端只認識一個位址（Gateway），token 靠攔截器自動掛、401 靠 single-flight 靜默續期，資料源預設鏡像後端（mock），對外行為與真後端一致。</p>
+</blockquote>
+<h3 id="21-service-層結構">2.1 service 層結構</h3>
+<p>前端把「呼叫後端」集中在 <code>frontend/src/services/</code>，一個檔對應一個後端服務（都經 Gateway），並統一提供「mock 分支 + 真實分支」兩條路：</p>
+<table>
+<thead>
+<tr>
+<th>檔案</th>
+<th>對應後端</th>
+<th>職責</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>services/api.js</code></td>
+<td>—（基礎建設）</td>
+<td>共用 axios instance、JWT 注入、401 續期攔截器</td>
+</tr>
+<tr>
+<td><code>services/memberApi.js</code></td>
+<td>member / auth</td>
+<td>登入、註冊、profile、好友；含重試與友善錯誤轉換</td>
+</tr>
+<tr>
+<td><code>services/gameApi.js</code></td>
+<td>game</td>
+<td>老虎機 spin、百家樂、捕魚機 session/射擊/結算</td>
+</tr>
+<tr>
+<td><code>services/walletApi.js</code></td>
+<td>wallet / member</td>
+<td>餘額、簽到、加值、交易流水、贈幣</td>
+</tr>
+<tr>
+<td><code>services/diamondApi.js</code></td>
+<td>wallet（diamond）</td>
+<td>鑽石餘額、兌換卡、鑽石換星幣</td>
+</tr>
+<tr>
+<td><code>services/rankApi.js</code></td>
+<td>rank</td>
+<td>全球榜/好友榜/我的名次</td>
+</tr>
+<tr>
+<td><code>services/shopApi.js</code></td>
+<td>wallet（shop）</td>
+<td>商城目錄、兌換、背包</td>
+</tr>
+<tr>
+<td><code>services/mockApi.js</code></td>
+<td>—（假後端）</td>
+<td>localStorage 假 DB，鏡像後端引擎</td>
+</tr>
+</tbody></table>
+<p>每個 api 檔的呼叫慣例一致：先判斷要不要走 mock，真實分支取 <code>res.data.data</code>（後端統一用 <code>ApiResponse{ data }</code> 信封包裝；唯一例外是 <code>rankApi</code>，因 <code>RankController</code> 直接回 <code>List</code>，故取 <code>res.data</code>）。多數方法還帶一個「欄位映射函式」把後端命名轉成前端形狀。</p>
+<h3 id="22-共用-axiosbaseurl-指向-gateway">2.2 共用 axios：baseURL 指向 Gateway</h3>
+<pre><code class="language-js">// frontend/src/services/api.js
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || '',   // = http://localhost:8080（Gateway）
+  timeout: 10000,
+  headers: { 'Content-Type': 'application/json' },
+})
+</code></pre>
+<p><code>VITE_API_BASE_URL</code> 指到 <strong>Gateway(8080)</strong>，不是各個服務的 port。前端只認識一個位址——這就是「Gateway 統一入口」在前端的體現：服務換 port、拆分、搬機器，前端完全不用改。</p>
+<h3 id="23-請求攔截器每個請求自動帶-jwt">2.3 請求攔截器：每個請求自動帶 JWT</h3>
+<pre><code class="language-js">// frontend/src/services/api.js — 從 Redux store 取 token 掛上去
+api.interceptors.request.use((config) =&gt; {
+  const token = store.getState().auth.accessToken
+  if (token) config.headers.Authorization = `Bearer ${token}`
+  return config
+})
+</code></pre>
+<blockquote>
+<p><strong>為什麼從 store 拿而不是每個呼叫傳進來</strong>：token 是全域狀態，集中在攔截器注入，業務程式碼就不用每次手動帶 header，也不會漏帶。</p>
+</blockquote>
+<h3 id="24-回應攔截器401-靜默續期single-flight">2.4 回應攔截器：401 靜默續期（single-flight）</h3>
+<p>這是前端串接裡最值得講的一段。access token 過期會拿到 401，攔截器會<strong>自動用 refresh token 換新的、再重送原請求</strong>，使用者無感；換不到才登出：</p>
+<pre><code class="language-js">// frontend/src/services/api.js（節錄）
+let refreshPromise = null   // single-flight：多請求同時 401 共用同一次續期
+
+api.interceptors.response.use(
+  (response) =&gt; response,
+  async (error) =&gt; {
+    const config = error.config || {}
+    const isAuthEndpoint = (config.url || '').includes('/api/v1/auth/')
+    // 非 401、或 auth 端點、或已重試過、或明示 skipAuthRedirect → 交回呼叫端
+    if (error.response?.status !== 401 || config.skipAuthRedirect
+        || isAuthEndpoint || config._retry) {
+      return Promise.reject(error)
+    }
+    if (useMockApi || !store.getState().auth.refreshToken) {
+      forceLogout(); return Promise.reject(error)
+    }
+    config._retry = true
+    try {
+      refreshPromise = refreshPromise
+        || refreshAccessToken().finally(() =&gt; { refreshPromise = null })
+      const newToken = await refreshPromise
+      config.headers.Authorization = `Bearer ${newToken}`
+      return api(config)          // 重送原請求
+    } catch (e) {
+      forceLogout(); return Promise.reject(e)
+    }
+  }
+)
+</code></pre>
+<p>三個設計重點（面試可逐點展開）：</p>
+<ol>
+<li><strong>single-flight（<code>refreshPromise</code>）</strong>：後端 refresh 會<strong>輪替 refresh token</strong>（換一次舊的就作廢）。若 10 個請求同時 401、各自去 refresh，只有第一個成功、其餘拿作廢 token 續期會失敗。用一個共享的 <code>refreshPromise</code> 序列化，10 個請求共用同一次續期結果。</li>
+<li><strong>用「乾淨」的 axios 呼叫 refresh</strong>：<code>refreshAccessToken()</code> 用原生 <code>axios.post</code> 而非 <code>api</code> 實例，避免被自己的攔截器遞迴攔截，也避免請求攔截器又掛上那顆已過期的 access token。</li>
+<li><strong>白名單不重導</strong>：<code>/api/v1/auth/*</code>（帳密錯誤本來就會 401）與帶 <code>skipAuthRedirect</code> 的請求（登入流程剛簽出 token 就抓 profile）不觸發整頁登出重導，交呼叫端處理，否則會把表單/錯誤訊息洗掉。</li>
+</ol>
+<blockquote>
+<p>💬 <strong>面試現場</strong>
+🙋 <strong>面試官</strong>：「Access token 過期，使用者會不會突然被登出？」
+🧑‍💻 <strong>你</strong>：「不會。我在 axios 回應攔截器攔 401，用 refresh token 靜默換一顆新的再把原請求重送，使用者無感。重點是我用 single-flight——同時 401 的多個請求只觸發一次續期，避免 refresh token 輪替造成互相把對方的 token 洗掉。真的換不到才登出。」</p>
+</blockquote>
+<h3 id="25-mock-機制與單一真相後端">2.5 mock 機制與「單一真相＝後端」</h3>
+<p>所有 service 檔用同一個開關：</p>
+<pre><code class="language-js">const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
+</code></pre>
+<p>注意這行的語意：<strong>除非環境變數明確等於字串 <code>'false'</code>，否則一律走 mock</strong>——也就是<strong>程式碼層級的 fallback 預設是 mock</strong>。但版控裡的 <code>.env.development</code> 與 <code>.env.local</code> 都寫死 <code>VITE_USE_MOCK_API=false</code>，所以 <code>npm run dev</code> 實際是串真後端；只有 <code>vite --mode mock</code>（<code>.env.mock</code>，給 e2e 用）才走假資料。</p>
+<blockquote>
+<p>★ 面試若被追問「你們前端預設走 mock 還是真後端？」要講清楚這個區別：<strong>程式碼 fallback 是 mock（漏設變數也能跑 UI），但版控環境檔覆寫成串真後端</strong>，兩者不衝突。</p>
+</blockquote>
+<p><code>mockApi.js</code> 用 localStorage 當假 DB，並<strong>逐條複製後端演算法</strong>（老虎機賠付表、百家樂補牌規則、捕魚血量/傷害模型…），註解標明對齊哪個後端類別。鐵則：<strong>改後端遊戲規則時必須同步改 mock</strong>，否則玩家在 mock 模式體驗到的世界會跟真後端分歧（見 <code>AGENTS.md</code> 雷區 14）。</p>
+<h3 id="26-redux-串接模式thunk--三態">2.6 Redux 串接模式：thunk + 三態</h3>
+<p>需要打 API 的動作都用 <code>createAsyncThunk</code> 包 service 方法，用 <code>extraReducers</code> 的 pending/fulfilled/rejected 三態管理 <code>loading</code> 與 <code>error</code>：</p>
+<pre><code class="language-js">// frontend/src/store/slices/gameSlice.js（節錄）
+export const spinSlot = createAsyncThunk('game/spinSlot', async (payload, { rejectWithValue }) =&gt; {
+  try { return await gameApi.spinSlot(payload) }
+  catch (error) { return rejectWithValue(extractError(error)) }
+})
+// extraReducers：
+.addCase(spinSlot.pending,   (s)   =&gt; { s.loading = true;  s.status = 'spinning'; s.error = null })
+.addCase(spinSlot.fulfilled, (s,a) =&gt; { s.loading = false; s.status = 'result'; s.roundId = a.payload.roundId })
+.addCase(spinSlot.rejected,  (s,a) =&gt; { s.loading = false; s.status = 'idle'; s.error = a.payload || '老虎機下注失敗' })
+</code></pre>
+<p>這與 <code>api.js</code> 攔截器形成閉環：攔截器讀 <code>store.getState().auth.accessToken</code>、續期後 dispatch <code>tokenRefreshed</code>、失敗 dispatch <code>logout</code>。</p>
+<hr>
+<h2 id="3-gateway統一入口與路由">3. Gateway：統一入口與路由</h2>
+<blockquote>
+<p>🎯 <strong>一句話重點</strong>：Gateway 把鑑權、CORS、限流、熔斷、路由這些「橫切關注點」集中在單一入口；路由<strong>按 yml 宣告順序</strong>比對，具體路徑一定要排在 catch-all 之前。</p>
+</blockquote>
+<h3 id="31-為什麼要-gateway而不是前端直連各服務">3.1 為什麼要 Gateway，而不是前端直連各服務</h3>
+<table>
+<thead>
+<tr>
+<th>面向</th>
+<th>❌ 前端直連各服務</th>
+<th>✅ 有了 Gateway 後</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>位址 / CORS</td>
+<td>前端要記 7 組位址、CORS 要在每個服務各設一次</td>
+<td>前端只認一個位址、CORS 在 Gateway 設一次</td>
+</tr>
+<tr>
+<td>JWT 驗證</td>
+<td>驗證邏輯要複製到每個服務</td>
+<td>JWT 只在 Gateway 驗一次，下游信任注入的 header</td>
+</tr>
+<tr>
+<td>限流 / 熔斷</td>
+<td>散落各處、難統一</td>
+<td>集中在邊界，統一治理</td>
+</tr>
+</tbody></table>
+<p>一句話：<strong>Gateway 把「橫切關注點」（鑑權、CORS、限流、熔斷、路由）從各業務服務抽出來，集中在單一入口</strong>。</p>
+<h3 id="32-路由順序表-宣告順序就是比對順序">3.2 路由順序表 ★（宣告順序就是比對順序）</h3>
+<p><code>gateway-service/src/main/resources/application.yml</code> 的 <code>routes</code> 由上而下比對，<strong>具體路徑必須排在 catch-all 之前</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>route id</th>
+<th>Path</th>
+<th>轉發到</th>
+<th>備註</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td><code>openapi-*</code></td>
+<td><code>/v3/api-docs/{service}</code></td>
+<td>各服務</td>
+<td>Swagger 文件代理</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>member-auth</code></td>
+<td><code>/api/v1/auth/**</code></td>
+<td>member 8081</td>
+<td>白名單免 JWT + 限流</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>member-player</code></td>
+<td><code>/api/v1/player/**</code></td>
+<td>member 8081</td>
+<td></td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>member-friends</code></td>
+<td><code>/api/v1/friends/**</code></td>
+<td>member 8081</td>
+<td></td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong><code>member-checkin</code></strong></td>
+<td><code>/api/v1/wallet/daily-checkin,/api/v1/wallet/checkin/**</code></td>
+<td><strong>member 8081</strong></td>
+<td>★見下方陷阱</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>wallet</code></td>
+<td><code>/api/v1/wallet/**</code></td>
+<td>wallet 8082</td>
+<td>catch-all</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>game</code></td>
+<td><code>/api/v1/game/**</code></td>
+<td>game 8083</td>
+<td></td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>rank</code></td>
+<td><code>/api/v1/rank/**</code></td>
+<td>rank 8084</td>
+<td></td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>admin</code></td>
+<td><code>/admin/**</code></td>
+<td>admin 8086</td>
+<td>需 ADMIN role</td>
+</tr>
+</tbody></table>
+<p>★ <strong>路由順序陷阱</strong>（<code>AGENTS.md</code> 雷區 19）：每日簽到端點實作在 <strong>member-service</strong>，但路徑落在 <code>/api/v1/wallet/</code> 底下。若第 5 條 <code>member-checkin</code> 沒排在第 6 條 <code>wallet</code> catch-all <strong>之前</strong>，簽到請求會被 catch-all 吃掉、轉去 wallet-service（那裡沒這些端點）→ 404。yml 註解也直接寫明這點。</p>
+<blockquote>
+<p>對照：禮品商城 <code>/api/v1/wallet/shop/**</code>（雷區 20）因為端點<strong>就在 wallet-service 內</strong>，反而是被第 6 條 catch-all 正確吃下，<strong>免加路由</strong>。「要不要新增路由」的判準是「這條路徑的實作在不在該 catch-all 對應的服務裡」。</p>
+</blockquote>
+<blockquote>
+<p>💬 <strong>面試現場</strong>
+🙋 <strong>面試官</strong>：「Spring Cloud Gateway 的路由是怎麼比對的？你有沒有踩過相關的雷？」
+🧑‍💻 <strong>你</strong>：「它按 yml 宣告順序由上往下比對，命中第一條就轉發。我踩過的雷是——每日簽到端點路徑是 <code>/api/v1/wallet/daily-checkin</code>，但實作在 member-service。一開始它排在 <code>/api/v1/wallet/**</code> 這條 catch-all 後面，結果簽到請求被 catch-all 先吃掉、轉去 wallet-service，回 404。把它移到 catch-all 前面就好了。所以我學到具體路徑一定要排在萬用路徑之前。」</p>
+</blockquote>
+<h3 id="33-gateway-filter-執行順序">3.3 Gateway filter 執行順序</h3>
+<p>全域 filter 的 order（數字越小越早）定義在 <code>filter/FilterOrder.java</code>：</p>
+<pre><code>RATE_LIMIT (-200)  →  JWT_AUTHENTICATION (-100)  →  PLAYER_RATE_LIMIT (-50)  →  路由轉發 (≥0)
+</code></pre>
+<p>順序是刻意的：</p>
+<ol>
+<li><strong>先做 IP 層限流</strong>——暴力請求在最外層就擋掉，不浪費後面驗證的資源。</li>
+<li><strong>再驗 JWT</strong>——驗過才拿得到 <code>X-User-Id</code>。</li>
+<li><strong>最後做每玩家限流</strong>——這一步依賴上一步注入的 <code>X-User-Id</code> 當計數金鑰，所以必須排在 JWT 之後。</li>
+</ol>
+<h3 id="34-韌性設定一句話帶過即可">3.4 韌性設定（一句話帶過即可）</h3>
+<ul>
+<li><strong>HttpClient 連線池</strong>：<code>max-idle-time: 10s</code> 刻意設得比下游 Tomcat 的 <code>keepAliveTimeout</code>（預設 20s）短，並開背景驅逐。否則 Gateway 會重用「下游已關閉的 keep-alive 連線」→ 偶發 503。</li>
+<li><strong>全域 Retry</strong>：只對 <strong>GET（冪等）</strong> 自動重試；POST（註冊/登入/下注）不重試，避免重複副作用。</li>
+<li><strong>Resilience4j CircuitBreaker</strong>：每個下游服務一個 instance，失敗率 &gt;50% 或慢呼叫（&gt;3s）率 &gt;80% 觸發熔斷，走 <code>fallbackUri</code>。</li>
+</ul>
+<hr>
+<h2 id="4-jwt-簽發與驗證--服務間信任邊界">4. JWT 簽發與驗證 + 服務間信任邊界</h2>
+<blockquote>
+<p>🎯 <strong>一句話重點</strong>：JWT 由 member 簽、Gateway 驗（並在 Redis 補撤銷檢查）；玩家端用 JWT、服務間內部端改用 internal secret——兩種身分、兩種邊界。</p>
+</blockquote>
+<h3 id="41-簽發member-service">4.1 簽發（member-service）</h3>
+<p>登入成功後由 member-service 用 JJWT 簽 access + refresh 兩顆 token：</p>
+<pre><code class="language-java">// member-service .../security/JwtTokenProvider.java（節錄）
+Jwts.builder()
+    .id(UUID.randomUUID().toString())      // jti — 供黑名單即時撤銷
+    .subject(String.valueOf(memberId))     // sub = playerId
+    .claim("role", role)
+    .claim("type", type)                   // access / refresh
+    .issuedAt(now)
+    .expiration(new Date(now.getTime() + expiryMs))
+    .signWith(secretKey)                   // HMAC-SHA
+    .compact();
+</code></pre>
+<p>refresh token 存進 Redis（TTL = 剩餘壽命）；換發時輪替（呼應 §2.4 前端的 single-flight）。</p>
+<h3 id="42-驗證gateway-的-jwtauthenticationglobalfilter">4.2 驗證（gateway 的 <code>JwtAuthenticationGlobalFilter</code>）</h3>
+<p>流程：</p>
+<ol>
+<li>白名單路徑（<code>/api/v1/auth/</code>、<code>/actuator/health</code>、<code>/swagger-ui</code>…）直通，並<strong>先剝除用戶端偽造的 <code>X-User-Id</code>/<code>X-User-Role</code></strong>。</li>
+<li>抽 <code>Authorization: Bearer</code>，缺則 401。</li>
+<li><code>Jwts.parser().verifyWith(signingKey)...parseSignedClaims()</code> 驗簽 + 檢查過期。</li>
+<li><strong>Redis 三道撤銷檢查</strong>：黑名單 <code>jwt:blacklist:{jti}</code>、使用者停用 <code>disabled:player:{sub}</code>、簽發下限 <code>token:min-iat:{sub}</code>（iat 早於門檻即視為撤銷）。</li>
+<li><strong>Redis 故障 → fail-closed</strong>：查不到就拒絕（而非放行），避免撤銷機制失效。</li>
+<li><code>/admin/**</code> 需 <code>role == ADMIN</code>，否則 403（default-deny）。</li>
+<li>通過後<strong>先 remove 再 set</strong> <code>X-User-Id</code>/<code>X-User-Role</code> 才轉發下游，防止用戶端偽造殘留。</li>
+</ol>
+<blockquote>
+<p>💬 <strong>面試現場</strong>
+🙋 <strong>面試官</strong>：「JWT 是無狀態的，那你怎麼做登出／即時撤銷？」
+🧑‍💻 <strong>你</strong>：「純 JWT 驗簽確實無法主動失效，所以我在 Gateway 補一層 Redis 撤銷檢查——每顆 token 有 jti，登出就把 jti 丟黑名單；封號就設一個 min-iat 門檻，比它早簽發的一律作廢。等於『無狀態驗簽 + 有狀態撤銷』並用。代價是每次請求多一次 Redis 查詢，但換到可即時登出，而且 Redis 掛掉時我選擇 fail-closed，寧可拒絕也不放行。」</p>
+</blockquote>
+<p><strong>關鍵前提</strong>：Gateway 與 member-service 的 <code>jwt.secret</code> 必須完全一致（yml 用 <code>${JWT_SECRET:?...}</code> 強制環境變數，缺就啟動失敗）。下游服務（如 <code>SlotController</code>）<strong>不再自己驗 JWT，只讀 Gateway 注入的 <code>X-User-Id</code></strong>。</p>
+<h3 id="43-服務間信任邊界玩家端-vs-內部端">4.3 服務間信任邊界：玩家端 vs 內部端</h3>
+<table>
+<thead>
+<tr>
+<th>面向</th>
+<th>🌐 玩家端 <code>/api/v1/**</code></th>
+<th>🔒 內部端 <code>/internal/**</code></th>
+</tr>
+</thead>
+<tbody><tr>
+<td>誰打</td>
+<td>前端（玩家）</td>
+<td>其他微服務</td>
+</tr>
+<tr>
+<td>鑑權</td>
+<td>Gateway 驗 JWT → 注入 <code>X-User-Id</code></td>
+<td><code>X-Internal-Secret</code> header</td>
+</tr>
+<tr>
+<td>經過 Gateway？</td>
+<td>✅ 是</td>
+<td>❌ 否（服務直連，少一跳）</td>
+</tr>
+<tr>
+<td>代表的身分</td>
+<td>「某個玩家」</td>
+<td>「可信的內部服務」</td>
+</tr>
+</tbody></table>
+<p>game→wallet 是唯一一條同步服務呼叫，用 Spring 6 內建的 <code>RestClient</code>（不是 Feign/WebClient）：</p>
+<pre><code class="language-java">// game-service .../config/WalletClientConfig.java
+@Bean
+public RestClient walletRestClient(
+        @Value("${internal.wallet-service.base-url}") String baseUrl,
+        @Value("${internal.wallet-service.secret}") String internalSecret) {
+    return RestClient.builder()
+            .baseUrl(baseUrl)
+            .defaultHeader("X-Internal-Secret", internalSecret)   // 每次呼叫自動帶
+            .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+            .build();
+}
+</code></pre>
+<ul>
+<li>呼叫方 <code>WalletClient.debit()/credit()</code> 打 <code>POST /internal/wallet/debit|credit</code>；HTTP 422 → <code>InsufficientBalanceException</code>（餘額不足）、其他非 2xx/連線失敗 → <code>WalletUnavailableException</code>。</li>
+<li>被呼叫方 wallet 的 <code>InternalSecretFilter</code> 只保護 <code>/internal/**</code>，用 <strong><code>MessageDigest.isEqual</code> 常數時間比對</strong> secret，防時序攻擊。</li>
+</ul>
+<blockquote>
+<p>💬 <strong>面試現場</strong>
+🙋 <strong>面試官</strong>：「服務之間為什麼不也用 JWT？而且為什麼選 RestClient 而不是 Feign？」
+🧑‍💻 <strong>你</strong>：「兩個問題其實同源。JWT 代表『某個玩家』，但 game 呼叫 wallet 沒有玩家身分，代表的是『可信的內部服務』，所以我用共享的 internal secret，而且這條走 <code>/internal</code> 不經 Gateway，少一跳、低延遲。至於 client——全系統只有這一條同步服務呼叫，不值得為它引入 Feign 的宣告式生態；RestClient 是 Spring 6 內建、同步、API 又簡潔，剛好夠用。這是我刻意『不過度設計』的例子。」</p>
+</blockquote>
+<blockquote>
+<p><strong>為什麼 <code>/internal</code> 用 secret 不用 JWT</strong>（補充）：JWT 代表玩家、服務間呼叫代表可信服務；<code>/internal</code> 不經 Gateway，用共享 secret 做網路邊界內的服務身分驗證即可。</p>
+</blockquote>
+<hr>
+<h2 id="5-kafka非同步串接與指令事件分離">5. Kafka：非同步串接與指令/事件分離</h2>
+<blockquote>
+<p>🎯 <strong>一句話重點</strong>：跨服務只是要「通知別人」就走 Kafka；而且嚴格區分<strong>指令</strong>（<code>wallet.credit.request</code>＝請你做）與<strong>事件</strong>（<code>wallet.credit</code>＝我做完了），否則 wallet 會自己發自己收、無限迴圈。</p>
+</blockquote>
+<h3 id="51-topic-一覽">5.1 Topic 一覽</h3>
+<p><code>kafka/kafka-init.sh</code> 定義 8 個業務 topic + 5 個 DLT：</p>
+<table>
+<thead>
+<tr>
+<th>Topic</th>
+<th>語意</th>
+<th>生產者</th>
+<th>主要消費者</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>member.registered</code></td>
+<td>事件</td>
+<td>member</td>
+<td>wallet（開錢包）、rank</td>
+</tr>
+<tr>
+<td><code>wallet.credit.request</code></td>
+<td><strong>指令</strong>（請入帳）</td>
+<td>member（簽到/新手禮，經 Outbox）</td>
+<td>wallet</td>
+</tr>
+<tr>
+<td><code>wallet.credit</code></td>
+<td><strong>事件</strong>（已入帳）</td>
+<td>wallet（<code>credit()</code> 成功後）</td>
+<td>rank、admin、notification</td>
+</tr>
+<tr>
+<td><code>wallet.debit</code></td>
+<td>事件（已扣款）</td>
+<td>wallet（<code>debit()</code> 成功後）</td>
+<td>rank、admin</td>
+</tr>
+<tr>
+<td><code>friend.relationship.updated</code></td>
+<td>事件（完整好友清單）</td>
+<td>member</td>
+<td>rank</td>
+</tr>
+<tr>
+<td><code>game.result</code></td>
+<td>事件</td>
+<td>game</td>
+<td>notification、admin</td>
+</tr>
+<tr>
+<td><code>rank.update</code></td>
+<td>事件（排名變動）</td>
+<td>rank</td>
+<td>notification</td>
+</tr>
+<tr>
+<td><code>notification.push</code></td>
+<td>指令（推播）</td>
+<td>rank / admin</td>
+<td>notification</td>
+</tr>
+</tbody></table>
+<p>DLT：<code>member.registered.DLT</code>、<code>wallet.debit.DLT</code>、<code>wallet.credit.DLT</code>、<code>wallet.credit.request.DLT</code>、<code>friend.relationship.updated.DLT</code>（失敗訊息進 DLT，由後台手動重試）。</p>
+<h3 id="52--adr-002為什麼把指令和事件拆開">5.2 ★ ADR-002：為什麼把「指令」和「事件」拆開</h3>
+<p>命名區分是刻意的：<code>wallet.credit.request</code> 是<strong>指令</strong>（COMMAND，「請你入帳」），<code>wallet.credit</code> 是<strong>事件</strong>（EVENT，「已經入帳了」）。</p>
+<p><strong>如果不拆會怎樣</strong>：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>❌ 只有一個 <code>wallet.credit</code>（混用）</th>
+<th>✅ 拆成 request（指令）/ credit（事件）</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>簽到入帳</td>
+<td>wallet 沒訂它 → 錢加不進去、鏈路斷</td>
+<td>member 發指令、wallet 訂指令入帳 ✅</td>
+</tr>
+<tr>
+<td>若讓 wallet 訂閱它</td>
+<td>wallet 消費 → 入帳 → 又發同一個 → 自己再消費 → <strong>無限迴圈</strong></td>
+<td>wallet 只發事件、<strong>永不消費事件</strong>，無迴圈</td>
+</tr>
+<tr>
+<td>語意</td>
+<td>「請入帳」和「已入帳」混成一個，讀不懂</td>
+<td>指令/事件語意清楚</td>
+</tr>
+</tbody></table>
+<p>拆開後語意乾淨：</p>
+<div class="mermaid"><svg id="mmd-1" width="100%" xmlns="http://www.w3.org/2000/svg" class="flowchart" style="max-width: 1505.265625px;" viewBox="0 0 1505.265625 198" role="graphics-document document" aria-roledescription="flowchart-v2"><style>#mmd-1{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;fill:#000000;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mmd-1 .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mmd-1 .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mmd-1 .error-icon{fill:#552222;}#mmd-1 .error-text{fill:#552222;stroke:#552222;}#mmd-1 .edge-thickness-normal{stroke-width:1px;}#mmd-1 .edge-thickness-thick{stroke-width:3.5px;}#mmd-1 .edge-pattern-solid{stroke-dasharray:0;}#mmd-1 .edge-thickness-invisible{stroke-width:0;fill:none;}#mmd-1 .edge-pattern-dashed{stroke-dasharray:3;}#mmd-1 .edge-pattern-dotted{stroke-dasharray:2;}#mmd-1 .marker{fill:#666;stroke:#666;}#mmd-1 .marker.cross{stroke:#666;}#mmd-1 svg{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;}#mmd-1 p{margin:0;}#mmd-1 .label{font-family:"trebuchet ms",verdana,arial,sans-serif;color:#000000;}#mmd-1 .cluster-label text{fill:#333;}#mmd-1 .cluster-label span{color:#333;}#mmd-1 .cluster-label span p{background-color:transparent;}#mmd-1 .label text,#mmd-1 span{fill:#000000;color:#000000;}#mmd-1 .node rect,#mmd-1 .node circle,#mmd-1 .node ellipse,#mmd-1 .node polygon,#mmd-1 .node path{fill:#eee;stroke:#999;stroke-width:1px;}#mmd-1 .rough-node .label text,#mmd-1 .node .label text,#mmd-1 .image-shape .label,#mmd-1 .icon-shape .label{text-anchor:middle;}#mmd-1 .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#mmd-1 .rough-node .label,#mmd-1 .node .label,#mmd-1 .image-shape .label,#mmd-1 .icon-shape .label{text-align:center;}#mmd-1 .node.clickable{cursor:pointer;}#mmd-1 .root .anchor path{fill:#666!important;stroke-width:0;stroke:#666;}#mmd-1 .arrowheadPath{fill:#333333;}#mmd-1 .edgePath .path{stroke:#666;stroke-width:1px;}#mmd-1 .flowchart-link{stroke:#666;fill:none;}#mmd-1 .edgeLabel{background-color:white;text-align:center;}#mmd-1 .edgeLabel p{background-color:white;}#mmd-1 .edgeLabel rect{opacity:0.5;background-color:white;fill:white;}#mmd-1 .labelBkg{background-color:rgba(255, 255, 255, 0.5);}#mmd-1 .cluster rect{fill:hsl(0, 0%, 98.9215686275%);stroke:#707070;stroke-width:1px;}#mmd-1 .cluster text{fill:#333;}#mmd-1 .cluster span{color:#333;}#mmd-1 div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:12px;background:hsl(-160, 0%, 93.3333333333%);border:1px solid #707070;border-radius:2px;pointer-events:none;z-index:100;}#mmd-1 .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#000000;}#mmd-1 rect.text{fill:none;stroke-width:0;}#mmd-1 .icon-shape,#mmd-1 .image-shape{background-color:white;text-align:center;}#mmd-1 .icon-shape p,#mmd-1 .image-shape p{background-color:white;padding:2px;}#mmd-1 .icon-shape .label rect,#mmd-1 .image-shape .label rect{opacity:0.5;background-color:white;fill:white;}#mmd-1 .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#mmd-1 .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#mmd-1 .node .neo-node{stroke:#999;}#mmd-1 [data-look="neo"].node rect,#mmd-1 [data-look="neo"].cluster rect,#mmd-1 [data-look="neo"].node polygon{stroke:url(#mmd-1-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mmd-1 [data-look="neo"].swimlane.cluster rect{filter:none;}#mmd-1 [data-look="neo"].node path{stroke:url(#mmd-1-gradient);stroke-width:1px;}#mmd-1 [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mmd-1 [data-look="neo"].node .neo-line path{stroke:#999;filter:none;}#mmd-1 [data-look="neo"].node circle{stroke:url(#mmd-1-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mmd-1 [data-look="neo"].node circle .state-start{fill:#000000;}#mmd-1 [data-look="neo"].icon-shape .icon{fill:url(#mmd-1-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mmd-1 [data-look="neo"].icon-shape .icon-neo path{stroke:url(#mmd-1-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mmd-1 :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}#mmd-1 .src&gt;*{fill:rgb(219, 234, 254)!important;stroke:rgb(59, 130, 246)!important;color:rgb(30, 58, 138)!important;}#mmd-1 .src span{fill:rgb(219, 234, 254)!important;stroke:rgb(59, 130, 246)!important;color:rgb(30, 58, 138)!important;}#mmd-1 .src tspan{fill:rgb(30, 58, 138)!important;}#mmd-1 .cmd&gt;*{fill:rgb(254, 243, 199)!important;stroke:rgb(217, 119, 6)!important;color:rgb(120, 53, 15)!important;}#mmd-1 .cmd span{fill:rgb(254, 243, 199)!important;stroke:rgb(217, 119, 6)!important;color:rgb(120, 53, 15)!important;}#mmd-1 .cmd tspan{fill:rgb(120, 53, 15)!important;}#mmd-1 .core&gt;*{fill:rgb(220, 252, 231)!important;stroke:rgb(22, 163, 74)!important;color:rgb(20, 83, 45)!important;}#mmd-1 .core span{fill:rgb(220, 252, 231)!important;stroke:rgb(22, 163, 74)!important;color:rgb(20, 83, 45)!important;}#mmd-1 .core tspan{fill:rgb(20, 83, 45)!important;}#mmd-1 .evt&gt;*{fill:rgb(250, 232, 255)!important;stroke:rgb(162, 28, 175)!important;color:rgb(112, 26, 117)!important;}#mmd-1 .evt span{fill:rgb(250, 232, 255)!important;stroke:rgb(162, 28, 175)!important;color:rgb(112, 26, 117)!important;}#mmd-1 .evt tspan{fill:rgb(112, 26, 117)!important;}#mmd-1 .dst&gt;*{fill:rgb(224, 231, 255)!important;stroke:rgb(99, 102, 241)!important;color:rgb(49, 46, 129)!important;}#mmd-1 .dst span{fill:rgb(224, 231, 255)!important;stroke:rgb(99, 102, 241)!important;color:rgb(49, 46, 129)!important;}#mmd-1 .dst tspan{fill:rgb(49, 46, 129)!important;}</style><g><marker id="mmd-1_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="mmd-1_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="mmd-1_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></path></marker><marker id="mmd-1_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></polygon></marker><marker id="mmd-1_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="mmd-1_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="mmd-1_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="mmd-1_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="mmd-1_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="mmd-1_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="mmd-1_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"></path></marker><marker id="mmd-1_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"></path></marker><g class="root"><g class="clusters"></g><g class="edgePaths"><path d="M163.969,47L173.871,47C183.773,47,203.578,47,222.716,47C241.854,47,260.326,47,269.561,47L278.797,47" id="mmd-1-L_M_CR_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_M_CR_0" data-points="W3sieCI6MTYzLjk2ODc1LCJ5Ijo0N30seyJ4IjoyMjMuMzgyODEyNSwieSI6NDd9LHsieCI6MjgyLjc5Njg3NSwieSI6NDd9XQ==" data-look="classic" marker-end="url(#mmd-1_flowchart-v2-pointEnd)"></path><path d="M496.203,47L517.036,47C537.87,47,579.536,47,620.559,52.405C661.582,57.811,701.961,68.622,722.15,74.027L742.339,79.432" id="mmd-1-L_CR_WC_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_CR_WC_0" data-points="W3sieCI6NDk2LjIwMzEyNSwieSI6NDd9LHsieCI6NjIxLjIwMzEyNSwieSI6NDd9LHsieCI6NzQ2LjIwMzEyNSwieSI6ODAuNDY2NzY3NjQzOTgyODN9XQ==" data-look="classic" marker-end="url(#mmd-1_flowchart-v2-pointEnd)"></path><path d="M457.133,163L484.478,163C511.823,163,566.513,163,614.047,157.595C661.582,152.189,701.961,141.378,722.15,135.973L742.339,130.568" id="mmd-1-L_GP_WC_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_GP_WC_0" data-points="W3sieCI6NDU3LjEzMjgxMjUsInkiOjE2M30seyJ4Ijo2MjEuMjAzMTI1LCJ5IjoxNjN9LHsieCI6NzQ2LjIwMzEyNSwieSI6MTI5LjUzMzIzMjM1NjAxNzE1fV0=" data-look="classic" marker-end="url(#mmd-1_flowchart-v2-pointEnd)"></path><path d="M929.469,105L939.371,105C949.273,105,969.078,105,988.216,105C1007.354,105,1025.826,105,1035.061,105L1044.297,105" id="mmd-1-L_WC_CE_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_WC_CE_0" data-points="W3sieCI6OTI5LjQ2ODc1LCJ5IjoxMDV9LHsieCI6OTg4Ljg4MjgxMjUsInkiOjEwNX0seyJ4IjoxMDQ4LjI5Njg3NSwieSI6MTA1fV0=" data-look="classic" marker-end="url(#mmd-1_flowchart-v2-pointEnd)"></path><path d="M1201.688,105L1210.257,105C1218.826,105,1235.964,105,1252.435,105C1268.906,105,1284.711,105,1292.613,105L1300.516,105" id="mmd-1-L_CE_RK_0" class=" edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style=";" data-edge="true" data-et="edge" data-id="L_CE_RK_0" data-points="W3sieCI6MTIwMS42ODc1LCJ5IjoxMDV9LHsieCI6MTI1My4xMDE1NjI1LCJ5IjoxMDV9LHsieCI6MTMwNC41MTU2MjUsInkiOjEwNX1d" data-look="classic" marker-end="url(#mmd-1_flowchart-v2-pointEnd)"></path></g><g class="edgeLabels"><g class="edgeLabel" transform="translate(223.3828125, 47)"><g class="label" data-id="L_M_CR_0" transform="translate(-34.4140625, -12)"><foreignObject width="68.828125" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel "><p>① 發指令</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(621.203125, 47)"><g class="label" data-id="L_CR_WC_0" transform="translate(-26.4140625, -12)"><foreignObject width="52.828125" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel "><p>② 消費</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(621.203125, 163)"><g class="label" data-id="L_GP_WC_0" transform="translate(-100, -24)"><foreignObject width="200" height="48"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;"><span class="edgeLabel "><p>HTTP /internal/wallet/credit</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(988.8828125, 105)"><g class="label" data-id="L_WC_CE_0" transform="translate(-34.4140625, -12)"><foreignObject width="68.828125" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel "><p>③ 發事件</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(1253.1015625, 105)"><g class="label" data-id="L_CE_RK_0" transform="translate(-26.4140625, -12)"><foreignObject width="52.828125" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel "><p>④ 消費</p></span></div></foreignObject></g></g></g><g class="nodes"><g class="node default src " id="mmd-1-flowchart-M-0" data-look="classic" transform="translate(85.984375, 47)"><rect class="basic label-container" style="fill:#dbeafe !important;stroke:#3b82f6 !important" x="-77.984375" y="-27" width="155.96875" height="54"></rect><g class="label" style="color:#1e3a8a !important" transform="translate(-47.984375, -12)"><rect></rect><foreignObject width="95.96875" height="24"><div style="color: rgb(30, 58, 138) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#1e3a8a !important" class="nodeLabel "><p>member 簽到</p></span></div></foreignObject></g></g><g class="node default cmd " id="mmd-1-flowchart-CR-1" data-look="classic" transform="translate(389.5, 47)"><rect class="basic label-container" style="fill:#fef3c7 !important;stroke:#d97706 !important" x="-106.703125" y="-39" width="213.40625" height="78"></rect><g class="label" style="color:#78350f !important" transform="translate(-76.703125, -24)"><rect></rect><foreignObject width="153.40625" height="48"><div style="color: rgb(120, 53, 15) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#78350f !important" class="nodeLabel "><p>wallet.credit.request<br>指令 COMMAND</p></span></div></foreignObject></g></g><g class="node default core " id="mmd-1-flowchart-WC-3" data-look="classic" transform="translate(837.8359375, 105)"><rect class="basic label-container" style="fill:#dcfce7 !important;stroke:#16a34a !important" x="-91.6328125" y="-39" width="183.265625" height="78"></rect><g class="label" style="color:#14532d !important" transform="translate(-61.6328125, -24)"><rect></rect><foreignObject width="123.265625" height="48"><div style="color: rgb(20, 83, 45) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#14532d !important" class="nodeLabel "><p>wallet<br>credit() 真正入帳</p></span></div></foreignObject></g></g><g class="node default src " id="mmd-1-flowchart-GP-4" data-look="classic" transform="translate(389.5, 163)"><rect class="basic label-container" style="fill:#dbeafe !important;stroke:#3b82f6 !important" x="-67.6328125" y="-27" width="135.265625" height="54"></rect><g class="label" style="color:#1e3a8a !important" transform="translate(-37.6328125, -12)"><rect></rect><foreignObject width="75.265625" height="24"><div style="color: rgb(30, 58, 138) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#1e3a8a !important" class="nodeLabel "><p>game 派彩</p></span></div></foreignObject></g></g><g class="node default evt " id="mmd-1-flowchart-CE-7" data-look="classic" transform="translate(1124.9921875, 105)"><rect class="basic label-container" style="fill:#fae8ff !important;stroke:#a21caf !important" x="-76.6953125" y="-39" width="153.390625" height="78"></rect><g class="label" style="color:#701a75 !important" transform="translate(-46.6953125, -24)"><rect></rect><foreignObject width="93.390625" height="48"><div style="color: rgb(112, 26, 117) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#701a75 !important" class="nodeLabel "><p>wallet.credit<br>事件 EVENT</p></span></div></foreignObject></g></g><g class="node default dst " id="mmd-1-flowchart-RK-9" data-look="classic" transform="translate(1400.890625, 105)"><rect class="basic label-container" style="fill:#e0e7ff !important;stroke:#6366f1 !important" x="-96.375" y="-27" width="192.75" height="54"></rect><g class="label" style="color:#312e81 !important" transform="translate(-66.375, -12)"><rect></rect><foreignObject width="132.75" height="24"><div style="color: rgb(49, 46, 129) !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;" xmlns="http://www.w3.org/1999/xhtml"><span style="color:#312e81 !important" class="nodeLabel "><p>rank / notification</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="mmd-1-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><defs><filter id="mmd-1-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><linearGradient id="mmd-1-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="hsl(0, 0%, 83.3333333333%)" stop-opacity="1"></stop><stop offset="100%" stop-color="hsl(0, 0%, 88.9215686275%)" stop-opacity="1"></stop></linearGradient></svg></div>
+<p>兩條入帳路徑（Kafka 指令、HTTP 同步）<strong>共用同一個 <code>WalletService.credit()</code></strong>（重用、不必為 Kafka 另寫一份帳務邏輯）。</p>
+<blockquote>
+<p><strong>鐵則（雷區 6）</strong>：<strong>wallet-service 永遠不消費 <code>wallet.credit</code></strong>，否則就是上面那個無限迴圈。要消費 <code>wallet.credit</code>/<code>wallet.debit</code> 的是 rank/admin/notification。</p>
+</blockquote>
+<blockquote>
+<p>💬 <strong>面試現場</strong>
+🙋 <strong>面試官</strong>：「你在 Kafka 訊息設計上特別做了什麼？」
+🧑‍💻 <strong>你</strong>：「我把『指令』和『事件』用 topic 命名分開——<code>wallet.credit.request</code> 是指令（請你入帳）、<code>wallet.credit</code> 是事件（我入帳完了）。原因是踩過雷：早期兩者混用，導致簽到入帳鏈路斷掉；而如果直接讓 wallet 訂閱自己發的那個 topic，就會入帳完又發、自己再收，變成無限迴圈。拆開後語意乾淨，而且鐵則是 wallet 永不消費自己的事件。」</p>
+</blockquote>
+<h3 id="53-outbox保證db-寫入與事件發送原子性">5.3 Outbox：保證「DB 寫入」與「事件發送」原子性</h3>
+<p>簽到入帳為什麼不直接 <code>kafkaTemplate.send()</code>？因為「寫 DB 成功但發 Kafka 失敗」會導致玩家簽到了卻沒拿到獎勵。解法是 <strong>Outbox 模式</strong>——簽到記錄與待發事件寫進<strong>同一個 DB 交易</strong>：</p>
+<pre><code class="language-java">// member-service .../service/CheckinService.java（節錄）
+// 與簽到記錄同一交易寫入 outbox（wallet.credit.request — 入帳「指令」，ADR-002）
+outboxService.save("wallet.credit.request", String.valueOf(playerId), payload);
+</code></pre>
+<p>再由 <code>OutboxPoller</code>（<code>@Scheduled</code> 每 5s）撈 PENDING、<code>kafkaTemplate.send(...).get(10s)</code> 同步等 broker 確認後才標 SENT（at-least-once，搭配 producer <code>acks=all</code>）。</p>
+<blockquote>
+<p>💬 <strong>面試現場</strong>
+🙋 <strong>面試官</strong>：「怎麼保證資料庫寫入和事件發送要嘛都成功、要嘛都不做？」
+🧑‍💻 <strong>你</strong>：「我用 Outbox 模式。把要發的事件跟業務資料寫進『同一個 DB 交易』的 outbox 表，DB commit 成功事件就一定在庫裡；再由背景 poller 去撈、同步等 broker ack 才標記已送，保證最終送達，也就是至少一次。代價是消費端要做冪等，這我在帳務用 idempotency_key 已經處理了。」</p>
+</blockquote>
+<h3 id="54-只有-win-才計入排行">5.4 只有 <code>WIN</code> 才計入排行</h3>
+<p>rank 的 <code>WalletBalanceChangedConsumer</code> 訂 <code>wallet.credit</code>/<code>wallet.debit</code>，但只有 <code>subType == "WIN"</code> 才 <code>addDailyWinnings()</code>——簽到獎勵 <code>CHECKIN</code>、退款 <code>REFUND</code>、商城 <code>SHOP_PURCHASE</code> 等子型只更新餘額、<strong>不污染「今日贏幣」排行</strong>（雷區 18）。</p>
+<hr>
+<h2 id="6-端到端範例玩老虎機一局">6. 端到端範例：玩老虎機一局</h2>
+<blockquote>
+<p>🎯 <strong>一句話重點</strong>：一局老虎機同時用到全部三種介面——前端經 Gateway（JWT）、game 同步呼叫 wallet（internal secret + 冪等鍵 + 樂觀鎖）、再 Kafka fan-out 給 rank/notification/admin。錢同步落地、通知非同步。</p>
+</blockquote>
+<p>以 <code>POST /api/v1/game/slot/spin</code> 貫穿全部三種串接介面：</p>
+<div class="mermaid"><svg id="mmd-2" width="100%" xmlns="http://www.w3.org/2000/svg" style="max-width: 1977px;" viewBox="-50 -10 1977 855" role="graphics-document document" aria-roledescription="sequence"><g><rect x="1727" y="769" fill="#eaeaea" stroke="#666" width="150" height="65" name="DS" rx="3" ry="3" class="actor actor-bottom"></rect><text x="1802" y="801.5" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="1802" dy="0">rank/notif/admin</tspan></text></g><g><rect x="1469" y="769" fill="#eaeaea" stroke="#666" width="150" height="65" name="KF" rx="3" ry="3" class="actor actor-bottom"></rect><text x="1544" y="801.5" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="1544" dy="0">Kafka</tspan></text></g><g><rect x="1122" y="769" fill="#eaeaea" stroke="#666" width="150" height="65" name="WL" rx="3" ry="3" class="actor actor-bottom"></rect><text x="1197" y="801.5" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="1197" dy="0">wallet-service</tspan></text></g><g><rect x="636" y="769" fill="#eaeaea" stroke="#666" width="150" height="65" name="GM" rx="3" ry="3" class="actor actor-bottom"></rect><text x="711" y="801.5" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="711" dy="0">game-service</tspan></text></g><g><rect x="410" y="769" fill="#eaeaea" stroke="#666" width="150" height="65" name="GW" rx="3" ry="3" class="actor actor-bottom"></rect><text x="485" y="801.5" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="485" dy="0">Gateway</tspan></text></g><g><rect x="0" y="769" fill="#eaeaea" stroke="#666" width="150" height="65" name="F" rx="3" ry="3" class="actor actor-bottom"></rect><text x="75" y="801.5" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="75" dy="0">前端</tspan></text></g><g><line id="actor5" x1="1802" y1="65" x2="1802" y2="769" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="DS" data-et="life-line" data-id="DS"></line><g id="root-5" data-et="participant" data-type="participant" data-id="DS"><rect x="1727" y="0" fill="#eaeaea" stroke="#666" width="150" height="65" name="DS" rx="3" ry="3" class="actor actor-top"></rect><text x="1802" y="32.5" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="1802" dy="0">rank/notif/admin</tspan></text></g></g><g><line id="actor4" x1="1544" y1="65" x2="1544" y2="769" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="KF" data-et="life-line" data-id="KF"></line><g id="root-4" data-et="participant" data-type="participant" data-id="KF"><rect x="1469" y="0" fill="#eaeaea" stroke="#666" width="150" height="65" name="KF" rx="3" ry="3" class="actor actor-top"></rect><text x="1544" y="32.5" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="1544" dy="0">Kafka</tspan></text></g></g><g><line id="actor3" x1="1197" y1="65" x2="1197" y2="769" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="WL" data-et="life-line" data-id="WL"></line><g id="root-3" data-et="participant" data-type="participant" data-id="WL"><rect x="1122" y="0" fill="#eaeaea" stroke="#666" width="150" height="65" name="WL" rx="3" ry="3" class="actor actor-top"></rect><text x="1197" y="32.5" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="1197" dy="0">wallet-service</tspan></text></g></g><g><line id="actor2" x1="711" y1="65" x2="711" y2="769" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="GM" data-et="life-line" data-id="GM"></line><g id="root-2" data-et="participant" data-type="participant" data-id="GM"><rect x="636" y="0" fill="#eaeaea" stroke="#666" width="150" height="65" name="GM" rx="3" ry="3" class="actor actor-top"></rect><text x="711" y="32.5" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="711" dy="0">game-service</tspan></text></g></g><g><line id="actor1" x1="485" y1="65" x2="485" y2="769" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="GW" data-et="life-line" data-id="GW"></line><g id="root-1" data-et="participant" data-type="participant" data-id="GW"><rect x="410" y="0" fill="#eaeaea" stroke="#666" width="150" height="65" name="GW" rx="3" ry="3" class="actor actor-top"></rect><text x="485" y="32.5" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="485" dy="0">Gateway</tspan></text></g></g><g><line id="actor0" x1="75" y1="65" x2="75" y2="769" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="F" data-et="life-line" data-id="F"></line><g id="root-0" data-et="participant" data-type="participant" data-id="F"><rect x="0" y="0" fill="#eaeaea" stroke="#666" width="150" height="65" name="F" rx="3" ry="3" class="actor actor-top"></rect><text x="75" y="32.5" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="75" dy="0">前端</tspan></text></g></g><style>#mmd-2{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;fill:#000000;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mmd-2 .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mmd-2 .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mmd-2 .error-icon{fill:#552222;}#mmd-2 .error-text{fill:#552222;stroke:#552222;}#mmd-2 .edge-thickness-normal{stroke-width:1px;}#mmd-2 .edge-thickness-thick{stroke-width:3.5px;}#mmd-2 .edge-pattern-solid{stroke-dasharray:0;}#mmd-2 .edge-thickness-invisible{stroke-width:0;fill:none;}#mmd-2 .edge-pattern-dashed{stroke-dasharray:3;}#mmd-2 .edge-pattern-dotted{stroke-dasharray:2;}#mmd-2 .marker{fill:#666;stroke:#666;}#mmd-2 .marker.cross{stroke:#666;}#mmd-2 svg{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;}#mmd-2 p{margin:0;}#mmd-2 .actor{stroke:hsl(0, 0%, 83%);fill:#eee;stroke-width:1;}#mmd-2 rect.actor.outer-path[data-look="neo"]{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mmd-2 rect.note[data-look="neo"]{stroke:#999;fill:#666;filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mmd-2 text.actor&gt;tspan{fill:#333;stroke:none;}#mmd-2 .actor-line{stroke:hsl(0, 0%, 83%);}#mmd-2 .innerArc{stroke-width:1.5;stroke-dasharray:none;}#mmd-2 .messageLine0{stroke-width:1.5;stroke-dasharray:none;stroke:#333;}#mmd-2 .messageLine1{stroke-width:1.5;stroke-dasharray:2,2;stroke:#333;}#mmd-2 [id$="-arrowhead"] path{fill:#333;stroke:#333;}#mmd-2 .sequenceNumber{fill:white;}#mmd-2 [id$="-sequencenumber"]{fill:#333;}#mmd-2 [id$="-crosshead"] path{fill:#333;stroke:#333;}#mmd-2 .messageText{fill:#333;stroke:none;}#mmd-2 .labelBox{stroke:hsl(0, 0%, 83%);fill:#eee;filter:none;}#mmd-2 .labelText,#mmd-2 .labelText&gt;tspan{fill:#333;stroke:none;}#mmd-2 .loopText,#mmd-2 .loopText&gt;tspan{fill:#333;stroke:none;}#mmd-2 .sectionTitle,#mmd-2 .sectionTitle&gt;tspan{fill:#333;stroke:none;}#mmd-2 .loopLine{stroke-width:2px;stroke-dasharray:2,2;stroke:hsl(0, 0%, 83%);fill:hsl(0, 0%, 83%);}#mmd-2 .note{stroke:#999;fill:#666;}#mmd-2 .noteText,#mmd-2 .noteText&gt;tspan{fill:#fff;stroke:none;font-weight:normal;}#mmd-2 .activation0{fill:#f4f4f4;stroke:#666;}#mmd-2 .activation1{fill:#f4f4f4;stroke:#666;}#mmd-2 .activation2{fill:#f4f4f4;stroke:#666;}#mmd-2 .actorPopupMenu{position:absolute;}#mmd-2 .actorPopupMenuPanel{position:absolute;fill:#eee;box-shadow:0px 8px 16px 0px rgba(0,0,0,0.2);filter:drop-shadow(3px 5px 2px rgb(0 0 0 / 0.4));}#mmd-2 .actor-man circle,#mmd-2 line{fill:#eee;stroke-width:2px;}#mmd-2 g rect.rect{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));stroke:#999;}#mmd-2 .node .neo-node{stroke:#999;}#mmd-2 [data-look="neo"].node rect,#mmd-2 [data-look="neo"].cluster rect,#mmd-2 [data-look="neo"].node polygon{stroke:url(#mmd-2-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mmd-2 [data-look="neo"].swimlane.cluster rect{filter:none;}#mmd-2 [data-look="neo"].node path{stroke:url(#mmd-2-gradient);stroke-width:1px;}#mmd-2 [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mmd-2 [data-look="neo"].node .neo-line path{stroke:#999;filter:none;}#mmd-2 [data-look="neo"].node circle{stroke:url(#mmd-2-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mmd-2 [data-look="neo"].node circle .state-start{fill:#000000;}#mmd-2 [data-look="neo"].icon-shape .icon{fill:url(#mmd-2-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mmd-2 [data-look="neo"].icon-shape .icon-neo path{stroke:url(#mmd-2-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#mmd-2 :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g></g><defs><symbol id="mmd-2-computer" width="24" height="24"><path transform="scale(.5)" d="M2 2v13h20v-13h-20zm18 11h-16v-9h16v9zm-10.228 6l.466-1h3.524l.467 1h-4.457zm14.228 3h-24l2-6h2.104l-1.33 4h18.45l-1.297-4h2.073l2 6zm-5-10h-14v-7h14v7z"></path></symbol></defs><defs><symbol id="mmd-2-database" fill-rule="evenodd" clip-rule="evenodd"><path transform="scale(.5)" d="M12.258.001l.256.004.255.005.253.008.251.01.249.012.247.015.246.016.242.019.241.02.239.023.236.024.233.027.231.028.229.031.225.032.223.034.22.036.217.038.214.04.211.041.208.043.205.045.201.046.198.048.194.05.191.051.187.053.183.054.18.056.175.057.172.059.168.06.163.061.16.063.155.064.15.066.074.033.073.033.071.034.07.034.069.035.068.035.067.035.066.035.064.036.064.036.062.036.06.036.06.037.058.037.058.037.055.038.055.038.053.038.052.038.051.039.05.039.048.039.047.039.045.04.044.04.043.04.041.04.04.041.039.041.037.041.036.041.034.041.033.042.032.042.03.042.029.042.027.042.026.043.024.043.023.043.021.043.02.043.018.044.017.043.015.044.013.044.012.044.011.045.009.044.007.045.006.045.004.045.002.045.001.045v17l-.001.045-.002.045-.004.045-.006.045-.007.045-.009.044-.011.045-.012.044-.013.044-.015.044-.017.043-.018.044-.02.043-.021.043-.023.043-.024.043-.026.043-.027.042-.029.042-.03.042-.032.042-.033.042-.034.041-.036.041-.037.041-.039.041-.04.041-.041.04-.043.04-.044.04-.045.04-.047.039-.048.039-.05.039-.051.039-.052.038-.053.038-.055.038-.055.038-.058.037-.058.037-.06.037-.06.036-.062.036-.064.036-.064.036-.066.035-.067.035-.068.035-.069.035-.07.034-.071.034-.073.033-.074.033-.15.066-.155.064-.16.063-.163.061-.168.06-.172.059-.175.057-.18.056-.183.054-.187.053-.191.051-.194.05-.198.048-.201.046-.205.045-.208.043-.211.041-.214.04-.217.038-.22.036-.223.034-.225.032-.229.031-.231.028-.233.027-.236.024-.239.023-.241.02-.242.019-.246.016-.247.015-.249.012-.251.01-.253.008-.255.005-.256.004-.258.001-.258-.001-.256-.004-.255-.005-.253-.008-.251-.01-.249-.012-.247-.015-.245-.016-.243-.019-.241-.02-.238-.023-.236-.024-.234-.027-.231-.028-.228-.031-.226-.032-.223-.034-.22-.036-.217-.038-.214-.04-.211-.041-.208-.043-.204-.045-.201-.046-.198-.048-.195-.05-.19-.051-.187-.053-.184-.054-.179-.056-.176-.057-.172-.059-.167-.06-.164-.061-.159-.063-.155-.064-.151-.066-.074-.033-.072-.033-.072-.034-.07-.034-.069-.035-.068-.035-.067-.035-.066-.035-.064-.036-.063-.036-.062-.036-.061-.036-.06-.037-.058-.037-.057-.037-.056-.038-.055-.038-.053-.038-.052-.038-.051-.039-.049-.039-.049-.039-.046-.039-.046-.04-.044-.04-.043-.04-.041-.04-.04-.041-.039-.041-.037-.041-.036-.041-.034-.041-.033-.042-.032-.042-.03-.042-.029-.042-.027-.042-.026-.043-.024-.043-.023-.043-.021-.043-.02-.043-.018-.044-.017-.043-.015-.044-.013-.044-.012-.044-.011-.045-.009-.044-.007-.045-.006-.045-.004-.045-.002-.045-.001-.045v-17l.001-.045.002-.045.004-.045.006-.045.007-.045.009-.044.011-.045.012-.044.013-.044.015-.044.017-.043.018-.044.02-.043.021-.043.023-.043.024-.043.026-.043.027-.042.029-.042.03-.042.032-.042.033-.042.034-.041.036-.041.037-.041.039-.041.04-.041.041-.04.043-.04.044-.04.046-.04.046-.039.049-.039.049-.039.051-.039.052-.038.053-.038.055-.038.056-.038.057-.037.058-.037.06-.037.061-.036.062-.036.063-.036.064-.036.066-.035.067-.035.068-.035.069-.035.07-.034.072-.034.072-.033.074-.033.151-.066.155-.064.159-.063.164-.061.167-.06.172-.059.176-.057.179-.056.184-.054.187-.053.19-.051.195-.05.198-.048.201-.046.204-.045.208-.043.211-.041.214-.04.217-.038.22-.036.223-.034.226-.032.228-.031.231-.028.234-.027.236-.024.238-.023.241-.02.243-.019.245-.016.247-.015.249-.012.251-.01.253-.008.255-.005.256-.004.258-.001.258.001zm-9.258 20.499v.01l.001.021.003.021.004.022.005.021.006.022.007.022.009.023.01.022.011.023.012.023.013.023.015.023.016.024.017.023.018.024.019.024.021.024.022.025.023.024.024.025.052.049.056.05.061.051.066.051.07.051.075.051.079.052.084.052.088.052.092.052.097.052.102.051.105.052.11.052.114.051.119.051.123.051.127.05.131.05.135.05.139.048.144.049.147.047.152.047.155.047.16.045.163.045.167.043.171.043.176.041.178.041.183.039.187.039.19.037.194.035.197.035.202.033.204.031.209.03.212.029.216.027.219.025.222.024.226.021.23.02.233.018.236.016.24.015.243.012.246.01.249.008.253.005.256.004.259.001.26-.001.257-.004.254-.005.25-.008.247-.011.244-.012.241-.014.237-.016.233-.018.231-.021.226-.021.224-.024.22-.026.216-.027.212-.028.21-.031.205-.031.202-.034.198-.034.194-.036.191-.037.187-.039.183-.04.179-.04.175-.042.172-.043.168-.044.163-.045.16-.046.155-.046.152-.047.148-.048.143-.049.139-.049.136-.05.131-.05.126-.05.123-.051.118-.052.114-.051.11-.052.106-.052.101-.052.096-.052.092-.052.088-.053.083-.051.079-.052.074-.052.07-.051.065-.051.06-.051.056-.05.051-.05.023-.024.023-.025.021-.024.02-.024.019-.024.018-.024.017-.024.015-.023.014-.024.013-.023.012-.023.01-.023.01-.022.008-.022.006-.022.006-.022.004-.022.004-.021.001-.021.001-.021v-4.127l-.077.055-.08.053-.083.054-.085.053-.087.052-.09.052-.093.051-.095.05-.097.05-.1.049-.102.049-.105.048-.106.047-.109.047-.111.046-.114.045-.115.045-.118.044-.12.043-.122.042-.124.042-.126.041-.128.04-.13.04-.132.038-.134.038-.135.037-.138.037-.139.035-.142.035-.143.034-.144.033-.147.032-.148.031-.15.03-.151.03-.153.029-.154.027-.156.027-.158.026-.159.025-.161.024-.162.023-.163.022-.165.021-.166.02-.167.019-.169.018-.169.017-.171.016-.173.015-.173.014-.175.013-.175.012-.177.011-.178.01-.179.008-.179.008-.181.006-.182.005-.182.004-.184.003-.184.002h-.37l-.184-.002-.184-.003-.182-.004-.182-.005-.181-.006-.179-.008-.179-.008-.178-.01-.176-.011-.176-.012-.175-.013-.173-.014-.172-.015-.171-.016-.17-.017-.169-.018-.167-.019-.166-.02-.165-.021-.163-.022-.162-.023-.161-.024-.159-.025-.157-.026-.156-.027-.155-.027-.153-.029-.151-.03-.15-.03-.148-.031-.146-.032-.145-.033-.143-.034-.141-.035-.14-.035-.137-.037-.136-.037-.134-.038-.132-.038-.13-.04-.128-.04-.126-.041-.124-.042-.122-.042-.12-.044-.117-.043-.116-.045-.113-.045-.112-.046-.109-.047-.106-.047-.105-.048-.102-.049-.1-.049-.097-.05-.095-.05-.093-.052-.09-.051-.087-.052-.085-.053-.083-.054-.08-.054-.077-.054v4.127zm0-5.654v.011l.001.021.003.021.004.021.005.022.006.022.007.022.009.022.01.022.011.023.012.023.013.023.015.024.016.023.017.024.018.024.019.024.021.024.022.024.023.025.024.024.052.05.056.05.061.05.066.051.07.051.075.052.079.051.084.052.088.052.092.052.097.052.102.052.105.052.11.051.114.051.119.052.123.05.127.051.131.05.135.049.139.049.144.048.147.048.152.047.155.046.16.045.163.045.167.044.171.042.176.042.178.04.183.04.187.038.19.037.194.036.197.034.202.033.204.032.209.03.212.028.216.027.219.025.222.024.226.022.23.02.233.018.236.016.24.014.243.012.246.01.249.008.253.006.256.003.259.001.26-.001.257-.003.254-.006.25-.008.247-.01.244-.012.241-.015.237-.016.233-.018.231-.02.226-.022.224-.024.22-.025.216-.027.212-.029.21-.03.205-.032.202-.033.198-.035.194-.036.191-.037.187-.039.183-.039.179-.041.175-.042.172-.043.168-.044.163-.045.16-.045.155-.047.152-.047.148-.048.143-.048.139-.05.136-.049.131-.05.126-.051.123-.051.118-.051.114-.052.11-.052.106-.052.101-.052.096-.052.092-.052.088-.052.083-.052.079-.052.074-.051.07-.052.065-.051.06-.05.056-.051.051-.049.023-.025.023-.024.021-.025.02-.024.019-.024.018-.024.017-.024.015-.023.014-.023.013-.024.012-.022.01-.023.01-.023.008-.022.006-.022.006-.022.004-.021.004-.022.001-.021.001-.021v-4.139l-.077.054-.08.054-.083.054-.085.052-.087.053-.09.051-.093.051-.095.051-.097.05-.1.049-.102.049-.105.048-.106.047-.109.047-.111.046-.114.045-.115.044-.118.044-.12.044-.122.042-.124.042-.126.041-.128.04-.13.039-.132.039-.134.038-.135.037-.138.036-.139.036-.142.035-.143.033-.144.033-.147.033-.148.031-.15.03-.151.03-.153.028-.154.028-.156.027-.158.026-.159.025-.161.024-.162.023-.163.022-.165.021-.166.02-.167.019-.169.018-.169.017-.171.016-.173.015-.173.014-.175.013-.175.012-.177.011-.178.009-.179.009-.179.007-.181.007-.182.005-.182.004-.184.003-.184.002h-.37l-.184-.002-.184-.003-.182-.004-.182-.005-.181-.007-.179-.007-.179-.009-.178-.009-.176-.011-.176-.012-.175-.013-.173-.014-.172-.015-.171-.016-.17-.017-.169-.018-.167-.019-.166-.02-.165-.021-.163-.022-.162-.023-.161-.024-.159-.025-.157-.026-.156-.027-.155-.028-.153-.028-.151-.03-.15-.03-.148-.031-.146-.033-.145-.033-.143-.033-.141-.035-.14-.036-.137-.036-.136-.037-.134-.038-.132-.039-.13-.039-.128-.04-.126-.041-.124-.042-.122-.043-.12-.043-.117-.044-.116-.044-.113-.046-.112-.046-.109-.046-.106-.047-.105-.048-.102-.049-.1-.049-.097-.05-.095-.051-.093-.051-.09-.051-.087-.053-.085-.052-.083-.054-.08-.054-.077-.054v4.139zm0-5.666v.011l.001.02.003.022.004.021.005.022.006.021.007.022.009.023.01.022.011.023.012.023.013.023.015.023.016.024.017.024.018.023.019.024.021.025.022.024.023.024.024.025.052.05.056.05.061.05.066.051.07.051.075.052.079.051.084.052.088.052.092.052.097.052.102.052.105.051.11.052.114.051.119.051.123.051.127.05.131.05.135.05.139.049.144.048.147.048.152.047.155.046.16.045.163.045.167.043.171.043.176.042.178.04.183.04.187.038.19.037.194.036.197.034.202.033.204.032.209.03.212.028.216.027.219.025.222.024.226.021.23.02.233.018.236.017.24.014.243.012.246.01.249.008.253.006.256.003.259.001.26-.001.257-.003.254-.006.25-.008.247-.01.244-.013.241-.014.237-.016.233-.018.231-.02.226-.022.224-.024.22-.025.216-.027.212-.029.21-.03.205-.032.202-.033.198-.035.194-.036.191-.037.187-.039.183-.039.179-.041.175-.042.172-.043.168-.044.163-.045.16-.045.155-.047.152-.047.148-.048.143-.049.139-.049.136-.049.131-.051.126-.05.123-.051.118-.052.114-.051.11-.052.106-.052.101-.052.096-.052.092-.052.088-.052.083-.052.079-.052.074-.052.07-.051.065-.051.06-.051.056-.05.051-.049.023-.025.023-.025.021-.024.02-.024.019-.024.018-.024.017-.024.015-.023.014-.024.013-.023.012-.023.01-.022.01-.023.008-.022.006-.022.006-.022.004-.022.004-.021.001-.021.001-.021v-4.153l-.077.054-.08.054-.083.053-.085.053-.087.053-.09.051-.093.051-.095.051-.097.05-.1.049-.102.048-.105.048-.106.048-.109.046-.111.046-.114.046-.115.044-.118.044-.12.043-.122.043-.124.042-.126.041-.128.04-.13.039-.132.039-.134.038-.135.037-.138.036-.139.036-.142.034-.143.034-.144.033-.147.032-.148.032-.15.03-.151.03-.153.028-.154.028-.156.027-.158.026-.159.024-.161.024-.162.023-.163.023-.165.021-.166.02-.167.019-.169.018-.169.017-.171.016-.173.015-.173.014-.175.013-.175.012-.177.01-.178.01-.179.009-.179.007-.181.006-.182.006-.182.004-.184.003-.184.001-.185.001-.185-.001-.184-.001-.184-.003-.182-.004-.182-.006-.181-.006-.179-.007-.179-.009-.178-.01-.176-.01-.176-.012-.175-.013-.173-.014-.172-.015-.171-.016-.17-.017-.169-.018-.167-.019-.166-.02-.165-.021-.163-.023-.162-.023-.161-.024-.159-.024-.157-.026-.156-.027-.155-.028-.153-.028-.151-.03-.15-.03-.148-.032-.146-.032-.145-.033-.143-.034-.141-.034-.14-.036-.137-.036-.136-.037-.134-.038-.132-.039-.13-.039-.128-.041-.126-.041-.124-.041-.122-.043-.12-.043-.117-.044-.116-.044-.113-.046-.112-.046-.109-.046-.106-.048-.105-.048-.102-.048-.1-.05-.097-.049-.095-.051-.093-.051-.09-.052-.087-.052-.085-.053-.083-.053-.08-.054-.077-.054v4.153zm8.74-8.179l-.257.004-.254.005-.25.008-.247.011-.244.012-.241.014-.237.016-.233.018-.231.021-.226.022-.224.023-.22.026-.216.027-.212.028-.21.031-.205.032-.202.033-.198.034-.194.036-.191.038-.187.038-.183.04-.179.041-.175.042-.172.043-.168.043-.163.045-.16.046-.155.046-.152.048-.148.048-.143.048-.139.049-.136.05-.131.05-.126.051-.123.051-.118.051-.114.052-.11.052-.106.052-.101.052-.096.052-.092.052-.088.052-.083.052-.079.052-.074.051-.07.052-.065.051-.06.05-.056.05-.051.05-.023.025-.023.024-.021.024-.02.025-.019.024-.018.024-.017.023-.015.024-.014.023-.013.023-.012.023-.01.023-.01.022-.008.022-.006.023-.006.021-.004.022-.004.021-.001.021-.001.021.001.021.001.021.004.021.004.022.006.021.006.023.008.022.01.022.01.023.012.023.013.023.014.023.015.024.017.023.018.024.019.024.02.025.021.024.023.024.023.025.051.05.056.05.06.05.065.051.07.052.074.051.079.052.083.052.088.052.092.052.096.052.101.052.106.052.11.052.114.052.118.051.123.051.126.051.131.05.136.05.139.049.143.048.148.048.152.048.155.046.16.046.163.045.168.043.172.043.175.042.179.041.183.04.187.038.191.038.194.036.198.034.202.033.205.032.21.031.212.028.216.027.22.026.224.023.226.022.231.021.233.018.237.016.241.014.244.012.247.011.25.008.254.005.257.004.26.001.26-.001.257-.004.254-.005.25-.008.247-.011.244-.012.241-.014.237-.016.233-.018.231-.021.226-.022.224-.023.22-.026.216-.027.212-.028.21-.031.205-.032.202-.033.198-.034.194-.036.191-.038.187-.038.183-.04.179-.041.175-.042.172-.043.168-.043.163-.045.16-.046.155-.046.152-.048.148-.048.143-.048.139-.049.136-.05.131-.05.126-.051.123-.051.118-.051.114-.052.11-.052.106-.052.101-.052.096-.052.092-.052.088-.052.083-.052.079-.052.074-.051.07-.052.065-.051.06-.05.056-.05.051-.05.023-.025.023-.024.021-.024.02-.025.019-.024.018-.024.017-.023.015-.024.014-.023.013-.023.012-.023.01-.023.01-.022.008-.022.006-.023.006-.021.004-.022.004-.021.001-.021.001-.021-.001-.021-.001-.021-.004-.021-.004-.022-.006-.021-.006-.023-.008-.022-.01-.022-.01-.023-.012-.023-.013-.023-.014-.023-.015-.024-.017-.023-.018-.024-.019-.024-.02-.025-.021-.024-.023-.024-.023-.025-.051-.05-.056-.05-.06-.05-.065-.051-.07-.052-.074-.051-.079-.052-.083-.052-.088-.052-.092-.052-.096-.052-.101-.052-.106-.052-.11-.052-.114-.052-.118-.051-.123-.051-.126-.051-.131-.05-.136-.05-.139-.049-.143-.048-.148-.048-.152-.048-.155-.046-.16-.046-.163-.045-.168-.043-.172-.043-.175-.042-.179-.041-.183-.04-.187-.038-.191-.038-.194-.036-.198-.034-.202-.033-.205-.032-.21-.031-.212-.028-.216-.027-.22-.026-.224-.023-.226-.022-.231-.021-.233-.018-.237-.016-.241-.014-.244-.012-.247-.011-.25-.008-.254-.005-.257-.004-.26-.001-.26.001z"></path></symbol></defs><defs><symbol id="mmd-2-clock" width="24" height="24"><path transform="scale(.5)" d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm5.848 12.459c.202.038.202.333.001.372-1.907.361-6.045 1.111-6.547 1.111-.719 0-1.301-.582-1.301-1.301 0-.512.77-5.447 1.125-7.445.034-.192.312-.181.343.014l.985 6.238 5.394 1.011z"></path></symbol></defs><defs><marker id="mmd-2-arrowhead" refX="7.9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M -1 0 L 10 5 L 0 10 z"></path></marker></defs><defs><marker id="mmd-2-crosshead" markerWidth="15" markerHeight="8" orient="auto" refX="4" refY="4.5"><path fill="none" stroke="#000000" stroke-width="1pt" d="M 1,2 L 6,7 M 6,2 L 1,7" style="stroke-dasharray: 0, 0;"></path></marker></defs><defs><marker id="mmd-2-filled-head" refX="15.5" refY="7" markerWidth="20" markerHeight="28" orient="auto"><path d="M 18,7 L9,13 L14,7 L9,1 Z"></path></marker></defs><defs><marker id="mmd-2-sequencenumber" refX="15" refY="15" markerWidth="60" markerHeight="40" orient="auto"><circle cx="15" cy="15" r="6"></circle></marker></defs><defs><marker id="mmd-2-solidTopArrowHead" refX="7.9" refY="7.25" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 10 8 L 0 8 z"></path></marker></defs><defs><marker id="mmd-2-solidBottomArrowHead" refX="7.9" refY="0.75" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 10 0 L 0 8 z"></path></marker></defs><defs><marker id="mmd-2-stickTopArrowHead" refX="7.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 7 7" stroke="black" stroke-width="1.5" fill="none"></path></marker></defs><defs><marker id="mmd-2-stickBottomArrowHead" refX="7.5" refY="0" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 7 L 7 0" stroke="black" stroke-width="1.5" fill="none"></path></marker></defs><text x="279" y="80" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">POST /api/v1/game/slot/spin，帶 Bearer JWT</text><line x1="82" y1="117" x2="481" y2="117" class="messageLine0" data-et="message" data-id="i1" data-from="F" data-to="GW" stroke-width="2" stroke="none" marker-end="url(#mmd-2-arrowhead)" style="fill: none;"></line><line x1="75" y1="117" x2="75" y2="117" stroke-width="0" marker-start="url(#mmd-2-sequencenumber)"></line><text x="75" y="121" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">1</text><text x="486" y="132" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">IP限流 → 驗JWT+Redis撤銷 → 每玩家限流</text><path d="M 486,169 C 546,159 546,199 486,189" class="messageLine0" data-et="message" data-id="i2" data-from="GW" data-to="GW" stroke-width="2" stroke="none" marker-end="url(#mmd-2-arrowhead)" x1="492" style="fill: none;"></path><line x1="485" y1="169" x2="485" y2="169" stroke-width="0" marker-start="url(#mmd-2-sequencenumber)"></line><text x="485" y="173" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">2</text><text x="597" y="214" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">轉發並注入 X-User-Id</text><line x1="492" y1="251" x2="707" y2="251" class="messageLine0" data-et="message" data-id="i3" data-from="GW" data-to="GM" stroke-width="2" stroke="none" marker-end="url(#mmd-2-arrowhead)" style="fill: none;"></line><line x1="485" y1="251" x2="485" y2="251" stroke-width="0" marker-start="url(#mmd-2-sequencenumber)"></line><text x="485" y="255" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">3</text><text x="953" y="266" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">debit 下注（鍵 slot-bet-roundId，帶 X-Internal-Secret）</text><line x1="718" y1="303" x2="1193" y2="303" class="messageLine0" data-et="message" data-id="i4" data-from="GM" data-to="WL" stroke-width="2" stroke="none" marker-end="url(#mmd-2-arrowhead)" style="fill: none;"></line><line x1="711" y1="303" x2="711" y2="303" stroke-width="0" marker-start="url(#mmd-2-sequencenumber)"></line><text x="711" y="307" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">4</text><text x="956" y="318" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">扣款成功（樂觀鎖＋冪等）</text><line x1="1202" y1="355" x2="715" y2="355" class="messageLine1" data-et="message" data-id="i5" data-from="WL" data-to="GM" stroke-width="2" stroke="none" marker-end="url(#mmd-2-arrowhead)" style="stroke-dasharray: 3, 3; fill: none;"></line><line x1="1197" y1="355" x2="1197" y2="355" stroke-width="0" marker-start="url(#mmd-2-sequencenumber)"></line><text x="1197" y="359" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">5</text><text x="712" y="370" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">SlotMachine.spin() Provably Fair 算盤面</text><path d="M 712,407 C 772,397 772,437 712,427" class="messageLine0" data-et="message" data-id="i6" data-from="GM" data-to="GM" stroke-width="2" stroke="none" marker-end="url(#mmd-2-arrowhead)" x1="718" style="fill: none;"></path><line x1="711" y1="407" x2="711" y2="407" stroke-width="0" marker-start="url(#mmd-2-sequencenumber)"></line><text x="711" y="411" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">6</text><text x="953" y="452" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">credit 派彩（命中時，鍵 slot-win-roundId）</text><line x1="718" y1="489" x2="1193" y2="489" class="messageLine0" data-et="message" data-id="i7" data-from="GM" data-to="WL" stroke-width="2" stroke="none" marker-end="url(#mmd-2-arrowhead)" style="fill: none;"></line><line x1="711" y1="489" x2="711" y2="489" stroke-width="0" marker-start="url(#mmd-2-sequencenumber)"></line><text x="711" y="493" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">7</text><text x="956" y="504" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">入帳成功</text><line x1="1202" y1="541" x2="715" y2="541" class="messageLine1" data-et="message" data-id="i8" data-from="WL" data-to="GM" stroke-width="2" stroke="none" marker-end="url(#mmd-2-arrowhead)" style="stroke-dasharray: 3, 3; fill: none;"></line><line x1="1197" y1="541" x2="1197" y2="541" stroke-width="0" marker-start="url(#mmd-2-sequencenumber)"></line><text x="1197" y="545" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">8</text><text x="1369" y="556" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">發 wallet.debit / wallet.credit（事件）</text><line x1="1204" y1="593" x2="1540" y2="593" class="messageLine0" data-et="message" data-id="i9" data-from="WL" data-to="KF" stroke-width="2" stroke="none" marker-end="url(#mmd-2-arrowhead)" style="fill: none;"></line><line x1="1197" y1="593" x2="1197" y2="593" stroke-width="0" marker-start="url(#mmd-2-sequencenumber)"></line><text x="1197" y="597" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">9</text><text x="1126" y="608" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">發 game.result（best-effort）</text><line x1="718" y1="645" x2="1540" y2="645" class="messageLine0" data-et="message" data-id="i10" data-from="GM" data-to="KF" stroke-width="2" stroke="none" marker-end="url(#mmd-2-arrowhead)" style="fill: none;"></line><line x1="711" y1="645" x2="711" y2="645" stroke-width="0" marker-start="url(#mmd-2-sequencenumber)"></line><text x="711" y="649" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">10</text><text x="1672" y="660" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">fan-out 排行／推播／報表</text><line x1="1551" y1="697" x2="1798" y2="697" class="messageLine0" data-et="message" data-id="i11" data-from="KF" data-to="DS" stroke-width="2" stroke="none" marker-end="url(#mmd-2-arrowhead)" style="fill: none;"></line><line x1="1544" y1="697" x2="1544" y2="697" stroke-width="0" marker-start="url(#mmd-2-sequencenumber)"></line><text x="1544" y="701" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">11</text><text x="395" y="712" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">回傳 SpinResponse（盤面／派彩／餘額／serverSeed）</text><line x1="716" y1="749" x2="79" y2="749" class="messageLine1" data-et="message" data-id="i12" data-from="GM" data-to="F" stroke-width="2" stroke="none" marker-end="url(#mmd-2-arrowhead)" style="stroke-dasharray: 3, 3; fill: none;"></line><line x1="711" y1="749" x2="711" y2="749" stroke-width="0" marker-start="url(#mmd-2-sequencenumber)"></line><text x="711" y="753" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">12</text></svg></div>
+<h3 id="一致性界線面試重點">一致性界線（面試重點）</h3>
+<ul>
+<li>debit 與 credit 是<strong>兩次獨立的 wallet HTTP 呼叫</strong>，各帶<strong>確定性冪等鍵</strong>（<code>slot-bet-&lt;roundId&gt;</code> / <code>slot-win-&lt;roundId&gt;</code>，見 <code>SlotService.java:157,176</code>）。</li>
+<li>對局結果由 seed 三元組（serverSeed/clientSeed/nonce）<strong>確定性推導</strong>，<code>game_rounds</code> 以 roundId 去重。</li>
+<li>因此整局結算<strong>可安全重試</strong>：重算結果一致、帳務靠冪等鍵不重複、對局靠 roundId 不重複記錄。</li>
+<li>Kafka 事件全為 <strong>best-effort</strong>：帳務已同步落地在 Postgres，事件遺失只影響排行/推播的即時性，<strong>不影響錢</strong>。這是「同步管錢、非同步管通知」的分工。</li>
+</ul>
+<p>帳務兩大護欄（雷區 8）：<code>wallet_transactions.idempotency_key</code> 的 <strong>UNIQUE</strong> 約束防重複入帳/扣款、<code>wallets.version</code> 的 <strong><code>@Version</code> 樂觀鎖</strong>防併發超扣。</p>
+<hr>
+<h2 id="7-面試速查常見追問--一句話怎麼答">7. 面試速查：常見追問 → 一句話怎麼答</h2>
+<blockquote>
+<p>🎯 <strong>一句話重點</strong>：把下面這張表背熟，面試官問到任何一格，你都能先給一句話結論、再翻到對應章節展開。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>面試官問</th>
+<th>一句話答</th>
+<th>詳見</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>為什麼要 API Gateway？</td>
+<td>把鑑權/CORS/限流/熔斷/路由這些橫切關注點集中在單一入口，業務服務不用各做一遍</td>
+<td>§3.1</td>
+</tr>
+<tr>
+<td>路由怎麼比對？有踩過雷嗎？</td>
+<td>按 yml 宣告順序由上而下，具體路徑必須排在 catch-all 之前，否則被吃掉 → 404</td>
+<td>§3.2</td>
+</tr>
+<tr>
+<td>JWT 為什麼在 Gateway 驗？</td>
+<td>驗一次、下游信任注入的 X-User-Id，避免每個服務複製驗證邏輯</td>
+<td>§4.2</td>
+</tr>
+<tr>
+<td>JWT 無狀態怎麼登出/撤銷？</td>
+<td>Gateway 補 Redis 撤銷檢查（jti 黑名單 + min-iat 門檻），無狀態驗簽 + 有狀態撤銷</td>
+<td>§4.2</td>
+</tr>
+<tr>
+<td>怎麼防前端偽造 X-User-Id？</td>
+<td>Gateway 轉發前先 remove 再 set，白名單路徑也先剝除</td>
+<td>§4.2</td>
+</tr>
+<tr>
+<td>服務間為什麼用 secret 不用 JWT？</td>
+<td>JWT 代表玩家、內部呼叫代表可信服務；/internal 不經 Gateway，用共享 secret 即可</td>
+<td>§4.3</td>
+</tr>
+<tr>
+<td>為什麼用 RestClient 不用 Feign？</td>
+<td>全系統只有一條同步服務呼叫，不值得引入 Feign；RestClient 內建、夠用</td>
+<td>§4.3</td>
+</tr>
+<tr>
+<td>指令 vs 事件為什麼要拆？</td>
+<td>不拆會讓 wallet 自己發自己收造成無限迴圈；拆開語意乾淨、兩路共用 credit()</td>
+<td>§5.2</td>
+</tr>
+<tr>
+<td>怎麼防事件無限迴圈？</td>
+<td>wallet 永不消費 wallet.credit（那是它自己發的事件）</td>
+<td>§5.2</td>
+</tr>
+<tr>
+<td>DB 寫入和發事件怎麼保證都成功？</td>
+<td>Outbox：事件與業務資料同交易寫入，背景 poller 保證最終送達（at-least-once）</td>
+<td>§5.3</td>
+</tr>
+<tr>
+<td>帳務怎麼防重複扣款/超扣？</td>
+<td>idempotency_key UNIQUE 防重、@Version 樂觀鎖防超扣</td>
+<td>§6</td>
+</tr>
+<tr>
+<td>Kafka 訊息掉了會怎樣？</td>
+<td>帳務已同步落地，事件 best-effort 只影響排行/推播即時性，不影響錢；失敗進 DLT</td>
+<td>§6</td>
+</tr>
+<tr>
+<td>前端為什麼只打一個位址？</td>
+<td>baseURL 指向 Gateway，服務拆分/搬遷前端零改動</td>
+<td>§2.2</td>
+</tr>
+<tr>
+<td>前端 mock 為什麼要鏡像後端？</td>
+<td>單一真相是後端，mock 與後端引擎分歧會讓玩家體驗到錯的規則</td>
+<td>§2.5</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p><strong>30 秒收尾版</strong>：「我們的 API 串接分三層——前端經 Gateway 統一入口帶 JWT、服務間需要即時結果就走帶 internal secret 的 RestClient、跨服務只是要通知別人就走 Kafka；而且 Kafka 嚴格區分『指令』和『事件』來避免服務自己發自己收。錢一律同步落地、通知一律非同步，這樣即使 Kafka 掉訊息也不會影響帳務。」</p>
+</blockquote>
+</div>
+</body>
+</html>

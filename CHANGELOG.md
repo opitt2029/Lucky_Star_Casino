@@ -1,3 +1,19 @@
+## [docs] — 2026-07-01 — 新增 API 串接與架構面試文件（含離線彩圖 HTML）
+
+> **背景**：`docs/interview-prep/` 缺一份專講「API 怎麼串接、為什麼這樣串」的面試文件。現有資料只零散涵蓋：`LOCAL_API_INTEGRATION_GUIDE.md` 偏「怎麼跑起來」（操作）、`architecture.md` 偏規格、`interview-prep/01`+`02` 只零星提到。本次補一份**全鏈路、技術參考＋面試「為什麼」混合**的文件，用「玩老虎機一局」貫穿前端 axios → Gateway → 服務間 REST → Kafka，並以連結指向上述三份避免重複。
+
+### Added
+- `docs/interview-prep/10-API串接與架構.md`：七章節——§1 全鏈路總覽、§2 前端串接（axios 攔截器 JWT 注入 / 401 single-flight 續期 / mock 鏡像後端 / Redux thunk 三態）、§3 Gateway（路由宣告順序陷阱 / filter 執行順序 / 韌性設定）、§4 JWT 簽發驗證 + 服務間信任邊界（`X-Internal-Secret` vs JWT、為何用 `RestClient` 不用 Feign）、§5 Kafka（ADR-002 指令/事件分離、防無限迴圈、Outbox 原子性）、§6 端到端老虎機一局（含冪等鍵/樂觀鎖一致性界線）、§7 面試速查對照表。為降低閱讀門檻，加入 3 張 mermaid 彩色圖（§1 全鏈路、§5.2 指令/事件分離、§6 老虎機循序圖）、🎯 每章重點框、💬 面試對話小劇場與 ❌/✅ 對照表。
+- `docs/interview-prep/10-API串接與架構.html`：上述 md 的**離線自帶** HTML——mermaid 圖已預先渲染成內嵌 SVG，無任何 `<script>`/CDN 外連，斷網也能開；瀏覽器 `Ctrl+P` 可直接轉 PDF。
+
+### Changed
+- `docs/interview-prep/00-index.md`：§0 導覽表新增第 9 列（`10-API串接與架構.md`）；§4「面試官問 X → 翻到哪」對照表補三題（API 串接 / 前端帶 token / 服務間呼叫）。
+
+### 如何驗證
+- 純文件，不影響程式行為，無需跑測試。
+- 文中事實已逐項對回程式碼核對：路由順序（`gateway-service/application.yml`）、filter order 數值（`FilterOrder.java`）、topic 清單（`kafka/kafka-init.sh`）、冪等鍵字串 `slot-bet-`/`slot-win-`（`SlotService.java:157,176`）、axios 攔截器與 `WalletClientConfig`/`CheckinService` outbox 片段皆取自實檔。
+- 離線 HTML 以 headless Edge 渲染驗證：3 張 mermaid 圖全部輸出 inline SVG（svgCount=3、零 console error），並確認產物無 `<script>`/`<link>`/外部 `src`。
+
 ## [changed] -- 2026-07-01 -- Fishing ammo dock and shortage top-up modal
 ### Changed
 - `frontend/src/pages/Fishing.jsx`: rebuilt the in-canvas fishing control dock into ammo amount summary, three ammo choices, cannon bay, and settle action; removed the always-visible live top-up field.
