@@ -119,39 +119,6 @@ export default function SlotGame() {
 
   // 轉輪演出結束的瞬間引爆慶祝（音效 + 大字報 + 金幣特效，依倍率分級）。
   // LDW 原則：payout > 0 一律播贏錢音效（即使派彩低於下注，也讓大腦記住「有進帳」）。
-  const handleSettled = (spinResult) => {
-    if (!spinResult || spinResult.game !== 'slot') return
-    const multiplier = spinResult.multiplier ?? 0
-    const payout = spinResult.payout ?? 0
-    const won = payout > 0
-    if (!won) return
-
-    const bannerPick = pickBannerForMultiplier(multiplier)
-    setBanner((prev) => ({ trigger: prev.trigger + 1, ...bannerPick }))
-    setBurstTrigger((n) => n + 1)
-
-    if (multiplier >= 8) {
-      // 爆機級：鑼 + 長琶音、遮屏金幣瀑布、紅包雨、全服喜報
-      soundEngine.play('winEpic')
-      setCoinDensity('epic')
-      setCoinTrigger((n) => n + 1)
-      setEnvelopeTrigger((n) => n + 1)
-      announcePlayerWin({
-        playerName: player?.nickname || player?.username,
-        game: 'slot',
-        amount: payout,
-      })
-    } else if (multiplier >= 3) {
-      soundEngine.play('winBig')
-      setCoinDensity('heavy')
-      setCoinTrigger((n) => n + 1)
-    } else {
-      soundEngine.play('winSmall')
-      setCoinDensity('light')
-      setCoinTrigger((n) => n + 1)
-    }
-  }
-
   return (
     <AppShell>
       <GoldBurst trigger={burstTrigger} origin={{ x: 38, y: 48 }} />
