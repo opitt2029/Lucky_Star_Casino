@@ -516,6 +516,8 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 > - 2026-06-24：修正漏記——T-027 ❌→✅、T-028 ⚠️→✅（兩者 2026-06-01 即 commit c945f97/2646cb3 併入 develop+main，含測試，6/17 盤點時誤標未完）。✅ 46→48，⚠️ 11→10，❌ 27→26。**wallet-service T-020~T-028 全數完成。**
 > - 2026-06-30：校正過時標記（以程式碼為準）——T-085 ⚠️→✅（`rankSlice` 已改用 `rankApi`）、T-086 ⚠️→✅（`walletSlice` 已用 `walletApi.getTransactions`）、T-095 ⚠️→✅（`docs/adr/ADR-003~005` 已產出）、T-093 ❌→⚠️（後端已實作 + `feature/e2e-tests` 已有 Playwright e2e，僅缺跨服務全鏈路）。✅ 48→51，⚠️ 10→8，❌ 26→25。
 
+> 註：本次（2026-06-09）將 T-033~T-037 由 ❌ 改為 ✅（game-service 全數完成），故 ✅ 由 24→29、❌ 由 42→37。
+
 **按模組完成度概覽：**
 
 - ✅ **完成度高**：全域基礎建設、Member Service、Gateway、**Wallet Service（T-020~T-028 全完成）**、Game Service（T-030~T-037）、Rank Service（T-040~T-044）、**Notification Service（T-070~T-073 全完成）**、**鑽石系統（T-100~T-107 全完成）**
