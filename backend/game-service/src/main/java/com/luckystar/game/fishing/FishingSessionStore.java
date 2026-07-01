@@ -56,10 +56,13 @@ public class FishingSessionStore {
     private static final String F_INTERCEPTED = "intercepted";
     private static final String F_FISH_DAMAGE = "fishDamage";
     private static final String F_KILLS = "kills";
+    private static final String F_TOP_UP_REQUEST_IDS = "topUpRequestIds";
 
     private static final TypeReference<LinkedHashMap<String, Long>> FISH_DAMAGE_TYPE =
             new TypeReference<>() {};
     private static final TypeReference<List<FishingSession.KillRecord>> KILLS_TYPE =
+            new TypeReference<>() {};
+    private static final TypeReference<List<String>> TOP_UP_IDS_TYPE =
             new TypeReference<>() {};
 
     private final StringRedisTemplate redisTemplate;
@@ -152,6 +155,7 @@ public class FishingSessionStore {
         // 血量/傷害模型的跨批狀態：以 JSON 持久化，缺了會讓每批重讀後累傷歸零（魚永遠打不死）。
         writeJson(h, F_FISH_DAMAGE, s.getFishDamage());
         writeJson(h, F_KILLS, s.getKills());
+        writeJson(h, F_TOP_UP_REQUEST_IDS, s.getTopUpRequestIds());
         return h;
     }
 
@@ -191,6 +195,7 @@ public class FishingSessionStore {
                 .intercepted(parseBoolean(h.get(F_INTERCEPTED)))
                 .fishDamage(readFishDamage(h.get(F_FISH_DAMAGE)))
                 .kills(readKills(h.get(F_KILLS)))
+                .topUpRequestIds(readTopUpRequestIds(h.get(F_TOP_UP_REQUEST_IDS)))
                 .build();
     }
 
@@ -209,6 +214,20 @@ public class FishingSessionStore {
     }
 
     /** 還原致命一擊紀錄；欄位缺失或 JSON 毀損時保守回空 List。 */
+    /** ?????? idempotency key ???????? JSON ??????? List? */
+    private List<String> readTopUpRequestIds(String json) {
+        if (!StringUtils.hasText(json)) {
+            return new ArrayList<>();
+        }
+        try {
+            List<String> parsed = objectMapper.readValue(json, TOP_UP_IDS_TYPE);
+            return parsed != null ? parsed : new ArrayList<>();
+        } catch (JsonProcessingException ex) {
+            log.warn("???? fishing topUpRequestIds ????????: {}", ex.toString());
+            return new ArrayList<>();
+        }
+    }
+
     private List<FishingSession.KillRecord> readKills(String json) {
         if (!StringUtils.hasText(json)) {
             return new ArrayList<>();

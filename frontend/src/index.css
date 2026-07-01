@@ -95,6 +95,33 @@ video {
 .page-transition-overlay[data-active] {
   animation: link-sheen 0.72s cubic-bezier(0.2, 0.85, 0.28, 1) both;
 }
+.route-fallback {
+  display: grid;
+  min-height: 68vh;
+  place-items: center;
+  gap: 0.75rem;
+  padding: 4rem 1rem;
+  color: var(--casino-gold-bright);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.route-fallback__mark {
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 3px solid rgba(255, 234, 160, 0.28);
+  border-top-color: var(--casino-gold-bright);
+  border-radius: 999px;
+  animation: route-fallback-spin 0.88s linear infinite;
+}
+
+@keyframes route-fallback-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
 .coin-rain {
   position: fixed;
@@ -2558,6 +2585,10 @@ video {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .route-fallback__mark {
+    animation: none;
+  }
+
   .page-transition-stage,
   .page-transition-overlay[data-active],
   .coin-rain__coin,

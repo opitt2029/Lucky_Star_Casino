@@ -44,6 +44,7 @@ export function useFishingSession({ onResults } = {}) {
   const [stats, setStats] = useState({ totalShots: 0, totalPayout: 0 })
   const [settleResult, setSettleResult] = useState(null)
   const [error, setError] = useState(null)
+  const [topUpLoading, setTopUpLoading] = useState(false)
 
   // 即時狀態用 ref，避免閉包過期。
   const balanceRef = useRef(0)
@@ -150,17 +151,18 @@ export function useFishingSession({ onResults } = {}) {
   const fire = useCallback((fishInstanceId, fishCode) => {
     if (phase !== 'playing') return { ok: false, reason: 'inactive' }
     const betPerShot = betPerShotRef.current || BET_TIERS[0]
+    const cannonLevel = cannonLevelRef.current || 1
     if (balanceRef.current < betPerShot) return { ok: false, reason: 'insufficient' }
     if (!takeToken()) return { ok: false, reason: 'ratelimited' }
 
     const shotSeq = shotSeqRef.current + 1
     shotSeqRef.current = shotSeq
     fishBySeqRef.current.set(shotSeq, fishCode)
-    bufferRef.current.push({ shotSeq, betPerShot, fishType: fishCode, fishInstanceId: String(fishInstanceId) })
+    bufferRef.current.push({ shotSeq, betPerShot, cannonLevel, fishType: fishCode, fishInstanceId: String(fishInstanceId) })
     setBalanceBoth(balanceRef.current - betPerShot) // 樂觀扣注，命中後於回應補回派彩
 
     if (bufferRef.current.length >= FLUSH_SIZE) flush()
-    return { ok: true, shotSeq, betPerShot }
+    return { ok: true, shotSeq, betPerShot, cannonLevel }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase])
 
@@ -169,6 +171,17 @@ export function useFishingSession({ onResults } = {}) {
     flushTimerRef.current = window.setInterval(() => {
       if (bufferRef.current.length > 0) flush()
     }, FLUSH_INTERVAL_MS)
+  }
+
+  async function drainPendingShots(deadlineMs = 5000) {
+    const deadline = Date.now() + deadlineMs
+    while ((bufferRef.current.length > 0 || inFlightRef.current) && Date.now() < deadline) {
+      if (inFlightRef.current) {
+        await new Promise((resolve) => window.setTimeout(resolve, 60))
+      } else {
+        await flush()
+      }
+    }
   }
 
   async function flush() {
@@ -222,6 +235,57 @@ export function useFishingSession({ onResults } = {}) {
     }
   }
 
+  const changeBetPerShot = useCallback((nextBet) => {
+    const value = Number(nextBet)
+    if (!Number.isInteger(value) || value < BET_MIN || value > BET_MAX) {
+      setError(`??????? ${BET_MIN.toLocaleString()} ? ${BET_MAX.toLocaleString()} ??`)
+      return false
+    }
+    betPerShotRef.current = value
+    setSession((prev) => (prev ? { ...prev, betPerShot: value } : prev))
+    setError(null)
+    return true
+  }, [])
+
+  const changeCannonLevel = useCallback((nextLevel) => {
+    const value = Number(nextLevel)
+    if (!Number.isInteger(value) || value < 1 || value >= CANNON_DAMAGE.length) {
+      setError('???????')
+      return false
+    }
+    cannonLevelRef.current = value
+    setSession((prev) => (prev ? { ...prev, cannonLevel: value } : prev))
+    setError(null)
+    return true
+  }, [])
+
+  const topUp = useCallback(async ({ amount }) => {
+    const sessionId = sessionIdRef.current
+    const value = Number(amount)
+    if (phase !== 'playing' || !sessionId) return null
+    if (!Number.isInteger(value) || value < BUYIN_MIN || value > BUYIN_MAX) {
+      setError(`??????? ${BUYIN_MIN.toLocaleString()} ? ${BUYIN_MAX.toLocaleString()} ??`)
+      return null
+    }
+    setTopUpLoading(true)
+    setError(null)
+    try {
+      await drainPendingShots()
+      const clientRequestId = `tu-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+      const result = await gameApi.fishingTopUp({ sessionId, amount: value, clientRequestId })
+      if (result.wallet) dispatch(setBalance(result.wallet))
+      if (typeof result.sessionBalance === 'number') setBalanceBoth(result.sessionBalance)
+      setSession((prev) => (prev ? { ...prev, buyIn: result.buyIn ?? prev.buyIn } : prev))
+      return result
+    } catch (err) {
+      setError(err?.response?.data?.message || err.message || '??????')
+      return null
+    } finally {
+      setTopUpLoading(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, dispatch, setBalanceBoth])
+
   const endSession = useCallback(async () => {
     const sessionId = sessionIdRef.current
     if (!sessionId || phase !== 'playing') return
@@ -271,11 +335,15 @@ export function useFishingSession({ onResults } = {}) {
     stats,
     settleResult,
     error,
+    topUpLoading,
     cannonLevel: session?.cannonLevel ?? cannonLevelRef.current,
     betPerShot: session?.betPerShot ?? betPerShotRef.current,
     fishTable: session?.fishTable ?? [],
     startSession,
     fire,
+    changeBetPerShot,
+    changeCannonLevel,
+    topUp,
     endSession,
     resetToIdle,
   }

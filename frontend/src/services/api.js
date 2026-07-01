@@ -2,7 +2,7 @@ import axios from 'axios'
 import store from '../store'
 import { logout, tokenRefreshed } from '../store/slices/authSlice'
 
-const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
+const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '',

@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Application } from 'pixi.js'
 import { FishingEngine } from './fishingEngine'
-import './Fishing.css'
 
 /**
  * 捕魚機 Pixi 漁場（取代舊 FishingArena 的 DOM 渲染層）。
@@ -22,7 +21,6 @@ export default function FishingCanvas({
   onMiss,
   onBossChange,
   perfMode = false,
-  autoFire = false,
 }) {
   const hostRef = useRef(null)
   const engineRef = useRef(null)
@@ -40,7 +38,6 @@ export default function FishingCanvas({
   ctxRef.current.onMiss = onMiss
   ctxRef.current.onBossChange = onBossChange
   ctxRef.current.perfMode = perfMode
-  ctxRef.current.autoFire = autoFire
 
   const registerRef = useRef(registerResults)
   registerRef.current = registerResults
@@ -79,7 +76,6 @@ export default function FishingCanvas({
         engine.setBet(ctxRef.current.betPerShot)
         engine.setCannon(ctxRef.current.cannonLevel)
         engine.setPerfMode(ctxRef.current.perfMode)
-        engine.setAutoFire(ctxRef.current.autoFire)
         engine.setPhase(ctxRef.current.phase)
         registerRef.current?.(engine.handleResults)
       })
@@ -112,9 +108,6 @@ export default function FishingCanvas({
   useEffect(() => {
     engineRef.current?.setPerfMode(perfMode)
   }, [perfMode])
-  useEffect(() => {
-    engineRef.current?.setAutoFire(autoFire)
-  }, [autoFire])
 
   return <div ref={hostRef} className="fishing-arena fishing-arena--canvas" style={{ touchAction: 'none', userSelect: 'none' }} />
 }

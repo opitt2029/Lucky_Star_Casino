@@ -65,7 +65,9 @@ export function useWebSocket(subscriptions = {}) {
   const dispatch = useDispatch()
   const token = useSelector((state) => state.auth.accessToken)
   const wsUrl = import.meta.env.VITE_WS_URL || '/ws'
-  const useMockWs = import.meta.env.VITE_USE_MOCK_WS === 'true'
+  const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true'
+  const useMockWs = import.meta.env.VITE_USE_MOCK_WS === 'true' || useMockApi
+  const enableRealtimeWs = import.meta.env.VITE_ENABLE_WS === 'true'
 
   const clientRef = useRef(null)
   const reconnectTimerRef = useRef(null)
@@ -230,6 +232,12 @@ export function useWebSocket(subscriptions = {}) {
       }
     }
 
+    if (!enableRealtimeWs) {
+      shouldReconnectRef.current = false
+      updateStatus(WS_STATUS.DISCONNECTED, 0)
+      return undefined
+    }
+
     connect()
 
     return () => {
@@ -243,7 +251,7 @@ export function useWebSocket(subscriptions = {}) {
       }
       updateStatus(WS_STATUS.DISCONNECTED, 0)
     }
-  }, [handleNotification, token, updateStatus, useMockWs, wsUrl])
+  }, [enableRealtimeWs, handleNotification, token, updateStatus, useMockWs, wsUrl])
 
   return {
     publish,

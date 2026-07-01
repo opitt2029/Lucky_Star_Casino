@@ -9,6 +9,7 @@ import com.luckystar.game.dto.FishingSessionView;
 import com.luckystar.game.dto.FishingShotVerifyResponse;
 import com.luckystar.game.dto.FishingShotsRequest;
 import com.luckystar.game.dto.FishingShotsResponse;
+import com.luckystar.game.dto.FishingTopUpResponse;
 import com.luckystar.game.dto.WalletView;
 import com.luckystar.game.entity.GameRound;
 import com.luckystar.game.exception.RoundNotFoundException;
@@ -329,6 +330,73 @@ public class FishingService {
      * 閒置回收排程：每分鐘掃描，閒置超過 {@value #IDLE_TIMEOUT_MINUTES} 分鐘的場次自動結算
      * （把錢還回 wallet）。斷線玩家的「彩池與子彈」由此精準結回，不會憑空消失。
      */
+
+    /**
+     * Adds wallet balance into an active fishing session without settling the round.
+     * The clientRequestId is persisted in the Redis session so a retried top-up cannot
+     * add the same wallet debit into the table twice.
+     */
+    public FishingTopUpResponse topUp(long playerId, String sessionId, long amount, String clientRequestId) {
+        FishingSession session = requireActiveSession(playerId, sessionId);
+        if (amount < MIN_BUYIN || amount > MAX_BUYIN) {
+            throw new IllegalArgumentException("top-up amount must be between " + MIN_BUYIN + " and " + MAX_BUYIN);
+        }
+        if (!StringUtils.hasText(clientRequestId)) {
+            throw new IllegalArgumentException("clientRequestId is required");
+        }
+        String requestId = clientRequestId.trim();
+        List<String> processed = session.getTopUpRequestIds();
+        if (processed == null) {
+            processed = new ArrayList<>();
+            session.setTopUpRequestIds(processed);
+        }
+        if (processed.contains(requestId)) {
+            return FishingTopUpResponse.builder()
+                    .sessionId(sessionId)
+                    .amount(0L)
+                    .buyIn(session.getBuyIn() == null ? 0L : session.getBuyIn())
+                    .sessionBalance(session.getSessionBalance() == null ? 0L : session.getSessionBalance())
+                    .wallet(null)
+                    .build();
+        }
+
+        String idempotencyKey = "fishing-topup-" + sessionId + "-" + requestId;
+        WalletDebitResponse debit = walletClient.debit(playerId, amount, idempotencyKey, sessionId);
+
+        long buyIn = session.getBuyIn() == null ? 0L : session.getBuyIn();
+        long tableBalance = session.getSessionBalance() == null ? 0L : session.getSessionBalance();
+        session.setBuyIn(buyIn + amount);
+        session.setSessionBalance(tableBalance + amount);
+        processed.add(requestId);
+        session.setLastActivityAt(Instant.now());
+        try {
+            sessionStore.save(session);
+        } catch (RuntimeException ex) {
+            log.error("fishing top-up session save failed, refunding playerId={} sessionId={} amount={}",
+                    playerId, sessionId, amount, ex);
+            try {
+                walletClient.credit(playerId, amount, "REFUND", "fishing-topup-refund-" + sessionId + "-" + requestId, sessionId);
+            } catch (RuntimeException refundEx) {
+                log.error("fishing top-up REFUND FAILED playerId={} sessionId={} amount={}", playerId, sessionId, amount, refundEx);
+            }
+            throw ex;
+        }
+
+        WalletView wallet = WalletView.builder()
+                .balance(debit.balanceAfter())
+                .frozenAmount(0L)
+                .build();
+        log.info("fishing session topped up playerId={} sessionId={} amount={} buyIn={} sessionBalance={}",
+                playerId, sessionId, amount, session.getBuyIn(), session.getSessionBalance());
+        return FishingTopUpResponse.builder()
+                .sessionId(sessionId)
+                .amount(amount)
+                .buyIn(session.getBuyIn())
+                .sessionBalance(session.getSessionBalance())
+                .wallet(wallet)
+                .build();
+    }
+
     @Scheduled(fixedDelayString = "${game.fishing.sweep-interval-ms:60000}")
     public void sweepIdleSessions() {
         List<Long> playerIds;

@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 130" role="img" aria-label="Sapphire neon fish">
+  <defs>
+    <linearGradient id="body" x1="39" y1="15" x2="220" y2="104">
+      <stop offset="0" stop-color="#bafcff"/>
+      <stop offset=".2" stop-color="#45d8ff"/>
+      <stop offset=".58" stop-color="#246dff"/>
+      <stop offset="1" stop-color="#081b65"/>
+    </linearGradient>
+    <radialGradient id="aura" cx="58%" cy="50%" r="58%">
+      <stop offset="0" stop-color="#78f7ff" stop-opacity=".45"/>
+      <stop offset=".55" stop-color="#256dff" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#00eaff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="fin" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#d7ffff" stop-opacity=".9"/>
+      <stop offset="1" stop-color="#4a60ff" stop-opacity=".25"/>
+    </linearGradient>
+    <filter id="glow" x="-25%" y="-45%" width="155%" height="190%">
+      <feDropShadow dx="0" dy="0" stdDeviation="7" flood-color="#39eeff" flood-opacity=".55"/>
+      <feDropShadow dx="0" dy="10" stdDeviation="5" flood-color="#001326" flood-opacity=".55"/>
+    </filter>
+  </defs>
+  <ellipse cx="136" cy="66" rx="115" ry="58" fill="url(#aura)"/>
+  <g filter="url(#glow)">
+    <path d="M39 63C23 45 13 31 7 16c23 5 42 18 58 38v18C48 92 28 105 8 113c6-18 16-35 31-50z" fill="#2bbcff" opacity=".9"/>
+    <path d="M54 64c33-40 119-53 171-14 21 16 20 32-2 47-54 37-137 23-169-33z" fill="url(#body)"/>
+    <path d="M96 30c28-23 70-28 100-10-21 11-63 16-100 10z" fill="url(#fin)"/>
+    <path d="M105 101c34 9 68 5 96-13-13 24-61 32-96 13z" fill="#0b2c9a" opacity=".45"/>
+    <path d="M75 45c41-22 88-25 132-5" fill="none" stroke="#c9ffff" stroke-width="8" stroke-linecap="round" opacity=".36"/>
+    <path d="M82 82c42 20 84 18 125-4" fill="none" stroke="#a9ffff" stroke-width="5" stroke-linecap="round" opacity=".22"/>
+    <ellipse cx="207" cy="55" rx="10" ry="10" fill="#07101f"/>
+    <ellipse cx="211" cy="51" rx="3.2" ry="3.2" fill="#e8ffff"/>
+  </g>
+</svg>
