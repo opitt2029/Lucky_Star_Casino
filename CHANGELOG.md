@@ -1,3 +1,27 @@
+# Changelog — Lucky Star Casino
+
+All notable changes to this project are documented here.
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+
+## [docs] — 2026-07-01 — 健檢後續補丁：AGENTS.md 措辭修正、CI 擋關擴大、CHANGELOG 格式修復
+
+> **背景**：全面健檢 7 個微服務 + gateway 時累積了幾個「該補但先擱著」的小項目，這次一次補齊，避免累積成下一輪健檢的重複發現。
+
+### Changed
+- `AGENTS.md` 雷區 #6：措辭從「永遠不要在 wallet-service 消費 `wallet.credit`」改為「消費者不可重呼 `credit()/debit()`」，並記錄 `WalletReadSyncListener`（`kafka/WalletReadSyncListener.java:45,80`）這個安全例外（CQRS 讀視圖同步、冪等 `existsById`、從不重呼入帳/扣款方法）——舊措辭字面上與現有程式碼矛盾，容易誤導後續開發者以為那是 bug。
+- `AGENTS.md` §4 驗證指令：`mvn -pl ...test` 清單補上 `backend/game-service`、`backend/rank-service`、`backend/notification-service`——這三個服務其實已完工且測試綠燈（H2 + `@EmbeddedKafka`，免外部基礎設施），舊清單只列 gateway/member/wallet/admin 過於保守。
+- `.github/workflows/ci.yml` 的 `backend-test` job：`-pl` 清單同步補上這三個服務；修正過時註解（原寫「game/rank/admin 仍為骨架」與實際已列入清單的 admin 矛盾）。
+- `CHANGELOG.md` 本身：修復一個既有格式 bug——檔案標頭 `# Changelog — Lucky Star Casino` 不知何時被多次歷史合併擠到檔案中段（原第 433 行，`## [docs] — 2026-06-30 — 校正 AUDIT_REPORT...` 條目前），導致檔案真正開頭反而沒有標頭。搬回檔案最上方，內容不變。
+
+### 為什麼
+- 雷區 #6 舊措辭與 `WalletReadSyncListener` 的既有、正確、已測試行為矛盾，若照字面「永遠不要消費」去理解會誤判現有程式碼有 bug，浪費下一次健檢的時間去重新確認同一件事。
+- CI／§4 清單保守，代表 game/rank/notification 的迴歸永遠不會被擋關，即使測試本身早就綠燈。
+- CHANGELOG 標頭錯位是純格式問題，但擺在中間看起來像是「檔案在這裡重新開始」，容易誤導閱讀者。
+
+### 如何驗證
+- 純文件 + CI 設定變更，不影響服務執行邏輯，無需跑後端測試。
+- `.github/workflows/ci.yml` 改動已用 `actionlint`（若本機有裝）或直接看 diff 確認語法未破壞（YAML 縮排/清單語法沿用既有風格，僅擴充 `-pl` 清單與註解）。
+
 ## [fix] — 2026-07-01 — Gateway 補上 `/ws` 路由，補上即時推播的最後一哩
 
 > **背景**：全面盤點各微服務與 gateway 時發現，notification-service 的 T-070~T-072（WebSocket STOMP + Kafka 橋接）雖已完工，但 `docs/architecture.md` 留著一條 2026-06-02 的 TODO，坦承 Gateway 從未轉發 `/ws/**`——這件事在服務完工後被漏掉沒補。前端所有 `.env` 的 `VITE_ENABLE_WS` 預設皆為 `false`（或走 mock WS 短路），所以目前是「休眠中」不影響一般開發/測試，但只要有人手動開啟真實 WebSocket 測試即時推播，SockJS 交握就會打不到 gateway 對應路由。
@@ -429,11 +453,6 @@
 - `cd frontend && npm run lint`
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`
-
-# Changelog — Lucky Star Casino
-
-All notable changes to this project are documented here.
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [docs] — 2026-06-30 — 校正 AUDIT_REPORT 過時進度標記（以程式碼為準）
 
