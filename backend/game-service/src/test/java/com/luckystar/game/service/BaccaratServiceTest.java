@@ -1,7 +1,6 @@
 package com.luckystar.game.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -57,6 +56,7 @@ class BaccaratServiceTest {
     private final com.luckystar.game.session.GameSessionService sessionService =
             org.mockito.Mockito.mock(com.luckystar.game.session.GameSessionService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final RiskControlService riskControlService = org.mockito.Mockito.mock(RiskControlService.class);
 
     private BaccaratService service;
 
@@ -65,6 +65,13 @@ class BaccaratServiceTest {
                 List.of(new Card(0, 0), new Card(4, 0)),
                 List.of(new Card(8, 0), new Card(0, 0)),
                 5, 9, BaccaratResult.BANKER, false, false);
+    }
+
+    private static BaccaratOutcome playerWinOutcome() {
+        return new BaccaratOutcome(
+                List.of(new Card(8, 0), new Card(0, 0)),
+                List.of(new Card(4, 0), new Card(0, 0)),
+                9, 5, BaccaratResult.PLAYER, false, false);
     }
 
     private static GameSession startedSession(long player, long banker, long tie) {
@@ -79,7 +86,9 @@ class BaccaratServiceTest {
     @BeforeEach
     void setUp() {
         service = new BaccaratService(rng, baccaratGame, walletClient, roundRepository,
-                publisher, sessionService, objectMapper);
+                publisher, sessionService, objectMapper, riskControlService);
+        // 預設：風控不攔截
+        when(riskControlService.shouldIntercept(anyLong(), anyString())).thenReturn(false);
         when(rng.generateServerSeed()).thenReturn("srv");
         when(rng.commit("srv")).thenReturn("hash");
         when(rng.generateClientSeed()).thenReturn("gen-client");
@@ -145,7 +154,7 @@ class BaccaratServiceTest {
     // ------------------------- settle -------------------------
 
     @Test
-    @DisplayName("settle：押莊命中 → credit 195、寫對局、揭露 serverSeed、標記 SETTLED")
+    @DisplayName("settle：押莊命中 → credit 派彩+反水（195+1=196）、寫對局、揭露 serverSeed、標記 SETTLED")
     void settle_bankerWin_creditsAndReveals() {
         when(sessionService.find(PLAYER_ID, ROUND_ID))
                 .thenReturn(Optional.of(startedSession(0L, 100L, 0L)));
@@ -155,26 +164,28 @@ class BaccaratServiceTest {
         payouts.put(BaccaratResult.BANKER, 195L);
         when(baccaratGame.settle(eq(outcome), anyMap()))
                 .thenReturn(new BaccaratSettlement(BaccaratResult.BANKER, 100L, 195L, payouts));
-        when(walletClient.credit(eq(PLAYER_ID), eq(195L), anyString(), anyString()))
-                .thenReturn(new WalletCreditResponse(2L, PLAYER_ID, 195L, 9700L, 9895L, 0L, false));
+        // 反水 = max(1, 100/200) = 1；credit = 195 + 1 = 196
+        when(walletClient.credit(eq(PLAYER_ID), eq(196L), anyString(), anyString()))
+                .thenReturn(new WalletCreditResponse(2L, PLAYER_ID, 196L, 9700L, 9896L, 0L, false));
 
         BaccaratResultResponse res = service.settle(PLAYER_ID, ROUND_ID);
 
         assertEquals("BANKER", res.getResult());
         assertEquals(195L, res.getTotalPayout());
+        assertEquals(1L, res.getRebate());
         assertEquals(195L, res.getPayouts().get("banker"));
-        assertEquals(9895L, res.getWallet().getBalance());
+        assertEquals(9896L, res.getWallet().getBalance());
         assertEquals("srv", res.getServerSeed(), "結算後揭露 serverSeed");
 
-        verify(walletClient).credit(eq(PLAYER_ID), eq(195L), eq("bac-win-" + ROUND_ID), eq(ROUND_ID));
+        verify(walletClient).credit(eq(PLAYER_ID), eq(196L), eq("bac-win-" + ROUND_ID), eq(ROUND_ID));
         verify(roundRepository).save(any());
         verify(publisher).publishBaccaratResult(any(), eq(outcome));
         verify(sessionService).markSettled(PLAYER_ID, ROUND_ID, "srv", 0L);
     }
 
     @Test
-    @DisplayName("settle：全押錯（payout 0）→ 不呼叫 credit，wallet 為 null")
-    void settle_noPayout_skipsCredit() {
+    @DisplayName("settle：全押錯（payout 0）→ 仍 credit 反水 1 星幣，wallet 有值")
+    void settle_noPayout_creditsRebate() {
         when(sessionService.find(PLAYER_ID, ROUND_ID))
                 .thenReturn(Optional.of(startedSession(100L, 0L, 0L)));
         BaccaratOutcome outcome = bankerWinOutcome(); // 押閒但莊贏
@@ -182,12 +193,16 @@ class BaccaratServiceTest {
         when(baccaratGame.settle(eq(outcome), anyMap()))
                 .thenReturn(new BaccaratSettlement(BaccaratResult.BANKER, 100L, 0L,
                         new EnumMap<>(BaccaratResult.class)));
+        // 反水 = max(1, 100/200) = 1；credit = 0 + 1 = 1
+        when(walletClient.credit(eq(PLAYER_ID), eq(1L), anyString(), anyString()))
+                .thenReturn(new WalletCreditResponse(2L, PLAYER_ID, 1L, 9600L, 9601L, 0L, false));
 
         BaccaratResultResponse res = service.settle(PLAYER_ID, ROUND_ID);
 
         assertEquals(0L, res.getTotalPayout());
-        assertNull(res.getWallet(), "未派彩時不帶 wallet");
-        verify(walletClient, never()).credit(anyLong(), anyLong(), anyString(), anyString());
+        assertEquals(1L, res.getRebate());
+        assertEquals(9601L, res.getWallet().getBalance(), "輸局仍有反水入帳後的 wallet");
+        verify(walletClient).credit(eq(PLAYER_ID), eq(1L), eq("bac-win-" + ROUND_ID), eq(ROUND_ID));
         verify(roundRepository).save(any());
         verify(sessionService).markSettled(PLAYER_ID, ROUND_ID, "srv", 0L);
     }
@@ -202,6 +217,32 @@ class BaccaratServiceTest {
     }
 
     @Test
+    @DisplayName("settle 風控攔截：初始 PLAYER 結果被強制替換為莊家贏，押閒無派彩")
+    void settle_riskIntercept_forcesBankerWin() {
+        when(sessionService.find(PLAYER_ID, ROUND_ID))
+                .thenReturn(Optional.of(startedSession(100L, 0L, 0L))); // 押閒
+        when(riskControlService.shouldIntercept(anyLong(), anyString())).thenReturn(true);
+        BaccaratOutcome bankerOutcome = bankerWinOutcome();
+        when(baccaratGame.deal(any()))
+                .thenReturn(playerWinOutcome()) // nonce 0 → PLAYER（原始結果）
+                .thenReturn(bankerOutcome);      // 風控搜尋到的 BANKER
+        when(baccaratGame.settle(eq(bankerOutcome), anyMap()))
+                .thenReturn(new BaccaratSettlement(BaccaratResult.BANKER, 100L, 0L,
+                        new EnumMap<>(BaccaratResult.class)));
+
+        // 風控攔截後押閒無派彩，但反水仍入帳
+        when(walletClient.credit(eq(PLAYER_ID), eq(1L), anyString(), anyString()))
+                .thenReturn(new WalletCreditResponse(2L, PLAYER_ID, 1L, 9600L, 9601L, 0L, false));
+
+        BaccaratResultResponse res = service.settle(PLAYER_ID, ROUND_ID);
+
+        assertEquals("BANKER", res.getResult(), "風控攔截後應為莊家贏");
+        assertEquals(0L, res.getTotalPayout(), "押閒但莊贏，無派彩");
+        assertEquals(1L, res.getRebate());
+        verify(walletClient).credit(eq(PLAYER_ID), eq(1L), anyString(), anyString());
+    }
+
+    @Test
     @DisplayName("settle 冪等：對局已落地 → 不重複寫庫/發事件")
     void settle_alreadyPersisted_skipsSaveAndPublish() {
         when(sessionService.find(PLAYER_ID, ROUND_ID))
@@ -212,8 +253,9 @@ class BaccaratServiceTest {
         payouts.put(BaccaratResult.BANKER, 195L);
         when(baccaratGame.settle(eq(outcome), anyMap()))
                 .thenReturn(new BaccaratSettlement(BaccaratResult.BANKER, 100L, 195L, payouts));
+        // credit = 195 + 1(反水) = 196
         when(walletClient.credit(anyLong(), anyLong(), anyString(), anyString()))
-                .thenReturn(new WalletCreditResponse(2L, PLAYER_ID, 195L, 9700L, 9895L, 0L, true));
+                .thenReturn(new WalletCreditResponse(2L, PLAYER_ID, 196L, 9700L, 9896L, 0L, true));
         when(roundRepository.findByRoundId(ROUND_ID)).thenReturn(Optional.of(new GameRound()));
 
         BaccaratResultResponse res = service.settle(PLAYER_ID, ROUND_ID);

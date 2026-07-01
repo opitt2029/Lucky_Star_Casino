@@ -106,6 +106,13 @@ function hit(ctx, dest, { pitch = 1, volume = 1, when }) {
   tone(ctx, dest, { type: 'sine', freq: 420 * pitch, freqEnd: 250 * pitch, start: when, decay: 0.1, peak: 0.2 * volume })
 }
 
+// 暴擊命中：比 hit 更尖銳清脆的爆音 + 上揚金屬泛音，強化「打中要害、扣更多血」的打擊爽快感。
+function crit(ctx, dest, { pitch = 1, volume = 1, when }) {
+  noiseHit(ctx, dest, { start: when, decay: 0.06, peak: 0.3 * volume, filterType: 'bandpass', freq: 3400 * pitch, q: 3 })
+  tone(ctx, dest, { type: 'square', freq: 880 * pitch, freqEnd: 1760 * pitch, start: when, decay: 0.12, peak: 0.18 * volume })
+  tone(ctx, dest, { type: 'triangle', freq: 1320 * pitch, freqEnd: 2640 * pitch, start: when + 0.025, decay: 0.14, peak: 0.12 * volume })
+}
+
 // 漁網展開（命中瞬間的網罩演出）。
 function net(ctx, dest, { pitch = 1, volume = 1, when }) {
   noiseHit(ctx, dest, { start: when, decay: 0.2, peak: 0.14 * volume, filterType: 'highpass', freq: 2400 })
@@ -219,6 +226,7 @@ export const SFX_RECIPES = {
   winEpic,
   shoot,
   hit,
+  crit,
   net,
   fishCaught,
   fishEscape,

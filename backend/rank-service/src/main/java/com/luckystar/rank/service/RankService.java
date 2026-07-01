@@ -2,6 +2,7 @@ package com.luckystar.rank.service;
 
 import com.luckystar.rank.dto.RankEntryResponse;
 import com.luckystar.rank.dto.PlayerCoinBalance;
+import com.luckystar.rank.kafka.RankUpdatePublisher;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -29,10 +30,23 @@ public class RankService {
     public static final Duration FRIEND_RANK_TTL = Duration.ofHours(24);
     public static final String PLAYER_USERNAME_KEY = "rank:player:usernames";
 
-    private final StringRedisTemplate redisTemplate;
+    // T-045 今日贏幣王
+    public static final String DAILY_WINNINGS_KEY = "rank:daily:winnings";
+    public static final int DAILY_WINNINGS_TOP_LIMIT = 100;
 
-    public RankService(StringRedisTemplate redisTemplate) {
+    // T-073 排行榜廣播
+    public static final int GLOBAL_TOP10_LIMIT = 10;
+    private static final long MIN_BROADCAST_INTERVAL_MS = 1000L;
+
+    private final StringRedisTemplate redisTemplate;
+    private final RankUpdatePublisher rankUpdatePublisher;
+
+    private volatile List<Long> lastTop10PlayerIds = List.of();
+    private volatile long lastBroadcastAt = 0L;
+
+    public RankService(StringRedisTemplate redisTemplate, RankUpdatePublisher rankUpdatePublisher) {
         this.redisTemplate = redisTemplate;
+        this.rankUpdatePublisher = rankUpdatePublisher;
     }
 
     public void updatePlayerCoins(Long playerId, Long currentCoins) {
@@ -43,6 +57,69 @@ public class RankService {
         }
 
         redisTemplate.opsForZSet().add(GLOBAL_COINS_KEY, playerId.toString(), currentCoins.doubleValue());
+        maybeBroadcastTop10();
+    }
+
+    /**
+     * 今日贏幣王累加（T-045）：今日 key ZINCRBY；僅首次寫入設 48h TTL；忽略非正數金額。
+     */
+    public void addDailyWinnings(Long playerId, long amount) {
+        Objects.requireNonNull(playerId, "playerId is required");
+        if (amount <= 0) {
+            return;
+        }
+
+        redisTemplate.opsForZSet().incrementScore(DAILY_WINNINGS_KEY, playerId.toString(), amount);
+    }
+
+    public void resetDailyWinnings() {
+        redisTemplate.delete(DAILY_WINNINGS_KEY);
+    }
+
+    public List<RankEntryResponse> getTopDailyWinnings(int limit) {
+        int boundedLimit = Math.max(0, Math.min(limit, DAILY_WINNINGS_TOP_LIMIT));
+        return readTopRank(DAILY_WINNINGS_KEY, boundedLimit);
+    }
+
+    public Optional<RankEntryResponse> getDailyWinningsRank(Long playerId) {
+        Objects.requireNonNull(playerId, "playerId is required");
+
+        String member = playerId.toString();
+        Long zeroBasedRank = redisTemplate.opsForZSet().reverseRank(DAILY_WINNINGS_KEY, member);
+        Double score = redisTemplate.opsForZSet().score(DAILY_WINNINGS_KEY, member);
+
+        if (zeroBasedRank == null || score == null) {
+            return Optional.empty();
+        }
+
+        HashOperations<String, String, String> hashOperations = redisTemplate.opsForHash();
+        String username = hashOperations.get(PLAYER_USERNAME_KEY, member);
+        return Optional.of(new RankEntryResponse(
+                playerId,
+                username,
+                zeroBasedRank + 1,
+                score.longValue()));
+    }
+
+    private void maybeBroadcastTop10() {
+        List<RankEntryResponse> top10 = getTopGlobalCoins(GLOBAL_TOP10_LIMIT);
+        List<Long> ids = top10.stream().map(RankEntryResponse::playerId).toList();
+        long now = System.currentTimeMillis();
+        if (shouldBroadcast(ids, now)) {
+            lastTop10PlayerIds = ids;
+            lastBroadcastAt = now;
+            rankUpdatePublisher.publishTop10(top10);
+        }
+    }
+
+    boolean shouldBroadcast(List<Long> currentTop10Ids, long now) {
+        if (currentTop10Ids.equals(lastTop10PlayerIds)) {
+            return false; // 順序敏感：TOP10 名單未變不廣播
+        }
+        if (now - lastBroadcastAt < MIN_BROADCAST_INTERVAL_MS) {
+            return false; // 節流：距上次廣播未滿 1 秒
+        }
+        return true;
     }
 
     public void updatePlayerUsername(Long playerId, String username) {

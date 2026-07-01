@@ -52,6 +52,7 @@ class SlotServiceTest {
     private final GameResultEventPublisher publisher = org.mockito.Mockito.mock(GameResultEventPublisher.class);
     private final GameSessionService sessionService = org.mockito.Mockito.mock(GameSessionService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final RiskControlService riskControlService = org.mockito.Mockito.mock(RiskControlService.class);
 
     private SlotService service;
 
@@ -84,7 +85,9 @@ class SlotServiceTest {
     @BeforeEach
     void setUp() {
         service = new SlotService(rng, slotMachine, walletClient, roundRepository,
-                publisher, sessionService, objectMapper);
+                publisher, sessionService, objectMapper, riskControlService);
+        // 預設：風控不攔截
+        when(riskControlService.shouldIntercept(anyLong(), anyString())).thenReturn(false);
         when(rng.generateServerSeed()).thenReturn("srv");
         when(rng.commit("srv")).thenReturn("hash");
         when(rng.generateClientSeed()).thenReturn("gen-client");
@@ -174,6 +177,19 @@ class SlotServiceTest {
         verify(roundRepository).save(roundCaptor.capture());
         assertEquals(0L, roundCaptor.getValue().getWinAmount());
         verify(publisher).publishSlotResult(any(), any());
+    }
+
+    @Test
+    @DisplayName("spin 命中但風控攔截：派彩為 0、不呼叫 credit、中線被打破")
+    void spin_winButRiskIntercept_noPayout() {
+        when(riskControlService.shouldIntercept(anyLong(), anyString())).thenReturn(true);
+        when(slotMachine.spin(any(), eq(BET))).thenReturn(winOutcome());
+
+        SpinResponse res = service.spin(PLAYER_ID, BET, null);
+
+        assertEquals(0L, res.getPayout(), "風控攔截後派彩應為 0");
+        assertEquals(0, res.getMultiplier(), "風控攔截後倍率應為 0");
+        verify(walletClient, never()).credit(anyLong(), anyLong(), anyString(), anyString());
     }
 
     @Test

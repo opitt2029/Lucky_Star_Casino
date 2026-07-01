@@ -58,6 +58,12 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- Swagger UI / OpenAPI (T-092)：版本由根 pom dependencyManagement 管控 -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
+
         <!-- PostgreSQL Driver (ADR-001: game_rounds 在 PostgreSQL) -->
         <dependency>
             <groupId>org.postgresql</groupId>

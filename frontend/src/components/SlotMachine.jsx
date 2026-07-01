@@ -51,8 +51,10 @@ export default function SlotMachine({
   grid,
   winningCells = [],
   spinning: externalSpinning = false,
+  canSpin = true,
   onSpin,
   onSettled,
+  onSpinComplete,
   symbols = defaultSymbols,
   symbolHeight: symbolHeightProp,
 }) {
@@ -141,7 +143,6 @@ export default function SlotMachine({
       // 結果早已由後端 Provably Fair 決定，這裡只是把「差點贏」的張力放大（表現層）。
       const paylineSymbols = targetColumns.map((column) => column[paylineRow])
       const isNearMiss = sameSymbol(paylineSymbols[0], paylineSymbols[1])
-      const isLineWin = isNearMiss && sameSymbol(paylineSymbols[1], paylineSymbols[2])
 
       const nextTracks = targetColumns.map((column, colIndex) =>
         buildReelTrack({
@@ -161,6 +162,10 @@ export default function SlotMachine({
       setPhase('spinning')
       soundEngine.play('leverPull')
       await nextFrame()
+      // 首局或 re-render 競態時 ref 可能尚未掛上；多等一幀，避免 animateReel 因 trackElement 為 null 靜默跳過動畫。
+      if (trackRefs.current.some((node) => !node)) {
+        await nextFrame()
+      }
 
       await Promise.all(
         nextTracks.map((track, colIndex) => {
@@ -196,10 +201,9 @@ export default function SlotMachine({
       setAnticipating(false)
 
       if (!controller.signal.aborted) {
-        if (isNearMiss && !isLineWin) {
-          // 差一格停下：惋惜短音，刺激「下次一定行」。
-          soundEngine.play('fishEscape', { volume: 0.7 })
-        }
+        // 註：本作賠付表所有符號 pairMultiplier ≥ 1，「前兩格同、第三格不同」恆為會派彩的左二同小獎，
+        // 故不在此播惋惜/逃跑音——那會與隨後 handleSettled 的中獎音衝突（贏錢卻播輸錢音）。
+        // 第三輪 anticipation 慢停＋心跳已提供「能否升級三連」的張力，落定後交由中獎音收尾。
         setPhase('idle')
       }
     },
@@ -207,7 +211,10 @@ export default function SlotMachine({
   )
 
   const spin = async () => {
-    if (visualBusy) return
+    if (visualBusy || !canSpin) return
+
+    // 在使用者手勢同步上下文內解鎖音訊，讓首局就有拉霸/轉輪/停輪音效。
+    soundEngine.ensureContext()
 
     setPhase('waiting')
     try {
@@ -224,6 +231,9 @@ export default function SlotMachine({
     } catch {
       setAnticipating(false)
       setPhase('idle')
+    } finally {
+      // 無論成功、失敗或下注被擋，都通知外層解除視覺鎖。
+      onSpinComplete?.()
     }
   }
 
@@ -284,8 +294,8 @@ export default function SlotMachine({
       <div className="slot-console">
         <div className="slot-console__meters" aria-label="Slot machine control display">
           <div>
-            <span>LINES</span>
-            <strong>03</strong>
+            <span>LINE</span>
+            <strong>01</strong>
           </div>
           <div>
             <span>BET</span>
@@ -299,10 +309,10 @@ export default function SlotMachine({
         <button
           type="button"
           onClick={spin}
-          disabled={visualBusy}
+          disabled={visualBusy || !canSpin}
           className="slot-spin-button gold-button rounded text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {visualBusy ? 'SPINNING' : 'SPIN'}
+          {visualBusy ? 'SPINNING' : !canSpin ? '星幣不足' : 'SPIN'}
         </button>
         <div className={['slot-lever', visualBusy ? 'slot-lever--active' : ''].join(' ')} aria-hidden="true">
           <span />

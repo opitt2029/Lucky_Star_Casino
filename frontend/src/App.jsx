@@ -12,12 +12,16 @@ import Fishing from './pages/Fishing'
 import Rank from './pages/Rank'
 import Profile from './pages/Profile'
 import Transactions from './pages/Transactions'
+import GameHistory from './pages/GameHistory'
 import CasinoShop from './pages/CasinoShop'
+import Inventory from './pages/Inventory'
 import CheckIn from './pages/CheckIn'
 import Diamond from './pages/Diamond'
+import Topup from './pages/Topup'
 import PageTransition from './components/PageTransition'
 import QuickToolbar from './components/QuickToolbar'
 import FriendFloatingPanel from './components/FriendFloatingPanel'
+import SupportModal from './components/SupportModal'
 
 function PrivateRoute({ children }) {
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
@@ -73,6 +77,14 @@ export default function App() {
             }
           />
           <Route
+            path="/topup"
+            element={
+              <PrivateRoute>
+                <Topup />
+              </PrivateRoute>
+            }
+          />
+          <Route
             path="/game/slot"
             element={
               <PrivateRoute>
@@ -113,10 +125,26 @@ export default function App() {
             }
           />
           <Route
+            path="/inventory"
+            element={
+              <PrivateRoute>
+                <Inventory />
+              </PrivateRoute>
+            }
+          />
+          <Route
             path="/transactions"
             element={
               <PrivateRoute>
                 <Transactions />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/game-history"
+            element={
+              <PrivateRoute>
+                <GameHistory />
               </PrivateRoute>
             }
           />
@@ -127,6 +155,7 @@ export default function App() {
       </PageTransition>
       <QuickToolbar />
       <FriendFloatingPanel />
+      <SupportModal />
     </BrowserRouter>
   )
 }

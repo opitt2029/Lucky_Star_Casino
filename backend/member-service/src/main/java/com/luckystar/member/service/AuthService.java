@@ -58,6 +58,7 @@ public class AuthService {
         );
     }
 
+    @Transactional(readOnly = true)
     public LoginResponse login(LoginRequest request) {
         Member member = memberRepository.findByUsername(request.getUsername())
                 .orElseThrow(() -> new InvalidCredentialsException("Invalid username or password"));
@@ -66,7 +67,9 @@ public class AuthService {
             throw new InvalidCredentialsException("Invalid username or password");
         }
 
-        if ("DISABLED".equals(member.getStatus())) {
+        // DB status 或後台即時封鎖（Redis disabled:player:{id}）任一成立都視為停用，不得登入。
+        // 後台 T-051 停用只寫 Redis 封鎖、不改 member DB，故必須同時查 Redis 才能擋住停用玩家登入。
+        if ("DISABLED".equals(member.getStatus()) || tokenRedisService.isPlayerDisabled(member.getId())) {
             throw new AccountDisabledException("Account is disabled");
         }
 
@@ -74,7 +77,12 @@ public class AuthService {
         String refreshToken = jwtTokenProvider.generateRefreshToken(member.getId(), member.getUsername(), member.getRole());
 
         long refreshTtl = jwtTokenProvider.getRemainingTtlMs(refreshToken);
-        tokenRedisService.saveRefreshToken(member.getId(), refreshToken, refreshTtl);
+        try {
+            tokenRedisService.saveRefreshToken(member.getId(), refreshToken, refreshTtl);
+        } catch (Exception e) {
+            log.error("Redis write failed during login for memberId={}", member.getId(), e);
+            throw new RuntimeException("Login service temporarily unavailable. Please retry.", e);
+        }
 
         return new LoginResponse(accessToken, refreshToken);
     }

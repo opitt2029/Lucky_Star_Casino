@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS friendships (
     status        VARCHAR(10)  NOT NULL DEFAULT 'PENDING',  -- PENDING / ACCEPTED / REJECTED
     created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    version       BIGINT       NOT NULL DEFAULT 0,             -- 樂觀鎖（@Version）：防併發接受/拒絕競態
     CONSTRAINT pk_friendships            PRIMARY KEY (id),
     CONSTRAINT uq_friendships_pair       UNIQUE (requester_id, receiver_id),
     CONSTRAINT chk_friendships_status    CHECK (status IN ('PENDING', 'ACCEPTED', 'REJECTED')),
@@ -167,7 +168,7 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
     id               BIGINT       NOT NULL,   -- 與 PostgreSQL 主庫 id 保持一致
     player_id        BIGINT       NOT NULL,
     type             VARCHAR(10)  NOT NULL,   -- DEBIT / CREDIT / BONUS
-    sub_type         VARCHAR(20)  NOT NULL,   -- BET / WIN / CHECKIN / TASK / GIFT / GM_REWARD / BANKRUPTCY_AID
+    sub_type         VARCHAR(20)  NOT NULL,   -- BET / WIN / CHECKIN / TASK / GIFT / GM_REWARD / BANKRUPTCY_AID / DIAMOND_EXCHANGE / TOPUP / CASHBACK / REFUND
     amount           BIGINT       NOT NULL,
     balance_before   BIGINT,
     balance_after    BIGINT,
@@ -176,7 +177,7 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
     created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_wallet_transactions PRIMARY KEY (id),
     CONSTRAINT chk_wt_type     CHECK (type    IN ('DEBIT', 'CREDIT', 'BONUS')),
-    CONSTRAINT chk_wt_sub_type CHECK (sub_type IN ('BET', 'WIN', 'CHECKIN', 'TASK', 'GIFT', 'GM_REWARD', 'BANKRUPTCY_AID')),
+    CONSTRAINT chk_wt_sub_type CHECK (sub_type IN ('BET', 'WIN', 'CHECKIN', 'TASK', 'GIFT', 'GM_REWARD', 'BANKRUPTCY_AID', 'DIAMOND_EXCHANGE', 'TOPUP', 'CASHBACK', 'REFUND', 'MONTHLY_REWARD', 'SHOP_PURCHASE')),
     CONSTRAINT chk_wt_amount   CHECK (amount > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -205,3 +206,51 @@ CREATE TABLE IF NOT EXISTS diamond_cards (
 
 CREATE INDEX idx_diamond_cards_is_redeemed ON diamond_cards (is_redeemed);
 CREATE INDEX idx_diamond_cards_redeemed_by ON diamond_cards (redeemed_by);
+
+-- -------------------------------------------------------
+-- shop_items：禮品商城目錄（ADR-006）
+-- admin-service 管理 CRUD、wallet-service 讀取列目錄/驗價；屬 CQRS 查詢讀端（ADR-001）。
+-- active 控制上下架、sort_order 控制顯示順序、cost_star 為星幣定價。
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS shop_items (
+    id          BIGINT       NOT NULL AUTO_INCREMENT,
+    item_code   VARCHAR(50)  NOT NULL              COMMENT '商品代號（前端/兌換對應鍵）',
+    name        VARCHAR(100) NOT NULL              COMMENT '商品名稱',
+    caption     VARCHAR(255) NULL                  COMMENT '商品說明',
+    cost_star   BIGINT       NOT NULL              COMMENT '兌換成本（星幣）',
+    asset_key   VARCHAR(50)  NULL                  COMMENT '前端圖片資產鍵（如 shopPrizeA）',
+    sort_order  INT          NOT NULL DEFAULT 0    COMMENT '顯示順序，小者在前',
+    active      TINYINT(1)   NOT NULL DEFAULT 1    COMMENT '是否上架：1 上架 / 0 下架',
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT pk_shop_items       PRIMARY KEY (id),
+    CONSTRAINT uq_shop_items_code  UNIQUE (item_code),
+    CONSTRAINT chk_shop_items_cost CHECK (cost_star > 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE INDEX idx_shop_items_active ON shop_items (active, sort_order);
+
+INSERT INTO shop_items (item_code, name, caption, cost_star, asset_key, sort_order, active) VALUES
+    ('vip-ticket',   'VIP 入場券',  '可兌換活動或限時桌台資格',   12000, 'shopPrizeA', 1, 1),
+    ('avatar-frame', '會員頭像框',  '讓會員頭像更有辨識度',        8000, 'shopPrizeB', 2, 1),
+    ('bonus-box',    '幸運禮盒',    '適合兌換活動獎勵或驚喜禮品', 20000, 'shopPrizeC', 3, 1);
+
+-- -------------------------------------------------------
+-- monthly_reward_claims：月度累計簽到獎勵領取紀錄
+-- 玩家當月「累計」（非連續）簽到天數達里程碑（10/20/28 天）可手動領取大獎
+-- UNIQUE(player_id, reward_month, milestone_days) 防止重複領取
+-- reward_month 命名刻意避開 MySQL 關鍵字 YEAR_MONTH
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS monthly_reward_claims (
+    id             BIGINT       NOT NULL AUTO_INCREMENT,
+    player_id      BIGINT       NOT NULL,
+    reward_month   VARCHAR(7)   NOT NULL,                          -- 格式 yyyy-MM（台北時區）
+    milestone_days INT          NOT NULL,                          -- 累計天數里程碑：10 / 20 / 28
+    reward_amount  BIGINT       NOT NULL,
+    claimed_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_monthly_reward_claims      PRIMARY KEY (id),
+    CONSTRAINT uq_mrc_player_month_milestone UNIQUE (player_id, reward_month, milestone_days),
+    CONSTRAINT chk_mrc_reward_amount         CHECK (reward_amount > 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE INDEX idx_mrc_player_month ON monthly_reward_claims (player_id, reward_month);

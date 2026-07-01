@@ -6,8 +6,9 @@ import org.springframework.stereotype.Component;
 /**
  * 老虎機遊戲邏輯（T-031）。
  *
- * <p>盤面為 3 輪 x 3 列（3x3），唯一賠付線為中央橫線（row=1）三格相同。賠付倍率由命中符號決定
- * （見 {@link SlotSymbol}），派彩 = 下注 x 倍率（含本金返還）。
+ * <p>盤面為 3 輪 x 3 列（3x3），唯一賠付線為中央橫線（row=1），由左到右讀的兩階賠付：
+ * <b>三連</b>（三格相同）派大獎、<b>左二同</b>（左二格相同、第三格不同）派小獎；右二格相同不賠。
+ * 倍率由命中符號決定（見 {@link SlotSymbol}），派彩 = 下注 x 倍率（含本金返還）。
  *
  * <p>盤面完全由傳入的 {@link RandomStream} 決定：依「逐輪（由左到右）、每輪由上而下」的固定順序，
  * 對每一格做一次加權抽樣（{@code stream.nextInt(TOTAL_WEIGHT)} 映射到符號）。此固定順序確保
@@ -51,21 +52,38 @@ public class SlotMachine {
     }
 
     /**
-     * 對給定盤面評估中線輸贏（純函式）。
+     * 對給定盤面評估中線輸贏（純函式，由左到右兩階賠付）。
+     *
+     * <p>判定順序：三格相同 → 三連大獎（命中格為中線三格）；否則左二格相同 → 左二同小獎
+     * （命中格為中線左二格）；否則未中。右二格相同（b==c≠a）不賠。{@code multiplier} 存
+     * 實際生效倍率（三連或左二同）。
      *
      * @param board 3x3 符號盤面（{@code board[row][col]}）
      * @param bet   下注金額
      * @return 結果（含顯示用 emoji 盤面、倍率、派彩、命中格）
      */
     public SlotOutcome evaluate(SlotSymbol[][] board, long bet) {
-        SlotSymbol first = board[PAYLINE_ROW][0];
-        boolean win = first == board[PAYLINE_ROW][1] && first == board[PAYLINE_ROW][2];
+        SlotSymbol a = board[PAYLINE_ROW][0];
+        SlotSymbol b = board[PAYLINE_ROW][1];
+        SlotSymbol c = board[PAYLINE_ROW][2];
 
-        int multiplier = win ? first.lineMultiplier() : 0;
+        int multiplier;
+        int[][] winningCells;
+        if (a == b && b == c) {
+            // 三連大獎：中線三格相同。
+            multiplier = a.tripleMultiplier();
+            winningCells = new int[][] {{PAYLINE_ROW, 0}, {PAYLINE_ROW, 1}, {PAYLINE_ROW, 2}};
+        } else if (a == b) {
+            // 左二同小獎：由左到右讀，前二格相同（第三格不同）。右二格相同（b==c≠a）不賠。
+            multiplier = a.pairMultiplier();
+            winningCells = new int[][] {{PAYLINE_ROW, 0}, {PAYLINE_ROW, 1}};
+        } else {
+            multiplier = 0;
+            winningCells = new int[0][];
+        }
+
+        boolean win = multiplier > 0;
         long payout = win ? Math.multiplyExact(bet, multiplier) : 0L;
-        int[][] winningCells = win
-                ? new int[][] {{PAYLINE_ROW, 0}, {PAYLINE_ROW, 1}, {PAYLINE_ROW, 2}}
-                : new int[0][];
 
         return new SlotOutcome(toDisplayGrid(board), win, multiplier, payout, winningCells);
     }

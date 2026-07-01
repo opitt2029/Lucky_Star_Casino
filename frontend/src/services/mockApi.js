@@ -1,26 +1,79 @@
 const DB_KEY = 'lucky-star-mock-db-v1'
 const SESSION_KEY = 'lucky-star-session-v1'
 
-const slotSymbols = ['🍒', '🍋', '🔔', '⭐', '7️⃣']
-const MOCK_SLOT_FORCED_WIN_RATE = 0.18
+// 老虎機賠付表（與後端 SlotSymbol 對齊：權重 + 兩階倍率，權重總和 103）。
+// 中線由左到右兩階賠付：三連（三格同符號）派 tripleMultiplier 大獎；
+// 左二同（左二格同、第三格不同）派 pairMultiplier 小獎；右二格相同不賠。
+// 理論 RTP ≈ 93.8%、命中率 ≈ 30.7%（pᵢ = 權重ᵢ / 103）。改本表務必同步後端與測試。
+const SLOT_PAYTABLE = [
+  { symbol: '🍒', weight: 45, pairMultiplier: 1, tripleMultiplier: 5 },
+  { symbol: '🍋', weight: 30, pairMultiplier: 1, tripleMultiplier: 8 },
+  { symbol: '🔔', weight: 16, pairMultiplier: 2, tripleMultiplier: 18 },
+  { symbol: '⭐', weight: 7, pairMultiplier: 3, tripleMultiplier: 50 },
+  { symbol: '7️⃣', weight: 5, pairMultiplier: 5, tripleMultiplier: 70 },
+]
+const SLOT_TOTAL_WEIGHT = SLOT_PAYTABLE.reduce((sum, entry) => sum + entry.weight, 0)
+const SLOT_PAYTABLE_BY_SYMBOL = Object.fromEntries(SLOT_PAYTABLE.map((entry) => [entry.symbol, entry]))
 
-// 捕魚機魚種表（與後端 FishSpecies 對齊）；命中機率 = TARGET_RTP / 倍率。
-const FISHING_TARGET_RTP = 0.92
+// 捕魚機魚種表（血量/傷害模型，鏡像後端 FishSpecies / FishingCombat，ADR-003 / ADR-004）。
+// 重要：此檔是「預設玩家實際體驗」（前端預設走 mock），改後端規則時務必同步此處（AGENTS 雷區 14）。
+const FISHING_TARGET_RTP = 0.96
+// 殘血部分回收率（受傷未死的魚在結算時退還的子彈成本比例＝體感 RTP 地板，ADR-004）
+const FISHING_RECOVERY_RATE = 0.7
 const FISHING_MONEY_TREE_MIN = 10
 const FISHING_MONEY_TREE_MAX = 50
+// HP = multiplier × 此值（對齊後端 FishSpecies.HP_PER_MULTIPLIER）
+const FISHING_HP_PER_MULT = 10
+// 暴擊（對齊後端 FishingCombat）
+const FISHING_CRIT_CHANCE = 0.2
+const FISHING_CRIT_MULT = 2
+// 各砲台單發基礎傷害（索引 0 不用；銅/銀/金，對齊後端 CANNON_DAMAGE = {1:10,2:14,3:18}）
+const FISHING_CANNON_DAMAGE = [0, 10, 14, 18]
 const FISH_SPECIES = [
-  { code: 'KOI', name: '錦鯉', assetId: 'fish-koi', multiplier: 2 },
-  { code: 'GOLDFISH', name: '金魚', assetId: 'fish-goldfish', multiplier: 3 },
-  { code: 'LANTERN', name: '燈籠魚', assetId: 'fish-lantern', multiplier: 5 },
-  { code: 'PUFFER', name: '河豚', assetId: 'fish-puffer', multiplier: 8 },
-  { code: 'ANGELFISH', name: '神仙魚', assetId: 'fish-angelfish', multiplier: 15 },
-  { code: 'DEVIL_RAY', name: '魔鬼魚', assetId: 'fish-devil-ray', multiplier: 25 },
-  { code: 'GOLD_DRAGON', name: '金龍', assetId: 'fish-gold-dragon', multiplier: 60 },
-  { code: 'PIXIU', name: '貔貅', assetId: 'fish-pixiu', multiplier: 88 },
-  { code: 'CAISHEN', name: '財神爺', assetId: 'fish-caishen', multiplier: 100 },
-  { code: 'DRAGON_KING', name: '龍王', assetId: 'fish-dragon-king', multiplier: 200 },
-  { code: 'MONEY_TREE', name: '搖錢樹', assetId: 'fish-money-tree', multiplier: 30 },
+  { code: 'KOI', name: '錦鯉', assetId: 'fish-koi', multiplier: 2, tier: 'SMALL', spawnWeight: 100 },
+  { code: 'GOLDFISH', name: '金魚', assetId: 'fish-goldfish', multiplier: 3, tier: 'SMALL', spawnWeight: 90 },
+  { code: 'LANTERN', name: '燈籠魚', assetId: 'fish-lantern', multiplier: 5, tier: 'SMALL', spawnWeight: 70 },
+  { code: 'PUFFER', name: '河豚', assetId: 'fish-puffer', multiplier: 8, tier: 'MEDIUM', spawnWeight: 50 },
+  { code: 'ANGELFISH', name: '神仙魚', assetId: 'fish-angelfish', multiplier: 15, tier: 'MEDIUM', spawnWeight: 35 },
+  { code: 'DEVIL_RAY', name: '魔鬼魚', assetId: 'fish-devil-ray', multiplier: 25, tier: 'MEDIUM', spawnWeight: 22 },
+  { code: 'GOLD_DRAGON', name: '金龍', assetId: 'fish-gold-dragon', multiplier: 60, tier: 'HIGH', spawnWeight: 12 },
+  { code: 'PIXIU', name: '貔貅', assetId: 'fish-pixiu', multiplier: 88, tier: 'HIGH', spawnWeight: 7 },
+  { code: 'CAISHEN', name: '財神爺', assetId: 'fish-caishen', multiplier: 100, tier: 'HIGH', spawnWeight: 6 },
+  { code: 'DRAGON_KING', name: '龍王', assetId: 'fish-dragon-king', multiplier: 200, tier: 'BOSS', spawnWeight: 2 },
+  { code: 'MONEY_TREE', name: '搖錢樹', assetId: 'fish-money-tree', multiplier: 30, tier: 'SPECIAL', spawnWeight: 5 },
 ]
+
+function fishHp(fish) {
+  return fish.multiplier * FISHING_HP_PER_MULT
+}
+
+// 期望擊殺發數 E[N]（DP；對齊後端 FishingCombat.expectedShotsToKill）。
+function fishingExpectedShotsToKill(hp, damage) {
+  if (hp <= 0) return 0
+  const units = Math.ceil(hp / damage)
+  const g = new Array(units + 2).fill(0)
+  for (let u = units - 1; u >= 0; u--) {
+    g[u] = 1 + (1 - FISHING_CRIT_CHANCE) * g[u + 1] + FISHING_CRIT_CHANCE * g[u + 2]
+  }
+  return g[0]
+}
+
+// 捕獲機率 pCapture（反推使 RTP=TARGET_RTP；對齊後端 FishingCombat.pCapture）。
+function fishingCapture(fish, cannonLevel) {
+  const eN = fishingExpectedShotsToKill(fishHp(fish), FISHING_CANNON_DAMAGE[cannonLevel])
+  return Math.min(1, (FISHING_TARGET_RTP * eN) / fish.multiplier)
+}
+
+// 殘血部分回收（鏡像後端 FishingCombat.recoveryPayout，ADR-004）：對「受傷但未打死」的魚，
+// 按已造成傷害換算的期望耗彈成本退還 RECOVERY_RATE 比例。critFactor 還原暴擊讓每發平均多扣的血。
+function fishingCritFactor() {
+  return 1 + FISHING_CRIT_CHANCE * (FISHING_CRIT_MULT - 1)
+}
+function fishingRecoveryPayout(betPerShot, cannonLevel, cumDamage) {
+  if (cumDamage <= 0 || betPerShot <= 0) return 0
+  const expectedShots = cumDamage / (fishingCritFactor() * FISHING_CANNON_DAMAGE[cannonLevel])
+  return Math.floor(FISHING_RECOVERY_RATE * betPerShot * expectedShots)
+}
 
 function fishTableView() {
   return FISH_SPECIES.map((fish) => ({
@@ -28,7 +81,9 @@ function fishTableView() {
     name: fish.name,
     assetId: fish.assetId,
     multiplier: fish.multiplier,
-    hitProbability: FISHING_TARGET_RTP / fish.multiplier,
+    hp: fishHp(fish),
+    tier: fish.tier,
+    spawnWeight: fish.spawnWeight,
   }))
 }
 
@@ -42,14 +97,34 @@ const transactionLabels = {
   checkin: '簽到',
   task: '任務',
   gift: '贈送',
+  shop: '商城兌換',
 }
 const DAILY_CHECKIN_REWARD = 100
+// 破產補助：餘額低於門檻才可領、固定發放金額（與後端 BankruptcyAidService 一致）
+const BANKRUPTCY_AID_THRESHOLD = 100
+const BANKRUPTCY_AID_AMOUNT = 1000
 const checkInMilestoneBonuses = {
   7: 1000,
   14: 2000,
   21: 3000,
   30: 5000,
 }
+
+// 月度「累計」簽到里程碑（鏡像後端 MonthlyRewardService.MILESTONES）：
+// 當月累計簽到天數達門檻可手動領取大獎，與連續天數里程碑（上方）獨立。
+const MONTHLY_REWARD_MILESTONES = [
+  { days: 10, reward: 2000 },
+  { days: 20, reward: 5000 },
+  { days: 28, reward: 12000 },
+]
+
+// 禮品商城目錄（鏡像後端 shop_items seed / database/mysql/init.sql，ADR-006）。
+// 後端後台可改目錄；mock 為預設玩家體驗，改後端 seed 時同步此處。
+const SHOP_CATALOG = [
+  { itemCode: 'vip-ticket', name: 'VIP 入場券', caption: '可兌換活動或限時桌台資格', cost: 12000, assetKey: 'shopPrizeA' },
+  { itemCode: 'avatar-frame', name: '會員頭像框', caption: '讓會員頭像更有辨識度', cost: 8000, assetKey: 'shopPrizeB' },
+  { itemCode: 'bonus-box', name: '幸運禮盒', caption: '適合兌換活動獎勵或驚喜禮品', cost: 20000, assetKey: 'shopPrizeC' },
+]
 
 const TEST_ACCOUNT = {
   password: 'test1234',
@@ -153,6 +228,15 @@ function createInitialDb() {
       ],
       [TEST_ACCOUNT.player.id]: [],
     },
+    // 後端權威簽到日期（每元素 'yyyy-MM-dd'，台北時區）與月度累計獎勵領取紀錄
+    checkinDates: {
+      [player.id]: [],
+      [TEST_ACCOUNT.player.id]: [],
+    },
+    monthlyRewardClaims: {
+      [player.id]: [],
+      [TEST_ACCOUNT.player.id]: [],
+    },
     ranks: [{ id: TEST_ACCOUNT.player.id, name: TEST_ACCOUNT.player.nickname, nickname: TEST_ACCOUNT.player.nickname, score: 50000, trend: '+0%' }, ...createRankRows()],
   }
 }
@@ -164,6 +248,8 @@ function ensureTestAccount(db) {
   db.transactions = db.transactions || {}
   db.friends = db.friends || {}
   db.ranks = db.ranks || []
+  db.checkinDates = db.checkinDates || {}
+  db.monthlyRewardClaims = db.monthlyRewardClaims || {}
 
   let user = db.users.find((item) => item.player?.username === TEST_ACCOUNT.player.username)
   if (!user) {
@@ -252,22 +338,113 @@ function currentPlayerId() {
   return readJson(SESSION_KEY, null)?.player?.id || 'demo-player'
 }
 
+// 單張牌的百家樂點數（鏡像後端 Card.value()）：A=1、10/J/Q/K=0、其餘為牌面數字。
+function cardValue(card) {
+  if (card === 'A') return 1
+  if (['J', 'Q', 'K', '10'].includes(card)) return 0
+  return Number(card)
+}
+
 function points(cards) {
-  return cards.reduce((sum, card) => {
-    if (card === 'A') return sum + 1
-    if (['J', 'Q', 'K', '10'].includes(card)) return sum
-    return sum + Number(card)
-  }, 0) % 10
+  return cards.reduce((sum, card) => sum + cardValue(card), 0) % 10
 }
 
 function randomCard() {
   return baccaratValues[Math.floor(Math.random() * baccaratValues.length)]
 }
 
+// 莊家補牌規則（鏡像後端 BaccaratGameService.bankerDraws）。
+// playerThirdValue 為 null 代表閒家未補牌：莊家比照閒家 0~5 補、6~7 停。
+function bankerDrawsMock(bankerScore, playerThirdValue) {
+  if (playerThirdValue === null) return bankerScore <= 5
+  const p3 = playerThirdValue
+  switch (bankerScore) {
+    case 0:
+    case 1:
+    case 2:
+      return true
+    case 3:
+      return p3 !== 8
+    case 4:
+      return p3 >= 2 && p3 <= 7
+    case 5:
+      return p3 >= 4 && p3 <= 7
+    case 6:
+      return p3 >= 6 && p3 <= 7
+    default:
+      return false // 7（含理論上不會到的 >7）
+  }
+}
+
+// 單一押注區派彩（含本金，鏡像後端 BaccaratGameService.payoutFor）。
+// 和局：押中和賠 8:1（本金+8 倍）、押莊/閒退回本金（push）；非和局押錯為 0；
+// 押中莊扣 5% 傭金、押中閒 1:1。
+function baccaratPayout(area, winner, amount) {
+  if (winner === 'tie') {
+    if (area === 'tie') return amount * 9
+    return amount // 押莊/閒：和局退回本金（push）
+  }
+  if (area !== winner) return 0
+  if (area === 'banker') return amount * 2 - Math.floor(amount * 0.05)
+  return amount * 2 // player 1:1
+}
+
+// 發一局百家樂（鏡像後端 BaccaratGameService.play 的補牌流程）。
+function dealBaccarat() {
+  const player = [randomCard(), randomCard()]
+  const banker = [randomCard(), randomCard()]
+  let playerScore = points(player)
+  let bankerScore = points(banker)
+  const playerNatural = playerScore >= 8
+  const bankerNatural = bankerScore >= 8
+
+  // 任一方天牌（8/9）→ 雙方皆不補牌
+  if (!playerNatural && !bankerNatural) {
+    let playerThirdValue = null
+    // 閒家：0~5 補牌，6~7 停牌
+    if (playerScore <= 5) {
+      const third = randomCard()
+      player.push(third)
+      playerThirdValue = cardValue(third)
+      playerScore = points(player)
+    }
+    // 莊家：依補牌表
+    if (bankerDrawsMock(bankerScore, playerThirdValue)) {
+      banker.push(randomCard())
+      bankerScore = points(banker)
+    }
+  }
+
+  const winner = playerScore === bankerScore ? 'tie' : playerScore > bankerScore ? 'player' : 'banker'
+  return { player, banker, playerScore, bankerScore, winner }
+}
+
+// 加權抽樣一個符號（鏡像後端 SlotSymbol.fromWeightedIndex 的累積權重對應）。
+function pickSlotSymbol() {
+  let cursor = Math.floor(Math.random() * SLOT_TOTAL_WEIGHT)
+  for (const entry of SLOT_PAYTABLE) {
+    if (cursor < entry.weight) return entry.symbol
+    cursor -= entry.weight
+  }
+  return SLOT_PAYTABLE[SLOT_PAYTABLE.length - 1].symbol // 理論不可達
+}
+
+// 3x3 盤面：每格獨立加權抽樣（與後端逐格抽樣分布一致）。
 function randomSlotGrid() {
-  return Array.from({ length: 3 }, (_, rowIndex) =>
-    Array.from({ length: 3 }, (_, colIndex) => slotSymbols[(rowIndex + colIndex + Math.floor(Math.random() * slotSymbols.length)) % slotSymbols.length])
-  )
+  return Array.from({ length: 3 }, () => Array.from({ length: 3 }, () => pickSlotSymbol()))
+}
+
+// 中線兩階評估（鏡像後端 SlotMachine.evaluate）：
+// 三連 → tripleMultiplier + 中線三格；左二同（a==b 且 c≠a）→ pairMultiplier + 左二格；否則未中。
+function evaluateSlotLine(grid) {
+  const [a, b, c] = grid[1]
+  if (a === b && b === c) {
+    return { multiplier: SLOT_PAYTABLE_BY_SYMBOL[a].tripleMultiplier, winningCells: [[1, 0], [1, 1], [1, 2]] }
+  }
+  if (a === b) {
+    return { multiplier: SLOT_PAYTABLE_BY_SYMBOL[a].pairMultiplier, winningCells: [[1, 0], [1, 1]] }
+  }
+  return { multiplier: 0, winningCells: [] }
 }
 
 function applyWalletChange(db, playerId, amount, type, title) {
@@ -278,8 +455,23 @@ function applyWalletChange(db, playerId, amount, type, title) {
   return wallet
 }
 
+// 記錄一筆遊戲紀錄/注單（鏡像後端 game_rounds：流水號、局號、毫秒下注/派彩時間、餘額變化）。
+// 預設保留近 200 筆，避免 localStorage 無限膨脹。
+function recordGameRound(db, playerId, record) {
+  db.gameRounds = db.gameRounds || {}
+  const list = db.gameRounds[playerId] || []
+  list.unshift(record)
+  db.gameRounds[playerId] = list.slice(0, 200)
+}
+
 function calculateCheckInReward(days) {
   return DAILY_CHECKIN_REWARD + (checkInMilestoneBonuses[days] || 0)
+}
+
+// 台北（UTC+8）日界的 yyyy-MM-dd（鏡像後端 LocalDate.now(Asia/Taipei)）。
+// 後端簽到/結算一律以台北時區判日，mock 必須一致，否則跨時區日界會與後端分歧。
+function getTaipeiDateKey(date = new Date()) {
+  return new Date(date.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
 
 export function readStoredSession() {
@@ -360,18 +552,123 @@ export const mockApi = {
     const db = getDb()
     const playerId = currentPlayerId()
     const user = db.users.find((item) => item.player.id === playerId)
-    const today = new Date().toISOString().slice(0, 10)
+    const today = getTaipeiDateKey()
     if (user?.player.lastCheckInDate === today) {
       throw new Error('今天已經簽到過了')
     }
 
-    const days = (user?.player.consecutiveCheckInDays || 0) + 1
+    // 連續天數：上次簽到非「台北昨日」則重置為 1（鏡像後端 CheckinService 的缺日重置）
+    const yesterday = getTaipeiDateKey(new Date(Date.now() - 24 * 60 * 60 * 1000))
+    const days =
+      user?.player.lastCheckInDate === yesterday
+        ? (user?.player.consecutiveCheckInDays || 0) + 1
+        : 1
     const reward = calculateCheckInReward(days)
     user.player.consecutiveCheckInDays = days
     user.player.lastCheckInDate = today
+
+    // 後端權威：把當日加入 checkinDates（供月曆/月度累計），去重後升冪
+    const dates = db.checkinDates[playerId] || []
+    if (!dates.includes(today)) dates.push(today)
+    dates.sort()
+    db.checkinDates[playerId] = dates
+
     const wallet = applyWalletChange(db, playerId, reward, 'checkin', `每日簽到第 ${days} 天`)
     saveDb(db)
     return { wallet, player: user.player, reward, consecutiveDays: days }
+  },
+
+  // GET /api/v1/wallet/checkin/status 的 mock（鏡像後端 MonthlyRewardService.getStatus）。
+  // 回傳與後端 CheckinStatusResponse 同形：月曆已簽日期、本月累計天數、連續天數、月度里程碑旗標。
+  async getCheckInStatus(month) {
+    await wait(200)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const user = db.users.find((item) => item.player.id === playerId)
+    const currentMonth = getTaipeiDateKey().slice(0, 7)
+    const targetMonth = /^\d{4}-\d{2}$/.test(month || '') ? month : currentMonth
+    const isCurrentMonth = targetMonth === currentMonth
+
+    const allDates = db.checkinDates[playerId] || []
+    const signedDates = allDates.filter((d) => d.slice(0, 7) === targetMonth).sort()
+    const monthCheckinDays = signedDates.length
+
+    const today = getTaipeiDateKey()
+    const yesterday = getTaipeiDateKey(new Date(Date.now() - 24 * 60 * 60 * 1000))
+    const last = user?.player.lastCheckInDate
+    const checkedInToday = last === today
+    const consecutiveDays =
+      last === today || last === yesterday ? user?.player.consecutiveCheckInDays || 0 : 0
+
+    const claims = db.monthlyRewardClaims[playerId] || []
+    const milestones = MONTHLY_REWARD_MILESTONES.map(({ days, reward }) => {
+      const reached = monthCheckinDays >= days
+      const claimed = claims.some((c) => c.rewardMonth === targetMonth && c.milestoneDays === days)
+      return {
+        milestoneDays: days,
+        rewardAmount: reward,
+        reached,
+        claimed,
+        claimable: reached && !claimed && isCurrentMonth,
+      }
+    })
+
+    return { month: targetMonth, signedDates, monthCheckinDays, consecutiveDays, checkedInToday, milestones }
+  },
+
+  // POST /api/v1/wallet/checkin/monthly-reward 的 mock（鏡像後端 MonthlyRewardService.claimMonthlyReward）。
+  // 僅限台北當月；達標未領才可領，重複領/未達標/無效里程碑皆 throw。
+  async claimMonthlyReward(milestoneDays) {
+    await wait()
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const def = MONTHLY_REWARD_MILESTONES.find((m) => m.days === milestoneDays)
+    if (!def) throw new Error('無效的簽到里程碑')
+
+    const month = getTaipeiDateKey().slice(0, 7)
+    const allDates = db.checkinDates[playerId] || []
+    const monthCheckinDays = allDates.filter((d) => d.slice(0, 7) === month).length
+    if (monthCheckinDays < milestoneDays) {
+      throw new Error(`本月累計簽到未達 ${milestoneDays} 天，尚不可領取`)
+    }
+
+    const claims = db.monthlyRewardClaims[playerId] || []
+    if (claims.some((c) => c.rewardMonth === month && c.milestoneDays === milestoneDays)) {
+      throw new Error('本月此里程碑獎勵已領取')
+    }
+
+    claims.push({ rewardMonth: month, milestoneDays, rewardAmount: def.reward })
+    db.monthlyRewardClaims[playerId] = claims
+    const wallet = applyWalletChange(db, playerId, def.reward, 'checkin', '每月簽到獎勵')
+    saveDb(db)
+    return { reward: def.reward, milestoneDays, monthCheckinDays, wallet }
+  },
+
+  // 破產補助（對應後端 POST /api/v1/wallet/bankruptcy-aid）：
+  // 餘額低於門檻（100）且當日尚未領取才可領，固定發放 1000 星幣，每天一次。
+  async claimBankruptcyAid() {
+    await wait()
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const user = db.users.find((item) => item.player.id === playerId)
+    const wallet = db.wallets[playerId] || { balance: 0, frozenAmount: 0 }
+    const balanceBefore = wallet.balance
+    if (balanceBefore >= BANKRUPTCY_AID_THRESHOLD) {
+      throw new Error('餘額未低於門檻（100 星幣），尚不符合破產補助資格')
+    }
+    const today = new Date().toISOString().slice(0, 10)
+    if (user?.player.lastBankruptcyAidDate === today) {
+      throw new Error('今日已領取過破產補助')
+    }
+    if (user) user.player.lastBankruptcyAidDate = today
+    const after = applyWalletChange(db, playerId, BANKRUPTCY_AID_AMOUNT, 'task', '破產補助金')
+    saveDb(db)
+    return {
+      amount: BANKRUPTCY_AID_AMOUNT,
+      balanceBefore,
+      balanceAfter: after.balance,
+      wallet: after,
+    }
   },
 
   async getTransactions({ type = 'all', startDate = '', endDate = '', page = 1, pageSize = 8 } = {}) {
@@ -394,6 +691,22 @@ export const mockApi = {
     }
   },
 
+  // 遊戲紀錄/注單分頁查詢（鏡像後端 GET /api/v1/game/history）。
+  // gameType：'all' / 'SLOT' / 'BACCARAT' / 'FISHING'。回傳形狀 { items, total, page, pageSize }。
+  async getGameHistory({ gameType = 'all', page = 1, pageSize = 10 } = {}) {
+    await wait(260)
+    const db = getDb()
+    const rows = (db.gameRounds || {})[currentPlayerId()] || []
+    const filtered = rows.filter((row) => gameType === 'all' || row.gameType === gameType)
+    const start = (page - 1) * pageSize
+    return {
+      items: filtered.slice(start, start + pageSize),
+      total: filtered.length,
+      page,
+      pageSize,
+    }
+  },
+
   async spinSlot({ bet }) {
     await wait(900)
     const db = getDb()
@@ -401,25 +714,40 @@ export const mockApi = {
     const wallet = db.wallets[playerId]
     if (!wallet || wallet.balance < bet) throw new Error('星幣餘額不足')
 
+    const balanceBefore = wallet.balance
+    const betAt = new Date().toISOString()
     applyWalletChange(db, playerId, -bet, 'bet', '老虎機下注')
-    const grid = randomSlotGrid()
-    const centerSymbol = grid[1][0]
-    const isWin = grid[1].every((symbol) => symbol === centerSymbol) || Math.random() < MOCK_SLOT_FORCED_WIN_RATE
-    if (isWin) grid[1] = [centerSymbol, centerSymbol, centerSymbol]
 
-    const multiplier = isWin ? [2, 3, 5, 8][Math.floor(Math.random() * 4)] : 0
-    const payout = bet * multiplier
+    const grid = randomSlotGrid()
+    const { multiplier, winningCells } = evaluateSlotLine(grid)
+    const payout = bet * multiplier // 含本金返還；左二同最低 1x 為退本金（push / LDW）
     if (payout) applyWalletChange(db, playerId, payout, 'payout', '老虎機派彩')
+
+    const roundId = `SLOT-${Date.now()}`
+    recordGameRound(db, playerId, {
+      roundId,
+      gameType: 'SLOT',
+      nonce: 0,
+      betAmount: bet,
+      winAmount: payout,
+      profit: payout - bet,
+      balanceBefore,
+      balanceAfter: db.wallets[playerId].balance,
+      betAt,
+      settledAt: new Date().toISOString(),
+      status: 'SETTLED',
+      resultData: JSON.stringify({ grid, multiplier, payout, winningCells }),
+    })
     saveDb(db)
 
     return {
-      roundId: `SLOT-${Date.now()}`,
+      roundId,
       game: 'slot',
       grid,
       bet,
       multiplier,
       payout,
-      winningCells: payout ? [[1, 0], [1, 1], [1, 2]] : [],
+      winningCells,
       wallet: db.wallets[playerId],
     }
   },
@@ -431,24 +759,43 @@ export const mockApi = {
     const wallet = db.wallets[playerId]
     if (!wallet || wallet.balance < amount) throw new Error('星幣餘額不足')
 
+    const balanceBefore = wallet.balance
+    const betAt = new Date().toISOString()
     applyWalletChange(db, playerId, -amount, 'bet', `百家樂下注 ${area}`)
-    const playerCards = [randomCard(), randomCard()]
-    const bankerCards = [randomCard(), randomCard()]
-    const playerPoints = points(playerCards)
-    const bankerPoints = points(bankerCards)
-    const winner = playerPoints === bankerPoints ? 'tie' : playerPoints > bankerPoints ? 'player' : 'banker'
-    const odds = area === 'tie' ? 8 : area === 'banker' ? 0.95 : 1
-    const payout = area === winner ? Math.floor(amount + amount * odds) : 0
+    const { player: playerCards, banker: bankerCards, playerScore: playerPoints, bankerScore: bankerPoints, winner } =
+      dealBaccarat()
+    const payout = baccaratPayout(area, winner, amount)
     if (payout) applyWalletChange(db, playerId, payout, 'payout', '百家樂派彩')
+    const rebate = Math.max(1, Math.floor(amount * 0.005))
+    applyWalletChange(db, playerId, rebate, 'payout', '百家樂反水')
+
+    const roundId = `BAC-${Date.now()}`
+    // 後端 game_rounds.win_amount = 總派彩 + 反水；此處對齊。
+    const winAmount = payout + rebate
+    recordGameRound(db, playerId, {
+      roundId,
+      gameType: 'BACCARAT',
+      nonce: 0,
+      betAmount: amount,
+      winAmount,
+      profit: winAmount - amount,
+      balanceBefore,
+      balanceAfter: db.wallets[playerId].balance,
+      betAt,
+      settledAt: new Date().toISOString(),
+      status: 'SETTLED',
+      resultData: JSON.stringify({ area, winner, payout, rebate, playerPoints, bankerPoints }),
+    })
     saveDb(db)
 
     return {
-      roundId: `BAC-${Date.now()}`,
+      roundId,
       game: 'baccarat',
       area,
       amount,
       winner,
       payout,
+      rebate,
       playerCards,
       bankerCards,
       playerPoints,
@@ -522,6 +869,44 @@ export const mockApi = {
     return { wallet: db.wallets[playerId], friends: db.friends[playerId] || [] }
   },
 
+  // ---- 禮品商城（鏡像後端 wallet-service shop 模組，ADR-006）----
+
+  // 目錄：上架商品（鏡像後端 GET /api/v1/wallet/shop/catalog）。
+  async getShopCatalog() {
+    await wait(200)
+    return SHOP_CATALOG.map((item) => ({ ...item }))
+  },
+
+  // 兌換禮品：依 itemCode 查價，以星幣扣款（負數 amount）並寫一筆「商城兌換」交易，物品收進背包。
+  async redeemShopItem({ itemCode }) {
+    await wait()
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const item = SHOP_CATALOG.find((i) => i.itemCode === itemCode)
+    if (!item) throw new Error('商品不存在')
+    const wallet = db.wallets[playerId]
+    if (!wallet || wallet.balance < item.cost) throw new Error('星幣不足')
+    applyWalletChange(db, playerId, -item.cost, 'shop', `商城兌換－${item.name}`)
+    db.inventory = db.inventory || {}
+    const record = {
+      id: `INV-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+      itemCode: item.itemCode,
+      title: item.name,
+      cost: item.cost,
+      redeemedAt: new Date().toISOString(),
+    }
+    db.inventory[playerId] = [record, ...(db.inventory[playerId] || [])]
+    saveDb(db)
+    return { wallet: db.wallets[playerId], item: record }
+  },
+
+  // 取得玩家背包（兌換到的禮品，新到舊；鏡像後端 GET /api/v1/wallet/shop/inventory）。
+  async getInventory() {
+    await wait(220)
+    const db = getDb()
+    return (db.inventory || {})[currentPlayerId()] || []
+  },
+
   // ---- 捕魚機（buy-in 制 + 局內餘額 + 批次結算；對齊 game-service fishing 模組） ----
 
   async fishingActive() {
@@ -529,11 +914,16 @@ export const mockApi = {
     const db = getDb()
     const session = (db.fishingSessions || {})[currentPlayerId()]
     if (!session) return null
+    // 引擎 remount 後 idSeq 從 0 重置，舊 fishDamage 的 key 會碰撞到新魚 id，
+    // 導致新魚繼承舊傷害（初次命中 hpRemaining 異常偏低或直接一擊即死）。
+    session.fishDamage = {}
+    saveDb(db)
     return {
       sessionId: session.sessionId,
       roomId: `solo-${session.sessionId}`,
       seatIndex: 0,
       cannonLevel: session.cannonLevel,
+      betPerShot: session.betPerShot,
       buyIn: session.buyIn,
       sessionBalance: session.sessionBalance,
       totalShots: session.totalShots,
@@ -546,7 +936,7 @@ export const mockApi = {
     }
   },
 
-  async fishingStart({ buyIn, cannonLevel = 1, clientSeed }) {
+  async fishingStart({ buyIn, cannonLevel = 1, betPerShot = 10, clientSeed }) {
     await wait(420)
     const db = getDb()
     const playerId = currentPlayerId()
@@ -555,12 +945,16 @@ export const mockApi = {
     const existing = db.fishingSessions[playerId]
     if (existing) {
       // 已有進行中場次：續玩、不重複扣款（比照後端 resumed）。
+      // 同 fishingActive()：引擎 remount 後 idSeq 從 0 重置，舊 fishDamage 的 key
+      // 會碰撞到新魚 id，導致新魚繼承舊傷害（初擊即死），故一併歸零。
+      existing.fishDamage = {}
       saveDb(db)
       return {
         sessionId: existing.sessionId,
         roomId: `solo-${existing.sessionId}`,
         seatIndex: 0,
         cannonLevel: existing.cannonLevel,
+        betPerShot: existing.betPerShot,
         buyIn: existing.buyIn,
         sessionBalance: existing.sessionBalance,
         totalShots: existing.totalShots,
@@ -576,12 +970,16 @@ export const mockApi = {
     const wallet = db.wallets[playerId]
     if (!wallet || wallet.balance < buyIn) throw new Error('星幣餘額不足')
 
+    const balanceBefore = wallet.balance
     applyWalletChange(db, playerId, -buyIn, 'bet', '捕魚機 buy-in')
     const sessionId = `FISH-${Date.now()}`
     db.fishingSessions[playerId] = {
       sessionId,
       cannonLevel,
+      betPerShot,
       buyIn,
+      balanceBefore,
+      createdAt: new Date().toISOString(),
       sessionBalance: buyIn,
       totalShots: 0,
       totalBet: 0,
@@ -597,6 +995,7 @@ export const mockApi = {
       roomId: `solo-${sessionId}`,
       seatIndex: 0,
       cannonLevel,
+      betPerShot,
       buyIn,
       sessionBalance: buyIn,
       totalShots: 0,
@@ -616,13 +1015,19 @@ export const mockApi = {
     const session = (db.fishingSessions || {})[playerId]
     if (!session || session.sessionId !== sessionId) throw new Error('場次不存在或已結束')
 
+    const cannonLevel = session.cannonLevel || 1
+    session.fishDamage = session.fishDamage || {}
     const results = []
     for (const shot of shots) {
       const fish = FISH_SPECIES.find((item) => item.code === shot.fishType)
       const bet = Number(shot.betPerShot)
       // 局內餘額不足：該發（含其後同批）整批不受理（比照後端）。
       if (!fish || session.sessionBalance < bet) {
-        results.push({ shotSeq: shot.shotSeq, accepted: false, hit: false, payout: 0, sessionBalance: session.sessionBalance })
+        results.push({
+          shotSeq: shot.shotSeq, accepted: false, hit: false, crit: false,
+          damage: 0, hpRemaining: 0, killed: false, captured: false, payout: 0,
+          sessionBalance: session.sessionBalance,
+        })
         continue
       }
       session.sessionBalance -= bet
@@ -630,19 +1035,38 @@ export const mockApi = {
       session.totalShots += 1
       session.lastShotSeq = Math.max(session.lastShotSeq, Number(shot.shotSeq))
 
-      const hitProbability = FISHING_TARGET_RTP / fish.multiplier
-      const hit = Math.random() < hitProbability
+      // 血量/傷害模型：累積傷害 → 致命一擊擲捕獲（鏡像後端 FishingCombat）。
+      const instanceId = shot.fishInstanceId || `seq-${shot.shotSeq}`
+      const hp = fishHp(fish)
+      const damageBefore = session.fishDamage[instanceId] || 0
+      const crit = Math.random() < FISHING_CRIT_CHANCE
+      const damage = FISHING_CANNON_DAMAGE[cannonLevel] * (crit ? FISHING_CRIT_MULT : 1)
+      const after = damageBefore + damage
+      const killed = after >= hp
+      let captured = false
       let payout = 0
-      if (hit) {
-        const factor = fish.code === 'MONEY_TREE' ? randInt(FISHING_MONEY_TREE_MIN, FISHING_MONEY_TREE_MAX) : fish.multiplier
-        payout = bet * factor
-        session.sessionBalance += payout
-        session.totalPayout += payout
+      let hpRemaining = 0
+      if (!killed) {
+        hpRemaining = hp - after
+        session.fishDamage[instanceId] = after
+      } else {
+        captured = Math.random() < fishingCapture(fish, cannonLevel)
+        if (captured) {
+          const factor = fish.code === 'MONEY_TREE' ? randInt(FISHING_MONEY_TREE_MIN, FISHING_MONEY_TREE_MAX) : fish.multiplier
+          payout = bet * factor
+          session.sessionBalance += payout
+          session.totalPayout += payout
+        }
+        delete session.fishDamage[instanceId]
       }
       // 記錄逐發結果供結算後 verify-shot 重放（mock 無真正 RNG 種子，改以對局存檔回放）。
       session.shotResults = session.shotResults || {}
-      session.shotResults[String(shot.shotSeq)] = { fishType: fish.code, betPerShot: bet, hit, payout }
-      results.push({ shotSeq: shot.shotSeq, accepted: true, hit, payout, sessionBalance: session.sessionBalance })
+      session.shotResults[String(shot.shotSeq)] = { fishType: fish.code, betPerShot: bet, crit, damage, killed, captured, payout }
+      results.push({
+        shotSeq: shot.shotSeq, accepted: true, hit: true, crit,
+        damage, hpRemaining, killed, captured, payout,
+        sessionBalance: session.sessionBalance,
+      })
     }
     saveDb(db)
 
@@ -662,6 +1086,20 @@ export const mockApi = {
     const session = (db.fishingSessions || {})[playerId]
     if (!session || session.sessionId !== sessionId) throw new Error('場次不存在或已結束')
 
+    // 殘血部分回收（ADR-004）：fishDamage 只剩「受傷但未打死」的魚（致命一擊後已 delete），
+    // 退還 RECOVERY_RATE 比例的子彈成本，折入局內餘額與 totalPayout（鏡像後端 settleInternal）。
+    const cannonLevel = session.cannonLevel || 1
+    const betPerShot = session.betPerShot || 0
+    let residualRecovery = 0
+    for (const dmg of Object.values(session.fishDamage || {})) {
+      residualRecovery += fishingRecoveryPayout(betPerShot, cannonLevel, Number(dmg) || 0)
+    }
+    if (residualRecovery > 0) {
+      session.sessionBalance += residualRecovery
+      session.totalPayout += residualRecovery
+      session.fishDamage = {}
+    }
+
     const credited = session.sessionBalance
     if (credited > 0) applyWalletChange(db, playerId, credited, 'payout', '捕魚機結算')
 
@@ -674,6 +1112,31 @@ export const mockApi = {
       clientSeed: session.clientSeed,
       shots: session.shotResults || {},
     }
+    // 遊戲紀錄/注單（彙總一場一筆，鏡像後端 fishing buildRound）。
+    const balanceBefore = session.balanceBefore ?? null
+    const balanceAfter =
+      balanceBefore !== null ? balanceBefore - session.buyIn + credited : db.wallets[playerId].balance
+    recordGameRound(db, playerId, {
+      roundId: sessionId,
+      gameType: 'FISHING',
+      nonce: session.lastShotSeq,
+      betAmount: session.totalBet,
+      winAmount: session.totalPayout,
+      profit: session.totalPayout - session.totalBet,
+      balanceBefore,
+      balanceAfter,
+      betAt: session.createdAt ?? null,
+      settledAt: new Date().toISOString(),
+      status: 'SETTLED',
+      resultData: JSON.stringify({
+        buyIn: session.buyIn,
+        credited,
+        totalShots: session.totalShots,
+        totalBet: session.totalBet,
+        totalPayout: session.totalPayout,
+        cannonLevel: session.cannonLevel,
+      }),
+    })
     delete db.fishingSessions[playerId]
     saveDb(db)
 
@@ -684,6 +1147,7 @@ export const mockApi = {
       totalPayout: session.totalPayout,
       totalShots: session.totalShots,
       credited,
+      residualRecovery,
       serverSeed,
       serverSeedHash: session.serverSeedHash,
       clientSeed: session.clientSeed,
@@ -717,7 +1181,7 @@ export const mockApi = {
       fishType: recorded.fishType,
       betPerShot: recorded.betPerShot,
       commitmentValid: true,
-      hit: recorded.hit,
+      hit: !!recorded.captured,
       payout: recorded.payout,
       serverSeed: round.serverSeed,
       serverSeedHash: round.serverSeedHash,

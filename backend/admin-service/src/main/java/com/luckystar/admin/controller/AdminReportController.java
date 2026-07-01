@@ -5,6 +5,8 @@ import com.luckystar.admin.dto.ReportDimension;
 import com.luckystar.admin.dto.RtpReport;
 import com.luckystar.admin.service.CoinFlowReportService;
 import com.luckystar.admin.service.RtpReportService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.LocalDate;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 後台報表 API（T-052 星幣流通量、T-053 RTP 監控）。{@code /admin/**} 需 ROLE_ADMIN。
  */
+@Tag(name = "後台報表", description = "T-052 星幣流通量 / T-053 RTP 監控")
 @RestController
 @RequestMapping("/admin/reports")
 public class AdminReportController {
@@ -29,6 +32,7 @@ public class AdminReportController {
     }
 
     /** T-052：星幣流通量（發放 vs 消耗 vs 淨流通）依日/週/月維度。 */
+    @Operation(summary = "星幣流通量報表", description = "依 day/week/month 維度統計發放、消耗與淨流通。")
     @GetMapping("/coin-flow")
     public CoinFlowReport coinFlow(
             @RequestParam(defaultValue = "day") String dimension,
@@ -38,6 +42,7 @@ public class AdminReportController {
     }
 
     /** T-053：RTP 監控，實際 vs 設計，偏差 >5% 標 ABNORMAL。 */
+    @Operation(summary = "RTP 監控報表", description = "比對實際 vs 設計 RTP，偏差超過 5% 標記 ABNORMAL。")
     @GetMapping("/rtp")
     public RtpReport rtp(
             @RequestParam(required = false) String game,

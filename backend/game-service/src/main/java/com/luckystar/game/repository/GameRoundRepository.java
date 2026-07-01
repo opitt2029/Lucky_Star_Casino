@@ -1,8 +1,11 @@
 package com.luckystar.game.repository;
 
 import com.luckystar.game.entity.GameRound;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,6 +17,13 @@ public interface GameRoundRepository extends JpaRepository<GameRound, Long> {
 
     /** 依對外 roundId 查詢（供 T-036 公平性驗證等用途）。 */
     Optional<GameRound> findByRoundId(String roundId);
+
+    /** 玩家遊戲紀錄（注單）分頁查詢，依建立時間由新到舊。 */
+    Page<GameRound> findByPlayerIdOrderByCreatedAtDesc(Long playerId, Pageable pageable);
+
+    /** 玩家某遊戲類型的遊戲紀錄（注單）分頁查詢，依建立時間由新到舊。 */
+    Page<GameRound> findByPlayerIdAndGameTypeOrderByCreatedAtDesc(
+            Long playerId, String gameType, Pageable pageable);
 
     /**
      * 統計某遊戲「近 {@code limit} 局」已結算對局的下注/派彩總額與局數（T-037 RTP）。
@@ -28,4 +38,41 @@ public interface GameRoundRepository extends JpaRepository<GameRound, Long> {
             + "WHERE game_type = :gameType AND status = 'SETTLED' "
             + "ORDER BY created_at DESC LIMIT :limit) t", nativeQuery = true)
     List<Object[]> aggregateRecent(@Param("gameType") String gameType, @Param("limit") int limit);
+
+    /**
+     * 查詢指定玩家在指定遊戲今日的下注/派彩總額（風控水位用）。
+     * 回傳單列 {@code [totalBet, totalWin, roundCount]}。
+     */
+    @Query("""
+            SELECT COALESCE(SUM(r.betAmount), 0), COALESCE(SUM(r.winAmount), 0), COUNT(r)
+            FROM GameRound r
+            WHERE r.playerId = :playerId
+              AND r.gameType = :gameType
+              AND r.status = 'SETTLED'
+              AND r.settledAt >= :startOfDay
+            """)
+    List<Object[]> aggregatePlayerToday(
+            @Param("playerId") long playerId,
+            @Param("gameType") String gameType,
+            @Param("startOfDay") LocalDateTime startOfDay);
+
+    /**
+     * 彙整指定期間內所有玩家的已結算對局，回傳「淨虧損 > 0」的玩家清單。
+     * 回傳欄位：[player_id(Long), total_bet(Number), total_win(Number)]。
+     * HAVING 直接篩掉不虧損的玩家，減少後端計算量。
+     */
+    @Query(value = """
+            SELECT player_id,
+                   COALESCE(SUM(bet_amount), 0) AS total_bet,
+                   COALESCE(SUM(win_amount), 0) AS total_win
+            FROM game_rounds
+            WHERE status = 'SETTLED'
+              AND settled_at >= :start
+              AND settled_at < :end
+            GROUP BY player_id
+            HAVING SUM(bet_amount) > SUM(win_amount)
+            """, nativeQuery = true)
+    List<Object[]> aggregateNetLossPerPlayer(
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
 }

@@ -12,10 +12,8 @@ import { useBgm } from '../casino-fx/sound/useBgm'
 import GoldBurst from '../casino-fx/fx/GoldBurst'
 import { CoinRainPro, RedEnvelopeRain } from '../casino-fx/fx/FallRain'
 import BrushBanner from '../casino-fx/fx/BrushBanner'
-import LuckyAura from '../casino-fx/fx/LuckyAura'
-import FortuneMeter from '../casino-fx/fx/FortuneMeter'
-import { useFortuneMeter } from '../casino-fx/fx/useFortuneMeter'
 import { announcePlayerWin } from '../casino-fx/announce/announceBus'
+import { useGameLeaveGuard } from '../hooks/useGameLeaveGuard'
 
 const initialCards = []
 const suitSymbols = {
@@ -46,11 +44,17 @@ function capitalizeWinner(winner) {
 const MIN_BET = 100
 const MAX_BET = 5000
 const chipDenominations = [100, 200, 500, 1000, 2000, 3000, 5000]
+const BET_COLOR_CLASS = {
+  Player: 'baccarat-bet-option--player',
+  Banker: 'baccarat-bet-option--banker',
+  Tie: 'baccarat-bet-option--tie',
+}
 const baccaratRules = [
   '先選擇閒家、莊家或和局，再輸入下注金額（每區 100 ~ 5,000 星幣）或用面額快速選擇。',
   'A 計 1 點，2 到 9 依牌面計點，10、J、Q、K 計 0 點；兩張牌總和只取個位數。',
-  '由伺服器為閒家與莊家各發兩張牌，點數高者勝出，兩邊同分為和局。',
-  '押中會依賠率計算本局獲利，未押中則損失下注金額，結果會即時反映在可用星幣。',
+  '由伺服器為閒家與莊家各發兩張牌，必要時依標準規則補第三張，點數高者勝出，兩邊同分為和局。',
+  '押中依賠率計算獲利（莊家扣 5% 傭金），未押中則損失下注金額；和局時押莊／閒退回本金，結果即時反映在可用星幣。',
+  '每局無論輸贏皆享有 0.5% 反水（最低 1 星幣），反水自動入帳，結算後即可查看。',
 ]
 const baccaratPayouts = [
   { label: '閒家 Player', value: '1x' },
@@ -148,6 +152,7 @@ function CardView({ card, index, isDealing }) {
 function HandPanel({ title, score, cards, isDealing, winner, winnerKey, concealed = false, onCardRevealed }) {
   const isWinner = winner === winnerKey
   const visibleCards = cards.length ? cards : [null, null]
+  const isNatural = !concealed && score !== null && (score === 8 || score === 9)
 
   return (
     <section
@@ -160,6 +165,7 @@ function HandPanel({ title, score, cards, isDealing, winner, winnerKey, conceale
         <div>
           <p className="baccarat-hand__eyebrow">{title}</p>
           <h3 className="baccarat-hand__title">{title === 'Player' ? '閒家' : '莊家'}</h3>
+          {isNatural && <span className="baccarat-natural-badge">天牌 Natural</span>}
         </div>
         <div className="baccarat-score">
           <span>Score</span>
@@ -189,9 +195,9 @@ function HandPanel({ title, score, cards, isDealing, winner, winnerKey, conceale
   )
 }
 
-function ResultItem({ label, value }) {
+function ResultItem({ label, value, wide = false }) {
   return (
-    <div className="baccarat-result-item">
+    <div className={['baccarat-result-item', wide ? 'baccarat-result-item--wide' : ''].join(' ')}>
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
@@ -199,7 +205,22 @@ function ResultItem({ label, value }) {
 }
 
 const ROAD_STORAGE_KEY = 'lucky-star-baccarat-road-v1'
+const SESSION_PROFIT_KEY = 'lucky-star-baccarat-session-profit-v1'
 const SQUEEZE_STORAGE_KEY = 'lucky-star-baccarat-squeeze-v1'
+
+function getSqueezeMode(playerId) {
+  try {
+    const all = JSON.parse(localStorage.getItem(SQUEEZE_STORAGE_KEY) || '{}')
+    return all[playerId] === true
+  } catch { return false }
+}
+
+function saveSqueezeMode(playerId, value) {
+  try {
+    const all = JSON.parse(localStorage.getItem(SQUEEZE_STORAGE_KEY) || '{}')
+    localStorage.setItem(SQUEEZE_STORAGE_KEY, JSON.stringify({ ...all, [playerId]: value }))
+  } catch { /* localStorage 不可用時忽略寫入 */ }
+}
 
 export default function Baccarat() {
   const dispatch = useDispatch()
@@ -214,27 +235,13 @@ export default function Baccarat() {
   const [winner, setWinner] = useState('')
   const [resultMessage, setResultMessage] = useState('')
   const [isDealing, setIsDealing] = useState(false)
-  const [isAmountMenuOpen, setIsAmountMenuOpen] = useState(false)
   const [roundProfit, setRoundProfit] = useState(null)
   const [roundBet, setRoundBet] = useState(null)
-  // 路單局史（session 內持續累積，重整不丟）
-  const [history, setHistory] = useState(() => {
-    try {
-      const raw = sessionStorage.getItem(ROAD_STORAGE_KEY)
-      const parsed = raw ? JSON.parse(raw) : []
-      return Array.isArray(parsed) ? parsed : []
-    } catch {
-      return []
-    }
-  })
-  // 咪牌模式（記住玩家偏好）
-  const [squeezeMode, setSqueezeMode] = useState(() => {
-    try {
-      return localStorage.getItem(SQUEEZE_STORAGE_KEY) === 'true'
-    } catch {
-      return false
-    }
-  })
+  // 本場損益 / 路單局史：遊戲「重開」（重新進場或重整）即歸零，只在本次進場內累積。
+  const [sessionProfit, setSessionProfit] = useState(null)
+  const [history, setHistory] = useState([])
+  // 咪牌模式（記住玩家偏好，以 playerId 為 JSON 子 key 隔離多帳號）
+  const [squeezeMode, setSqueezeModeState] = useState(() => getSqueezeMode(player?.id))
   const [concealed, setConcealed] = useState(false)
   const [revealedCount, setRevealedCount] = useState(0)
   const pendingRef = useRef(null)
@@ -244,25 +251,26 @@ export default function Baccarat() {
   const [coinDensity, setCoinDensity] = useState('light')
   const [envelopeTrigger, setEnvelopeTrigger] = useState(0)
   const [banner, setBanner] = useState({ trigger: 0, text: '', level: 1 })
-  const fortune = useFortuneMeter('baccarat')
   useBgm('baccarat')
+  useGameLeaveGuard(isDealing, '下注進行中，確定要離開嗎？')
 
+  // 「重開即歸零」：進場時清掉舊版可能殘留的本場損益/路單快取。
+  // 本場損益與路單僅存在於本次進場的元件狀態，離開或重整即重新計算。
   useEffect(() => {
     try {
-      sessionStorage.setItem(ROAD_STORAGE_KEY, JSON.stringify(history.slice(-200)))
+      sessionStorage.removeItem(SESSION_PROFIT_KEY)
+      sessionStorage.removeItem(ROAD_STORAGE_KEY)
     } catch {
-      // 忽略儲存失敗
+      // 忽略 sessionStorage 不可用
     }
-  }, [history])
+  }, [])
 
   const numericBetAmount = useMemo(() => Number(betAmount), [betAmount])
-  const canDeal =
-    selectedBet &&
-    Number.isFinite(numericBetAmount) &&
-    numericBetAmount >= MIN_BET &&
-    numericBetAmount <= MAX_BET &&
-    !isDealing &&
-    !concealed
+  const amountInRange =
+    Number.isFinite(numericBetAmount) && numericBetAmount >= MIN_BET && numericBetAmount <= MAX_BET
+  // 餘額不足守門：金額在合法範圍但超過可用星幣時，禁止下注並提示（後端仍是最後防線）。
+  const notEnoughBalance = amountInRange && balance < numericBetAmount
+  const canDeal = selectedBet && amountInRange && !notEnoughBalance && !isDealing && !concealed
   const winnerLabel = winner ? BET_LABELS[winner] : '-'
   const selectedBetLabel = selectedBet ? BET_LABELS[selectedBet] : '尚未選擇'
   const sidebarProfitValue =
@@ -288,22 +296,23 @@ export default function Baccarat() {
   // 咪牌模式下會延後到所有牌「搓」開後才呼叫（懸念留到最後一刻）。
   const applyResult = (payload) => {
     const { result, nextWinner, profit, betArea, amount } = payload
+    const rebate = result.rebate ?? 0
     const hit = profit >= 0
 
     setPlayerScore(result.playerPoints ?? null)
     setBankerScore(result.bankerPoints ?? null)
     setWinner(nextWinner)
     setRoundProfit(profit)
-    setRoundBet({ selectedBet: betArea, amount })
+    setSessionProfit((prev) => (prev ?? 0) + profit)
+    setRoundBet({ selectedBet: betArea, amount, rebate })
     setResultMessage(
       hit
-        ? `命中 ${BET_LABELS[nextWinner]}，本局獲利 ${formatCoins(profit)} 星幣。`
-        : `${BET_LABELS[nextWinner]} 勝出，未命中下注，損失 ${formatCoins(amount)} 星幣。`
+        ? `命中 ${BET_LABELS[nextWinner]}，本局獲利 ${formatCoins(profit)} 星幣，另返水 ${formatCoins(rebate)} 星幣。`
+        : `${BET_LABELS[nextWinner]} 勝出，損失 ${formatCoins(amount)} 星幣，本局返水 ${formatCoins(rebate)} 星幣。`
     )
     setHistory((prev) => [...prev, { winner: nextWinner }])
     setConcealed(false)
     pendingRef.current = null
-    fortune.reportRound(profit > 0)
 
     if (profit > 0) {
       setBurstTrigger((n) => n + 1)
@@ -338,10 +347,10 @@ export default function Baccarat() {
       soundEngine.play('fishEscape', { volume: 0.5 })
     }
 
+    // 每局必有 wallet（反水保證每局都有 credit），直接更新餘額。
     if (result.wallet) {
       dispatch(setBalance(result.wallet))
     } else {
-      // 輸局時後端結算回應不含 wallet（下注已於 /bet 階段扣款），主動向 wallet-service 取最新餘額
       dispatch(fetchWallet())
     }
   }
@@ -370,6 +379,12 @@ export default function Baccarat() {
       return
     }
 
+    if (balance < numericBetAmount) {
+      setResultMessage('星幣不足，請先儲值後再下注。')
+      setRoundProfit(null)
+      return
+    }
+
     setIsDealing(true)
     setResultMessage('發牌中...')
     setWinner('')
@@ -378,7 +393,6 @@ export default function Baccarat() {
     setBankerCards([])
     setPlayerScore(null)
     setBankerScore(null)
-    fortune.addCharge(numericBetAmount)
     soundEngine.play('chip')
 
     try {
@@ -426,26 +440,16 @@ export default function Baccarat() {
   }
 
   const toggleSqueezeMode = () => {
-    setSqueezeMode((prev) => {
+    setSqueezeModeState((prev) => {
       const next = !prev
-      try {
-        localStorage.setItem(SQUEEZE_STORAGE_KEY, String(next))
-      } catch {
-        // 忽略儲存失敗
-      }
+      saveSqueezeMode(player?.id, next)
       return next
     })
     soundEngine.play('click')
   }
 
-  const handleSelectAmount = (amount) => {
-    setBetAmount(String(amount))
-    setIsAmountMenuOpen(false)
-  }
-
   return (
     <AppShell>
-      <LuckyAura active={fortune.auraActive} />
       <GoldBurst trigger={burstTrigger} origin={{ x: 50, y: 40 }} />
       <CoinRainPro trigger={coinTrigger} density={coinDensity} />
       <RedEnvelopeRain trigger={envelopeTrigger} density="heavy" />
@@ -523,6 +527,7 @@ export default function Baccarat() {
                         disabled={isDealing}
                         className={[
                           'baccarat-bet-option',
+                          BET_COLOR_CLASS[betType] || '',
                           selectedBet === betType ? 'baccarat-bet-option--selected' : '',
                         ].join(' ')}
                       >
@@ -534,48 +539,18 @@ export default function Baccarat() {
 
                   <div className="baccarat-wager-row">
                     <label className="baccarat-field">
-                      <span>下注金額</span>
-                      <div className="baccarat-amount-picker">
-                        <input
-                          type="number"
-                          min={MIN_BET}
-                          max={MAX_BET}
-                          step="1"
-                          value={betAmount}
-                          onChange={(event) => setBetAmount(event.target.value)}
-                          disabled={isDealing}
-                          className="baccarat-bet-input"
-                          placeholder="自訂金額"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setIsAmountMenuOpen((open) => !open)}
-                          disabled={isDealing}
-                          className="baccarat-amount-toggle"
-                          aria-expanded={isAmountMenuOpen}
-                        >
-                          面額
-                        </button>
-                        {isAmountMenuOpen && (
-                          <div className="baccarat-amount-menu">
-                            {chipDenominations.map((amount) => (
-                              <button
-                                key={amount}
-                                type="button"
-                                onClick={() => handleSelectAmount(amount)}
-                                className={[
-                                  'baccarat-amount-option',
-                                  Number(betAmount) === amount
-                                    ? 'baccarat-amount-option--selected'
-                                    : '',
-                                ].join(' ')}
-                              >
-                                {formatCoins(amount)}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                      <span>下注金額（{MIN_BET.toLocaleString()} ~ {MAX_BET.toLocaleString()}）</span>
+                      <input
+                        type="number"
+                        min={MIN_BET}
+                        max={MAX_BET}
+                        step="1"
+                        value={betAmount}
+                        onChange={(event) => setBetAmount(event.target.value)}
+                        disabled={isDealing}
+                        className="baccarat-bet-input"
+                        placeholder="自訂金額"
+                      />
                     </label>
                     <button
                       type="button"
@@ -583,8 +558,27 @@ export default function Baccarat() {
                       disabled={!canDeal}
                       className="baccarat-action-button"
                     >
-                      {isDealing ? '發牌中...' : '開始發牌'}
+                      {isDealing ? '發牌中...' : notEnoughBalance ? '星幣不足' : '開始發牌'}
                     </button>
+                    <div className="baccarat-chip-row">
+                      {chipDenominations.map((amount) => (
+                        <button
+                          key={amount}
+                          type="button"
+                          onClick={() => {
+                            setBetAmount(String(amount))
+                            soundEngine.play('chip')
+                          }}
+                          disabled={isDealing}
+                          className={[
+                            'baccarat-chip',
+                            Number(betAmount) === amount ? 'baccarat-chip--selected' : '',
+                          ].join(' ')}
+                        >
+                          {formatCoins(amount)}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </section>
 
@@ -622,6 +616,11 @@ export default function Baccarat() {
                       label="Banker 點數"
                       value={bankerScore === null ? '-' : bankerScore}
                     />
+                    <ResultItem
+                      label="本局反水（0.5%）"
+                      value={roundBet?.rebate != null ? `+${formatCoins(roundBet.rebate)}` : '-'}
+                      wide
+                    />
                   </div>
                 </section>
               </div>
@@ -629,19 +628,18 @@ export default function Baccarat() {
           </div>
 
           <aside className="baccarat-side-panel">
+            <MetricCard
+              label="可用星幣"
+              value={balance.toLocaleString()}
+              caption="依本局結果更新"
+              tone="light"
+            />
             <BaccaratRoadmap history={history} />
-            <FortuneMeter value={fortune.value} />
             <GameRuleCard
               title="百家樂規則"
               subtitle="查看點數計算、勝負判定與下注賠率。"
               rules={baccaratRules}
               payouts={baccaratPayouts}
-            />
-            <MetricCard
-              label="可用星幣"
-              value={formatCoins(balance)}
-              caption="依本局結果更新"
-              tone="light"
             />
             <MetricCard
               label="本局選項"
@@ -652,6 +650,18 @@ export default function Baccarat() {
               label="本局獲利"
               value={sidebarProfitValue}
               caption={sidebarProfitCaption}
+            />
+            <MetricCard
+              label="本場損益"
+              value={
+                sessionProfit === null
+                  ? '-'
+                  : sessionProfit >= 0
+                    ? `+${formatCoins(sessionProfit)}`
+                    : `-${formatCoins(Math.abs(sessionProfit))}`
+              }
+              caption={sessionProfit === null ? '本局結算後開始記錄' : `本場共 ${history.length} 局`}
+              valueClass={sessionProfit === null ? '' : sessionProfit >= 0 ? 'text-emerald-300' : 'text-red-300'}
             />
 
             <div className="baccarat-api-panel">

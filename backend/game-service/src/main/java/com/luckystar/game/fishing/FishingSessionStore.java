@@ -1,9 +1,13 @@
 package com.luckystar.game.fishing;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -35,7 +39,9 @@ public class FishingSessionStore {
     private static final String F_ROOM_ID = "roomId";
     private static final String F_SEAT_INDEX = "seatIndex";
     private static final String F_CANNON_LEVEL = "cannonLevel";
+    private static final String F_BET_PER_SHOT = "betPerShot";
     private static final String F_BUY_IN = "buyIn";
+    private static final String F_BALANCE_BEFORE = "balanceBefore";
     private static final String F_SESSION_BALANCE = "sessionBalance";
     private static final String F_TOTAL_BET = "totalBet";
     private static final String F_TOTAL_PAYOUT = "totalPayout";
@@ -47,13 +53,23 @@ public class FishingSessionStore {
     private static final String F_STATE = "state";
     private static final String F_CREATED_AT = "createdAt";
     private static final String F_LAST_ACTIVITY_AT = "lastActivityAt";
+    private static final String F_INTERCEPTED = "intercepted";
+    private static final String F_FISH_DAMAGE = "fishDamage";
+    private static final String F_KILLS = "kills";
+
+    private static final TypeReference<LinkedHashMap<String, Long>> FISH_DAMAGE_TYPE =
+            new TypeReference<>() {};
+    private static final TypeReference<List<FishingSession.KillRecord>> KILLS_TYPE =
+            new TypeReference<>() {};
 
     private final StringRedisTemplate redisTemplate;
     private final HashOperations<String, String, String> hashOps;
+    private final ObjectMapper objectMapper;
 
-    public FishingSessionStore(StringRedisTemplate redisTemplate) {
+    public FishingSessionStore(StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {
         this.redisTemplate = redisTemplate;
         this.hashOps = redisTemplate.opsForHash();
+        this.objectMapper = objectMapper;
     }
 
     /** 寫入（覆蓋）整個 Session 並重設 TTL。 */
@@ -107,14 +123,16 @@ public class FishingSessionStore {
         return KEY_PREFIX + playerId;
     }
 
-    private static Map<String, String> toHash(FishingSession s) {
+    private Map<String, String> toHash(FishingSession s) {
         Map<String, String> h = new HashMap<>();
         putIfNotNull(h, F_SESSION_ID, s.getSessionId());
         putIfNotNull(h, F_PLAYER_ID, s.getPlayerId());
         putIfNotNull(h, F_ROOM_ID, s.getRoomId());
         putIfNotNull(h, F_SEAT_INDEX, s.getSeatIndex());
         putIfNotNull(h, F_CANNON_LEVEL, s.getCannonLevel());
+        putIfNotNull(h, F_BET_PER_SHOT, s.getBetPerShot());
         putIfNotNull(h, F_BUY_IN, s.getBuyIn());
+        putIfNotNull(h, F_BALANCE_BEFORE, s.getBalanceBefore());
         putIfNotNull(h, F_SESSION_BALANCE, s.getSessionBalance());
         putIfNotNull(h, F_TOTAL_BET, s.getTotalBet());
         putIfNotNull(h, F_TOTAL_PAYOUT, s.getTotalPayout());
@@ -130,17 +148,35 @@ public class FishingSessionStore {
         if (s.getLastActivityAt() != null) {
             h.put(F_LAST_ACTIVITY_AT, s.getLastActivityAt().toString());
         }
+        putIfNotNull(h, F_INTERCEPTED, s.getIntercepted());
+        // 血量/傷害模型的跨批狀態：以 JSON 持久化，缺了會讓每批重讀後累傷歸零（魚永遠打不死）。
+        writeJson(h, F_FISH_DAMAGE, s.getFishDamage());
+        writeJson(h, F_KILLS, s.getKills());
         return h;
     }
 
-    private static FishingSession fromHash(Map<String, String> h) {
+    /** 把集合/物件序列化成 JSON 字串欄位；序列化失敗只記 warn 並略過該欄，不讓整筆 save 失敗。 */
+    private void writeJson(Map<String, String> h, String field, Object value) {
+        if (value == null) {
+            return;
+        }
+        try {
+            h.put(field, objectMapper.writeValueAsString(value));
+        } catch (JsonProcessingException ex) {
+            log.warn("序列化 fishing session 欄位 {} 失敗，略過: {}", field, ex.toString());
+        }
+    }
+
+    private FishingSession fromHash(Map<String, String> h) {
         return FishingSession.builder()
                 .sessionId(h.get(F_SESSION_ID))
                 .playerId(parseLong(h.get(F_PLAYER_ID)))
                 .roomId(h.get(F_ROOM_ID))
                 .seatIndex(parseInt(h.get(F_SEAT_INDEX)))
                 .cannonLevel(parseInt(h.get(F_CANNON_LEVEL)))
+                .betPerShot(parseLong(h.get(F_BET_PER_SHOT)))
                 .buyIn(parseLong(h.get(F_BUY_IN)))
+                .balanceBefore(parseLong(h.get(F_BALANCE_BEFORE)))
                 .sessionBalance(parseLong(h.get(F_SESSION_BALANCE)))
                 .totalBet(parseLong(h.get(F_TOTAL_BET)))
                 .totalPayout(parseLong(h.get(F_TOTAL_PAYOUT)))
@@ -152,7 +188,38 @@ public class FishingSessionStore {
                 .state(h.get(F_STATE))
                 .createdAt(parseInstant(h.get(F_CREATED_AT)))
                 .lastActivityAt(parseInstant(h.get(F_LAST_ACTIVITY_AT)))
+                .intercepted(parseBoolean(h.get(F_INTERCEPTED)))
+                .fishDamage(readFishDamage(h.get(F_FISH_DAMAGE)))
+                .kills(readKills(h.get(F_KILLS)))
                 .build();
+    }
+
+    /** 還原跨批累傷表；欄位缺失或 JSON 毀損時保守回空 Map（不讓整場崩潰）。 */
+    private Map<String, Long> readFishDamage(String json) {
+        if (!StringUtils.hasText(json)) {
+            return new LinkedHashMap<>();
+        }
+        try {
+            Map<String, Long> parsed = objectMapper.readValue(json, FISH_DAMAGE_TYPE);
+            return parsed != null ? parsed : new LinkedHashMap<>();
+        } catch (JsonProcessingException ex) {
+            log.warn("反序列化 fishing fishDamage 失敗，改用空表: {}", ex.toString());
+            return new LinkedHashMap<>();
+        }
+    }
+
+    /** 還原致命一擊紀錄；欄位缺失或 JSON 毀損時保守回空 List。 */
+    private List<FishingSession.KillRecord> readKills(String json) {
+        if (!StringUtils.hasText(json)) {
+            return new ArrayList<>();
+        }
+        try {
+            List<FishingSession.KillRecord> parsed = objectMapper.readValue(json, KILLS_TYPE);
+            return parsed != null ? parsed : new ArrayList<>();
+        } catch (JsonProcessingException ex) {
+            log.warn("反序列化 fishing kills 失敗，改用空清單: {}", ex.toString());
+            return new ArrayList<>();
+        }
     }
 
     private static void putIfNotNull(Map<String, String> h, String field, Object value) {
@@ -171,5 +238,9 @@ public class FishingSessionStore {
 
     private static Instant parseInstant(String v) {
         return StringUtils.hasText(v) ? Instant.parse(v) : null;
+    }
+
+    private static Boolean parseBoolean(String v) {
+        return StringUtils.hasText(v) ? Boolean.valueOf(v) : null;
     }
 }

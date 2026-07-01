@@ -45,6 +45,7 @@ export const gameApi = {
       amount,
       winner: (r.result || '').toLowerCase(), // PLAYER/BANKER/TIE → player/banker/tie
       payout: r.payouts?.[area] ?? 0,
+      rebate: r.rebate ?? 0,
       playerCards: r.playerCards,
       bankerCards: r.bankerCards,
       playerPoints: r.playerScore,
@@ -66,11 +67,12 @@ export const gameApi = {
   },
 
   // POST /session/start → buy-in 開場（冪等扣款；已有場次則 resumed=true 續玩）。
-  async fishingStart({ buyIn, cannonLevel, clientSeed }) {
+  // betPerShot：玩家自選的單發面額（與砲台解耦，ADR-004）。
+  async fishingStart({ buyIn, cannonLevel, betPerShot, clientSeed }) {
     if (useMockApi) {
-      return mockApi.fishingStart({ buyIn, cannonLevel, clientSeed })
+      return mockApi.fishingStart({ buyIn, cannonLevel, betPerShot, clientSeed })
     }
-    const res = await api.post('/api/v1/game/fishing/session/start', { buyIn, cannonLevel, clientSeed })
+    const res = await api.post('/api/v1/game/fishing/session/start', { buyIn, cannonLevel, betPerShot, clientSeed })
     return res.data.data
   },
 
@@ -89,6 +91,19 @@ export const gameApi = {
       return mockApi.fishingEnd({ sessionId })
     }
     const res = await api.post(`/api/v1/game/fishing/${sessionId}/end`)
+    return res.data.data
+  },
+
+  // GET /api/v1/game/history → 玩家遊戲紀錄/注單分頁查詢。
+  // 回傳 { items:[{ roundId, gameType, nonce, betAmount, winAmount, profit,
+  //   balanceBefore, balanceAfter, betAt, settledAt, status, ... }], total, page, pageSize }。
+  async gameHistory({ gameType = 'all', page = 1, pageSize = 10 } = {}) {
+    if (useMockApi) {
+      return mockApi.getGameHistory({ gameType, page, pageSize })
+    }
+    const params = { page, pageSize }
+    if (gameType && gameType !== 'all') params.gameType = gameType
+    const res = await api.get('/api/v1/game/history', { params })
     return res.data.data
   },
 

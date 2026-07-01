@@ -49,6 +49,34 @@ class WalletBalanceChangedConsumerTest {
     }
 
     @Test
+    void handleWalletBalanceChanged_winSubType_accumulatesDailyWinnings() throws Exception {
+        Acknowledgment ack = mock(Acknowledgment.class);
+        WalletBalanceChangedEvent event =
+                new WalletBalanceChangedEvent(10L, 42L, 100L, 900L, 1000L, "WIN", "idem-1", null);
+        when(objectMapper.readValue(VALID_JSON, WalletBalanceChangedEvent.class)).thenReturn(event);
+
+        consumer.handleWalletBalanceChanged(VALID_JSON, ack);
+
+        verify(rankService, times(1)).updatePlayerCoins(42L, 1000L);
+        verify(rankService, times(1)).addDailyWinnings(42L, 100L);
+        verify(ack, times(1)).acknowledge();
+    }
+
+    @Test
+    void handleWalletBalanceChanged_nonWinSubType_doesNotAccumulateDailyWinnings() throws Exception {
+        Acknowledgment ack = mock(Acknowledgment.class);
+        WalletBalanceChangedEvent event =
+                new WalletBalanceChangedEvent(10L, 42L, 100L, 900L, 1000L, "BET", "idem-1", null);
+        when(objectMapper.readValue(VALID_JSON, WalletBalanceChangedEvent.class)).thenReturn(event);
+
+        consumer.handleWalletBalanceChanged(VALID_JSON, ack);
+
+        verify(rankService, times(1)).updatePlayerCoins(42L, 1000L);
+        verify(rankService, never()).addDailyWinnings(any(), org.mockito.ArgumentMatchers.anyLong());
+        verify(ack, times(1)).acknowledge();
+    }
+
+    @Test
     void handleWalletBalanceChanged_invalidJson_throwsAndDoesNotAck() throws Exception {
         Acknowledgment ack = mock(Acknowledgment.class);
         when(objectMapper.readValue(any(String.class), eq(WalletBalanceChangedEvent.class)))

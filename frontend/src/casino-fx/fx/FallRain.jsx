@@ -8,7 +8,8 @@ const DENSITY = {
   light: { count: 26, duration: 2600 },
   heavy: { count: 70, duration: 3600 },
   // epic：金幣如瀑布傾瀉、刻意遮擋畫面的誇張渲染（爆機專用）
-  epic: { count: 150, duration: 4800 },
+  // §2.3：上限 150→90，降同時動畫節點數保住 H5/手機幀率（移除 drop-shadow 後仍偏重）
+  epic: { count: 90, duration: 4800 },
 }
 
 // 一次性墜落雨（金幣 / 紅包共用底層）。trigger 遞增即觸發一波，播完自動清除。

@@ -45,6 +45,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/admin/auth/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        // Swagger UI / OpenAPI 文件放行（T-092）。僅文件端點放寬；
+                        // /admin/** 仍維持 ROLE_ADMIN，不可繞過授權。
+                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 // 未認證（無 token / 玩家 token 驗章失敗）回 401；已認證但角色不足由預設

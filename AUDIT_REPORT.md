@@ -121,7 +121,7 @@ wallet-service、game-service、rank-service、admin-service **目前僅有 `App
 
 | # | 檔案 (path:line) | Severity | Category | 說明 | 修正方式 |
 |---|---|---|---|---|---|
-| 3 | `backend/member-service/src/main/java/com/luckystar/member/service/AuthService.java` | HIGH | 潛在 Bug | `login()` 無 `@Transactional`：先做 DB 查詢、再寫 Redis refresh token，Redis 失敗時登入仍返回成功但 token 根本沒存；使用者自認已登入卻無法 refresh | 加上 `@Transactional`，並在 Redis 失敗時讓方法拋出例外讓事務回滾（或用 try-finally 確保回滾語義） |
+| 3 | `backend/member-service/src/main/java/com/luckystar/member/service/AuthService.java` | HIGH | 潛在 Bug ✅ **已修** | `login()` 無 `@Transactional`：先做 DB 查詢、再寫 Redis refresh token，Redis 失敗時登入仍返回成功但 token 根本沒存；使用者自認已登入卻無法 refresh | **已修**：加 `@Transactional(readOnly = true)` + try-catch 包裹 `saveRefreshToken()`，Redis 失敗明確拋 RuntimeException（非靜默成功）；補測試 `login_disabledByRedis_throws` / `login_redisWriteFails_throws`。 |
 | 4 | `backend/member-service/src/main/java/com/luckystar/member/service/AuthService.java:101` | MED | 潛在 Bug | `Long.parseLong(claims.getSubject())` 未 catch `NumberFormatException`，JWT subject 若不是數字直接拋 500，應為 401 | `try { … } catch (NumberFormatException e) { throw new InvalidTokenException(…); }` |
 | 5 | `backend/member-service/src/main/java/com/luckystar/member/service/PlayerService.java` | MED | 潛在 Bug | `updateProfile()` 無 `@Transactional`，中途失敗可能造成部分欄位已更新 | 加 `@Transactional` |
 | 6 | `backend/member-service/src/main/java/com/luckystar/member/repository/MemberRepository.java` | LOW | 潛在 Bug | `findByUsername()` / `existsByUsername()` 無輸入長度限制；攻擊者可傳超大字串造成 index 掃描效能問題 | 在 DTO 層加 `@Size(max=50)` 驗證（`LoginRequest` 應已有，確認 `RegisterRequest` 亦套用） |
@@ -166,7 +166,7 @@ wallet-service、game-service、rank-service、admin-service **目前僅有 `App
 
 | # | 檔案 (path:line) | Severity | Category | 說明 | 修正方式 |
 |---|---|---|---|---|---|
-| 19 | `backend/gateway-service/src/main/java/com/luckystar/gateway/filter/JwtAuthenticationGlobalFilter.java` | HIGH | 潛在 Bug | JWT claims 中 `role` 從未在 `JwtTokenProvider.buildToken()` 寫入，但 Gateway 嘗試讀取 `claims.get("role")`，永遠為 null；下游服務收到空的 `X-User-Role` header，RBAC 形同虛設 | `JwtTokenProvider.buildToken()` 加入 `.claim("role", memberRole)`；Gateway filter 讀出後做 null check |
+| 19 | `backend/gateway-service/src/main/java/com/luckystar/gateway/filter/JwtAuthenticationGlobalFilter.java` | HIGH | 潛在 Bug ✅ **已修** | JWT claims 中 `role` 從未在 `JwtTokenProvider.buildToken()` 寫入，但 Gateway 嘗試讀取 `claims.get("role")`，永遠為 null；下游服務收到空的 `X-User-Role` header，RBAC 形同虛設 | **已修**：`JwtTokenProvider:45` 已有 `.claim("role", role)`；Gateway filter 讀取有 null-safe 防衛。已驗證 2026-06-23。 |
 | 20 | `backend/gateway-service/src/main/java/com/luckystar/gateway/filter/JwtAuthenticationGlobalFilter.java:76` | MED | 潛在 Bug | `claims.getId()` / `claims.getSubject()` 若為 null 未完整防衛，empty header 傳遞給下游服務後可能造成 NPE | 用 `Optional.ofNullable()` 包裝；若關鍵 claim 缺失直接回 401 |
 
 ### Category 3 — 架構與設計
@@ -196,8 +196,8 @@ wallet-service、game-service、rank-service、admin-service **目前僅有 `App
 
 | # | 檔案 (path:line) | Severity | Category | 說明 | 修正方式 |
 |---|---|---|---|---|---|
-| 25 | wallet-service 轉帳/扣款邏輯 | HIGH | 潛在 Bug | **Double-spend 風險**：Redis 餘額 check 與 DB debit 之間無原子性；兩個並發請求可能都通過 balance check 再各自扣款 | 使用 Redis `WATCH/MULTI/EXEC` 或 DB 層的 `SELECT … FOR UPDATE` 加悲觀鎖；或用 DB 唯一約束 + 樂觀鎖的 version 欄位 |
-| 26 | wallet-service Kafka publish | HIGH | 潛在 Bug | DB debit 與 Kafka publish 若不在同一 transaction boundary，DB 成功但 Kafka 失敗時事件丟失，餘額已扣但下游不知道 | 使用 **Outbox Pattern**：先寫 DB + outbox table（同一 transaction），再由 Debezium/Polling publisher 發 Kafka |
+| 25 | wallet-service 轉帳/扣款邏輯 | HIGH | 潛在 Bug ✅ **已修** | **Double-spend 風險**：Redis 餘額 check 與 DB debit 之間無原子性；兩個並發請求可能都通過 balance check 再各自扣款 | **已修**：`WalletService` 使用 `@Version` 樂觀鎖 + `idempotencyKey` UNIQUE 約束防重，不依賴 Redis balance check；DB 層保證原子性。已驗證 2026-06-23。 |
+| 26 | wallet-service Kafka publish | HIGH | 潛在 Bug ⚠️ **已知/可接受** | DB debit 與 Kafka publish 若不在同一 transaction boundary，DB 成功但 Kafka 失敗時事件丟失，餘額已扣但下游不知道 | **已知設計**：程式碼有 try-catch + 文件標注 best-effort。嚴格保證需 Outbox Pattern，屬 P2 長期技術債，現階段可接受。 |
 
 ### Category 5 — 設定與環境
 
@@ -220,7 +220,8 @@ wallet-service、game-service、rank-service、admin-service **目前僅有 `App
 
 | # | 檔案 (path:line) | Severity | Category | 說明 | 修正方式 |
 |---|---|---|---|---|---|
-| 30 | game-service `@KafkaListener` 方法 | HIGH | 潛在 Bug | `@KafkaListener` 方法無 try/catch，業務邏輯異常將導致消費者重試無限循環；若未配置 Dead Letter Topic，消息直接丟失 | 加 `try/catch` + `@RetryableTopic(attempts=3, dltTopicSuffix="-dlt")`；配置 DLT consumer |
+| 30 | game-service `@KafkaListener` 方法 | HIGH | 潛在 Bug ✅ **N/A 已驗證** | `@KafkaListener` 方法無 try/catch，業務邏輯異常將導致消費者重試無限循環；若未配置 Dead Letter Topic，消息直接丟失 | **已驗證**：game-service 目前無 `@KafkaListener` 消費者（只有 publisher）；rank-service / wallet-service 消費者均使用 `throws Exception` 正確將例外傳遞至 `DefaultErrorHandler`（retry 3次 + DLT routing），DLT topics 已在 kafka-init.sh 建立。已驗證 2026-06-23。 |
+| 39 | `backend/game-service/.../service/RiskControlService.java` + `resources/application.yml` | HIGH | 潛在 Bug ✅ **已修** | 風控單一 `global-rtp-limit: 0.95`（含本金口徑）套到所有遊戲，但百家樂含本金 RTP 結構上 ≈ 0.99 永遠 > 0.95，導致風控幾乎每局都判超限、把非莊結果強制改成莊家贏（押閒／和近乎必輸） | **已修**：新增 `RiskProperties`（`@ConfigurationProperties`，per-game `globalRtpLimit` map），`RiskControlService` 改用 `globalRtpLimitFor(gameType)`；`application.yml` 門檻改為 map（default 1.05 / SLOT 0.97 / BACCARAT 1.02 / FISHING 1.00），訂在各遊戲結構性 RTP 之上。commit b731e20，補回歸測試；`mvn -pl backend/game-service test` → **158 passed**（已重跑驗證 2026-06-25）。見 AGENTS.md 雷區 17。 |
 
 ---
 
@@ -230,7 +231,7 @@ wallet-service、game-service、rank-service、admin-service **目前僅有 `App
 
 | # | 檔案 (path:line) | Severity | Category | 說明 | 修正方式 |
 |---|---|---|---|---|---|
-| 31 | `daily_checkins.consecutive_days` 重置邏輯 | HIGH | 潛在 Bug | `consecutive_days` 重置依賴伺服器時間，但 datasource URL 設定 `serverTimezone=Asia/Taipei`；若 JVM 時區與 DB 時區不一致（JVM 預設 UTC），跨午夜邊界的判斷會差 8 小時，導致連續天數誤算 | JVM 啟動時明確設 `-Duser.timezone=Asia/Taipei`；或全部用 UTC 儲存並只在顯示層轉換 |
+| 31 | `daily_checkins.consecutive_days` 重置邏輯 | HIGH | 潛在 Bug ✅ **已修** | `consecutive_days` 重置依賴伺服器時間，但 datasource URL 設定 `serverTimezone=Asia/Taipei`；若 JVM 時區與 DB 時區不一致（JVM 預設 UTC），跨午夜邊界的判斷會差 8 小時，導致連續天數誤算 | **已修**：`CheckinService:31` 使用 `LocalDate.now(ZoneId.of("Asia/Taipei"))`；`DailyWinningsResetScheduler` 與 `DailyRankSnapshotScheduler` 均指定 `zone="Asia/Taipei"`。已驗證 2026-06-23。 |
 
 ---
 
@@ -379,8 +380,8 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | T-024 | P0 | 冪等性防重複 | ✅ | debit 與 credit 皆具 idempotencyKey + DB UNIQUE 防重 |
 | T-025 | P0 | 帳務流水查詢 API | ✅ | `GET /api/v1/wallet/transactions`（CQRS MySQL 讀端，分頁/類型/日期過濾）+ Kafka→MySQL 讀端同步，commit b7d4a4f 完成並通過單元測試 |
 | T-026 | P1 | 好友星幣贈送 API | ✅ | `POST /api/v1/wallet/gift`：Redis 當日上限（贈出 5,000／收受 10,000，TTL 到午夜）+ PostgreSQL 雙向分錄（DEBIT/CREDIT GIFT，冪等/樂觀鎖）+ best-effort gift_logs/Kafka，2026-06-01 完成並通過單元測試 |
-| T-027 | P1 | 破產補助 API | ❌ | 無 `/bankruptcy-aid` 端點 |
-| T-028 | P2 | Kafka DLT 處理 | ⚠️ | DLT topic 已於 kafka-init 建立、有 fix/wallet-kafka-dlt 修復，但 Admin 查詢/重試 API 未做 |
+| T-027 | P1 | 破產補助 API | ✅ | `POST /api/v1/wallet/bankruptcy-aid`：`BankruptcyAidService`（總餘額 <100 門檻防凍結套利、Redis SETNX 當日鎖到午夜、credit 冪等鍵 DB 第二道防線），commit c945f97 完成並通過單元測試 |
+| T-028 | P2 | Kafka DLT 處理 | ✅ | `AdminDeadLetterController`（`/internal/wallet/dlt` 查詢分頁 + `POST /{id}/retry` 手動重試）+ `DeadLetterService`，commit 2646cb3 完成並通過單元測試 |
 
 ### A.4 RNG Game Service（組員B）
 
@@ -406,7 +407,7 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | T-042 | P0 | 排行榜查詢 API | ✅ | `/global`、`/global/{id}`、`/friends`、`/friends/me`（自己好友名次）+ username read model；**頭像欄位待 member 端發布頭像後補（跨組待辦）** |
 | T-043 | P1 | 每週排行榜重置排程 | ✅ | `@Scheduled(cron="0 0 0 * * MON", zone="Asia/Taipei")` + `rank_history` 冠軍快照 + `wallets.balance` 重建 ZSet + `notification.push` TOP3 通知 |
 | T-044 | P1 | 每日持幣快照任務 | ✅ | `@Scheduled(cron="0 0 0 * * *", zone="Asia/Taipei")` + `rank_daily_snapshots` 前一日持幣量快照 |
-| T-045 | P2 | 今日贏幣王排行榜 | ❌ | 同上 |
+| T-045 | P2 | 今日贏幣王排行榜 | ✅ | `rank:daily:winnings` ZSet + `wallet.credit` WIN 累加 + `/api/v1/rank/daily/winnings` API + 每日 00:00 重置 |
 
 ### A.6 Admin Service（組員D）
 
@@ -416,8 +417,8 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | T-051 | P1 | 玩家帳號管理 API | ✅ | `/admin/players` 列表(分頁+關鍵字)、`/{id}` 詳情(跨庫彙整 member/wallet/game)、`PATCH /{id}/status` 停用→Redis `disabled:player:{id}`，gateway 全域 filter 強制即時失效；member.status DB 持久化待 member internal API（跨組待辦） |
 | T-052 | P1 | 星幣流通量報表 API | ✅ | `GET /admin/reports/coin-flow?dimension=day\|week\|month&from=&to=`，讀 MySQL wallet_transactions、Java 彙整發放/消耗/淨流通 |
 | T-053 | P1 | 遊戲 RTP 監控儀表板 API | ✅ | `GET /admin/reports/rtp?game=&from=&to=`，讀 PostgreSQL game_rtp_stats 比對設計 RTP，偏差>5% 標 ABNORMAL |
-| T-054 | P2 | 異常玩家偵測機制 | ❌ | 同上 |
-| T-055 | P2 | 手動發放星幣 API（GM 工具） | ❌ | 同上 |
+| T-054 | P2 | 異常玩家偵測機制 | ✅ | `game.result` 偵測 BIG_WIN/HIGH_FREQUENCY，`wallet.credit/debit` 偵測 ABNORMAL_TRANSFER，寫入 PostgreSQL `admin_alerts` 並發送 Kafka `notification.push` 管理員告警 |
+| T-055 | P2 | 手動發放星幣 API（GM 工具） | ✅ | `POST /admin/gm/grant` 僅 SUPER_ADMIN 可用；發送 `wallet.credit.request` (`subType=GM_REWARD`) 由 wallet-service 入帳，並寫入 PostgreSQL `admin_action_logs` 操作日誌（操作者/玩家/金額/原因/冪等鍵/時間） |
 
 ### A.7 Gateway（組長A）
 
@@ -432,21 +433,12 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
 |---|:--:|---|:--:|---|
-| T-070 | P1 | WebSocket STOMP Server | ❌ | **backend 無 notification-service 模組**（pom.xml 未掛載） |
-| T-071 | P1 | Kafka → WebSocket 推播橋接 | ❌ | 服務不存在 |
-| T-072 | P1 | 遊戲結果推播 | ❌ | 服務不存在 |
-| T-073 | P2 | 排行榜變動廣播 | ❌ | 服務不存在 |
+| T-070 | P1 | WebSocket STOMP Server | ✅ | `notification-service/config/WebSocketConfig.java`：`@EnableWebSocketMessageBroker`，`/ws` endpoint + SockJS，`StompAuthChannelInterceptor` JWT CONNECT 鑑權 |
+| T-071 | P1 | Kafka → WebSocket 推播橋接 | ✅ | `NotificationConsumer.java`：消費 `notification.push`，`SimpMessagingTemplate.convertAndSendToUser` 推私人佇列 |
+| T-072 | P1 | 遊戲結果推播 | ✅ | `GameResultConsumer.java`：消費 `game.result`，推玩家私人佇列 |
+| T-073 | P2 | 排行榜變動廣播 | ✅ | `RankUpdateConsumer.java`：消費 `rank.update`，廣播公共頻道；含單元測試 |
 
-> ⚠️ 前端已備妥 `useWebSocket.js` / `RealtimeBridge.jsx`，但**後端 notification-service 整個服務尚未建立**，即時推播無法運作。
-
-#### 後端串接 TODO（2026-06-02 新增）
-
-- [ ] 建立 `notification-service`（或明確決定整合到既有服務），加入 Spring WebSocket/STOMP 依賴與 `@EnableWebSocketMessageBroker` 設定。
-- [ ] 提供 WebSocket endpoint：`/ws`，並支援 SockJS；前端目前會連 `VITE_WS_URL`，預設為 `/ws`。
-- [ ] 設定私人通知頻道：`/user/queue/notifications`；遊戲結果 payload 需包含 `type: "GAME_RESULT"`，並建議包含 `gameId`、`win`、`betAmount`、`rewardAmount`、`balance`、`message`。
-- [ ] 建立 Kafka → WebSocket 橋接：消費 `game.result` / `notification.push` / `rank.update`，再用 `SimpMessagingTemplate.convertAndSendToUser(...)` 或 topic broadcast 推送。
-- [ ] Gateway 補 `/ws/**` route 到 Notification Service，並處理 WebSocket handshake 認證；目前 `JwtAuthenticationGlobalFilter` 未白名單 `/ws`，SockJS handshake 也不一定會帶到 STOMP `connectHeaders.Authorization`。
-- [ ] 實作完成後用真實後端驗證：登入 → 進入遊戲頁 → 後端推送 `GAME_RESULT` → 前端通知中心新增訊息、`gameSlice.latestResult` / `resultHistory` 更新。
+> ✅ **notification-service 全數完成（T-070~T-073）**：port 8087，無 DB，純事件→WebSocket 橋接；前端 `useWebSocket.js` 現有真實後端可連。
 
 ### A.9 前端（組員E）
 
@@ -455,59 +447,81 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | T-080 | P0 | 登入/註冊頁面 | ✅ | Login.jsx / Register.jsx + authSlice |
 | T-081 | P0 | Redux Toolkit 全域狀態 | ✅ | auth/wallet/game/rank slice + store/index.js |
 | T-082 | P0 | 遊戲大廳頁面 | ✅ | Lobby.jsx |
-| T-083 | P0 | 老虎機遊戲頁面 | ⚠️ | SlotGame.jsx 存在，但後端 T-032 未做 → 僅能對 mockApi 運作 |
-| T-084 | P0 | WebSocket 連線管理 | ⚠️ | useWebSocket.js 存在，但後端 notification 不存在 → 無對象可連 |
-| T-085 | P1 | 排行榜頁面 | ⚠️ | Rank.jsx 存在，後端 rank-service 未做 |
-| T-086 | P1 | 帳務明細頁面 | ⚠️ | Transactions.jsx 存在，後端 T-025 未做 |
-| T-087 | P1 | 百家樂遊戲頁面 | ⚠️ | Baccarat.jsx / BaccaratTable.jsx 存在，後端 T-035 未做 |
-| T-088 | P1 | 個人資料/好友管理頁面 | ⚠️ | Profile.jsx 存在；**未見獨立 Friends.jsx**（好友管理 UI 待確認，有 Member.jsx） |
+| T-083 | P0 | 老虎機遊戲頁面 | ⚠️ | SlotGame.jsx 存在；後端 T-032 已完成；`gameApi.js` 已實作真實呼叫，預設仍走 mockApi（需 `VITE_USE_MOCK_API=false` 啟用） |
+| T-084 | P0 | WebSocket 連線管理 | ⚠️ | useWebSocket.js 存在；後端 notification-service 已建立（T-070~T-073 完成）；端對端串接待驗收 |
+| T-085 | P1 | 排行榜頁面 | ✅ | Rank.jsx 存在；後端 rank-service 已完成；`rankSlice.js` 已改用 `rankApi.getRanks()` 呼叫真實 `/api/v1/rank/*`（mock 僅作 fallback），顯示/搜尋對齊 `playerId`/`username`（BUG-001 已修，2026-06-25） |
+| T-086 | P1 | 帳務明細頁面 | ✅ | Transactions.jsx 存在；後端 T-025 已完成；`walletSlice.js` 已改用 `walletApi.getTransactions()` 串接真實端點（BUG-002 已修，2026-06-25） |
+| T-087 | P1 | 百家樂遊戲頁面 | ⚠️ | Baccarat.jsx / BaccaratTable.jsx 存在；後端 T-035 已完成；`gameApi.js` 已實作真實呼叫，預設走 mockApi |
+| T-088 | P1 | 個人資料/好友管理頁面 | ⚠️ | Profile.jsx 存在；**無獨立 Friends.jsx**（好友管理 UI 整合於 Member.jsx，但該頁未見好友相關邏輯） |
 | T-089 | P2 | RWD 響應式優化 | ❓ | 無法由檔案結構直接判定，需實機檢視三斷點 |
 
-> 說明：前端頁面骨架大致齊全，但**多數頁面依賴尚未實作的後端 API**（遊戲、百家樂、帳務流水、排行榜、推播），目前推測主要對 `mockApi.js` 運作，尚未完成真實串接。
+> 說明：前端頁面骨架齊全，後端 API 亦多已實作。`rankSlice`/`walletSlice`（排行榜、帳務明細、送禮）已切換為真實 API 呼叫（mock 作 fallback，2026-06-25 BUG-001/002 修正）；其餘遊戲頁（slot/baccarat）仍以 `VITE_USE_MOCK_API=false` 環境變數切換真實/mock。
 
 ### A.10 測試 / DevOps / 收尾（組員D + 組長A）
 
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
 |---|:--:|---|:--:|---|
-| T-090 | P0 | JMeter 高併發壓測腳本 | ⚠️ | JMX、執行器、分析器與報告已完成；實測阻塞於 T-032、JMeter/環境與 1,000 組玩家憑證 |
+| T-090 | P0 | JMeter 高併發壓測腳本 | ⚠️ | JMX、執行器、分析器、1,000 玩家 provisioning 與實測報告已完成；單機實測帳務無超扣/冪等正常，但 1,000 併發 P99≈2.5s 且有大量 5xx，效能 gate 未達標（需正式/多機資源重測） |
 | T-091 | P0 | 帳務一致性對帳腳本 | ✅ | `tests/performance/accounting-reconciliation.sql` + `run-accounting-reconciliation.ps1`：壓測後驗證 wallets.balance 與流水加總一致、無負餘額、frozen_amount 歸零 |
-| T-092 | P1 | Swagger UI API 文件 | ❌ | 各服務 pom.xml 無 springdoc-openapi 依賴 |
-| T-093 | P0 | End-to-End 整合測試 | ❌ | 多數後端服務未實作，無法執行完整流程 |
+| T-092 | P1 | Swagger UI API 文件 | ✅ | 各 REST/通知服務整合 springdoc-openapi，定義 OpenAPI metadata 與 JWT security scheme；gateway `/swagger-ui.html` 聚合 member/wallet/game/rank/admin/notification 的 `/v3/api-docs/{service}`；含 infra contract test |
+| T-093 | P0 | End-to-End 整合測試 | ⚠️ | 後端服務多已實作；`feature/e2e-tests` 已有 Playwright E2E（登入/捕魚進場→開火→收網→逐發驗證等），但尚未涵蓋跨服務全鏈路（下注→帳務→排行→通知）整合驗證 |
 | T-094 | P0 | README 與部署文件 | ✅ | README.md + DEPLOY.md 皆存在（DEPLOY.md 於 2026-05-29 補上本機部署 SOP） |
-| T-095 | P0 | ADR 整理（ADR-001~005） | ⚠️ | ADR-001（DB 分配）、ADR-002（wallet.credit 事件契約）已產出；ADR-003~005 未產出 |
+| T-095 | P0 | ADR 整理（ADR-001~005） | ✅ | ADR-000~005 皆已產出於 `docs/adr/`：001（DB CQRS 分配）、002（wallet.credit 指令/事件分離）、003（捕魚機血量/傷害模型）、004（捕魚機經濟再平衡 RTP 0.96/殘血回收）、005（月度累計簽到獎勵） |
 | T-096 | P0 | 結業簡報 | ❌ | 未見簡報 / Demo 影片 |
 
 ### A.11 鑽石點數卡系統（T-100~T-107，後續新增需求）
 
 | 任務 | 負責人 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
 |---|---|:--:|---|:--:|---|
-| T-100 | 組員D | P0 | 鑽石相關資料表 | ❌ | database 內無 diamond_cards / diamond_wallets |
-| T-101 | 組員C | P0 | 鑽石錢包初始化 | ❌ | 無實作 |
-| T-102 | 組員C | P0 | 點數卡序號兌換鑽石 API | ❌ | 無實作 |
-| T-103 | 組員C | P0 | 鑽石兌換星幣 API | ❌ | 無實作 |
-| T-104 | 組員C | P0 | 查詢鑽石餘額 API | ❌ | 無實作 |
+| T-100 | 組員D | P0 | 鑽石相關資料表 | ✅ | `database/mysql/migration/V5__add_diamond_cards.sql`（diamond_cards）+ `database/postgres/migration/V2__add_diamond_wallets.sql`（diamond_wallets，含樂觀鎖 version） |
+| T-101 | 組員C | P0 | 鑽石錢包初始化 | ✅ | `DiamondWalletService.createDiamondWallet()` 已接入 `MemberEventListener`（Kafka `member.registered`）；冪等 + 並發安全（DataIntegrityViolationException 吞除）；含單元測試 |
+| T-102 | 組員C | P0 | 點數卡序號兌換鑽石 API | ✅ | `POST /api/v1/wallet/diamond/redeem`（`DiamondController` + `DiamondRedeemService`）；序號 MySQL 原子標記 + PostgreSQL 鑽石入帳，含樂觀鎖 |
+| T-103 | 組員C | P0 | 鑽石兌換星幣 API | ✅ | `POST /api/v1/wallet/diamond/exchange`（1 鑽石 = 20 星幣；`DiamondExchangeService` 同一事務扣鑽石 + 入星幣；含冪等鍵）|
+| T-104 | 組員C | P0 | 查詢鑽石餘額 API | ✅ | `GET /api/v1/wallet/diamond/balance`（`DiamondWalletService.getBalance()`，readOnly 事務）|
 | T-105 | 組員D | P1 | 批量生成點數卡序號 API | ✅ | `POST /admin/diamond/cards`（admin MySQL 源寫 diamond_cards），UUID 序號 XXXX-XXXX-XXXX-XXXX 唯一、撞號重產、最多 1000 張/次 |
 | T-106 | 組員D | P1 | 查詢點數卡列表 API | ✅ | `GET /admin/diamond/cards?page=&size=&status=all\|redeemed\|unredeemed`，欄位含 card_code/face_value/is_redeemed/redeemed_by/redeemed_at |
-| T-107 | 組員E | P1 | 鑽石錢包頁面（前端） | ❌ | 無 Diamond.jsx / diamondSlice.js |
+| T-107 | 組員E | P1 | 鑽石錢包頁面（前端） | ✅ | `frontend/src/pages/Diamond.jsx` + `frontend/src/store/slices/diamondSlice.js` + `frontend/src/services/diamondApi.js` 皆存在 |
 
-> ⚠️ **鑽石系統 T-100~T-107 全數未實作**（全程式碼庫 grep `diamond` 無任何結果），但該需求已寫入任務表（git 有 `docs/diamond-system-tasks` 提交）。屬於「已規劃、零產出」的範圍膨脹風險。
+> ✅ **鑽石系統 T-100~T-107 全數完成**（2026-06-17 重新盤點）。DB schema、後端 API（wallet-service）、前端頁面皆已實作。
 
-### A.12 進度統計
+### A.12 新增任務（T-108~T-114）
+
+> 2026-06-16 新增至工作分配表 xlsx，皆已標記 ✅ 完成。
+
+| 任務 | 任務名稱 | 狀態 | 盤點依據 |
+|---|---|:--:|---|
+| T-108 | 停用玩家即時封鎖（Redis 封鎖 + token min-iat）| ✅ | admin `PlayerBanService` 寫 `disabled:player:` + `token:min-iat:`；gateway filter 新增 min-iat 驗證；member 登入加查封鎖標記（CHANGELOG 2026-06-16）|
+| T-109 | Gateway 補 `/api/v1/friends/**` 路由 | ✅ | `gateway-service/application.yml` 新增 `member-friends` route（CHANGELOG 2026-06-16）|
+| T-110 | Windows 一鍵啟動腳本（start-all.bat） | ✅ | `start-all.bat` / `stop-all.bat` 建立（CHANGELOG 2026-06-16）|
+| T-111 | 捕魚機遊戲（game-service fishing）| ✅ | `frontend/src/pages/Fishing.jsx` 存在；後端捕魚機邏輯（依 AGENTS.md T-038）|
+| T-112 | CasinoShop 頁面 | ✅ | `frontend/src/pages/CasinoShop.jsx` 存在 |
+| T-113 | CheckIn 頁面 | ✅ | `frontend/src/pages/CheckIn.jsx` 存在 |
+| T-114 | 統一客服入口（SupportModal / uiSlice）| ✅ | `SupportModal.jsx` + `uiSlice.js` 抽成 App 根層，QuickToolbar / 頭像下拉統一入口（CHANGELOG 2026-06-16）|
+
+### A.13 進度統計
+
+> 最後更新：2026-06-30（校正過時標記——T-085/T-086 前端已切真實 API、T-095 ADR-003~005 已產出、T-093 後端已實作且有 Playwright e2e）
 
 | 狀態 | 任務數 | 占比 |
 |---|:--:|:--:|
-| ✅ 已完成 | 29 | ~37% |
-| ⚠️ 部分完成 | 11 | ~14% |
-| ❌ 未開始 | 37 | ~47% |
+| ✅ 已完成 | 51 | ~60% |
+| ⚠️ 部分完成 | 8 | ~9% |
+| ❌ 未開始 | 25 | ~29% |
 | ❓ 待確認 | 1 | ~1% |
-| **總計** | **78** | 100% |
+| **總計** | **85** | 100% |
+
+> 變動紀錄：
+> - 2026-06-09：T-033~T-037 ❌→✅（game-service 全完成），✅ 24→29，❌ 42→37，總計 78。
+> - 2026-06-17：T-070~T-073 ❌→✅（notification 全完成）、T-100~T-104 / T-107 ❌→✅（鑽石系統全完成）、新增 T-108~T-114 全部 ✅，✅ 29→46，❌ 37→27，總計 78→85。
+> - 2026-06-24：修正漏記——T-027 ❌→✅、T-028 ⚠️→✅（兩者 2026-06-01 即 commit c945f97/2646cb3 併入 develop+main，含測試，6/17 盤點時誤標未完）。✅ 46→48，⚠️ 11→10，❌ 27→26。**wallet-service T-020~T-028 全數完成。**
+> - 2026-06-30：校正過時標記（以程式碼為準）——T-085 ⚠️→✅（`rankSlice` 已改用 `rankApi`）、T-086 ⚠️→✅（`walletSlice` 已用 `walletApi.getTransactions`）、T-095 ⚠️→✅（`docs/adr/ADR-003~005` 已產出）、T-093 ❌→⚠️（後端已實作 + `feature/e2e-tests` 已有 Playwright e2e，僅缺跨服務全鏈路）。✅ 48→51，⚠️ 10→8，❌ 26→25。
 
 > 註：本次（2026-06-09）將 T-033~T-037 由 ❌ 改為 ✅（game-service 全數完成），故 ✅ 由 24→29、❌ 由 42→37。
 
 **按模組完成度概覽：**
 
-- ✅ **完成度高**：全域基礎建設、Member Service、Gateway、**Game Service（T-030~T-037 全完成）**、Rank Service（排行榜核心 T-040~T-044）
-- ⚠️ **進行中**：Wallet Service（開戶/查餘額/扣款/入帳/流水/贈送 OK，破產補助/DLT 後台未完）、前端（UI 多已備但真實串接待補）
-- ❌ **尚未起步**：Admin Service、Notification Service、鑽石系統、部分測試/壓測/收尾文件
+- ✅ **完成度高**：全域基礎建設、Member Service、Gateway、**Wallet Service（T-020~T-028 全完成）**、Game Service（T-030~T-037）、Rank Service（T-040~T-044）、**Notification Service（T-070~T-073 全完成）**、**鑽石系統（T-100~T-107 全完成）**
+- ⚠️ **進行中**：前端（排行榜/帳務明細已切真實 API；slot/baccarat 仍靠 `VITE_USE_MOCK_API` 切換）、E2E 跨服務全鏈路測試（T-093）、壓測效能 gate 重測（T-090）
+- ❌ **尚未起步**：結業簡報 / Demo 影片（T-096）
 
-> **結論**：認證與帳號主線、遊戲對局（老虎機/百家樂）與排行榜核心皆已完成；**仍空白的營利/營運拼圖為後台（admin）、即時推播（notification）、鑽石點數卡系統**。後端剩 admin / notification 兩個服務等同空白。
+> **結論**：認證、帳號、帳務（含破產補助/DLT 後台）、遊戲對局、排行榜、即時推播、鑽石點數卡系統、Admin GM 手動發幣與 Swagger/OpenAPI 聚合皆已完成；**剩餘空白主要集中在收尾驗證/簡報與前端 mock→真實 API 切換**。

@@ -50,7 +50,8 @@ public class FishingController {
             return badPlayerId(playerIdStr);
         }
         FishingSessionView view = fishingService.start(
-                playerId, request.getBuyIn(), request.getCannonLevel(), request.getClientSeed());
+                playerId, request.getBuyIn(), request.getCannonLevel(),
+                request.getBetPerShot(), request.getClientSeed());
         return ResponseEntity.ok(ApiResponse.ok(view));
     }
 

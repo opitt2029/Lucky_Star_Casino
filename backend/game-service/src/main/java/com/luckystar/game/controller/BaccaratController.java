@@ -44,7 +44,8 @@ public class BaccaratController {
             return badPlayerId(playerIdStr);
         }
         BaccaratBetResponse result = baccaratService.placeBet(
-                playerId, request.getPlayer(), request.getBanker(), request.getTie(), request.getClientSeed());
+                playerId, request.getPlayer(), request.getBanker(), request.getTie(),
+                request.getClientSeed());
         return ResponseEntity.ok(ApiResponse.ok(result));
     }
 

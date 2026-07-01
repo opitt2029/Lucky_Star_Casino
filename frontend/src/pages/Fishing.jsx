@@ -1,33 +1,42 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import AppShell from '../components/AppShell'
 import GameRuleCard from '../components/GameRuleCard'
 import MetricCard from '../components/MetricCard'
-import FishingArena from '../components/FishingArena'
 import { gameApi } from '../services/gameApi'
-import { useFishingSession, CANNON_BET } from '../hooks/useFishingSession'
+import {
+  useFishingSession,
+  BET_TIERS,
+  BET_MIN,
+  BET_MAX,
+  BUYIN_TIERS,
+  BUYIN_MIN,
+  BUYIN_MAX,
+  CANNON_DAMAGE,
+} from '../hooks/useFishingSession'
 import { useSound } from '../casino-fx/sound/useSound'
 import { useBgm } from '../casino-fx/sound/useBgm'
 import GoldBurst from '../casino-fx/fx/GoldBurst'
 import { CoinRainPro, RedEnvelopeRain } from '../casino-fx/fx/FallRain'
 import BrushBanner, { pickBannerForMultiplier } from '../casino-fx/fx/BrushBanner'
-import LuckyAura from '../casino-fx/fx/LuckyAura'
-import FortuneMeter from '../casino-fx/fx/FortuneMeter'
-import { useFortuneMeter } from '../casino-fx/fx/useFortuneMeter'
 import { announcePlayerWin } from '../casino-fx/announce/announceBus'
+import { useGameLeaveGuard } from '../hooks/useGameLeaveGuard'
 
-const BUY_IN_OPTIONS = [1000, 3000, 5000]
+// Pixi 漁場 code-split：pixi.js 只在進場時動態載入，不膨脹主 bundle。
+const FishingCanvas = lazy(() => import('../components/FishingCanvas'))
+
 const CANNON_OPTIONS = [
-  { level: 1, label: '銅炮', bet: CANNON_BET[1] },
-  { level: 2, label: '銀炮', bet: CANNON_BET[2] },
-  { level: 3, label: '金炮', bet: CANNON_BET[3] },
+  { level: 1, label: '銅炮', desc: `傷害 ${CANNON_DAMAGE[1]}・穩紮穩打` },
+  { level: 2, label: '銀炮', desc: `傷害 ${CANNON_DAMAGE[2]}・攻守均衡` },
+  { level: 3, label: '金炮', desc: `傷害 ${CANNON_DAMAGE[3]}・速殺高波動` },
 ]
 const fishingRules = [
-  '先選擇 buy-in 金額與炮台等級進場：buy-in 會一次性從星幣扣除，轉為「局內餘額」。',
-  '點擊魚開火，每發子彈固定消耗炮台注額（銅10／銀50／金100），命中即依魚種倍率派彩到局內餘額。',
-  '魚種倍率越高命中率越低，但每發子彈期望回報相同（RTP 92%），打大魚是高波動玩法。',
-  '隨時可「收網結算」，剩餘局內餘額會冪等退回星幣錢包，並揭露 server seed 供公平性驗證。',
-  '局內餘額不足時無法繼續開火，請先結算。',
+  '先選擇進場金額、子彈面額與炮台進場：進場金額會一次性從星幣扣除，轉為「局內餘額」。',
+  '子彈面額（每發注額）由你自選、整場固定，與砲台無關——面額越大派彩越高、消耗越快。',
+  '對魚開火造成傷害；魚有血量，傷害累積到血量歸零才結算擊殺。砲台越高傷害越大（銅10／銀14／金18）、暴擊扣雙倍血。',
+  '魚種倍率越高血量越厚（需更多發才打死），但每發子彈期望回報相同（RTP 96%）——打大魚是高風險高報酬。',
+  '魚游走前沒打死也別擔心：結算時會按已造成傷害「殘血回收」退還部分子彈成本（保底回收）。',
+  '隨時可「收網結算」，剩餘局內餘額＋殘血回收冪等退回星幣錢包，並揭露 server seed 供逐發公平性驗證。',
 ]
 const fishingPayouts = [
   { label: '小魚', value: '錦鯉2x／金魚3x／燈籠魚5x／河豚8x' },
@@ -120,11 +129,21 @@ export default function Fishing() {
   const balance = useSelector((state) => state.wallet.balance)
   const player = useSelector((state) => state.auth.player)
   const { play } = useSound()
-  const fortune = useFortuneMeter('fishing')
 
   const [bossActive, setBossActive] = useState(false)
-  const [selectedBuyIn, setSelectedBuyIn] = useState(BUY_IN_OPTIONS[0])
+  const [perfMode, setPerfMode] = useState(false)
+  const [autoFire, setAutoFire] = useState(false)
+  // 進場金額／子彈面額皆「檔位 + 自訂輸入」：以字串保存輸入（允許清空編輯），再夾限解析為整數。
+  const [buyInText, setBuyInText] = useState(String(BUYIN_TIERS[0]))
+  const [betText, setBetText] = useState(String(BET_TIERS[0]))
   const [selectedCannon, setSelectedCannon] = useState(1)
+  const [sessionBuyIn, setSessionBuyIn] = useState(null)
+
+  const selectedBuyIn = Number.parseInt(buyInText, 10)
+  const selectedBet = Number.parseInt(betText, 10)
+  const buyInValid = Number.isInteger(selectedBuyIn) && selectedBuyIn >= BUYIN_MIN && selectedBuyIn <= BUYIN_MAX
+  const betValid = Number.isInteger(selectedBet) && selectedBet >= BET_MIN && selectedBet <= BET_MAX
+  const canStart = buyInValid && betValid && balance >= selectedBuyIn
 
   // 慶祝特效觸發器
   const [burstTrigger, setBurstTrigger] = useState(0)
@@ -135,7 +154,9 @@ export default function Fishing() {
 
   const arenaResultsRef = useRef(null)
   const session = useFishingSession({
-    onResults: (results, ctx) => arenaResultsRef.current?.(results, ctx),
+    onResults: (results, ctx) => {
+      arenaResultsRef.current?.(results, ctx)
+    },
   })
 
   // BGM：進場深海主題；Boss 在場切中式大鼓主題。
@@ -143,7 +164,6 @@ export default function Fishing() {
 
   const handleCatch = useCallback(
     ({ payout, effMult }) => {
-      fortune.reportRound(true)
       const bannerPick = pickBannerForMultiplier(effMult)
       setBanner((prev) => ({ trigger: prev.trigger + 1, ...bannerPick }))
       setBurstTrigger((n) => n + 1)
@@ -164,17 +184,14 @@ export default function Fishing() {
         setCoinTrigger((n) => n + 1)
       }
     },
-    [fortune, play, player],
+    [play, player],
   )
 
-  const handleMiss = useCallback(() => {
-    fortune.reportRound(false)
-  }, [fortune])
-
   const handleStart = () => {
+    if (!canStart) return // 餘額/範圍守門（雙保險，按鈕已 disabled）
     play('click')
-    fortune.addCharge(selectedBuyIn)
-    session.startSession({ buyIn: selectedBuyIn, cannonLevel: selectedCannon })
+    setSessionBuyIn(selectedBuyIn)
+    session.startSession({ buyIn: selectedBuyIn, cannonLevel: selectedCannon, betPerShot: selectedBet })
   }
 
   const handleEnd = () => {
@@ -183,10 +200,13 @@ export default function Fishing() {
   }
 
   const { phase, sessionBalance, stats, settleResult, error, betPerShot, cannonLevel } = session
+  useGameLeaveGuard(
+    phase === 'playing',
+    '捕魚場次進行中，確定要離開嗎？離開後局內餘額將在 30 分鐘內自動結算退回。'
+  )
 
   return (
     <AppShell>
-      <LuckyAura active={fortune.auraActive} />
       <GoldBurst trigger={burstTrigger} origin={{ x: 50, y: 52 }} />
       <CoinRainPro trigger={coinTrigger} density={coinDensity} />
       <RedEnvelopeRain trigger={envelopeTrigger} density="heavy" />
@@ -195,19 +215,110 @@ export default function Fishing() {
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_280px]">
         <div className="grid gap-4 content-start">
           {phase === 'playing' || phase === 'settling' ? (
-            <FishingArena
-              phase={phase}
-              betPerShot={betPerShot}
-              fishTable={session.fishTable}
-              fire={session.fire}
-              play={play}
-              registerResults={(fn) => {
-                arenaResultsRef.current = fn
-              }}
-              onCatch={handleCatch}
-              onMiss={handleMiss}
-              onBossChange={setBossActive}
-            />
+            <>
+              {/* §6 固定高度 HUD 條：即時讀數貼合漁場，不隨 phase 增減 reflow（數字 tabular-nums 等寬） */}
+              <div className="fishing-hud">
+                <div className="fishing-hud__metric">
+                  <span className="fishing-hud__label">局內餘額</span>
+                  <span className="fishing-hud__value tabular-nums">{sessionBalance.toLocaleString()}</span>
+                </div>
+                <div className="fishing-hud__metric">
+                  <span className="fishing-hud__label">本場派彩</span>
+                  <span className="fishing-hud__value tabular-nums">{stats.totalPayout.toLocaleString()}</span>
+                </div>
+                <div className="fishing-hud__metric">
+                  <span className="fishing-hud__label">已射擊</span>
+                  <span className="fishing-hud__value tabular-nums">{stats.totalShots.toLocaleString()} 發</span>
+                </div>
+                {sessionBuyIn !== null && (() => {
+                  const profit = sessionBalance - sessionBuyIn
+                  return (
+                    <div className="fishing-hud__metric">
+                      <span className="fishing-hud__label">本場損益</span>
+                      <span
+                        className={`fishing-hud__value tabular-nums ${profit >= 0 ? 'text-emerald-300' : 'text-red-300'}`}
+                      >
+                        {profit >= 0 ? `+${profit.toLocaleString()}` : profit.toLocaleString()}
+                      </span>
+                    </div>
+                  )
+                })()}
+                <div className="fishing-hud__metric fishing-hud__metric--wide">
+                  <span className="fishing-hud__label">砲台</span>
+                  <span className="fishing-hud__value">{cannonLevel} 級・{betPerShot}/發</span>
+                </div>
+                <div className="fishing-hud__actions">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      play('click')
+                      setAutoFire((v) => !v)
+                    }}
+                    aria-pressed={autoFire}
+                    className="fishing-hud__perf"
+                    title="自動射擊：自動鎖定畫面內最高倍率的魚連續開火"
+                  >
+                    自動 {autoFire ? '開' : '關'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPerfMode((v) => !v)}
+                    aria-pressed={perfMode}
+                    className="fishing-hud__perf"
+                    title="效能模式：降低粒子與特效，保住手機幀率"
+                  >
+                    效能模式 {perfMode ? '開' : '關'}
+                  </button>
+                  <div className="flex flex-col items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={handleEnd}
+                      disabled={phase === 'settling'}
+                      className="gold-button fishing-hud__settle"
+                    >
+                      {phase === 'settling' ? '結算中…' : '收網結算'}
+                    </button>
+                    <span className="text-[11px] text-yellow-200/50 leading-none">
+                      剩餘餘額全額退回
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <Suspense
+                fallback={
+                  <div className="fishing-arena grid place-items-center">
+                    <p className="brand-title text-xl font-black text-yellow-100">載入漁場引擎…</p>
+                  </div>
+                }
+              >
+                <FishingCanvas
+                  phase={phase}
+                  betPerShot={betPerShot}
+                  cannonLevel={cannonLevel}
+                  fishTable={session.fishTable}
+                  fire={session.fire}
+                  play={play}
+                  perfMode={perfMode}
+                  autoFire={autoFire}
+                  registerResults={(fn) => {
+                    arenaResultsRef.current = fn
+                  }}
+                  onCatch={handleCatch}
+                  onBossChange={setBossActive}
+                />
+              </Suspense>
+
+              {/* §6 固定槽位 Boss/error 橫幅：opacity 淡入淡出，不插入/抽走節點造成 reflow */}
+              <div className="fishing-banner-slot">
+                <p className={`fishing-banner fishing-banner--boss${bossActive && phase === 'playing' ? ' is-on' : ''}`}>
+                  ⚠ Boss 降臨！高倍魚出沒
+                </p>
+                {error && phase === 'playing' && (
+                  <p className="fishing-banner fishing-banner--error is-on">{error}</p>
+                )}
+              </div>
+            </>
           ) : (
             <div className="luxury-panel grid min-h-[420px] place-items-center rounded p-6 text-center">
               {phase === 'loading' ? (
@@ -221,6 +332,30 @@ export default function Fishing() {
                     <MetricCard label="本場派彩" value={settleResult.totalPayout.toLocaleString()} tone="light" />
                     <MetricCard label="總射擊數" value={settleResult.totalShots.toLocaleString()} />
                     <MetricCard label="退回星幣" value={settleResult.credited.toLocaleString()} tone="light" />
+                    {settleResult.residualRecovery > 0 && (
+                      <div className="col-span-2">
+                        <MetricCard
+                          label="殘血回收"
+                          value={`+${settleResult.residualRecovery.toLocaleString()}`}
+                          caption="未打死的魚按已造成傷害退還部分子彈成本（已含於退回星幣）"
+                          tone="light"
+                          valueClass="text-emerald-300"
+                        />
+                      </div>
+                    )}
+                    {sessionBuyIn !== null && (() => {
+                      const profit = settleResult.credited - sessionBuyIn
+                      return (
+                        <div className="col-span-2">
+                          <MetricCard
+                            label="本場淨損益"
+                            value={profit >= 0 ? `+${profit.toLocaleString()}` : profit.toLocaleString()}
+                            caption="退回星幣 − 進場金額"
+                            valueClass={profit >= 0 ? 'text-emerald-300' : 'text-red-300'}
+                          />
+                        </div>
+                      )
+                    })()}
                   </div>
                   <p className="break-all rounded border border-yellow-200/15 bg-red-950/70 px-3 py-2 text-xs font-bold text-yellow-100/60">
                     server seed：{settleResult.serverSeed}
@@ -240,19 +375,19 @@ export default function Fishing() {
                   <div>
                     <p className="gold-muted text-xs font-black uppercase tracking-[0.3em]">Buy-in</p>
                     <h3 className="brand-title mt-1 text-3xl font-black text-yellow-100">進入漁場</h3>
-                    <p className="mt-2 text-sm font-bold text-yellow-100/64">選擇進場金額與炮台，開始捕魚。</p>
+                    <p className="mt-2 text-sm font-bold text-yellow-100/64">選擇進場金額、子彈面額與炮台，開始捕魚。</p>
                   </div>
 
                   <div className="grid gap-2 text-left">
                     <p className="gold-muted text-xs font-black uppercase tracking-[0.2em]">進場金額</p>
-                    <div className="grid grid-cols-3 gap-2">
-                      {BUY_IN_OPTIONS.map((option) => (
+                    <div className="grid grid-cols-4 gap-2">
+                      {BUYIN_TIERS.map((option) => (
                         <button
                           key={option}
                           type="button"
-                          onClick={() => setSelectedBuyIn(option)}
+                          onClick={() => setBuyInText(String(option))}
                           className={[
-                            'min-h-12 rounded border px-3 text-sm font-black transition',
+                            'min-h-12 rounded border px-2 text-sm font-black transition',
                             selectedBuyIn === option
                               ? 'gold-button'
                               : 'border-yellow-200/15 bg-red-950/70 text-yellow-100/68 hover:border-yellow-200/60',
@@ -262,10 +397,65 @@ export default function Fishing() {
                         </button>
                       ))}
                     </div>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={buyInText}
+                      onChange={(e) => setBuyInText(e.target.value.replace(/\D/g, '').slice(0, 7))}
+                      placeholder={`自訂（${BUYIN_MIN.toLocaleString()}–${BUYIN_MAX.toLocaleString()}）`}
+                      aria-label="自訂進場金額"
+                      className={[
+                        'min-h-11 rounded border bg-red-950/70 px-3 text-sm font-black text-yellow-100 outline-none transition',
+                        buyInValid ? 'border-yellow-200/20 focus:border-yellow-200/70' : 'border-red-400/50',
+                      ].join(' ')}
+                    />
+                    {!buyInValid && (
+                      <p className="text-[11px] font-bold text-red-300">
+                        進場金額需介於 {BUYIN_MIN.toLocaleString()}–{BUYIN_MAX.toLocaleString()} 星幣
+                      </p>
+                    )}
                   </div>
 
                   <div className="grid gap-2 text-left">
-                    <p className="gold-muted text-xs font-black uppercase tracking-[0.2em]">炮台等級</p>
+                    <p className="gold-muted text-xs font-black uppercase tracking-[0.2em]">子彈面額（每發注額）</p>
+                    <div className="grid grid-cols-5 gap-2">
+                      {BET_TIERS.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => setBetText(String(option))}
+                          className={[
+                            'min-h-12 rounded border px-1 text-sm font-black transition',
+                            selectedBet === option
+                              ? 'gold-button'
+                              : 'border-yellow-200/15 bg-red-950/70 text-yellow-100/68 hover:border-yellow-200/60',
+                          ].join(' ')}
+                        >
+                          {option.toLocaleString()}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={betText}
+                      onChange={(e) => setBetText(e.target.value.replace(/\D/g, '').slice(0, 5))}
+                      placeholder={`自訂（${BET_MIN}–${BET_MAX.toLocaleString()}）`}
+                      aria-label="自訂子彈面額"
+                      className={[
+                        'min-h-11 rounded border bg-red-950/70 px-3 text-sm font-black text-yellow-100 outline-none transition',
+                        betValid ? 'border-yellow-200/20 focus:border-yellow-200/70' : 'border-red-400/50',
+                      ].join(' ')}
+                    />
+                    {!betValid && (
+                      <p className="text-[11px] font-bold text-red-300">
+                        子彈面額需介於 {BET_MIN}–{BET_MAX.toLocaleString()} 星幣
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="grid gap-2 text-left">
+                    <p className="gold-muted text-xs font-black uppercase tracking-[0.2em]">炮台（火力）</p>
                     <div className="grid grid-cols-3 gap-2">
                       {CANNON_OPTIONS.map((option) => (
                         <button
@@ -280,7 +470,7 @@ export default function Fishing() {
                           ].join(' ')}
                         >
                           {option.label}
-                          <span className="block text-[11px] font-bold opacity-80">{option.bet}/發</span>
+                          <span className="block text-[11px] font-bold opacity-80">{option.desc}</span>
                         </button>
                       ))}
                     </div>
@@ -289,10 +479,16 @@ export default function Fishing() {
                   <button
                     type="button"
                     onClick={handleStart}
-                    disabled={balance < selectedBuyIn}
+                    disabled={!canStart}
                     className="red-gold-button rounded px-5 py-3 text-base font-black transition disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {balance < selectedBuyIn ? '星幣不足' : `進場（扣 ${selectedBuyIn.toLocaleString()} 星幣）`}
+                    {!buyInValid
+                      ? '請輸入有效進場金額'
+                      : !betValid
+                        ? '請輸入有效子彈面額'
+                        : balance < selectedBuyIn
+                          ? '星幣不足'
+                          : `進場（扣 ${selectedBuyIn.toLocaleString()} 星幣・每發 ${selectedBet.toLocaleString()}）`}
                   </button>
                   {error && (
                     <p className="rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">{error}</p>
@@ -304,36 +500,13 @@ export default function Fishing() {
         </div>
 
         <aside className="grid gap-4 content-start">
+          <MetricCard label="可用星幣" value={balance.toLocaleString()} caption="結算後回填" tone="light" />
           <GameRuleCard
             title="捕魚機規則"
             subtitle="了解 buy-in、炮台注額與魚種賠率。"
             rules={fishingRules}
             payouts={fishingPayouts}
           />
-          <MetricCard label="可用星幣" value={balance.toLocaleString()} caption="結算後回填" tone="light" />
-          {(phase === 'playing' || phase === 'settling') && (
-            <>
-              <MetricCard label="局內餘額" value={sessionBalance.toLocaleString()} caption={`炮台 ${cannonLevel} 級・${betPerShot}/發`} />
-              <MetricCard label="本場派彩" value={stats.totalPayout.toLocaleString()} caption={`已射擊 ${stats.totalShots} 發`} />
-              <button
-                type="button"
-                onClick={handleEnd}
-                disabled={phase === 'settling'}
-                className="gold-button rounded px-5 py-3 text-sm font-black transition disabled:opacity-50"
-              >
-                {phase === 'settling' ? '結算中…' : '收網結算'}
-              </button>
-            </>
-          )}
-          <FortuneMeter value={fortune.value} />
-          {bossActive && (phase === 'playing') && (
-            <p className="rounded border border-yellow-200/40 bg-yellow-200/10 px-4 py-3 text-center text-sm font-black text-yellow-100">
-              ⚠ Boss 降臨！高倍魚出沒
-            </p>
-          )}
-          {error && (phase === 'playing') && (
-            <p className="rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">{error}</p>
-          )}
         </aside>
       </section>
     </AppShell>

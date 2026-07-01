@@ -312,20 +312,43 @@ export function MoneyTree(props) {
   )
 }
 
-export function Cannon(props) {
-  const gid = useId()
+// 砲台調色盤（銅/銀/金三色，對應砲台等級 L1/L2/L3）。gold 與舊 Cannon 完全等價（視覺零變動）。
+const CANNON_PALETTES = {
+  copper: { bright: '#e8b878', mid: '#c8824e', deep: '#6f3a18', stroke: '#5a2f12', ring: '#3a1d0c', cap: '#8a4a22' },
+  silver: { bright: '#f2f6fa', mid: '#c2ccd6', deep: '#6e7a86', stroke: '#566069', ring: '#2c333a', cap: '#8b97a3' },
+  gold: { bright: GOLD_BRIGHT, mid: GOLD, deep: GOLD_DEEP, stroke: GOLD_DEEP, ring: RED_DEEP, cap: RED },
+}
+
+// 共用砲台向量（依 palette 上色）；gid 由呼叫端的 useId 提供避免多實例漸層衝突。
+function cannonSvg(p, gid, props) {
   return (
     <svg viewBox="0 0 100 100" {...props}>
-      <defs><GoldGradient id={gid} vertical /></defs>
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={p.bright} />
+          <stop offset="0.5" stopColor={p.mid} />
+          <stop offset="1" stopColor={p.deep} />
+        </linearGradient>
+      </defs>
       {/* 底座 */}
-      <path d="M22 92c0-12 12-20 28-20s28 8 28 20H22Z" fill={RED_DEEP} stroke={GOLD_DEEP} strokeWidth="2" />
-      <circle cx="50" cy="74" r="12" fill={`url(#${gid})`} stroke={GOLD_DEEP} strokeWidth="2" />
+      <path d="M22 92c0-12 12-20 28-20s28 8 28 20H22Z" fill={p.ring} stroke={p.stroke} strokeWidth="2" />
+      <circle cx="50" cy="74" r="12" fill={`url(#${gid})`} stroke={p.stroke} strokeWidth="2" />
       {/* 炮管 */}
-      <path d="M42 70 36 22c0-6 6-10 14-10s14 4 14 10l-6 48" fill={`url(#${gid})`} stroke={GOLD_DEEP} strokeWidth="2.4" />
-      <rect x="34" y="14" width="32" height="10" rx="5" fill={RED} stroke={GOLD_DEEP} strokeWidth="2" />
-      <path d="M44 34h12M45 44h10" stroke={GOLD_DEEP} strokeWidth="2" strokeLinecap="round" opacity="0.7" />
+      <path d="M42 70 36 22c0-6 6-10 14-10s14 4 14 10l-6 48" fill={`url(#${gid})`} stroke={p.stroke} strokeWidth="2.4" />
+      <rect x="34" y="14" width="32" height="10" rx="5" fill={p.cap} stroke={p.stroke} strokeWidth="2" />
+      <path d="M44 34h12M45 44h10" stroke={p.stroke} strokeWidth="2" strokeLinecap="round" opacity="0.7" />
     </svg>
   )
+}
+
+export function Cannon(props) {
+  return cannonSvg(CANNON_PALETTES.gold, useId(), props)
+}
+export function CannonCopper(props) {
+  return cannonSvg(CANNON_PALETTES.copper, useId(), props)
+}
+export function CannonSilver(props) {
+  return cannonSvg(CANNON_PALETTES.silver, useId(), props)
 }
 
 // 簡單金幣（粒子特效用，輕量）。

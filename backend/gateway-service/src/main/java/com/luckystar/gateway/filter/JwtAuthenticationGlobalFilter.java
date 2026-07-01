@@ -29,7 +29,9 @@ import java.nio.charset.StandardCharsets;
  *  3. 驗 JWS 簽章 + exp；失敗則 401
  *  4. 查 Redis 黑名單（key: jwt:blacklist:{jti}）；命中則 401
  *  5. 查 Redis 使用者級封鎖（key: disabled:player:{sub}，後台 T-051 停用玩家）；命中則 401
- *  6. 將 sub、role 透過 X-User-Id / X-User-Role header 轉發給下游
+ *  6. 查 Redis 簽發時間下限（key: token:min-iat:{sub}）；token 的 iat 早於此值則 401——
+ *     用於讓「停用前簽發」的舊 token 在啟用後不會復活（停用時寫入、啟用不刪、靠 TTL 清除）
+ *  7. 將 sub、role 透過 X-User-Id / X-User-Role header 轉發給下游
  */
 @Component
 public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
@@ -38,6 +40,7 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
     private static final String BEARER_PREFIX = "Bearer ";
     private static final String BLACKLIST_KEY_PREFIX = "jwt:blacklist:";
     private static final String DISABLED_PLAYER_KEY_PREFIX = "disabled:player:";
+    private static final String TOKEN_MIN_IAT_KEY_PREFIX = "token:min-iat:";
     private static final String USER_ID_HEADER = "X-User-Id";
     private static final String USER_ROLE_HEADER = "X-User-Role";
     private static final String ADMIN_PATH_PREFIX = "/admin/";
@@ -89,6 +92,8 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
         String jti = claims.getId();
         String userId = claims.getSubject();
         Object role = claims.get("role");
+        // token 簽發時間（epoch 秒）；用於比對 token:min-iat 封鎖門檻
+        long iatSeconds = claims.getIssuedAt() == null ? 0L : claims.getIssuedAt().toInstant().getEpochSecond();
 
         Mono<Boolean> blacklistCheck = (jti == null)
                 ? Mono.just(Boolean.FALSE)
@@ -97,9 +102,22 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
         Mono<Boolean> disabledCheck = (userId == null)
                 ? Mono.just(Boolean.FALSE)
                 : redis.hasKey(DISABLED_PLAYER_KEY_PREFIX + userId);
+        // 簽發時間下限：token 的 iat 早於 token:min-iat:{sub} 則視為已撤銷（停用前簽發的舊 token，
+        // 啟用後也不復活）。key 不存在 → 不限制。
+        Mono<Boolean> minIatCheck = (userId == null)
+                ? Mono.just(Boolean.FALSE)
+                : redis.opsForValue().get(TOKEN_MIN_IAT_KEY_PREFIX + userId)
+                        .map(v -> {
+                            try {
+                                return iatSeconds < Long.parseLong(v.trim());
+                            } catch (NumberFormatException e) {
+                                return Boolean.FALSE;
+                            }
+                        })
+                        .defaultIfEmpty(Boolean.FALSE);
 
-        return Mono.zip(blacklistCheck, disabledCheck)
-                .map(checks -> checks.getT1() || checks.getT2())
+        return Mono.zip(blacklistCheck, disabledCheck, minIatCheck)
+                .map(checks -> checks.getT1() || checks.getT2() || checks.getT3())
                 // Redis 故障 → fail-closed：拒絕請求而非放行，避免黑名單/封鎖失效導致已撤銷的 token 復活
                 .onErrorResume(err -> {
                     log.warn("Redis revocation check failed, denying request: {}", err.getMessage());

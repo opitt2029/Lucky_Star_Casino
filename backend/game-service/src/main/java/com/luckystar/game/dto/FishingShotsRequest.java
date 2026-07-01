@@ -33,14 +33,22 @@ public class FishingShotsRequest {
         @Min(value = 1, message = "shotSeq 由 1 起算")
         private Long shotSeq;
 
-        /** 單發下注額（須符合炮台等級允許值）。 */
+        /** 單發下注額（須等於進場選定的面額；玩家自選、與砲台解耦，ADR-004）。上限對齊 FishingService.MAX_BET。 */
         @NotNull
         @Min(value = 1, message = "betPerShot 必須為正")
-        @Max(value = 1000, message = "betPerShot 上限 1,000")
+        @Max(value = 10000, message = "betPerShot 上限 10,000")
         private Long betPerShot;
 
         /** 目標魚種代碼（FishSpecies 名稱）。 */
         @NotBlank(message = "缺少魚種代碼 fishType")
         private String fishType;
+
+        /**
+         * 目標魚 instance 識別碼（前端為每條魚產生的穩定 id）。血量/傷害模型用以跨批次累積同一條魚的傷害；
+         * 同一條魚的連續射擊須帶相同 fishInstanceId。
+         */
+        @NotBlank(message = "缺少 fishInstanceId")
+        @Size(max = 64, message = "fishInstanceId 過長")
+        private String fishInstanceId;
     }
 }

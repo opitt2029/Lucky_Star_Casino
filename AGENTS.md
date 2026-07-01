@@ -26,6 +26,8 @@
 | 7 | `docs/幸運星幣城_工作分配表.xlsx` | 任務與分工的**單一真相來源**（T-000~T-107） |
 | 8 | `CHANGELOG.md` | 最近改了什麼、為什麼 |
 
+> ⚠️ **查進度別只信 `AUDIT_REPORT.md`，務必拿程式碼/git 交叉驗證**：它是「手動維護的快照」，更新靠人記得去盤點，所以會落後實際程式碼（已合併的任務常被漏標成未完）。實例：wallet 的 T-027/T-028 早在 2026-06-01 就 commit 併入，卻在 6/17 盤點仍標 ❌/⚠️，害每次查進度都誤報 wallet「進行中」。判定某任務是否完成，至少做一項驗證：對應 Controller/Service 檔是否存在、`git log --oneline -- <檔>` 有無該 `T-0xx` commit、`git branch --contains <sha>` 是否在 develop/main、測試是否存在。發現與 AUDIT_REPORT 不符時，**以程式碼為準並順手更正文件**（依 §3 記 CHANGELOG）。
+
 ---
 
 ## 2. ⚠️ 已知地雷（不讀會踩，務必記住）
@@ -39,9 +41,26 @@
 7. **改 Kafka topic 要同步改 infra 測試**：`kafka/kafka-init.sh` 增刪 topic 後，更新 `tests/infra/kafka.test.js` 的 topic 清單與數量斷言，否則 CI 紅。
 8. **帳務操作=冪等 + 樂觀鎖**：`wallet_transactions.idempotency_key` UNIQUE 防重複、`wallets.version`（`@Version`）防超扣。所有扣款/入帳都要遵循此模式。
 9. **`gem-prompt` 技能**（Claude Code）：產生後端實作提示詞，會先讀真實專案檔。開新後端任務可先用它。
-10. **服務完成度**：member / gateway / wallet 已實作；rank 已完成 T-040~T-042 排行榜核心；**game 已完成 T-030~T-037 全部**（Provably Fair RNG / 老虎機滾輪邏輯 / `POST /api/v1/game/slot/spin` / Redis Session 兩階段 commit-ahead / 百家樂邏輯+API `/bet`+`/result` / RNG 公平性驗證 API / 遊戲 RTP 統計排程+API）；**admin 已完成 T-050 認證地基**（獨立 `ADMIN_JWT_SECRET`、SUPER_ADMIN/OPERATOR 角色、Spring Security `/admin/**`、`POST /admin/auth/login`、`admin_users` 表 + seeder；業務 API 已完成 T-051/T-052/T-053（玩家管理/星幣流通量/RTP 監控）與 T-105/T-106（鑽石點數卡生成+列表，寫 admin 既有 MySQL 源））；**notification 服務已建立**（port 8087，無 DB，純事件→WebSocket 橋接：T-070 STOMP `/ws`+JWT CONNECT 鑑權、T-071 消費 `notification.push`、T-072 消費 `game.result` 推玩家私人佇列；推播 best-effort 無 DLT）。動工前先看 AUDIT_REPORT 附錄 A 與 CHANGELOG 確認。
+10. **服務完成度**：member / gateway / wallet 已實作；rank 已完成 T-040~T-044 排行榜核心（含週排行榜重置/每日快照）；**game 已完成 T-030~T-037 全部**（Provably Fair RNG / 老虎機 / 百家樂 / RNG 驗證 / RTP 統計）；**捕魚機升級 Phase 1（血量/傷害模型）+ Phase 2（PixiJS 漁場引擎）已併入 develop**，Phase 3（戰鬥回饋/砲台差異化/新互動）進行中，見下方雷區 16；**admin 已完成 T-050~T-053 / T-105~T-106**（認證/玩家管理/流通量報表/RTP 監控/鑽石點數卡後台）；**notification 已完成 T-070~T-073 全部**（port 8087，STOMP `/ws`+JWT 鑑權、消費 `notification.push`/`game.result`/`rank.update`，推播 best-effort 無 DLT）；**鑽石系統 T-100~T-107 全完成**（`diamond_cards`/`diamond_wallets` schema、`DiamondWalletService` 開戶 + `POST /redeem` 兌換 + `POST /exchange` 換星幣 + `GET /balance` 查詢、前端 Diamond.jsx + diamondSlice + diamondApi）。動工前先看 AUDIT_REPORT 附錄 A.13 進度統計與 CHANGELOG 確認。
 11. **`friend.relationship.updated` 是完整好友清單事件**：member 在好友接受/刪除後，為雙方各發布 `{ playerId, friendIds }`；rank 依完整清單重建 `rank:friend:{playerId}`，不要改成只帶單筆新增/刪除的增量事件。
 12. **T-090 壓測腳本實測前置**：`tests/performance/slot-1000-players.jmx` 已建立，T-032 老虎機 API 已完成（實際端點 `POST /api/v1/game/slot/spin`，冪等鍵由伺服器端生成、非 client 傳入）。但實測前仍須**對齊 jmx 與報告假設契約**、準備 1,000 組已入金玩家 JWT 並啟動完整服務拓撲；沒有實測資料時不可填寫虛構 P99。詳見 `docs/performance/T-090-load-test-report.md`。
+13. **前端遊戲（slot/baccarat/fishing 及新遊戲）三鐵則**：每個有下注的遊戲都必須遵守，否則會重現「沒錢狂按 / 視覺鎖脫鉤 / 音效當機」三類 bug。
+    - **餘額守門**：下注/開火按鈕 `disabled` 條件必須含 `balance >= bet`（不足時顯示「星幣不足」），送出函式開頭再做一次 `if (balance < bet) return` 雙保險，**前端先擋、不要只靠後端退回**。參考 `Fishing.jsx`（buy-in disabled + `useFishingSession.fire()` 的 `insufficient`）、`SlotGame.jsx`（`canAfford`）、`Baccarat.jsx`（`notEnoughBalance`）。
+    - **視覺鎖綁定真實流程**：忙碌/loading 狀態要跟著「請求 + 動畫」的實際生命週期釋放（redux `loading`、`phase` 狀態機、或 `try/finally` 回呼），**禁止用固定 `setTimeout(…, 2900)` 之類的魔術數字**解鎖。
+    - **音效統一走 `soundEngine`**：所有音效用 `soundEngine.play()` 或 `useSound().play()`；引擎已內建 per-id 節流與發聲上限（`SoundEngine.js`），高頻音（tick/rub/連發）交給引擎節流，**不要在元件層自己 `new Audio` 或繞過引擎**。高頻互動（如捕魚開火）另需用 token bucket 限速（見 `useFishingSession`）。
+14. **前端 mock 玩法必須鏡像後端引擎（單一真相＝後端）**：前端預設走 mock（`gameApi.js`：`VITE_USE_MOCK_API !== 'false'`），所以 `frontend/src/services/mockApi.js` 的玩法/賠付就是預設玩家實際體驗到的。**改後端遊戲規則（權重/倍率/補牌/結算）時，必須同步改 mock**，否則兩個世界分歧。已對齊基準：老虎機（`SLOT_PAYTABLE` ↔ `SlotSymbol`：逐格加權、中線三連、倍率綁符號）、百家樂（`bankerDrawsMock` ↔ `BaccaratGameService.bankerDraws`：補牌表、天牌、**和局押莊/閒 push 退本金**、莊贏扣 5% 傭金）、捕魚（**血量/傷害模型**：`mockApi.fishingShots` ↔ `FishingCombat`／`FishSpecies`——per-instance 累傷、暴擊 `CRIT_CHANCE`/`CRIT_MULTIPLIER`、致命一擊 `pCapture` 捕獲判定，見 ADR-003 與下方雷區 16；**已非舊「命中率 0.92/倍率」**）。**勿在 mock 加「強制中獎率」或隨機倍率**等後端沒有的機制。
+15. **改老虎機權重要同步改測試**：`SlotSymbol` 權重一變，`SlotSymbolTest`（總和、`fromWeightedIndex` 累積區間）與 `SlotMachineTest.spin_rtpWithinExpectedBand`（RTP/命中率區間）會紅；改完務必跑 `mvn -pl backend/game-service test` 並更新 Javadoc 的理論 RTP/命中率（單中線三連、含本金倍率：RTP=Σpᵢ³·mᵢ、命中率=Σpᵢ³）。
+16. **捕魚機＝PixiJS canvas 引擎 + 血量/傷害模型（已非 DOM、非「每發獨立命中」）**：決策見 `docs/adr/ADR-003.md`、`docs/adr/ADR-004.md`（經濟再平衡）。
+    - **渲染**：漁場是 `frontend/src/components/fishingEngine.js`（非 React 的 Pixi 引擎，單一 `ticker` 跑魚/子彈/火花/浮字、命中判定全在 canvas 座標）+ `FishingCanvas.jsx`（薄 React 殼，`React.lazy` code-split）。**不要回去用 DOM 渲染魚**（舊 `FishingArena.jsx` 已刪，當機元兇）。新增戰鬥演出（HP 條/傷害數字/暴擊/掙脫）一律做成 **Pixi 物件 + 物件池 + 並存上限**，尊重 `perfMode`/FPS 守門/`prefers-reduced-motion`。
+    - **數值權威在後端**：傷害累積、致命一擊 `pCapture` 捕獲判定、派彩全由 `FishingCombat`/`FishingService` 算；前端只決定「打哪條、何時打」。後端回傳 `ShotResult{crit,damage,hpRemaining,killed,captured}`，前端**只負責演出**這些欄位。
+    - **跨批戰鬥狀態必須持久化進 Redis**：捕魚是 buy-in + 批次結算，魚的累傷 `fishDamage`（key=`fishInstanceId`）、致命一擊 `kills`、**玩家自選的單發面額 `betPerShot`**（ADR-004，與砲台解耦）都存在 `FishingSession`，每批 `shots()` 都 `find()` 重讀 session。**動 `FishingSession` 欄位時，務必同步在 `FishingSessionStore.toHash()/fromHash()` 補序列化**（集合用 `ObjectMapper` 存 JSON 欄位），否則跨批累傷歸零→**大魚永遠打不死（HP 每批「回寫」回滿）**，或 `betPerShot` 歸零→`validateBatch` 注額對不上整批被拒。此雷曾因 store 漏存欄位、且 `FishingServiceTest` 把 store 整個 mock 掉而漏網；回歸由 `FishingSessionStoreTest` 守門。
+    - **經濟模型（ADR-004）**：`TARGET_RTP=0.96`（設計值/天花板）、砲台傷害收斂為 `{0,10,14,18}`、**殘血部分回收 `RECOVERY_RATE=0.70`**（結算時對 `fishDamage` 殘血魚退還部分子彈成本 = 體感 RTP 地板；`FishingService.settleInternal` 累加、`FishingCombat.recoveryPayout` 計算）。子彈面額玩家自選（檔位＋自訂，`MIN_BET=10/MAX_BET=10000`）、與砲台解耦——**勿把注額改回綁砲台**。**勿對低捕獲率做 pCapture 硬地板**（會使 RTP 破表，見 ADR-004），要降「血歸零卻掙脫」改用縮小砲台傷害差距。
+    - **改數值四同步**（比照雷區 15）：動 `FishingCombat`（HP/傷害/暴擊/`pCapture`/`RECOVERY_RATE`）→ 同步 ① `mockApi.js` 鏡像（雷區 14）② `FishingCombatTest` 的 RTP band ③ `risk.global-rtp-limit` 的 `FISHING` 門檻（雷區 17），並跑 `mvn -pl backend/game-service test`。
+    - **依賴**：前端用 `pixi.js`（`package.json`）；`git pull` 後若 build 報 `Rollup failed to resolve import "pixi.js"`＝忘了 `npm install`。
+17. **風控全局 RTP 門檻是 per-game 且為「含本金」口徑**（`risk.global-rtp-limit` 為 map，見 `RiskProperties` / `RiskControlService`）：`game_rounds.win_amount` 存的是**含本金**派彩，故 RTP=`win/bet` 的正常水位 ≈ 各遊戲結構性 RTP（老虎機 ≈ 0.94、百家樂 ≈ 0.99、捕魚機設計 RTP 0.96 含殘血回收，ADR-004）。門檻**必須訂在該遊戲結構性 RTP 之上**，否則風控每局誤判超限、把結果強制改判（百家樂被改成「莊家贏」）—— 這正是 2026-06-25 修掉的 bug。捕魚為高變異（大魚捕獲單局 RTP 可遠超 1），門檻 `FISHING: 1.10` 留足裕度。**新增遊戲或調門檻時**：在 `application.yml` 的 `risk.global-rtp-limit` 補該遊戲鍵（未列出走 `default`），值要高於其含本金 RTP；別退回單一標量門檻。
+18. **新增 wallet 帳務子型（`sub_type` 字串非 enum）要四同步**：① DTO 的 `@Pattern` regex 與訊息——CREDIT 子型改 `dto/CreditRequest.java`、**DEBIT 子型改 `dto/DebitRequest.java`** ② `database/postgres/init.sql` 的 `chk_wt_sub_type` + 新 migration（仿 `V12`/`V13`）③ `database/mysql/init.sql` 的 `chk_wt_sub_type` + 新 migration（仿 `V9`/`V10`，注意 MySQL 是 `DROP CHECK`、Postgres 是 `DROP CONSTRAINT IF EXISTS`）。漏任一處：wallet 帳務會在 `@Pattern` 被擋（400）或在讀庫/寫庫撞 CHECK。rank-service 只認 `WIN` 計分，其餘子型（含 `MONTHLY_REWARD`/`CHECKIN`/`REFUND`/`SHOP_PURCHASE`）不污染排行。範例：月度簽到獎勵 `MONTHLY_REWARD`（CREDIT，ADR-005）；商城兌換 `SHOP_PURCHASE`（DEBIT，ADR-006）。⚠️ `debit()` 的 subType 原寫死 `BET`，現改為 `DebitRequest.subType` 可選帶入（預設 BET）；game-service 不帶 → 仍記 BET，行為不變。
+19. **member-service 的端點若落在 `/api/v1/wallet/**` 路徑下，必須加進 gateway 的 `member-checkin` 路由 `Path`（且排在 `wallet` catch-all 之前）**：`backend/gateway-service/src/main/resources/application.yml` 的 `member-checkin`（`uri=MEMBER_SERVICE_URL`）目前是 `Path=/api/v1/wallet/daily-checkin,/api/v1/wallet/checkin/**`。新增 member 的 wallet 子路徑（如簽到狀態/月度獎勵）要補進這條，否則被下方 `Path=/api/v1/wallet/**` 攔截轉發到 wallet-service → 404（wallet 沒這些端點）。Spring Cloud Gateway 路由按宣告順序比對，**具體路徑必須排在 catch-all 之前**。
+20. **禮品商城＝wallet-service 內（非獨立服務，ADR-006）**：玩家端兌換/目錄/背包在 wallet-service，端點 `/api/v1/wallet/shop/**`（被既有 `wallet` 路由吃下，**免改 gateway**；因路徑在 wallet 服務內，不像雷區 19 那樣需另立路由）。兌換＝單一 Postgres 交易內「`WalletService.debit(SHOP_PURCHASE)` + 寫 `shop_redemptions`」原子完成，重用 debit 冪等/樂觀鎖（範本＝`DiamondExchangeService`）。目錄 `shop_items` 在 **MySQL**（admin-service CRUD、wallet 讀；跨資料源讀目錄拆 `ShopCatalogService` 用 `mysqlTransactionManager`，比照 `DiamondRedeemService`，**勿合併進 postgres 交易方法**，自我呼叫會讓 `@Transactional` 失效）。後台目錄管理在 admin-service（`hasRole('ADMIN')`，寫 `admin_action_logs` 稽核）。改數值/目錄要同步前端 mock `mockApi.SHOP_CATALOG`（雷區 14）。子型 `SHOP_PURCHASE` 四同步見雷區 18。
 
 ---
 
@@ -73,7 +92,7 @@
 
 ```bash
 # 後端：跑已實作服務的測試（用 H2，免外部基礎設施）
-mvn -pl backend/gateway-service,backend/member-service,backend/wallet-service test
+mvn -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/admin-service test
 
 # 基礎設施腳本測試
 node --test tests/infra/*.test.js

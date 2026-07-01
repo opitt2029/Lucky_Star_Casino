@@ -1,6 +1,10 @@
 package com.luckystar.game.fishing;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -41,11 +45,17 @@ public class FishingSession {
     /** 座位索引 0~3（多人同台預留；單人版固定 0）。 */
     private Integer seatIndex;
 
-    /** 炮台等級 1~3（決定單發注額與射速上限）。 */
+    /** 炮台等級 1~3（決定火力/擊殺速度/變異度與射速上限；注額已與砲台解耦，見 {@link #betPerShot}）。 */
     private Integer cannonLevel;
+
+    /** 子彈面額（單發注額）：玩家進場自選、整場固定，與砲台解耦（ADR-004）。 */
+    private Long betPerShot;
 
     /** 帶入金額（start 時自 wallet 一次性扣款）。 */
     private Long buyIn;
+
+    /** 投注前錢包餘額（start 扣 buyIn 前），結算落地對局時寫入 game_rounds 供注單稽核。 */
+    private Long balanceBefore;
 
     /** 局內餘額：buyIn − 累計子彈下注 + 累計派彩。end 時 credit 回 wallet。 */
     private Long sessionBalance;
@@ -78,7 +88,35 @@ public class FishingSession {
     /** 最後一次受理批次的時間（射速防刷與閒置回收依據）。 */
     private Instant lastActivityAt;
 
+    /** 場次中是否有任何批次曾被風控攔截（verifyShot 警示用）。 */
+    private Boolean intercepted;
+
+    /**
+     * 血量/傷害模型：每條魚 instance（key = 前端產生的 fishInstanceId）目前已累積的傷害。
+     * 致命一擊（累傷達 HP）後該 entry 移除。並存上限由 {@code FishingService} 控管以防灌量。
+     */
+    @Builder.Default
+    private Map<String, Long> fishDamage = new LinkedHashMap<>();
+
+    /**
+     * 致命一擊紀錄（供結算後 verifyShot 精確重放）：記錄每次「血量歸零」那一發的
+     * shotSeq、魚種與該發之前的累積傷害（damageBefore）。
+     */
+    @Builder.Default
+    private List<KillRecord> kills = new ArrayList<>();
+
     public boolean isActive() {
         return "ACTIVE".equals(state);
+    }
+
+    /** 致命一擊紀錄（Redis/JSON 可序列化）。 */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class KillRecord {
+        private long shotSeq;
+        private String fishType;
+        /** 該致命一擊之前該魚已累積的傷害（verifyShot 用以對齊判定）。 */
+        private long damageBefore;
     }
 }

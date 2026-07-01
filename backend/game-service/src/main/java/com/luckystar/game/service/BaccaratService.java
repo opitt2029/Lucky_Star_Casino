@@ -8,6 +8,7 @@ import com.luckystar.game.baccarat.BaccaratSettlement;
 import com.luckystar.game.baccarat.Card;
 import com.luckystar.game.client.WalletClient;
 import com.luckystar.game.client.dto.WalletCreditResponse;
+import com.luckystar.game.client.dto.WalletDebitResponse;
 import com.luckystar.game.dto.BaccaratBetResponse;
 import com.luckystar.game.dto.BaccaratResultResponse;
 import com.luckystar.game.dto.WalletView;
@@ -20,6 +21,7 @@ import com.luckystar.game.rng.RandomStream;
 import com.luckystar.game.session.GameSession;
 import com.luckystar.game.session.GameSessionService;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -64,6 +66,7 @@ public class BaccaratService {
     private final GameResultEventPublisher eventPublisher;
     private final GameSessionService sessionService;
     private final ObjectMapper objectMapper;
+    private final RiskControlService riskControlService;
 
     /**
      * 下注（commit-ahead 第一階段）：驗證多區押注、扣款、建立 STARTED Session、回傳 serverSeedHash 承諾。
@@ -97,13 +100,14 @@ public class BaccaratService {
                 ? requestedClientSeed : rng.generateClientSeed();
 
         // 扣下注總額（冪等）。餘額不足會丟 InsufficientBalanceException，於此中止、不建 Session。
-        walletClient.debit(playerId, total, "bac-bet-" + roundId, roundId);
+        WalletDebitResponse debit = walletClient.debit(playerId, total, "bac-bet-" + roundId, roundId);
 
         GameSession session = GameSession.builder()
                 .roundId(roundId)
                 .playerId(playerId)
                 .gameType(GAME_TYPE)
                 .betAmount(total)
+                .balanceBefore(debit.balanceBefore())
                 .betPlayer(bp)
                 .betBanker(bb)
                 .betTie(bt)
@@ -143,9 +147,33 @@ public class BaccaratService {
         long bt = nz(session.getBetTie());
         long totalBet = nz(session.getBetAmount());
 
-        // 發牌與結算（確定性）
-        RandomStream stream = rng.stream(session.getServerSeed(), session.getClientSeed(), NONCE);
+        // 發牌與結算
+        long actualNonce = NONCE;
+        RandomStream stream = rng.stream(session.getServerSeed(), session.getClientSeed(), actualNonce);
         BaccaratOutcome outcome = baccaratGame.deal(stream);
+
+        // 風控攔截：淨贏或全局 RTP 超限時，強制結果為莊家贏（確保牌面與結果一致，搜不同 nonce）。
+        // shouldIntercept 佔用並發閘；settle 最後的 finally 必須釋放。
+        boolean intercepted = riskControlService.shouldIntercept(playerId, GAME_TYPE);
+        try {
+        if (intercepted && outcome.result() != BaccaratResult.BANKER) {
+            boolean interceptFound = false;
+            for (long attempt = 10001L; attempt <= 11000L; attempt++) {
+                RandomStream tryStream = rng.stream(session.getServerSeed(), session.getClientSeed(), attempt);
+                BaccaratOutcome tryOutcome = baccaratGame.deal(tryStream);
+                if (tryOutcome.result() == BaccaratResult.BANKER) {
+                    outcome = tryOutcome;
+                    actualNonce = attempt;
+                    interceptFound = true;
+                    log.warn("[風控] 百家樂結果強制改為莊家贏 roundId={} playerId={}", roundId, playerId);
+                    break;
+                }
+            }
+            if (!interceptFound) {
+                log.error("[風控] 百家樂攔截失效：1000 次均未命中 BANKER roundId={} playerId={}", roundId, playerId);
+            }
+        }
+
         Map<BaccaratResult, Long> bets = new EnumMap<>(BaccaratResult.class);
         if (bp > 0) {
             bets.put(BaccaratResult.PLAYER, bp);
@@ -159,21 +187,22 @@ public class BaccaratService {
         BaccaratSettlement settlement = baccaratGame.settle(outcome, bets);
         long totalPayout = settlement.totalPayout();
 
-        // 命中則派彩（冪等）；未中則無需呼叫 wallet。
-        WalletView wallet = null;
-        if (totalPayout > 0) {
-            WalletCreditResponse credit = walletClient.credit(
-                    playerId, totalPayout, "bac-win-" + roundId, roundId);
-            wallet = WalletView.builder()
-                    .balance(credit.balanceAfter())
-                    .frozenAmount(credit.frozenAfter() == null ? 0L : credit.frozenAfter())
-                    .build();
-        }
+        // 反水：每局依下注總額的 0.5% 返還（最低 1 星幣），無論輸贏皆發放。
+        long rebate = Math.max(1L, totalBet / 200);
+
+        // 派彩 + 反水一併入帳（冪等）；反水保證每局都有 credit 呼叫。
+        WalletCreditResponse credit = walletClient.credit(
+                playerId, totalPayout + rebate, "bac-win-" + roundId, roundId);
+        WalletView wallet = WalletView.builder()
+                .balance(credit.balanceAfter())
+                .frozenAmount(credit.frozenAfter() == null ? 0L : credit.frozenAfter())
+                .build();
 
         // 寫對局（以 roundId 去重，重試不重複插入）。
         if (roundRepository.findByRoundId(roundId).isEmpty()) {
             try {
-                GameRound round = buildRound(session, outcome, settlement);
+                GameRound round = buildRound(session, outcome, settlement, actualNonce, credit.balanceAfter());
+                round.setWinAmount(settlement.totalPayout() + rebate);
                 roundRepository.save(round);
                 eventPublisher.publishBaccaratResult(round, outcome);
             } catch (DataIntegrityViolationException e) {
@@ -185,7 +214,7 @@ public class BaccaratService {
         }
 
         // 揭露 serverSeed 並標記結算
-        sessionService.markSettled(playerId, roundId, session.getServerSeed(), NONCE);
+        sessionService.markSettled(playerId, roundId, session.getServerSeed(), actualNonce);
 
         log.info("baccarat settled roundId={} playerId={} result={} totalBet={} totalPayout={}",
                 roundId, playerId, outcome.result(), totalBet, totalPayout);
@@ -202,27 +231,38 @@ public class BaccaratService {
                 .payouts(payoutsMap(settlement))
                 .totalBet(totalBet)
                 .totalPayout(totalPayout)
+                .rebate(rebate)
                 .wallet(wallet)
                 .serverSeed(session.getServerSeed())
                 .serverSeedHash(session.getServerSeedHash())
                 .clientSeed(session.getClientSeed())
-                .nonce(NONCE)
+                .nonce(actualNonce)
                 .build();
+        } finally {
+            riskControlService.releaseRiskSlot(playerId);
+        }
     }
 
-    private GameRound buildRound(GameSession session, BaccaratOutcome outcome, BaccaratSettlement settlement) {
+    private GameRound buildRound(GameSession session, BaccaratOutcome outcome,
+                                  BaccaratSettlement settlement, long nonce, Long balanceAfter) {
         GameRound round = new GameRound();
         round.setRoundId(session.getRoundId());
         round.setPlayerId(session.getPlayerId());
         round.setGameType(GAME_TYPE);
         round.setBetAmount(settlement.totalBet());
         round.setWinAmount(settlement.totalPayout());
+        round.setBalanceBefore(session.getBalanceBefore());
+        round.setBalanceAfter(balanceAfter);
         round.setServerSeed(session.getServerSeed());
         round.setServerSeedHash(session.getServerSeedHash());
         round.setClientSeed(session.getClientSeed());
-        round.setNonce(NONCE);
+        round.setNonce(nonce);
         round.setResultData(writeResultJson(outcome, settlement));
         round.setStatus(STATUS_SETTLED);
+        // 下注時間＝開局（placeBet）時間；派彩時間＝結算當下，兩者區分供注單稽核。
+        if (session.getCreatedAt() != null) {
+            round.setBetAt(LocalDateTime.ofInstant(session.getCreatedAt(), ZoneId.systemDefault()));
+        }
         round.setSettledAt(LocalDateTime.now());
         return round;
     }

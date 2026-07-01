@@ -71,30 +71,34 @@ function Dot({ winner, ties = 0, small = false }) {
   )
 }
 
+// 大路最多顯示幾欄（依面板寬度估算：300px - 2*16px padding - scrollbar ≈ 260px；每欄 21px）
+const MAX_BIG_ROAD_COLS = 12
+// 珠盤路最多顯示 6×10 = 60 顆
+const MAX_BEAD_COLS = 10
+
 export default function BaccaratRoadmap({ history = [] }) {
   const bigRoad = useMemo(() => buildBigRoad(history), [history])
   const streak = useMemo(() => currentStreak(history), [history])
-  // 珠盤路只顯示最近 6x12 局
-  const beads = history.slice(-ROWS * 12)
-  const visibleColumns = bigRoad.slice(-14)
+  const beads = history.slice(-ROWS * MAX_BEAD_COLS)
+  const visibleColumns = bigRoad.slice(-MAX_BIG_ROAD_COLS)
 
   return (
-    <div className="luxury-panel-soft rounded p-4">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="luxury-panel-soft rounded p-4 min-w-0 w-full overflow-hidden">
+      <div className="flex items-center justify-between gap-2 min-w-0">
+        <div className="shrink-0">
           <p className="gold-muted text-xs font-black uppercase tracking-[0.25em]">Roadmap</p>
           <h3 className="brand-title mt-1 text-xl font-black">路單</h3>
         </div>
         {streak.count >= 3 && (
           <span
             className={[
-              'animate-pulse rounded-full border px-3 py-1 text-xs font-black',
+              'animate-pulse rounded-full border px-2 py-1 text-xs font-black shrink min-w-0 text-center',
               streak.winner === 'Banker'
                 ? 'border-red-300/60 bg-red-600/30 text-red-100'
                 : 'border-blue-300/60 bg-blue-600/30 text-blue-100',
             ].join(' ')}
           >
-            {DOT_LABELS[streak.winner]} {streak.count} 連！長龍出沒
+            {DOT_LABELS[streak.winner]} {streak.count} 連！
           </span>
         )}
       </div>
@@ -104,8 +108,8 @@ export default function BaccaratRoadmap({ history = [] }) {
       ) : (
         <>
           <p className="mt-3 text-[11px] font-bold uppercase tracking-widest text-yellow-100/50">大路</p>
-          <div className="mt-1 overflow-x-auto rounded border border-yellow-200/15 bg-red-950/70 p-2">
-            <div className="flex gap-1">
+          <div className="mt-1 w-full overflow-x-auto rounded border border-yellow-200/15 bg-red-950/70 p-2">
+            <div className="flex gap-1" style={{ width: 'max-content' }}>
               {visibleColumns.map((column, colIndex) => (
                 <div key={colIndex} className="flex flex-col gap-1">
                   {Array.from({ length: ROWS }, (_, rowIndex) => (
@@ -119,15 +123,21 @@ export default function BaccaratRoadmap({ history = [] }) {
           </div>
 
           <p className="mt-3 text-[11px] font-bold uppercase tracking-widest text-yellow-100/50">珠盤路</p>
-          <div className="mt-1 overflow-x-auto rounded border border-yellow-200/15 bg-red-950/70 p-2">
-            <div className="grid grid-flow-col gap-1" style={{ gridTemplateRows: `repeat(${ROWS}, minmax(0, 1fr))` }}>
+          <div className="mt-1 w-full overflow-x-auto rounded border border-yellow-200/15 bg-red-950/70 p-2">
+            <div
+              className="grid grid-flow-col gap-1"
+              style={{
+                gridTemplateRows: `repeat(${ROWS}, minmax(0, 1fr))`,
+                width: 'max-content',
+              }}
+            >
               {beads.map((round, index) => (
                 <Dot key={index} winner={round.winner} small />
               ))}
             </div>
           </div>
 
-          <div className="mt-3 flex gap-3 text-xs font-bold text-yellow-100/60">
+          <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs font-bold text-yellow-100/60">
             <span>莊 {history.filter((r) => r.winner === 'Banker').length}</span>
             <span>閒 {history.filter((r) => r.winner === 'Player').length}</span>
             <span>和 {history.filter((r) => r.winner === 'Tie').length}</span>

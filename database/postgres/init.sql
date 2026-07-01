@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
     id               BIGSERIAL    NOT NULL,
     player_id        BIGINT       NOT NULL,
     type             VARCHAR(10)  NOT NULL,   -- DEBIT / CREDIT / BONUS
-    sub_type         VARCHAR(20)  NOT NULL,   -- BET / WIN / CHECKIN / TASK / GIFT / GM_REWARD / BANKRUPTCY_AID
+    sub_type         VARCHAR(20)  NOT NULL,   -- BET / WIN / CHECKIN / TASK / GIFT / GM_REWARD / BANKRUPTCY_AID / DIAMOND_EXCHANGE / TOPUP / CASHBACK / REFUND
     amount           BIGINT       NOT NULL,
     balance_before   BIGINT,
     balance_after    BIGINT,
@@ -39,13 +39,60 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
     created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_wallet_transactions PRIMARY KEY (id),
     CONSTRAINT chk_wt_type     CHECK (type    IN ('DEBIT', 'CREDIT', 'BONUS')),
-    CONSTRAINT chk_wt_sub_type CHECK (sub_type IN ('BET', 'WIN', 'CHECKIN', 'TASK', 'GIFT', 'GM_REWARD', 'BANKRUPTCY_AID')),
+    CONSTRAINT chk_wt_sub_type CHECK (sub_type IN ('BET', 'WIN', 'CHECKIN', 'TASK', 'GIFT', 'GM_REWARD', 'BANKRUPTCY_AID', 'DIAMOND_EXCHANGE', 'TOPUP', 'CASHBACK', 'REFUND', 'MONTHLY_REWARD', 'SHOP_PURCHASE')),
     CONSTRAINT chk_wt_amount   CHECK (amount > 0)
 );
 
 CREATE INDEX IF NOT EXISTS idx_wallet_transactions_player_id   ON wallet_transactions (player_id);
 CREATE INDEX IF NOT EXISTS idx_wallet_transactions_created_at  ON wallet_transactions (created_at);
 CREATE INDEX IF NOT EXISTS idx_wallet_transactions_player_time ON wallet_transactions (player_id, created_at DESC);
+
+-- -------------------------------------------------------
+-- shop_redemptions：禮品商城兌換紀錄（帳務寫端，ADR-006）
+-- 每筆＝某玩家兌換某商品一次，與星幣扣款（sub_type=SHOP_PURCHASE）同一交易原子寫入。
+-- 為帳務真相＋玩家背包來源；目錄 shop_items 在 MySQL（admin 管理）。
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS shop_redemptions (
+    id               BIGSERIAL    NOT NULL,
+    player_id        BIGINT       NOT NULL,
+    item_code        VARCHAR(50)  NOT NULL,
+    item_name        VARCHAR(100) NOT NULL,
+    star_spent       BIGINT       NOT NULL,
+    balance_before   BIGINT,
+    balance_after    BIGINT,
+    idempotency_key  VARCHAR(100) UNIQUE,
+    status           VARCHAR(20)  NOT NULL DEFAULT 'COMPLETED',
+    created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_shop_redemptions    PRIMARY KEY (id),
+    CONSTRAINT chk_shop_star_positive CHECK (star_spent > 0),
+    CONSTRAINT chk_shop_status        CHECK (status IN ('COMPLETED', 'PENDING', 'FAILED'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_shop_redemptions_player_time ON shop_redemptions (player_id, created_at DESC);
+
+-- -------------------------------------------------------
+-- topup_orders：玩家自助加值訂單（模擬支付，無真實金流）
+-- 流程：CREATED（建單）→ PAID（模擬付款）→ CREDITED（星幣已入帳）；失敗為 FAILED
+-- 付款成功後以 order_no 當冪等鍵呼叫 WalletService.credit() 真實入帳，credit_tx_id 記入帳流水 id
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS topup_orders (
+    id            BIGSERIAL    NOT NULL,
+    order_no      VARCHAR(40)  NOT NULL,            -- 訂單編號（冪等鍵來源）
+    player_id     BIGINT       NOT NULL,
+    package_id    VARCHAR(20)  NOT NULL,            -- 方案代號（如 P100 / P500 / P1000）
+    amount        BIGINT       NOT NULL,            -- 入帳星幣數
+    price_label   VARCHAR(20)  NOT NULL,            -- 顯示用售價（如 NT$100）
+    status        VARCHAR(20)  NOT NULL DEFAULT 'CREATED',
+    credit_tx_id  BIGINT,                           -- 入帳成功後的 wallet_transactions.id
+    created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    paid_at       TIMESTAMP,
+    CONSTRAINT pk_topup_orders        PRIMARY KEY (id),
+    CONSTRAINT uq_topup_orders_no     UNIQUE (order_no),
+    CONSTRAINT chk_topup_amount       CHECK (amount > 0),
+    CONSTRAINT chk_topup_status       CHECK (status IN ('CREATED', 'PAID', 'CREDITED', 'FAILED'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_topup_orders_player_time ON topup_orders (player_id, created_at DESC);
 
 -- -------------------------------------------------------
 -- game_rounds：遊戲對局紀錄
@@ -59,6 +106,9 @@ CREATE TABLE IF NOT EXISTS game_rounds (
     game_type        VARCHAR(20)  NOT NULL,   -- SLOT / BACCARAT / FISHING
     bet_amount       BIGINT,
     win_amount       BIGINT,
+    balance_before   BIGINT,                  -- 投注前錢包餘額（稽核：餘額變化）
+    balance_after    BIGINT,                  -- 派彩後錢包餘額（稽核：餘額變化）
+    bet_at           TIMESTAMP,               -- 下注時間（毫秒精度；與 settled_at 派彩時間區分）
     server_seed      VARCHAR(255),            -- 開獎後才揭露（Provably Fair）
     server_seed_hash VARCHAR(255),            -- 下注前先公開此雜湊值
     client_seed      VARCHAR(255),            -- 玩家提供的種子
@@ -208,3 +258,24 @@ CREATE TABLE IF NOT EXISTS dead_letter_messages (
 CREATE INDEX IF NOT EXISTS idx_dlm_status     ON dead_letter_messages (status);
 CREATE INDEX IF NOT EXISTS idx_dlm_dlt_topic  ON dead_letter_messages (dlt_topic);
 CREATE INDEX IF NOT EXISTS idx_dlm_created_at ON dead_letter_messages (created_at);
+
+-- -------------------------------------------------------
+-- admin_action_logs：後台敏感操作稽核紀錄（T-055）
+-- 目前用於 GM 手動發幣（action_type=GM_GRANT）：每次發幣寫一筆。
+-- idempotency_key UNIQUE 兼作去重鍵，並當作 wallet.credit.request 指令的冪等鍵（ADR-002）。
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS admin_action_logs (
+    id               BIGSERIAL    NOT NULL,
+    operator         VARCHAR(50)  NOT NULL,   -- 操作者（後台管理員識別）
+    action_type      VARCHAR(30)  NOT NULL,   -- GM_GRANT 等
+    target_player_id BIGINT,
+    amount           BIGINT,
+    reason           VARCHAR(255),
+    idempotency_key  VARCHAR(100),
+    created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT pk_admin_action_logs       PRIMARY KEY (id),
+    CONSTRAINT uq_admin_action_logs_idem  UNIQUE (idempotency_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_action_logs_operator   ON admin_action_logs (operator);
+CREATE INDEX IF NOT EXISTS idx_admin_action_logs_created_at ON admin_action_logs (created_at);
