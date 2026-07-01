@@ -1,3 +1,24 @@
+## [fix] — 2026-07-01 — Gateway 補上 `/ws` 路由，補上即時推播的最後一哩
+
+> **背景**：全面盤點各微服務與 gateway 時發現，notification-service 的 T-070~T-072（WebSocket STOMP + Kafka 橋接）雖已完工，但 `docs/architecture.md` 留著一條 2026-06-02 的 TODO，坦承 Gateway 從未轉發 `/ws/**`——這件事在服務完工後被漏掉沒補。前端所有 `.env` 的 `VITE_ENABLE_WS` 預設皆為 `false`（或走 mock WS 短路），所以目前是「休眠中」不影響一般開發/測試，但只要有人手動開啟真實 WebSocket 測試即時推播，SockJS 交握就會打不到 gateway 對應路由。
+
+### Added
+- `backend/gateway-service/src/main/resources/application.yml`：新增 `notification-ws` 路由，`Path=/ws,/ws/**` 轉發至 `${NOTIFICATION_SERVICE_URL:http://localhost:8087}`。用一般 `http://` URI 即可——帶 `Upgrade` header 的請求會被 Spring Cloud Gateway 的 `RouteToRequestUrlFilter` 自動把 scheme 轉成 `ws`，SockJS 的 HTTP 交握子路徑（`/ws/info`、`/ws/{server}/{session}/{transport}`）則正常走 http 路由；不掛 `CircuitBreaker`（長連線熔斷後轉發 JSON fallback 沒有意義）。
+- `jwt.whitelist` 新增 `/ws`：SockJS 交握階段不帶 `Authorization` header（JWT 改由 STOMP CONNECT 帧攜帶，`StompAuthChannelInterceptor` 驗證），若不放行會被 `JwtAuthenticationGlobalFilter` 擋在 HTTP 層；`PlayerRateLimitGlobalFilter` 讀同一份 whitelist，因此也一併免除玩家級限流。
+
+### Changed
+- `docs/architecture.md` 2.7 節：移除已解決的 2026-06-02 TODO，改記錄修復內容與日期。
+
+### 為什麼
+帳面上 notification-service 已完工，但少了 gateway 路由等於「功能存在卻連不到」，會在有人真的打開即時推播功能時才爆炸；趁健檢一次補齊，避免日後排查時誤以為是 notification-service 本身的 bug。
+
+### 如何驗證
+- 新增 `GatewayRoutesConfigTest`（讀 `RouteDefinitionLocator`/`JwtProperties` 實際載入的設定，非 mock）：斷言 `notification-ws` 路由存在、Path predicate 同時含 `/ws` 與 `/ws/**`、URI port 為 8087；另斷言 `jwt.whitelist` 含 `/ws`。
+- `mvn -pl backend/gateway-service test`：25/25 綠燈（23 既有 + 2 新增），新路由未影響既有 JWT/限流/CircuitBreaker 邏輯。
+- **端對端手動驗證**（Docker 起 Redis/Kafka/MySQL/Postgres 後，本機跑 `mvn spring-boot:run` 啟動 gateway + notification-service）：
+  - HTTP 層：`curl http://localhost:8080/ws/info`（經 gateway）與直連 `http://localhost:8087/ws/info` 回傳結構相同的 SockJS info JSON，且未帶 `Authorization` header 也未被 401 擋下。
+  - WebSocket 層：用 Node 24 原生 `WebSocket` 對兩個位址送出不帶 JWT 的 STOMP `CONNECT` 帧，經 gateway（`ws://localhost:8080/ws`）與直連（`ws://localhost:8087/ws`）收到的 STOMP `ERROR` 帧內容逐位元組相同——證實 gateway 對真實 WebSocket 升級與雙向 STOMP 訊框轉發完全透明（`ERROR` 為預期結果，因故意未帶 JWT 觸發 `StompAuthChannelInterceptor` 拒絕）。
+
 ## [docs] — 2026-07-01 — 新增 API 串接與架構面試文件（含離線彩圖 HTML）
 
 > **背景**：`docs/interview-prep/` 缺一份專講「API 怎麼串接、為什麼這樣串」的面試文件。現有資料只零散涵蓋：`LOCAL_API_INTEGRATION_GUIDE.md` 偏「怎麼跑起來」（操作）、`architecture.md` 偏規格、`interview-prep/01`+`02` 只零星提到。本次補一份**全鏈路、技術參考＋面試「為什麼」混合**的文件，用「玩老虎機一局」貫穿前端 axios → Gateway → 服務間 REST → Kafka，並以連結指向上述三份避免重複。
