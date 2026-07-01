@@ -1,15 +1,13 @@
 import { expect, test } from '@playwright/test'
 
 async function dismissOptionalCheckIn(page) {
-  const dialog = page.getByRole('dialog', { name: /簽到|獎勵/ })
+  const dialog = page.locator('section[aria-labelledby="daily-checkin-title"]')
   if (!(await dialog.isVisible().catch(() => false))) {
     return
   }
 
-  const laterButton = dialog.getByRole('button', { name: /稍後|關閉|取消/ })
-  if (await laterButton.count()) {
-    await laterButton.first().click()
-  }
+  await dialog.locator('button').first().click()
+  await expect(dialog).toBeHidden()
 }
 
 test.describe('player site smoke', () => {
