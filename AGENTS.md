@@ -37,7 +37,7 @@
 3. **測試一律用 H2 記憶體 DB**：`@SpringBootTest`（contextLoads）不連外部 DB。新服務寫測試比照 member/wallet：加 H2（test scope）、測試用 `application.yml` 提供 H2 資料源；wallet 另用 surefire `jpa.ddl-auto=create`（雙資料源）。否則 CI 跑不起來。
 4. **Spring Boot 3.2+ 禁止同名 `@Bean` 方法**（`enforceUniqueMethods`）：重複會讓服務啟動丟 `BeanDefinitionParsingException` 直接掛。
 5. **wallet-service 是雙資料源（ADR-001）**：`spring.jpa.*` 無效，EntityManagerFactory 在 `DataSourceConfig` 手動建立；別套用單資料源的假設。
-6. **`wallet.credit` 是「事件」、`wallet.credit.request` 才是「指令」（ADR-002）**：member 發指令、wallet 消費入帳後發事件給 rank。**永遠不要在 wallet-service 消費 `wallet.credit`**（會無限迴圈）。rank-service 要消費的是 `wallet.credit`/`wallet.debit`（事件）。
+6. **`wallet.credit` 是「事件」、`wallet.credit.request` 才是「指令」（ADR-002）**：member 發指令、wallet 消費入帳後發事件給 rank。**wallet-service 內任何消費 `wallet.credit`/`wallet.debit`（事件）的 listener 都不可重呼 `WalletService.credit()`/`debit()`**（會無限迴圈）。例外：`WalletReadSyncListener`（`kafka/WalletReadSyncListener.java:45,80`）確實消費這兩個事件，但只寫 MySQL 讀視圖（CQRS read-sync，T-025）、對 `WalletTransactionViewRepository` 做 `existsById` 冪等檢查，從不呼叫 `credit()/debit()`，故不會迴圈——這是唯一安全的例外模式，新增消費者比照此例，**絕不能**在消費者內再呼叫入帳/扣款方法。rank-service 要消費的是 `wallet.credit`/`wallet.debit`（事件）。
 7. **改 Kafka topic 要同步改 infra 測試**：`kafka/kafka-init.sh` 增刪 topic 後，更新 `tests/infra/kafka.test.js` 的 topic 清單與數量斷言，否則 CI 紅。
 8. **帳務操作=冪等 + 樂觀鎖**：`wallet_transactions.idempotency_key` UNIQUE 防重複、`wallets.version`（`@Version`）防超扣。所有扣款/入帳都要遵循此模式。
 9. **`gem-prompt` 技能**（Claude Code）：產生後端實作提示詞，會先讀真實專案檔。開新後端任務可先用它。
@@ -91,8 +91,8 @@
 ## 4. 驗證指令（提交前自查）
 
 ```bash
-# 後端：跑已實作服務的測試（用 H2，免外部基礎設施）
-mvn -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/admin-service test
+# 後端：跑七個服務的測試（全用 H2；game/rank/notification 另用 @EmbeddedKafka，皆免外部基礎設施）
+mvn -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/admin-service,backend/game-service,backend/rank-service,backend/notification-service test
 
 # 基礎設施腳本測試
 node --test tests/infra/*.test.js
