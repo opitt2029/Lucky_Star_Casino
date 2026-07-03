@@ -1,8 +1,26 @@
-# Changelog — Lucky Star Casino
+﻿# Changelog — Lucky Star Casino
 
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [changed] -- 2026-07-04 -- Baccarat table UI rebuilt into casino-style layout
+### Added
+- `frontend/src/components/baccarat/*`: added Baccarat-specific table header, status bar, hand/card panels, betting mat, chip tray, settlement panel, roadmap tabs, and disabled Side Bet UI.
+
+### Changed
+- `frontend/src/pages/Baccarat.jsx`: reorganized Baccarat around `idle` / `betting` / `dealing` / `squeezing` / `settled` phases while preserving `betBaccarat`, wallet updates, squeeze mode, sound effects, win effects, result history, and leave guard behavior.
+- `frontend/src/components/BaccaratRoadmap.jsx`: kept the existing import path as a compatibility wrapper over the new roadmap panel.
+- `frontend/src/index.css`: added scoped `.baccarat-page` / `.baccarat-*` styles for the red-gold table layout, felt betting mat, sticky mobile chip tray, roadmap tabs, and settlement banner.
+
+### Fixed
+- Baccarat settlement copy now distinguishes Tie push refunds from direct Tie wins while leaving API and wallet math unchanged.
+
+### Why
+- Make `/game/baccarat` feel like an actual online baccarat table, improve mobile betting ergonomics, and keep all new styling scoped away from Slot, Fishing, Lobby, Member, and Profile pages.
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
 ## [changed] -- 2026-07-04 -- Site settings button moved into header
 ### Changed
 - `frontend/src/App.jsx`: removed the global floating settings button from the root site chrome.
@@ -2754,3 +2772,5 @@ client DTO）`javac` 編譯通過。Lombok 檔案與 `@SpringBootTest` 待團隊
 
 ### Verified
 - `mvn -pl backend/wallet-service test` → 142 tests, 0 failures
+
+
