@@ -55,6 +55,8 @@ export function useFishingSession({ onResults } = {}) {
   const bucketRef = useRef({ tokens: BURST_CAPACITY, last: 0 })
   const flushTimerRef = useRef(null)
   const inFlightRef = useRef(false)
+  // 加值進行中鎖：擋住 fire()，避免 shots 批次與 top-up 併發「讀→改→整包 save」互相覆寫後端 session。
+  const topUpLockRef = useRef(false)
   const sessionIdRef = useRef(null)
   const cannonLevelRef = useRef(1)
   const betPerShotRef = useRef(BET_TIERS[0]) // 玩家進場選定的單發面額（與砲台解耦）
@@ -150,6 +152,7 @@ export function useFishingSession({ onResults } = {}) {
    */
   const fire = useCallback((fishInstanceId, fishCode) => {
     if (phase !== 'playing') return { ok: false, reason: 'inactive' }
+    if (topUpLockRef.current) return { ok: false, reason: 'topup' } // 加值請求 in-flight 期間暫停射擊
     const betPerShot = betPerShotRef.current || BET_TIERS[0]
     const cannonLevel = cannonLevelRef.current || 1
     if (balanceRef.current < betPerShot) return { ok: false, reason: 'insufficient' }
@@ -158,7 +161,8 @@ export function useFishingSession({ onResults } = {}) {
     const shotSeq = shotSeqRef.current + 1
     shotSeqRef.current = shotSeq
     fishBySeqRef.current.set(shotSeq, fishCode)
-    bufferRef.current.push({ shotSeq, betPerShot, cannonLevel, fishType: fishCode, fishInstanceId: String(fishInstanceId) })
+    // 後端 Shot DTO 只認 shotSeq/betPerShot/fishType/fishInstanceId；砲台等級為 session 級（進場固定），不隨發送出。
+    bufferRef.current.push({ shotSeq, betPerShot, fishType: fishCode, fishInstanceId: String(fishInstanceId) })
     setBalanceBoth(balanceRef.current - betPerShot) // 樂觀扣注，命中後於回應補回派彩
 
     if (bufferRef.current.length >= FLUSH_SIZE) flush()
@@ -173,6 +177,7 @@ export function useFishingSession({ onResults } = {}) {
     }, FLUSH_INTERVAL_MS)
   }
 
+  /** 等待緩衝與 in-flight 批次全部送畢；逾時未清空回 false（呼叫端應中止，不可帶著未結批次繼續）。 */
   async function drainPendingShots(deadlineMs = 5000) {
     const deadline = Date.now() + deadlineMs
     while ((bufferRef.current.length > 0 || inFlightRef.current) && Date.now() < deadline) {
@@ -182,6 +187,7 @@ export function useFishingSession({ onResults } = {}) {
         await flush()
       }
     }
+    return bufferRef.current.length === 0 && !inFlightRef.current
   }
 
   async function flush() {
@@ -235,42 +241,58 @@ export function useFishingSession({ onResults } = {}) {
     }
   }
 
+  // 面額/砲台皆為 session 級參數（進場固定，ADR-004）：後端 validateBatch 強制每發 betPerShot
+  // 等於進場面額、傷害只認 session.cannonLevel，場中改動會導致整批射擊被拒或前後端傷害分歧，
+  // 故僅允許在開場前（phase !== 'playing'）變更。
   const changeBetPerShot = useCallback((nextBet) => {
+    if (phase === 'playing') {
+      setError('子彈面額進場後固定，請先收網結算再重新選擇')
+      return false
+    }
     const value = Number(nextBet)
     if (!Number.isInteger(value) || value < BET_MIN || value > BET_MAX) {
-      setError(`??????? ${BET_MIN.toLocaleString()} ? ${BET_MAX.toLocaleString()} ??`)
+      setError(`子彈面額需介於 ${BET_MIN.toLocaleString()} ~ ${BET_MAX.toLocaleString()} 星幣`)
       return false
     }
     betPerShotRef.current = value
     setSession((prev) => (prev ? { ...prev, betPerShot: value } : prev))
     setError(null)
     return true
-  }, [])
+  }, [phase])
 
   const changeCannonLevel = useCallback((nextLevel) => {
+    if (phase === 'playing') {
+      setError('砲台等級進場後固定，請先收網結算再重新選擇')
+      return false
+    }
     const value = Number(nextLevel)
     if (!Number.isInteger(value) || value < 1 || value >= CANNON_DAMAGE.length) {
-      setError('???????')
+      setError('無效的砲台等級')
       return false
     }
     cannonLevelRef.current = value
     setSession((prev) => (prev ? { ...prev, cannonLevel: value } : prev))
     setError(null)
     return true
-  }, [])
+  }, [phase])
 
   const topUp = useCallback(async ({ amount }) => {
     const sessionId = sessionIdRef.current
     const value = Number(amount)
     if (phase !== 'playing' || !sessionId) return null
     if (!Number.isInteger(value) || value < BUYIN_MIN || value > BUYIN_MAX) {
-      setError(`??????? ${BUYIN_MIN.toLocaleString()} ? ${BUYIN_MAX.toLocaleString()} ??`)
+      setError(`加值金額需介於 ${BUYIN_MIN.toLocaleString()} ~ ${BUYIN_MAX.toLocaleString()} 星幣`)
       return null
     }
     setTopUpLoading(true)
+    topUpLockRef.current = true // 先上鎖再排空：確保 drain 完不會再有新批次與 top-up 併發
     setError(null)
     try {
-      await drainPendingShots()
+      const drained = await drainPendingShots()
+      if (!drained) {
+        setError('射擊同步壅塞，請稍後再加值')
+        return null
+      }
       const clientRequestId = `tu-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
       const result = await gameApi.fishingTopUp({ sessionId, amount: value, clientRequestId })
       if (result.wallet) dispatch(setBalance(result.wallet))
@@ -278,9 +300,10 @@ export function useFishingSession({ onResults } = {}) {
       setSession((prev) => (prev ? { ...prev, buyIn: result.buyIn ?? prev.buyIn } : prev))
       return result
     } catch (err) {
-      setError(err?.response?.data?.message || err.message || '??????')
+      setError(err?.response?.data?.message || err.message || '加值失敗')
       return null
     } finally {
+      topUpLockRef.current = false
       setTopUpLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

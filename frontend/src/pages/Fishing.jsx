@@ -31,7 +31,7 @@ const AMMO_OPTIONS = [
 ]
 
 const fishingRules = [
-  '先輸入本局進場金額，進入漁場後可在炮台控制台切換子彈面額與炮台等級；結算前餘額會留在本局。',
+  '進場前先選定本局進場金額、子彈面額與炮台等級；進場後火力固定，結算前餘額會留在本局。',
   '每次開火會消耗一發子彈面額。子彈面額越高，捕獲後派彩也越高，但本局餘額消耗更快。',
   '魚有血量，命中會累積傷害。血量歸零後才會進行捕獲判定，炮台等級越高，單發造成的傷害越高。',
   '高倍率魚與首領魚血量更厚，適合用高等炮台集火。牠們風險較高，但捕獲後回饋更大。',
@@ -169,12 +169,12 @@ export default function Fishing() {
     [play, player],
   )
 
+  // 僅供進場前選擇：面額/砲台為 session 級參數（ADR-004 整場固定），hook 在 playing 階段會拒絕變更。
   const handleAmmoSelect = (option) => {
     play('click')
     const betChanged = session.changeBetPerShot(option.costPerShot)
     const cannonChanged = session.changeCannonLevel(option.level)
     if (betChanged || cannonChanged) setSelectedAmmoLevel(option.level)
-    if (phase === 'playing' && sessionBalance < option.costPerShot) setIsTopUpModalOpen(true)
   }
 
   const handleStart = () => {
@@ -336,15 +336,16 @@ export default function Fishing() {
                         <span>目前彈藥：{activeAmmo.label}</span>
                         <strong>彈藥額度：{activeAmmo.costPerShot.toLocaleString()} / 發</strong>
                       </div>
-                      <div className="fishing-dock-ammo-group" aria-label="選擇彈藥種類">
+                      {/* 面額/砲台整場固定（ADR-004；後端 validateBatch 拒絕場中變更），場中僅展示不可切換。 */}
+                      <div className="fishing-dock-ammo-group" aria-label="本局彈藥（進場後固定）">
                         {AMMO_OPTIONS.map((option) => (
                           <button
                             key={option.key}
                             type="button"
-                            onClick={() => handleAmmoSelect(option)}
+                            disabled
                             aria-pressed={cannonLevel === option.level}
                             className={`fishing-dock-ammo fishing-dock-ammo--${option.tone}`}
-                            title={`切換為${option.label}，每發 ${option.costPerShot.toLocaleString()} 星幣`}
+                            title="子彈面額與砲台進場後固定，收網結算後可重新選擇"
                           >
                             <span className="fishing-dock-ammo__badge">{option.badge}</span>
                             <strong>{option.label}</strong>
@@ -475,7 +476,7 @@ export default function Fishing() {
                       <p className="gold-muted text-xs font-black uppercase tracking-[0.3em]">進場設定</p>
                       <h3 className="brand-title mt-1 text-3xl font-black text-yellow-100">進入漁場</h3>
                       <p className="mt-2 text-sm font-bold text-yellow-100/64">
-                        輸入本局要帶入漁場的星幣，進場後再於炮台控制台切換子彈面額與炮台種類。
+                        輸入本局要帶入漁場的星幣並選擇彈藥；子彈面額與砲台進場後固定，收網結算後可重新選擇。
                       </p>
                     </div>
 
@@ -517,9 +518,33 @@ export default function Fishing() {
                       )}
                     </div>
 
+                    <div className="grid gap-2 text-left">
+                      <p className="gold-muted text-xs font-black uppercase tracking-[0.2em]">選擇彈藥（本局固定）</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {AMMO_OPTIONS.map((option) => (
+                          <button
+                            key={option.key}
+                            type="button"
+                            onClick={() => handleAmmoSelect(option)}
+                            aria-pressed={selectedAmmoLevel === option.level}
+                            className={[
+                              'min-h-12 rounded border px-2 text-sm font-black transition',
+                              selectedAmmoLevel === option.level
+                                ? 'gold-button'
+                                : 'border-yellow-200/15 bg-red-950/70 text-yellow-100/68 hover:border-yellow-200/60',
+                            ].join(' ')}
+                            title={`${option.description}，每發 ${option.costPerShot.toLocaleString()} 星幣`}
+                          >
+                            {option.badge}・{option.label}
+                            <span className="block text-[11px] font-bold opacity-80">{option.costPerShot.toLocaleString()} / 發</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     <div className="fishing-entry-note" role="note">
-                      <strong>進場後可自由調整火力</strong>
-                      <span>子彈面額與銅炮、銀炮、金炮都會放在遊戲下方控制台，進入漁場後可隨時切換。</span>
+                      <strong>火力進場後固定</strong>
+                      <span>子彈面額與砲台等級屬本局參數，進場後不可切換；想換火力請先收網結算再重新進場。</span>
                     </div>
 
                     <button

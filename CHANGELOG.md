@@ -3,6 +3,33 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [fix] — 2026-07-03 — 捕魚場中加值三修：彈藥進場固定（契約對齊）、top-up 併發鎖、亂碼註解/訊息復原
+
+> **背景**：健檢捕魚場中加值（top-up）+ 彈藥切換這批變更時發現三類問題：
+> ① 前端新增的 `changeBetPerShot`/`changeCannonLevel` 允許**場中**切換彈藥，但後端 `FishingService.validateBatch` 強制每發 `betPerShot`==進場面額（ADR-004 整場固定）、傷害只認 `session.cannonLevel`（`Shot` DTO 根本沒有 cannonLevel 欄位）——接真 API 時切換後每批射擊整批 400；mock 又不驗注額，導致 mock 能玩、真 API 壞（違反雷區 14）。
+> ② top-up 雖有 `drainPendingShots()`，但 drain 後、請求 in-flight 期間 `fire()` 未被擋，且 drain 逾時仍放行——`shots` 與 `topUp` 在後端都是「讀→改→整包 save」session 且無鎖，併發會互相覆寫（最壞：錢包已扣款、加值卻被射擊批次回寫吃掉）。
+> ③ 4 個檔案的中文註解/使用者訊息被存成亂碼（`?` 或 Big5 二次編碼），玩家會看到問號錯誤訊息、日誌印亂碼。
+
+### Fixed
+- **彈藥進場固定（採前端對齊後端契約，不動後端）**：
+  - `frontend/src/hooks/useFishingSession.js`：`changeBetPerShot`/`changeCannonLevel` 在 `phase === 'playing'` 時拒絕並提示；shot payload 移除後端 DTO 沒有的 `cannonLevel` 欄位。
+  - `frontend/src/pages/Fishing.jsx`：進場面板**新增彈藥選擇器**（原本大廳無法選彈藥、只能場中切，鎖場中後若不補會永遠只有銅砲）；場中控制列彈藥鈕改為 `disabled` 唯讀展示；`handleAmmoSelect` 移除場中開加值窗的死路徑；進場說明/入場提示/遊戲規則文案同步改為「進場後固定」。
+  - `frontend/src/services/mockApi.js`：`fishingShots` 補上鏡像後端 `validateBatch` 的整批注額驗證（雷區 14）。
+- **top-up 併發鎖**：`useFishingSession` 新增 `topUpLockRef`——topUp 先上鎖（`fire()` 回 `{ok:false, reason:'topup'}`）再 `drainPendingShots()`；drain 逾時未清空改為**中止加值**（原本照樣送出）。
+- **亂碼復原**：`FishingController.java`（類 Javadoc 整段、2 處行內註解，並補 top-up 端點條目）、`FishingSessionStore.java`（`readTopUpRequestIds` Javadoc 與 `log.warn` 訊息，並修正 `readKills` Javadoc 被錯位黏到 `readTopUpRequestIds` 的問題）、`mockApi.js`（`fishingTopUp` 三處 `throw new Error('???')` 與帳務描述）、`useFishingSession.js`（4 處 `setError` 訊息）。
+
+### Changed
+- `AGENTS.md` 雷區 14/15：老虎機描述由過時的「單中線僅三連、RTP=Σpᵢ³·mᵢ」更正為兩階賠付（三連＋左二同，理論 RTP ≈ 93.8%、命中率 ≈ 30.7%，與 `SlotSymbol` Javadoc 一致）。
+- `AGENTS.md` 雷區 16：補記「面額/砲台 session 級進場固定、勿在場中開放切換」與「top-up 冪等 + `topUpLockRef` 勿移除」兩條新雷。
+
+### 為什麼
+- 方案取捨：對齊既有契約（前端鎖場中切換）而非放寬後端——後端若支援場中換面額，`validateBatch`/結算/`verifyShot`/殘血回收全要重設計，屬 ADR 級變更；且 ADR-004 明定面額整場固定是防「大注小注混打繞過費率」的風控設計。
+- top-up 鎖選在前端最小修補；後端 session 原子性（Redis WATCH/Lua 或 per-player lock）另開任務處理才是根治。
+
+### 如何驗證
+- `mvn -pl backend/game-service test`（後端僅註解/文案變更，需綠燈確認未破壞）。
+- 前端手動路徑：mock 模式進場選銀/金砲 → 場中彈藥鈕呈 disabled → 開火中按「臨時加值」→ 加值瞬間子彈暫停、完成後恢復 → 收網結算 → 重新進場可換彈藥。
+
 ## [docs] — 2026-07-01 — 健檢後續補丁：AGENTS.md 措辭修正、CI 擋關擴大、CHANGELOG 格式修復
 
 > **背景**：全面健檢 7 個微服務 + gateway 時累積了幾個「該補但先擱著」的小項目，這次一次補齊，避免累積成下一輪健檢的重複發現。

@@ -1015,6 +1015,15 @@ export const mockApi = {
     const session = (db.fishingSessions || {})[playerId]
     if (!session || session.sessionId !== sessionId) throw new Error('場次不存在或已結束')
 
+    // 鏡像後端 FishingService.validateBatch（ADR-004）：每發 betPerShot 必須等於進場選定的
+    // 固定注額，否則整批拒絕——勿放寬，放寬會讓 mock 與真 API 行為分歧（雷區 14）。
+    const allowedBet = Number(session.betPerShot) || 0
+    for (const shot of shots) {
+      if (Number(shot.betPerShot) !== allowedBet) {
+        throw new Error(`betPerShot 須等於進場選定的固定注額 ${allowedBet}`)
+      }
+    }
+
     const cannonLevel = session.cannonLevel || 1
     session.fishDamage = session.fishDamage || {}
     const results = []
@@ -1084,9 +1093,9 @@ export const mockApi = {
     const db = getDb()
     const playerId = currentPlayerId()
     const session = (db.fishingSessions || {})[playerId]
-    if (!session || session.sessionId !== sessionId) throw new Error('?????????')
+    if (!session || session.sessionId !== sessionId) throw new Error('場次不存在或已結束')
     const topUpAmount = Number(amount)
-    if (!Number.isInteger(topUpAmount) || topUpAmount <= 0) throw new Error('?????????')
+    if (!Number.isInteger(topUpAmount) || topUpAmount <= 0) throw new Error('加值金額不正確')
     session.topUpRequestIds = session.topUpRequestIds || []
     if (clientRequestId && session.topUpRequestIds.includes(clientRequestId)) {
       return {
@@ -1098,8 +1107,8 @@ export const mockApi = {
       }
     }
     const wallet = db.wallets[playerId]
-    if (!wallet || wallet.balance < topUpAmount) throw new Error('????')
-    applyWalletChange(db, playerId, -topUpAmount, 'bet', '???????')
+    if (!wallet || wallet.balance < topUpAmount) throw new Error('星幣不足')
+    applyWalletChange(db, playerId, -topUpAmount, 'bet', '捕魚機場中加值')
     session.buyIn += topUpAmount
     session.sessionBalance += topUpAmount
     if (clientRequestId) session.topUpRequestIds.push(clientRequestId)
