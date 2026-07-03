@@ -213,8 +213,7 @@ public class FishingSessionStore {
         }
     }
 
-    /** 還原致命一擊紀錄；欄位缺失或 JSON 毀損時保守回空 List。 */
-    /** ?????? idempotency key ???????? JSON ??????? List? */
+    /** 還原場中加值 idempotency key 清單；欄位缺失或 JSON 毀損時保守回空 List。 */
     private List<String> readTopUpRequestIds(String json) {
         if (!StringUtils.hasText(json)) {
             return new ArrayList<>();
@@ -223,11 +222,12 @@ public class FishingSessionStore {
             List<String> parsed = objectMapper.readValue(json, TOP_UP_IDS_TYPE);
             return parsed != null ? parsed : new ArrayList<>();
         } catch (JsonProcessingException ex) {
-            log.warn("???? fishing topUpRequestIds ????????: {}", ex.toString());
+            log.warn("反序列化 fishing topUpRequestIds 失敗，改用空清單: {}", ex.toString());
             return new ArrayList<>();
         }
     }
 
+    /** 還原致命一擊紀錄；欄位缺失或 JSON 毀損時保守回空 List。 */
     private List<FishingSession.KillRecord> readKills(String json) {
         if (!StringUtils.hasText(json)) {
             return new ArrayList<>();
