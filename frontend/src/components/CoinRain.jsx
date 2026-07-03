@@ -1,3 +1,5 @@
+﻿import { useSitePreferences } from '../utils/sitePreferences'
+
 const coins = Array.from({ length: 42 }, (_, index) => {
   const column = (index * 37) % 100
   const delay = -((index * 0.73) % 12)
@@ -6,7 +8,7 @@ const coins = Array.from({ length: 42 }, (_, index) => {
   const opacityPattern = [0.18, 0.28, 0.38, 0.52, 0.66, 0.78, 0.92]
   const size = sizePattern[index % sizePattern.length]
   const opacity = opacityPattern[(index * 3) % opacityPattern.length]
-  const drift = ((index % 2 === 0 ? 1 : -1) * (18 + (index % 4) * 8))
+  const drift = (index % 2 === 0 ? 1 : -1) * (18 + (index % 4) * 8)
   const spin = index % 2 === 0 ? 1 : -1
 
   return {
@@ -24,6 +26,10 @@ const coins = Array.from({ length: 42 }, (_, index) => {
 })
 
 export default function CoinRain() {
+  const [preferences] = useSitePreferences()
+
+  if (!preferences.backgroundEffectsEnabled) return null
+
   return (
     <div className="coin-rain" aria-hidden="true">
       {coins.map((coin) => (

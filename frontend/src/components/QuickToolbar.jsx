@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { useSound } from '../casino-fx/sound/useSound'
 import { openSupport } from '../store/slices/uiSlice'
 import './QuickToolbar.css'
 
@@ -19,12 +18,6 @@ const tools = [
     path: '/games',
     protected: true,
     icon: <path d="M6 12h12M12 6v12M7 17l-2 2M17 17l2 2M7 7 5 5M17 7l2-2" />,
-  },
-  {
-    label: '捕魚機',
-    path: '/game/fishing',
-    protected: true,
-    icon: <path d="M3 12s3-5 9-5 9 5 9 5-3 5-9 5-9-5-9-5Zm9-2v.01M19 9l2-2v10l-2-2" />,
   },
   {
     label: '會員中心',
@@ -69,7 +62,6 @@ export default function QuickToolbar() {
       return false
     }
   })
-  const { play, settings, toggleSfx, toggleBgm } = useSound()
 
   const toggleOpen = () => {
     setOpen((prev) => {
@@ -125,79 +117,45 @@ export default function QuickToolbar() {
   return (
     <>
       <aside
-        className={`quick-toolbar ${open ? 'quick-toolbar--open' : 'quick-toolbar--collapsed'}`}
+        className={[
+          'quick-toolbar',
+          open ? 'quick-toolbar--open' : 'quick-toolbar--collapsed',
+        ].join(' ')}
         aria-label="快速工具欄"
       >
         {open && (
-        <div className="quick-toolbar__panel">
-          {tools.map((tool) => (
-            <button
-              key={tool.label}
-              type="button"
-              className="quick-toolbar__button"
-              onClick={() => handleToolClick(tool)}
-            >
-              <ToolbarIcon>{tool.icon}</ToolbarIcon>
-              <span>{tool.label}</span>
+          <div className="quick-toolbar__panel">
+            {tools.map((tool) => (
+              <button
+                key={tool.label}
+                type="button"
+                className="quick-toolbar__button"
+                onClick={() => handleToolClick(tool)}
+              >
+                <ToolbarIcon>{tool.icon}</ToolbarIcon>
+                <span>{tool.label}</span>
+              </button>
+            ))}
+
+
+            <button type="button" className="quick-toolbar__button" onClick={handleAiService}>
+              <ToolbarIcon>
+                <path d="M5 11a7 7 0 0 1 14 0v5a3 3 0 0 1-3 3h-2M5 11v4a2 2 0 0 0 2 2h1v-6H5Zm14 0h-3v6h1a2 2 0 0 0 2-2v-4Z" />
+              </ToolbarIcon>
+              <span>客服</span>
             </button>
-          ))}
 
-          <button
-            type="button"
-            className="quick-toolbar__button"
-            onClick={() => {
-              toggleSfx()
-              play('click')
-            }}
-            aria-pressed={settings.sfxEnabled}
-          >
-            <ToolbarIcon>
-              {settings.sfxEnabled ? (
-                <path d="M4 10v4h4l5 4V6l-5 4H4Zm12-2c1.5 1 2 5 0 8m3-11c3 2.5 3.5 9 0 14" />
-              ) : (
-                <path d="M4 10v4h4l5 4V6l-5 4H4Zm12 0 5 5m0-5-5 5" />
-              )}
-            </ToolbarIcon>
-            <span>{settings.sfxEnabled ? '音效開' : '音效關'}</span>
-          </button>
-
-          <button
-            type="button"
-            className="quick-toolbar__button"
-            onClick={() => {
-              toggleBgm()
-              play('click')
-            }}
-            aria-pressed={settings.bgmEnabled}
-          >
-            <ToolbarIcon>
-              {settings.bgmEnabled ? (
-                <path d="M9 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm0 0V5l10-2v13m0 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z" />
-              ) : (
-                <path d="M9 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm0 0V5l10-2v6M5 3l16 18" />
-              )}
-            </ToolbarIcon>
-            <span>{settings.bgmEnabled ? '音樂開' : '音樂關'}</span>
-          </button>
-
-          <button type="button" className="quick-toolbar__button" onClick={handleAiService}>
-            <ToolbarIcon>
-              <path d="M5 11a7 7 0 0 1 14 0v5a3 3 0 0 1-3 3h-2M5 11v4a2 2 0 0 0 2 2h1v-6H5Zm14 0h-3v6h1a2 2 0 0 0 2-2v-4Z" />
-            </ToolbarIcon>
-            <span>客服</span>
-          </button>
-
-          <button
-            type="button"
-            className="quick-toolbar__button quick-toolbar__button--top"
-            onClick={handleBackToTop}
-          >
-            <ToolbarIcon>
-              <path d="M12 19V5M6 11l6-6 6 6" />
-            </ToolbarIcon>
-            <span>回頂端</span>
-          </button>
-        </div>
+            <button
+              type="button"
+              className="quick-toolbar__button quick-toolbar__button--top"
+              onClick={handleBackToTop}
+            >
+              <ToolbarIcon>
+                <path d="M12 19V5M6 11l6-6 6 6" />
+              </ToolbarIcon>
+              <span>回頂端</span>
+            </button>
+          </div>
         )}
 
         <button

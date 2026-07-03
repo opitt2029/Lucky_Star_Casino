@@ -3,6 +3,59 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [changed] -- 2026-07-04 -- Site settings button moved into header
+### Changed
+- `frontend/src/App.jsx`: removed the global floating settings button from the root site chrome.
+- `frontend/src/components/AppShell.jsx`: placed the settings gear inside the header control row beside the existing wallet and notification controls.
+- `frontend/src/components/SiteSettings.jsx` and `frontend/src/components/SiteSettings.css`: simplified the settings component to the header-integrated layout and normalized its Chinese labels.
+
+### Why
+- Keep the settings entry aligned with the site's header controls instead of floating independently over page content.
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+
+## [changed] -- 2026-07-03 -- Centralized site settings panel
+### Added
+- `frontend/src/components/SiteSettings.jsx` and `frontend/src/components/SiteSettings.css`: added a gear settings panel for volume, sound effects, music, global announcement effects, and background effects.
+- `frontend/src/utils/sitePreferences.js`: added localStorage-backed site preferences shared by visual effects and announcements.
+
+### Changed
+- `frontend/src/components/QuickToolbar.jsx`: removed the old sound/music controls so audio settings live only in the settings panel.
+- `frontend/src/components/CoinRain.jsx` and `frontend/src/casino-fx/announce/AnnouncementTicker.jsx`: made background and announcement effects respect the shared site preferences.
+- `frontend/src/App.jsx` and `frontend/src/components/AppShell.jsx`: mounted the settings button and stopped/started bot announcements based on the announcement preference.
+
+### Why
+- Keep site-wide audio and visual effect controls in one predictable place and prevent duplicate controls in the quick toolbar.
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+
+## [changed] -- 2026-07-03 -- Mock wallet test balance set to 999999999
+### Changed
+- `frontend/src/services/mockApi.js`: set mock star coin wallets to `999999999` for the active player, seeded demo/test accounts, and new mock registrations.
+
+### Why
+- Enable effectively unlimited frontend game testing in mock mode without manual top-ups.
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+
+## [changed] -- 2026-07-03 -- Quick toolbar no longer covers game views as much
+### Changed
+- `frontend/src/components/QuickToolbar.jsx`: removed the fishing game shortcut from the open quick toolbar.
+- `frontend/src/components/QuickToolbar.css`: changed the quick toolbar to bottom anchoring globally so the expand/collapse toggle stays in the same lower position on every page.
+
+### Why
+- The toolbar toggle should not remain mid-screen on non-game routes or jump between open and collapsed states.
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+
 ## [fix] — 2026-07-03 — 捕魚場中加值三修：彈藥進場固定（契約對齊）、top-up 併發鎖、亂碼註解/訊息復原
 
 > **背景**：健檢捕魚場中加值（top-up）+ 彈藥切換這批變更時發現三類問題：

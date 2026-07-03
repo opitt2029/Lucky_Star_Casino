@@ -126,6 +126,8 @@ const SHOP_CATALOG = [
   { itemCode: 'bonus-box', name: '幸運禮盒', caption: '適合兌換活動獎勵或驚喜禮品', cost: 20000, assetKey: 'shopPrizeC' },
 ]
 
+const MOCK_TEST_STAR_COIN_BALANCE = 999999999
+
 const TEST_ACCOUNT = {
   password: 'test1234',
   player: {
@@ -205,11 +207,11 @@ function createInitialDb() {
     ],
     wallets: {
       [player.id]: {
-        balance: 50000,
+        balance: MOCK_TEST_STAR_COIN_BALANCE,
         frozenAmount: 0,
       },
       [TEST_ACCOUNT.player.id]: {
-        balance: 50000,
+        balance: MOCK_TEST_STAR_COIN_BALANCE,
         frozenAmount: 0,
       },
     },
@@ -268,7 +270,7 @@ function ensureTestAccount(db) {
 
   user.player = { ...TEST_ACCOUNT.player, ...user.player, username: TEST_ACCOUNT.player.username, id: TEST_ACCOUNT.player.id }
   if (!db.wallets[TEST_ACCOUNT.player.id]) {
-    db.wallets[TEST_ACCOUNT.player.id] = { balance: 50000, frozenAmount: 0 }
+    db.wallets[TEST_ACCOUNT.player.id] = { balance: MOCK_TEST_STAR_COIN_BALANCE, frozenAmount: 0 }
     changed = true
   }
 
@@ -507,7 +509,7 @@ export const mockApi = {
     }
 
     db.users.push({ password, player })
-    db.wallets[player.id] = { balance: 30000, frozenAmount: 0 }
+    db.wallets[player.id] = { balance: MOCK_TEST_STAR_COIN_BALANCE, frozenAmount: 0 }
     db.transactions[player.id] = [makeTransaction('task', 30000, '新手啟動金')]
     db.friends[player.id] = []
     db.ranks.push({ id: player.id, name: nickname, nickname, score: 30000, trend: '+0%' })
@@ -544,7 +546,10 @@ export const mockApi = {
   async getWallet() {
     await wait(240)
     const db = getDb()
-    return db.wallets[currentPlayerId()] || { balance: 0, frozenAmount: 0 }
+    const playerId = currentPlayerId()
+    db.wallets[playerId] = { ...(db.wallets[playerId] || { frozenAmount: 0 }), balance: MOCK_TEST_STAR_COIN_BALANCE }
+    saveDb(db)
+    return db.wallets[playerId]
   },
 
   async checkIn() {

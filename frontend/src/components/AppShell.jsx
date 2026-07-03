@@ -10,11 +10,13 @@ import { fetchWallet, resetWallet } from '../store/slices/walletSlice'
 import { openSupport, setPendingNavigation, clearPendingNavigation } from '../store/slices/uiSlice'
 import { useDailyCheckIn } from '../hooks/useDailyCheckIn'
 import { getTaipeiDateKey } from '../utils/checkInDates'
+import { useSitePreferences } from '../utils/sitePreferences'
 import { getBackgroundStyle } from '../theme/backgroundTheme'
 import CoinRain from './CoinRain'
 import AnnouncementTicker from '../casino-fx/announce/AnnouncementTicker'
-import { startBotFeed } from '../casino-fx/announce/botFeed'
+import { startBotFeed, stopBotFeed } from '../casino-fx/announce/botFeed'
 import LeaveGameModal from './LeaveGameModal'
+import SiteSettings from './SiteSettings'
 
 const navItems = [
   { to: '/', label: '首頁' },
@@ -75,6 +77,7 @@ export default function AppShell({ children }) {
   const leaveGuard = useSelector((state) => state.ui.leaveGuard)
   const playerName = player?.nickname || player?.username || (isAuthenticated ? 'Demo Player' : '訪客')
   const canShowAvatar = player?.avatarUrl && !avatarFailed
+  const [preferences] = useSitePreferences()
 
   // 簽到（後端權威）：月曆/累計天數/連續天數/月度里程碑領取皆來自 hook
   const checkin = useDailyCheckIn()
@@ -103,8 +106,14 @@ export default function AppShell({ children }) {
 
   // 全服喜報機器人：營造「全服都有人在贏」的氛圍（idempotent，多頁掛載只會啟動一次）。
   useEffect(() => {
-    startBotFeed()
-  }, [])
+    if (preferences.announcementsEnabled) {
+      startBotFeed()
+    } else {
+      stopBotFeed()
+    }
+
+    return () => stopBotFeed()
+  }, [preferences.announcementsEnabled])
 
   useEffect(() => {
     setAvatarFailed(false)
@@ -249,6 +258,7 @@ export default function AppShell({ children }) {
                 <span className="gold-muted block text-[11px] font-bold uppercase">Star Coin</span>
                 <span className="font-black">{balance.toLocaleString()}</span>
               </div>
+              <SiteSettings />
               <div className="relative">
                 <button
                   type="button"
