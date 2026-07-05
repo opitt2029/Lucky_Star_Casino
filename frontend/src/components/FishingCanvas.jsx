@@ -13,6 +13,7 @@ export default function FishingCanvas({
   phase,
   betPerShot,
   cannonLevel = 1,
+  ammoTone = 'copper',
   fishTable,
   fire,
   play,
@@ -31,6 +32,7 @@ export default function FishingCanvas({
   ctxRef.current.phase = phase
   ctxRef.current.betPerShot = betPerShot
   ctxRef.current.cannonLevel = cannonLevel
+  ctxRef.current.ammoTone = ammoTone
   ctxRef.current.fishTable = fishTable
   ctxRef.current.fire = fire
   ctxRef.current.play = play
@@ -75,6 +77,7 @@ export default function FishingCanvas({
         engine.setFishTable(ctxRef.current.fishTable)
         engine.setBet(ctxRef.current.betPerShot)
         engine.setCannon(ctxRef.current.cannonLevel)
+        engine.setAmmoTone(ctxRef.current.ammoTone)
         engine.setPerfMode(ctxRef.current.perfMode)
         engine.setPhase(ctxRef.current.phase)
         registerRef.current?.(engine.handleResults)
@@ -102,6 +105,9 @@ export default function FishingCanvas({
   useEffect(() => {
     engineRef.current?.setCannon(cannonLevel)
   }, [cannonLevel])
+  useEffect(() => {
+    engineRef.current?.setAmmoTone(ammoTone)
+  }, [ammoTone])
   useEffect(() => {
     engineRef.current?.setFishTable(fishTable)
   }, [fishTable])

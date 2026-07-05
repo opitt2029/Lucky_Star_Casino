@@ -58,7 +58,7 @@ public final class FishingCombat {
      * 使最低捕獲率不致過低（金炮對中小魚 {@code pCapture} ≈ 0.44，避免「血歸零卻掙脫」過於頻繁），
      * RTP 仍由 {@code pCapture} 補償一致。注額已與砲台解耦（玩家自選），砲台只決定火力/節奏/變異度。
      */
-    private static final int[] CANNON_DAMAGE = {0, 10, 14, 18};
+    private static final int[] CANNON_DAMAGE = {0, 14, 22, 32};
 
     /** 預先算好的捕獲機率表：species → [cannonLevel] → pCapture。 */
     private static final Map<FishSpecies, double[]> P_CAPTURE = buildCaptureTable();

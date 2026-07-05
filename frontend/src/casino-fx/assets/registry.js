@@ -40,7 +40,16 @@ const ART_OVERRIDES = {
   'fish-pixiu': '/images/game/fishing/fish-gold-3d.svg',
   'fish-caishen': '/images/game/fishing/fish-boss-whale.svg',
   'fish-dragon-king': '/images/game/fishing/fish-boss-whale.svg',
+  'fish-golden-dragon-king': '/images/fishing/golden-dragon-king.svg?v=dragon-head-v2',
+  'fish-jackpot-fish-king': '/images/fishing/jackpot-fish-king.svg?v=rainbow-front-smooth',
+  'fish-rainbow-jackpot-fish-king': '/images/fishing/rainbow-jackpot-fish-king.svg?v=20260704-no-mouth',
   'fish-money-tree': '/images/game/fishing/fish-gold-3d.svg',
+  'fish-blocker-octopus': '/images/fishing/blocker-octopus.svg?v=20260705-evil-size',
+  'fish-blocker-starfish': '/images/fishing/blocker-starfish.svg?v=20260705-evil-size',
+  'fish-blocker-turtle': '/images/fishing/blocker-turtle.svg?v=20260705-evil-size',
+  'fish-evil-blocker-octopus': '/images/fishing/blocker-octopus.svg?v=20260705-evil-official',
+  'fish-evil-blocker-starfish': '/images/fishing/blocker-starfish.svg?v=20260705-evil-official',
+  'fish-evil-blocker-turtle': '/images/fishing/blocker-turtle.svg?v=20260705-evil-official',
 }
 const SVG_COMPONENTS = {
   // 老虎機符號（華人財富意象）

@@ -1,4 +1,4 @@
-const DB_KEY = 'lucky-star-mock-db-v1'
+﻿const DB_KEY = 'lucky-star-mock-db-v1'
 const SESSION_KEY = 'lucky-star-session-v1'
 
 // 老虎機賠付表（與後端 SlotSymbol 對齊：權重 + 兩階倍率，權重總和 103）。
@@ -27,8 +27,8 @@ const FISHING_HP_PER_MULT = 10
 // 暴擊（對齊後端 FishingCombat）
 const FISHING_CRIT_CHANCE = 0.2
 const FISHING_CRIT_MULT = 2
-// 各砲台單發基礎傷害（索引 0 不用；銅/銀/金，對齊後端 CANNON_DAMAGE = {1:10,2:14,3:18}）
-const FISHING_CANNON_DAMAGE = [0, 10, 14, 18]
+// 各砲台單發基礎傷害（索引 0 不用；銅/銀/金，對齊後端 CANNON_DAMAGE = {1:14,2:22,3:32}）
+const FISHING_CANNON_DAMAGE = [0, 14, 22, 32]
 const FISH_SPECIES = [
   { code: 'KOI', name: '錦鯉', assetId: 'fish-koi', multiplier: 2, tier: 'SMALL', spawnWeight: 100 },
   { code: 'GOLDFISH', name: '金魚', assetId: 'fish-goldfish', multiplier: 3, tier: 'SMALL', spawnWeight: 90 },
@@ -42,6 +42,14 @@ const FISH_SPECIES = [
   { code: 'DRAGON_KING', name: '龍王', assetId: 'fish-dragon-king', multiplier: 200, tier: 'BOSS', spawnWeight: 2 },
   { code: 'MONEY_TREE', name: '搖錢樹', assetId: 'fish-money-tree', multiplier: 30, tier: 'SPECIAL', spawnWeight: 5 },
 ]
+
+function isFishingBlocker(fishType) {
+  return ['BLOCKER_OCTOPUS', 'BLOCKER_STARFISH', 'BLOCKER_TURTLE'].includes(String(fishType || '').toUpperCase())
+}
+
+function isFishingMiss(fishType) {
+  return String(fishType || '').toUpperCase() === 'MISS'
+}
 
 function fishHp(fish) {
   return fish.multiplier * FISHING_HP_PER_MULT
@@ -922,6 +930,7 @@ export const mockApi = {
     // 引擎 remount 後 idSeq 從 0 重置，舊 fishDamage 的 key 會碰撞到新魚 id，
     // 導致新魚繼承舊傷害（初次命中 hpRemaining 異常偏低或直接一擊即死）。
     session.fishDamage = {}
+    session.fishRecovery = {}
     saveDb(db)
     return {
       sessionId: session.sessionId,
@@ -953,6 +962,7 @@ export const mockApi = {
       // 同 fishingActive()：引擎 remount 後 idSeq 從 0 重置，舊 fishDamage 的 key
       // 會碰撞到新魚 id，導致新魚繼承舊傷害（初擊即死），故一併歸零。
       existing.fishDamage = {}
+      existing.fishRecovery = {}
       saveDb(db)
       return {
         sessionId: existing.sessionId,
@@ -1022,21 +1032,17 @@ export const mockApi = {
 
     // 鏡像後端 FishingService.validateBatch（ADR-004）：每發 betPerShot 必須等於進場選定的
     // 固定注額，否則整批拒絕——勿放寬，放寬會讓 mock 與真 API 行為分歧（雷區 14）。
-    const allowedBet = Number(session.betPerShot) || 0
-    for (const shot of shots) {
-      if (Number(shot.betPerShot) !== allowedBet) {
-        throw new Error(`betPerShot 須等於進場選定的固定注額 ${allowedBet}`)
-      }
-    }
-
-    const cannonLevel = session.cannonLevel || 1
     session.fishDamage = session.fishDamage || {}
+    session.fishRecovery = session.fishRecovery || {}
     const results = []
     for (const shot of shots) {
       const fish = FISH_SPECIES.find((item) => item.code === shot.fishType)
+      const blocker = isFishingBlocker(shot.fishType)
+      const miss = isFishingMiss(shot.fishType)
       const bet = Number(shot.betPerShot)
+      const cannonLevel = Number(shot.cannonLevel || session.cannonLevel || 1)
       // 局內餘額不足：該發（含其後同批）整批不受理（比照後端）。
-      if (!fish || session.sessionBalance < bet) {
+      if ((!fish && !blocker && !miss) || !Number.isInteger(bet) || bet <= 0 || ![1, 2, 3].includes(cannonLevel) || session.sessionBalance < bet) {
         results.push({
           shotSeq: shot.shotSeq, accepted: false, hit: false, crit: false,
           damage: 0, hpRemaining: 0, killed: false, captured: false, payout: 0,
@@ -1048,6 +1054,32 @@ export const mockApi = {
       session.totalBet += bet
       session.totalShots += 1
       session.lastShotSeq = Math.max(session.lastShotSeq, Number(shot.shotSeq))
+      if (miss) {
+        session.cannonLevel = cannonLevel
+        session.betPerShot = bet
+        session.shotResults = session.shotResults || {}
+        session.shotResults[String(shot.shotSeq)] = { fishType: 'MISS', betPerShot: bet, cannonLevel, crit: false, damage: 0, killed: false, captured: false, payout: 0 }
+        results.push({
+          shotSeq: shot.shotSeq, accepted: true, hit: false, crit: false,
+          damage: 0, hpRemaining: 0, killed: false, captured: false, payout: 0,
+          sessionBalance: session.sessionBalance,
+        })
+        continue
+      }
+
+      if (blocker) {
+        session.cannonLevel = cannonLevel
+        session.betPerShot = bet
+        session.shotResults = session.shotResults || {}
+        session.shotResults[String(shot.shotSeq)] = { fishType: String(shot.fishType).toUpperCase(), betPerShot: bet, cannonLevel, crit: false, damage: 0, killed: false, captured: false, payout: 0 }
+        results.push({
+          shotSeq: shot.shotSeq, accepted: true, hit: true, crit: false,
+          damage: 0, hpRemaining: 0, killed: false, captured: false, payout: 0,
+          sessionBalance: session.sessionBalance,
+        })
+        continue
+      }
+
 
       // 血量/傷害模型：累積傷害 → 致命一擊擲捕獲（鏡像後端 FishingCombat）。
       const instanceId = shot.fishInstanceId || `seq-${shot.shotSeq}`
@@ -1063,6 +1095,7 @@ export const mockApi = {
       if (!killed) {
         hpRemaining = hp - after
         session.fishDamage[instanceId] = after
+        session.fishRecovery[instanceId] = (session.fishRecovery[instanceId] || 0) + fishingRecoveryPayout(bet, cannonLevel, damage)
       } else {
         captured = Math.random() < fishingCapture(fish, cannonLevel)
         if (captured) {
@@ -1072,8 +1105,11 @@ export const mockApi = {
           session.totalPayout += payout
         }
         delete session.fishDamage[instanceId]
+        delete session.fishRecovery[instanceId]
       }
       // 記錄逐發結果供結算後 verify-shot 重放（mock 無真正 RNG 種子，改以對局存檔回放）。
+      session.cannonLevel = cannonLevel
+      session.betPerShot = bet
       session.shotResults = session.shotResults || {}
       session.shotResults[String(shot.shotSeq)] = { fishType: fish.code, betPerShot: bet, cannonLevel, crit, damage, killed, captured, payout }
       results.push({
@@ -1136,16 +1172,22 @@ export const mockApi = {
 
     // 殘血部分回收（ADR-004）：fishDamage 只剩「受傷但未打死」的魚（致命一擊後已 delete），
     // 退還 RECOVERY_RATE 比例的子彈成本，折入局內餘額與 totalPayout（鏡像後端 settleInternal）。
-    const cannonLevel = session.cannonLevel || 1
-    const betPerShot = session.betPerShot || 0
     let residualRecovery = 0
-    for (const dmg of Object.values(session.fishDamage || {})) {
-      residualRecovery += fishingRecoveryPayout(betPerShot, cannonLevel, Number(dmg) || 0)
+    const recoveryValues = Object.values(session.fishRecovery || {})
+    if (recoveryValues.length > 0) {
+      for (const recovery of recoveryValues) residualRecovery += Number(recovery) || 0
+    } else {
+      const cannonLevel = session.cannonLevel || 1
+      const betPerShot = session.betPerShot || 0
+      for (const dmg of Object.values(session.fishDamage || {})) {
+        residualRecovery += fishingRecoveryPayout(betPerShot, cannonLevel, Number(dmg) || 0)
+      }
     }
     if (residualRecovery > 0) {
       session.sessionBalance += residualRecovery
       session.totalPayout += residualRecovery
       session.fishDamage = {}
+      session.fishRecovery = {}
     }
 
     const credited = session.sessionBalance

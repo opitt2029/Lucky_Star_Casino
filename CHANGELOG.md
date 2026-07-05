@@ -1,7 +1,211 @@
+﻿## [removed] -- 2026-07-05 -- Fishing buy-in entry note panel
+
+### Removed
+- `frontend/src/pages/Fishing.jsx`: remove the buy-in screen `fishing-entry-note` note block.
+- `frontend/src/components/Fishing.css`: remove the now-unused `fishing-entry-note` styles.
+
+### Why
+- The buy-in panel should be cleaner and no longer show the entry note card.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+## [changed] -- 2026-07-05 -- Fishing missed shots consume ammo
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: route empty-water shots through the normal `fire()` flow using a `MISS` shot type, so shots that do not hit any fish still deduct the current `betPerShot` before showing the bullet animation.
+- `backend/game-service/src/main/java/com/luckystar/game/service/FishingService.java`: accept `MISS` shots as charged non-hit results with no damage, no capture, no payout, and no residual recovery.
+- `frontend/src/services/mockApi.js`: mirror the backend `MISS` shot behavior in mock mode.
+
+### Why
+- Every fired bullet should consume ammo consistently, whether it hits a normal fish, hits an obstacle creature, or misses all fish.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+- `mvn -pl backend/game-service clean test`
+## [changed] -- 2026-07-05 -- Fishing blocker shots consume session balance
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: route blocker hits through the normal `fire()` flow so shooting obstacle creatures deducts the current `betPerShot` and shows the deducted amount in the blocker hint.
+- `backend/game-service/src/main/java/com/luckystar/game/service/FishingService.java`: accept `BLOCKER_OCTOPUS`, `BLOCKER_STARFISH`, and `BLOCKER_TURTLE` shots as charged no-payout obstacle hits without running normal fish combat.
+- `frontend/src/services/mockApi.js`: mirror the backend blocker-shot behavior in mock mode.
+
+### Why
+- Obstacle creatures should cost ammo like any shot while still behaving as blockers: no damage, no capture, no payout, and no residual recovery.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+- `mvn -pl backend/game-service clean test`
+## [changed] -- 2026-07-05 -- Fishing evil blocker pressure scaling
+
+### Changed
+- `frontend/public/images/fishing/blocker-octopus.svg`, `blocker-starfish.svg`, and `blocker-turtle.svg`: remove the white mouth/teeth line from each evil blocker asset.
+- `frontend/src/components/fishingEngine.js`: scale evil blocker spawn pressure by active fish tier; medium, high/special, and boss fish now shorten blocker spawn intervals, raise simultaneous blocker caps, and can trigger multi-blocker waves.
+
+### Fixed
+- Confirmed the previous non-applied evil blocker issue came from the Pixi asset pipeline: the game could still use stale `fish-blocker-*` texture keys, and the texture cache previously ignored the resolved asset URL. The current game path uses `fish-evil-blocker-*` ids and URL-aware texture cache keys.
+
+### Why
+- Higher-value fish should be harder to line up cleanly, and the evil blocker art should not retain the bright white mouth strokes that made the face look off.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+## [fixed] -- 2026-07-05 -- Fishing evil blocker asset pipeline
+
+### Fixed
+- `frontend/src/components/fishingEngine.js`: switch in-game blocker spawning to dedicated `fish-evil-blocker-*` asset ids so the Pixi stage no longer reuses the old blocker texture keys.
+- `frontend/src/casino-fx/assets/registry.js`: register the dedicated evil blocker asset ids with fresh cache-busted SVG URLs.
+- `frontend/src/casino-fx/assets/bakeTextures.js`: include the resolved asset source URL/component name in the texture cache key so future art URL changes create a fresh texture instead of reusing stale in-memory assets.
+
+### Why
+- The evil blocker SVG files were updated, but the running Pixi asset pipeline could still resolve or cache textures by the old blocker asset ids, making the game appear to use the previous obstacle art.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+## [changed] -- 2026-07-05 -- Fishing evil blocker size tiers
+
+### Changed
+- `frontend/public/images/fishing/blocker-octopus.svg`, `blocker-starfish.svg`, and `blocker-turtle.svg`: redesign blocker creatures with darker palettes, sharper silhouettes, angry red eyes, teeth/spikes, and heavier shadows.
+- `frontend/src/components/fishingEngine.js`: add small / medium / large blocker size profiles; small blockers absorb 5 bullets, medium blockers absorb 10 bullets, and large blockers absorb 17 bullets before leaving.
+- `frontend/src/casino-fx/assets/registry.js` and `frontend/src/data/fishingFishConfig.js`: bump blocker asset URLs and update the fish guide copy to explain the 5 / 10 / 17 bullet blocking rule.
+
+### Why
+- Obstacles should feel more threatening and should create varied shooting lanes with clearly different blocking durability by size.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+## [changed] -- 2026-07-05 -- Fishing blocker durability and cleaner hit feedback
+
+### Added
+- `frontend/src/data/fishingFishConfig.js` and `frontend/src/components/FishingFishInfoPanel.jsx`: add obstacle octopus, starfish, and turtle entries to the bottom fish guide with no-coin and 10-shot blocking labels.
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: make blocker creatures withstand exactly 10 intercepted bullets before leaving, while keeping their size and speed variation across octopus, starfish, and turtle variants.
+- `frontend/src/components/fishingEngine.js`: hide normal damage numbers and HP bars during play; critical hits still show a floating critical label.
+
+### Why
+- The fishing stage should keep combat feedback lively without visual clutter, and obstacle creatures should be explained clearly as no-cost blockers rather than normal fish targets.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+## [changed] -- 2026-07-05 -- Fishing blocker creature variety
+
+### Added
+- `frontend/public/images/fishing/blocker-octopus.svg`, `blocker-starfish.svg`, and `blocker-turtle.svg`: add dedicated obstacle creature visuals for the fishing stage.
+
+### Changed
+- `frontend/src/casino-fx/assets/registry.js`: register the new blocker creature SVG assets for Pixi preload.
+- `frontend/src/components/fishingEngine.js`: randomize blocker spawns across octopus, starfish, and turtle variants with different sizes, speeds, and movement wobble while preserving no-cost bullet blocking behavior.
+
+### Why
+- Obstacle blockers should read as distinct sea creatures rather than another normal fish, and their sizes should vary to make the shooting lane feel less uniform.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+## [changed] -- 2026-07-05 -- Fishing live ammo switching and hit feedback
+
+### Added
+- `frontend/src/components/fishingEngine.js`: add immediate hit sparks/damage floats/HP preview, blocker fish that intercept bullets without calling `fire()`, and safer fish spawn bounds away from the cannon zone.
+- `backend/game-service/src/main/java/com/luckystar/game/dto/FishingShotsRequest.java`: allow each shot to carry an optional `cannonLevel` for in-round ammo switching.
+
+### Changed
+- `backend/game-service/src/main/java/com/luckystar/game/fishing/FishingCombat.java`, `FishingSession.java`, `FishingSessionStore.java`, and `service/FishingService.java`: raise cannon damage to 14 / 22 / 32, resolve damage per shot, persist per-instance residual recovery, and verify killing shots with their actual cannon level.
+- `frontend/src/hooks/useFishingSession.js`, `frontend/src/pages/Fishing.jsx`, `frontend/src/components/FishingControlDock.jsx`, and `frontend/src/services/mockApi.js`: let ammo/cannon selection change while playing, send per-shot cannon level, and mirror the backend damage/recovery model in mock mode.
+- `frontend/src/casino-fx/sound/SoundEngine.js`: prevent queued BGM notes from playing after BGM is disabled, including Boss transitions.
+
+### Why
+- Fishing needs faster visual feedback, in-game ammo switching, blocker fish that create no-cost shot obstruction, and spawn rules that avoid fish appearing directly beside the cannon.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+- `mvn -pl backend/game-service test`
+## [fixed] -- 2026-07-05 -- Fishing fullscreen top-up and entry flow refinements
+
+### Changed
+- `frontend/src/hooks/useFishingSession.js`: stop auto-resuming an active fishing session on page mount so every `/game/fishing` entry shows the buy-in screen first.
+- `frontend/src/pages/Fishing.jsx`: wrap the stage and top-up dialog in the fullscreen target, move the performance toggle into the stage marquee, and pass active ammo tone into canvas/dock controls.
+- `frontend/src/components/FishingCanvas.jsx`, `frontend/src/components/FishingControlDock.jsx`, and `frontend/src/components/fishingEngine.js`: map ammo tone to the actual Pixi firing cannon, including copper single-barrel, silver dual-barrel, and gold heavy triple-barrel silhouettes, plus bullet color, cannon scale, barrel tint, muzzle flash, and dock cannon bay styling.
+- `frontend/src/components/Fishing.css`: increase HUD metric height/radius, place the performance toggle on the marquee right side, support the new fullscreen surface, and add ammo-specific cannon bay skins.
+
+### Why
+- Fullscreen only renders descendants of the requested element, so the top-up dialog must live inside the fullscreen target. The fishing page should not skip buy-in from any navigation entry, and ammo choices should have clearer cannon feedback without changing backend-authoritative damage/RTP rules.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+## [fixed] -- 2026-07-04 -- Jackpot fish king front silhouette cleanup
+
+### Fixed
+- `frontend/public/images/fishing/rainbow-jackpot-fish-king.svg`: removed the two front protruding sharp points and removed the mouth, teeth, and mouth highlight paths from the active jackpot fish king asset.
+- `frontend/src/data/fishingFishConfig.js` and `frontend/src/casino-fx/assets/registry.js`: bumped the active rainbow jackpot fish king asset URL to force the updated SVG to load in the game and fish guide.
+
+### Why
+- The visible in-game asset was still the active rainbow SVG, which retained the old front points and mouth even after earlier legacy asset edits.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+## [changed] -- 2026-07-04 -- Fishing fullscreen and golden dragon king guide
+
+### Added
+- `frontend/src/components/FishingFullscreenButton.jsx`: add Fullscreen API toggle for the Pixi fishing stage.
+- `frontend/src/components/FishingFishInfoPanel.jsx` and `frontend/src/data/fishingFishConfig.js`: add lobby fish guide data, rewards, rarity, and golden dragon king display metadata.
+- `frontend/public/images/fishing/golden-dragon-king.svg`: add a dedicated dragon-shaped golden dragon king visual asset.
+
+### Changed
+- `frontend/src/pages/Fishing.jsx`: wire fullscreen state, unsupported/failure messaging, immersive stage class, and move the fish guide into a bottom page information section.
+- `frontend/src/services/fishingApi.js`, `frontend/src/casino-fx/assets/registry.js`, and `frontend/src/components/fishingEngine.js`: keep backend `DRAGON_KING` shot validation compatible, prioritize 彩金魚王 in the timed Boss spawn, and load the new rainbow-colored jackpot fish king SVG with a smooth front face without protruding fins, a fresh non-cached asset id/file, quick in-game spawn, and the largest in-game body size through a cache-busted asset URL.
+- `frontend/src/components/Fishing.css`: add red-gold fullscreen button states, fullscreen stage layout, centered lobby content, and responsive fish guide card styling.
+
+### Why
+- The fishing page needed a more immersive play mode and clearer lobby-side game information while remaining compatible with the current backend fishing species contract.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+
 ﻿# Changelog — Lucky Star Casino
 
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+
+## [changed] -- 2026-07-04 -- Fishing page API alignment and control dock refinement
+### Added
+- `frontend/src/services/fishingApi.js`: added a fishing-specific adapter over the existing game API mock/real switch.
+- `frontend/src/data/fishingConfig.js`: centralized the three fishing ammo options as 10 / 50 / 100 star-coin bet-per-shot presets.
+- `frontend/src/components/FishingControlDock.jsx` and `FishingSettlementPanel.jsx`: split reusable fishing controls and settlement summary UI out of the page.
+
+### Changed
+- `frontend/src/pages/Fishing.jsx`: refreshes wallet balance on entry, uses the fishing adapter/config, shows full-round catch count, gates top-up to depleted session balance, and presents settlement as consumption / catch count / reward / net result.
+- `frontend/src/hooks/useFishingSession.js`: routes through `fishingApi`, persists session buy-in in view state, and tracks full-round caught fish count separately from the capped verify-shot log.
+- `frontend/src/components/fishingEngine.js`: raises the Pixi cannon origin so the cannon remains visible above the in-stage control dock.
+- `frontend/src/components/Fishing.css`: added scoped red-gold dock overrides for consistent ammo card sizing, disabled/active states, RWD layout, and API error messaging.
+
+### Why
+- Align `/game/fishing` with the current backend contract: `betPerShot` is the player-selected ammo amount, cannon damage remains a separate session-level backend setting, and top-up should only appear when the current session balance is insufficient.
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
 
 ## [changed] -- 2026-07-04 -- Baccarat table UI rebuilt into casino-style layout
 ### Added

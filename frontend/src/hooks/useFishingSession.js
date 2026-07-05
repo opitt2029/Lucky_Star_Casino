@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
-import { gameApi } from '../services/gameApi'
+import { fishingApi } from '../services/fishingApi'
 import { setBalance } from '../store/slices/walletSlice'
 
 // 子彈面額（單發注額）：玩家進場自選、整場固定，與砲台解耦（ADR-004）。對齊後端 MIN_BET/MAX_BET。
@@ -12,8 +12,8 @@ export const BET_TIERS = [10, 50, 100, 500, 1000]
 export const BUYIN_MIN = 100
 export const BUYIN_MAX = 1000000
 export const BUYIN_TIERS = [1000, 3000, 5000, 10000]
-// 各砲台單發基礎傷害（顯示用；對齊後端 FishingCombat.CANNON_DAMAGE = {1:10, 2:14, 3:18}）。
-export const CANNON_DAMAGE = [0, 10, 14, 18]
+// 各砲台單發基礎傷害（顯示用；對齊後端 FishingCombat.CANNON_DAMAGE = {1:14, 2:22, 3:32}）。
+export const CANNON_DAMAGE = [0, 14, 22, 32]
 
 // 射速節流：8 發/秒 + 15 發 burst（對齊後端 MAX_SHOTS_PER_SEC / BURST_ALLOWANCE，
 // 本地用 token bucket 限制，避免送出後被後端整批拒絕）。
@@ -41,7 +41,7 @@ export function useFishingSession({ onResults } = {}) {
   const [phase, setPhase] = useState('loading') // 'loading' | 'idle' | 'playing' | 'settling' | 'settled'
   const [session, setSession] = useState(null) // { sessionId, cannonLevel, fishTable, serverSeedHash, clientSeed }
   const [sessionBalance, setSessionBalance] = useState(0)
-  const [stats, setStats] = useState({ totalShots: 0, totalPayout: 0 })
+  const [stats, setStats] = useState({ totalShots: 0, totalPayout: 0, caughtCount: 0 })
   const [settleResult, setSettleResult] = useState(null)
   const [error, setError] = useState(null)
   const [topUpLoading, setTopUpLoading] = useState(false)
@@ -49,9 +49,10 @@ export function useFishingSession({ onResults } = {}) {
   // 即時狀態用 ref，避免閉包過期。
   const balanceRef = useRef(0)
   const shotSeqRef = useRef(0)
-  const bufferRef = useRef([]) // 待送出的 shot：{ shotSeq, betPerShot, fishType }
+  const bufferRef = useRef([]) // 待送出的 shot：{ shotSeq, betPerShot, cannonLevel, fishType }
   const fishBySeqRef = useRef(new Map()) // shotSeq → fishCode（回應時對映魚種）
   const shotLogRef = useRef([]) // 已受理逐發紀錄（供結算後公平性驗證），保留最後 SHOT_LOG_CAP 發
+  const caughtCountRef = useRef(0) // Full-round catch count; shotLog keeps only recent shots.
   const bucketRef = useRef({ tokens: BURST_CAPACITY, last: 0 })
   const flushTimerRef = useRef(null)
   const inFlightRef = useRef(false)
@@ -70,23 +71,10 @@ export function useFishingSession({ onResults } = {}) {
 
   // 進場查進行中場次（斷線重連恢復）。
   useEffect(() => {
-    let alive = true
-    gameApi
-      .fishingActive()
-      .then((active) => {
-        if (!alive) return
-        if (active) {
-          applySessionView(active, true)
-        } else {
-          setPhase('idle')
-        }
-      })
-      .catch(() => alive && setPhase('idle'))
+    setPhase('idle')
     return () => {
-      alive = false
       if (flushTimerRef.current) window.clearInterval(flushTimerRef.current)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function applySessionView(view, resumed) {
@@ -95,12 +83,14 @@ export function useFishingSession({ onResults } = {}) {
     betPerShotRef.current = view.betPerShot || BET_TIERS[0]
     shotSeqRef.current = view.lastShotSeq || 0
     shotLogRef.current = []
+    caughtCountRef.current = 0
     setBalanceBoth(view.sessionBalance ?? 0)
-    setStats({ totalShots: view.totalShots || 0, totalPayout: 0 })
+    setStats({ totalShots: view.totalShots || 0, totalPayout: 0, caughtCount: 0 })
     setSession({
       sessionId: view.sessionId,
       cannonLevel: view.cannonLevel || 1,
       betPerShot: view.betPerShot || BET_TIERS[0],
+      buyIn: view.buyIn,
       fishTable: view.fishTable || [],
       serverSeedHash: view.serverSeedHash,
       clientSeed: view.clientSeed,
@@ -118,7 +108,7 @@ export function useFishingSession({ onResults } = {}) {
       setPhase('loading')
       try {
         const clientSeed = `cs-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-        const view = await gameApi.fishingStart({ buyIn, cannonLevel, betPerShot, clientSeed })
+        const view = await fishingApi.start({ buyIn, cannonLevel, betPerShot, clientSeed })
         if (view.wallet) dispatch(setBalance(view.wallet))
         applySessionView(view, view.resumed)
       } catch (err) {
@@ -162,7 +152,7 @@ export function useFishingSession({ onResults } = {}) {
     shotSeqRef.current = shotSeq
     fishBySeqRef.current.set(shotSeq, fishCode)
     // 後端 Shot DTO 只認 shotSeq/betPerShot/fishType/fishInstanceId；砲台等級為 session 級（進場固定），不隨發送出。
-    bufferRef.current.push({ shotSeq, betPerShot, fishType: fishCode, fishInstanceId: String(fishInstanceId) })
+    bufferRef.current.push({ shotSeq, betPerShot, cannonLevel, fishType: fishCode, fishInstanceId: String(fishInstanceId) })
     setBalanceBoth(balanceRef.current - betPerShot) // 樂觀扣注，命中後於回應補回派彩
 
     if (bufferRef.current.length >= FLUSH_SIZE) flush()
@@ -197,10 +187,11 @@ export function useFishingSession({ onResults } = {}) {
     inFlightRef.current = true
     const batch = bufferRef.current.splice(0, MAX_BATCH)
     try {
-      const res = await gameApi.fishingShots({ sessionId, shots: batch })
+      const res = await fishingApi.shots({ sessionId, shots: batch })
       let delta = 0
       let payoutSum = 0
       let acceptedShots = 0
+      let capturedCount = 0
       for (const r of res.results) {
         const shot = batch.find((s) => s.shotSeq === r.shotSeq)
         if (!r.accepted) {
@@ -211,11 +202,13 @@ export function useFishingSession({ onResults } = {}) {
             delta += r.payout
             payoutSum += r.payout
           }
+          if (r.captured) capturedCount += 1
           // 記錄已受理逐發，供結算後逐發公平性驗證（verify-shot）。
           shotLogRef.current.push({
             shotSeq: r.shotSeq,
             fishType: shot?.fishType,
             betPerShot: shot?.betPerShot,
+            cannonLevel: shot?.cannonLevel,
             hit: r.hit,
             payout: r.payout,
           })
@@ -225,8 +218,13 @@ export function useFishingSession({ onResults } = {}) {
         }
       }
       if (delta !== 0) setBalanceBoth(balanceRef.current + delta)
-      if (acceptedShots > 0 || payoutSum > 0) {
-        setStats((prev) => ({ totalShots: prev.totalShots + acceptedShots, totalPayout: prev.totalPayout + payoutSum }))
+      if (capturedCount > 0) caughtCountRef.current += capturedCount
+      if (acceptedShots > 0 || payoutSum > 0 || capturedCount > 0) {
+        setStats((prev) => ({
+          totalShots: prev.totalShots + acceptedShots,
+          totalPayout: prev.totalPayout + payoutSum,
+          caughtCount: prev.caughtCount + capturedCount,
+        }))
       }
       const fishBySeq = fishBySeqRef.current
       onResultsRef.current?.(res.results, { sessionBalance: res.sessionBalance, fishBySeq })
@@ -245,13 +243,13 @@ export function useFishingSession({ onResults } = {}) {
   // 等於進場面額、傷害只認 session.cannonLevel，場中改動會導致整批射擊被拒或前後端傷害分歧，
   // 故僅允許在開場前（phase !== 'playing'）變更。
   const changeBetPerShot = useCallback((nextBet) => {
-    if (phase === 'playing') {
-      setError('子彈面額進場後固定，請先收網結算再重新選擇')
+    if (phase === 'settling') {
+      setError('結算中暫時不能切換彈藥')
       return false
     }
     const value = Number(nextBet)
     if (!Number.isInteger(value) || value < BET_MIN || value > BET_MAX) {
-      setError(`子彈面額需介於 ${BET_MIN.toLocaleString()} ~ ${BET_MAX.toLocaleString()} 星幣`)
+      setError(`單發彈藥金額需介於 ${BET_MIN.toLocaleString()} ~ ${BET_MAX.toLocaleString()} 星幣`)
       return false
     }
     betPerShotRef.current = value
@@ -261,13 +259,13 @@ export function useFishingSession({ onResults } = {}) {
   }, [phase])
 
   const changeCannonLevel = useCallback((nextLevel) => {
-    if (phase === 'playing') {
-      setError('砲台等級進場後固定，請先收網結算再重新選擇')
+    if (phase === 'settling') {
+      setError('結算中暫時不能切換砲台')
       return false
     }
     const value = Number(nextLevel)
     if (!Number.isInteger(value) || value < 1 || value >= CANNON_DAMAGE.length) {
-      setError('無效的砲台等級')
+      setError('未知的砲台等級')
       return false
     }
     cannonLevelRef.current = value
@@ -294,7 +292,7 @@ export function useFishingSession({ onResults } = {}) {
         return null
       }
       const clientRequestId = `tu-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-      const result = await gameApi.fishingTopUp({ sessionId, amount: value, clientRequestId })
+      const result = await fishingApi.topUp({ sessionId, amount: value, clientRequestId })
       if (result.wallet) dispatch(setBalance(result.wallet))
       if (typeof result.sessionBalance === 'number') setBalanceBoth(result.sessionBalance)
       setSession((prev) => (prev ? { ...prev, buyIn: result.buyIn ?? prev.buyIn } : prev))
@@ -326,11 +324,11 @@ export function useFishingSession({ onResults } = {}) {
       }
     }
     try {
-      const result = await gameApi.fishingEnd({ sessionId })
+      const result = await fishingApi.end({ sessionId })
       if (result.wallet) dispatch(setBalance(result.wallet))
       sessionIdRef.current = null
       // 附上近期逐發紀錄供結算頁公平性驗證（最後幾發優先）。
-      setSettleResult({ ...result, shots: [...shotLogRef.current].reverse() })
+      setSettleResult({ ...result, caughtCount: caughtCountRef.current, shots: [...shotLogRef.current].reverse() })
       setPhase('settled')
     } catch (err) {
       // 結算失敗（多為錢包暫時不可用）：場次仍在後端、未刪除，可直接再按「收網結算」重試（冪等安全）。
@@ -345,9 +343,10 @@ export function useFishingSession({ onResults } = {}) {
   const resetToIdle = useCallback(() => {
     setSettleResult(null)
     setSession(null)
-    setStats({ totalShots: 0, totalPayout: 0 })
+    setStats({ totalShots: 0, totalPayout: 0, caughtCount: 0 })
     setBalanceBoth(0)
     shotLogRef.current = []
+    caughtCountRef.current = 0
     setPhase('idle')
   }, [setBalanceBoth])
 

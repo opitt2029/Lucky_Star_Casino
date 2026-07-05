@@ -119,6 +119,7 @@ class SoundEngine {
 
   // 給 BGM 排程器用的低階入口（無視 sfxEnabled，受 bgmGain 控制）。
   playBgmNote(id, opts = {}) {
+    if (!this.settings.bgmEnabled) return
     const ctx = this.ctx
     if (!ctx || ctx.state !== 'running') return
     const recipe = SFX_RECIPES[id]

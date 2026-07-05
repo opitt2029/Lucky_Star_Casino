@@ -214,11 +214,15 @@ public class FishingService {
         long totalShots = session.getTotalShots();
         long lastShotSeq = session.getLastShotSeq();
 
-        int cannonLevel = session.getCannonLevel();
         Map<String, Long> fishDamage = session.getFishDamage();
         if (fishDamage == null) {
             fishDamage = new LinkedHashMap<>();
             session.setFishDamage(fishDamage);
+        }
+        Map<String, Long> fishRecovery = session.getFishRecovery();
+        if (fishRecovery == null) {
+            fishRecovery = new LinkedHashMap<>();
+            session.setFishRecovery(fishRecovery);
         }
         List<FishingSession.KillRecord> kills = session.getKills();
         if (kills == null) {
@@ -250,8 +254,45 @@ public class FishingService {
             totalShots++;
             lastShotSeq = shot.getShotSeq();
 
-            FishSpecies species = FishSpecies.fromCode(shot.getFishType());
             String instanceId = shot.getFishInstanceId();
+            int cannonLevel = shot.getCannonLevel() == null ? session.getCannonLevel() : shot.getCannonLevel();
+            if (isMissShotType(shot.getFishType())) {
+                session.setCannonLevel(cannonLevel);
+                session.setBetPerShot(shot.getBetPerShot());
+                results.add(FishingShotsResponse.ShotResult.builder()
+                        .shotSeq(shot.getShotSeq())
+                        .accepted(true)
+                        .hit(false)
+                        .crit(false)
+                        .damage(0L)
+                        .hpRemaining(0L)
+                        .killed(false)
+                        .captured(false)
+                        .payout(0L)
+                        .sessionBalance(balance)
+                        .build());
+                continue;
+            }
+
+            if (isBlockerFishType(shot.getFishType())) {
+                session.setCannonLevel(cannonLevel);
+                session.setBetPerShot(shot.getBetPerShot());
+                results.add(FishingShotsResponse.ShotResult.builder()
+                        .shotSeq(shot.getShotSeq())
+                        .accepted(true)
+                        .hit(true)
+                        .crit(false)
+                        .damage(0L)
+                        .hpRemaining(0L)
+                        .killed(false)
+                        .captured(false)
+                        .payout(0L)
+                        .sessionBalance(balance)
+                        .build());
+                continue;
+            }
+
+            FishSpecies species = FishSpecies.fromCode(shot.getFishType());
             long damageBefore = fishDamage.getOrDefault(instanceId, 0L);
             RandomStream stream = rng.stream(session.getServerSeed(), session.getClientSeed(), shot.getShotSeq());
 
@@ -265,14 +306,18 @@ public class FishingService {
 
             if (outcome.killed()) {
                 // 致命一擊：記錄供 verifyShot 精確重放，並移除該魚 instance 的累傷。
-                kills.add(new FishingSession.KillRecord(shot.getShotSeq(), species.name(), damageBefore));
+                kills.add(new FishingSession.KillRecord(shot.getShotSeq(), species.name(), damageBefore, cannonLevel));
                 while (kills.size() > KILL_LOG_CAP) {
                     kills.remove(0);
                 }
                 fishDamage.remove(instanceId);
+                fishRecovery.remove(instanceId);
             } else {
                 // 未死：累積傷害（並控管並存 instance 數，淘汰最舊者）。
                 fishDamage.put(instanceId, outcome.damageTakenAfter());
+                long recovery = fishRecovery.getOrDefault(instanceId, 0L)
+                        + FishingCombat.recoveryPayout(shot.getBetPerShot(), cannonLevel, outcome.damage());
+                fishRecovery.put(instanceId, recovery);
                 pruneFishDamage(fishDamage);
             }
 
@@ -280,6 +325,8 @@ public class FishingService {
                 balance += payout;
                 totalPayout += payout;
             }
+            session.setCannonLevel(cannonLevel);
+            session.setBetPerShot(shot.getBetPerShot());
 
             results.add(FishingShotsResponse.ShotResult.builder()
                     .shotSeq(shot.getShotSeq())
@@ -445,6 +492,7 @@ public class FishingService {
         boolean riskControlled = false;
         Map<Long, Long> killDamageBefore = new HashMap<>();
         Map<Long, String> killSpecies = new HashMap<>();
+        Map<Long, Integer> killCannonLevel = new HashMap<>();
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> resultData = objectMapper.readValue(round.getResultData(), Map.class);
@@ -460,6 +508,8 @@ public class FishingService {
                         killDamageBefore.put(s, before instanceof Number ? ((Number) before).longValue() : 0L);
                         Object ft = m.get("fishType");
                         if (ft != null) killSpecies.put(s, String.valueOf(ft));
+                        Object cannon = m.get("cannonLevel");
+                        if (cannon instanceof Number) killCannonLevel.put(s, ((Number) cannon).intValue());
                     }
                 }
             }
@@ -471,6 +521,7 @@ public class FishingService {
         boolean killingBlow = killDamageBefore.containsKey(shotSeq);
         FishSpecies species = FishSpecies.fromCode(killSpecies.getOrDefault(shotSeq, fishType));
         long damageBefore = killingBlow ? killDamageBefore.get(shotSeq) : 0L;
+        if (killCannonLevel.containsKey(shotSeq)) cannonLevel = killCannonLevel.get(shotSeq);
 
         RandomStream stream = rng.stream(round.getServerSeed(), round.getClientSeed(), shotSeq);
         FishingCombat.ShotOutcome outcome =
@@ -518,17 +569,36 @@ public class FishingService {
     }
 
     /** 整批驗證：注額、序號嚴格遞增、射速上限。任一不符整批拒絕（不動帳）。 */
+    private boolean isMissShotType(String fishType) {
+        if (fishType == null) {
+            return false;
+        }
+        return fishType.trim().equalsIgnoreCase("MISS");
+    }
+
+    private boolean isBlockerFishType(String fishType) {
+        if (fishType == null) {
+            return false;
+        }
+        String normalized = fishType.trim().toUpperCase();
+        return normalized.equals("BLOCKER_OCTOPUS")
+                || normalized.equals("BLOCKER_STARFISH")
+                || normalized.equals("BLOCKER_TURTLE");
+    }
+
     private void validateBatch(FishingSession session, List<FishingShotsRequest.Shot> shots) {
-        long allowedBet = session.getBetPerShot() == null ? 0L : session.getBetPerShot();
         long previousSeq = session.getLastShotSeq();
         for (FishingShotsRequest.Shot shot : shots) {
-            if (shot.getBetPerShot() != allowedBet) {
-                throw new IllegalArgumentException(
-                        "betPerShot 須等於進場選定的固定注額 " + allowedBet);
+            if (shot.getBetPerShot() == null || shot.getBetPerShot() < MIN_BET || shot.getBetPerShot() > MAX_BET) {
+                throw new IllegalArgumentException("betPerShot must be between " + MIN_BET + " and " + MAX_BET);
+            }
+            Integer cannonLevel = shot.getCannonLevel();
+            if (cannonLevel != null && (cannonLevel < 1 || cannonLevel > 3)) {
+                throw new IllegalArgumentException("cannonLevel must be between 1 and 3");
             }
             if (shot.getShotSeq() <= previousSeq) {
                 throw new IllegalArgumentException(
-                        "shotSeq 必須嚴格遞增（上次受理至 " + session.getLastShotSeq() + "）");
+                        "shotSeq 必須遞增，目前最後序號 " + session.getLastShotSeq());
             }
             previousSeq = shot.getShotSeq();
         }
@@ -539,7 +609,7 @@ public class FishingService {
         long elapsedMs = Math.max(Duration.between(lastActivity, Instant.now()).toMillis(), 0L);
         long allowedShots = elapsedMs * MAX_SHOTS_PER_SEC / 1000 + BURST_ALLOWANCE;
         if (shots.size() > allowedShots) {
-            throw new IllegalArgumentException("射速異常（疑似連點外掛），本批子彈已整批拒絕");
+            throw new IllegalArgumentException("射擊速度過快，請稍後再試");
         }
     }
 
@@ -549,6 +619,14 @@ public class FishingService {
      * 不需查 species/HP（致命一擊後該魚已從 fishDamage 移除，故這裡掃到的都是未死殘血魚）。
      */
     private long computeResidualRecovery(FishingSession session) {
+        Map<String, Long> fishRecovery = session.getFishRecovery();
+        if (fishRecovery != null && !fishRecovery.isEmpty()) {
+            long total = 0L;
+            for (Long recovery : fishRecovery.values()) {
+                if (recovery != null) total += recovery;
+            }
+            return total;
+        }
         Map<String, Long> fishDamage = session.getFishDamage();
         if (fishDamage == null || fishDamage.isEmpty()) {
             return 0L;

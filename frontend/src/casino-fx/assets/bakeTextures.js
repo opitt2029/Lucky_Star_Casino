@@ -35,9 +35,10 @@ async function bakeSvg(Component, px) {
  * @returns {Promise<Texture>}
  */
 export function getTexture(assetId, px = 256) {
-  const key = `${assetId}@${px}`
-  if (cache.has(key)) return cache.get(key)
   const asset = getAsset(assetId)
+  const sourceKey = asset?.type === 'image' ? asset.url : asset?.Component?.name || 'missing'
+  const key = `${assetId}@${px}@${sourceKey}`
+  if (cache.has(key)) return cache.get(key)
   let promise
   if (!asset) {
     promise = Promise.resolve(Texture.WHITE) // 缺圖退化為白塊，不讓引擎崩潰
