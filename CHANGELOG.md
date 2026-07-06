@@ -1,4 +1,66 @@
-﻿## [removed] -- 2026-07-05 -- Fishing buy-in entry note panel
+﻿## [changed] -- 2026-07-06 -- 調高百家樂風控全局 RTP 門檻（1.02 → 1.20）
+
+### Changed
+- `backend/game-service/src/main/resources/application.yml`：`risk.global-rtp-limit.BACCARAT` 由 1.02 調至 1.20，並補上量化依據註解。
+
+### Why
+- 與同日 SLOT 門檻調整同一類問題、用同一套蒙地卡羅方法覆核（300 萬局，鏡像 `BaccaratGameService` 無限靴發牌/補牌表、`win_amount = totalPayout + rebate` 口徑、`BaccaratService.settle` 的攔截改判邏輯）。
+- 風控口徑內的百家樂正常水位 ≈ 0.97~1.00（結構性 ≈0.99 ＋ 返水 0.5~1%，隨押注輪廓與注額浮動），500 局窗口 RTP 標準差 ≈ 0.04~0.06（押和 9x 比例越高越大）。舊門檻 1.02 只在均值上方約 0.5σ：開環下 23~31% 的檢查誤判超限；閉環下約 7% 的局被強制改判為莊家贏（押閒/押和的合法中獎被沒收，實得 RTP 被壓約 1.3 個百分點）——與 2026-06-25 修過的誤判事故同類，只是幅度較小、持續存在。
+- 取 1.20：即使在押和偏多（40/40/20）輪廓下誤觸率 ≤0.08%，實得 RTP ≈ 自然值；而真異常（派彩 bug、和局漏洞單局 9x）會讓窗口 RTP 持續遠超 1.2，攔截力仍在。百家樂尾巴（最大 9x）比老虎機（70x）輕，故門檻低於 SLOT 的 1.30。
+- `RiskControlServiceTest` 不受影響（測試自建門檻 map，不讀 application.yml）。
+
+### Verified
+- `mvn -pl backend/game-service test` 全綠。
+- 模擬（窗口 500、45/45/10 押注輪廓、返水 1%）：門檻 1.02/1.05/1.10/1.15/1.20 的閉環強制改判率分別為 7.42%/3.66%/0.65%/0.08%/0.003%，實得 RTP 0.971/0.979/0.985/0.986/0.985（自然值 ≈0.985）。
+## [test] -- 2026-07-06 -- 新增網站設定面板 e2e 測試（SiteSettings）
+
+### Added
+- `frontend/e2e/site-settings.spec.js`：Playwright e2e（mock 模式、免後端）覆蓋 commit 327c7cf 的網站設定面板——開啟面板、關閉「全網公告效果／網站背景效果」、音量調整、驗證 localStorage（`lucky-star-site-preferences-v1`／`lucky-star-sound-settings-v1`）寫入、消費端即時反應（`.coin-rain` 從 DOM 移除）、重新整理後設定讀回、ESC 關閉。
+
+### Why
+- 該面板此前無任何測試覆蓋（vitest 只有 api/mockApi）。設定為純前端偏好（localStorage + storage 事件跨分頁同步），無後端 API，故以 e2e 驗證「儲存/讀取/實際作用」整條鏈。
+- 註：自訂開關樣式會讓 Playwright 的 `check()/uncheck()` 點不到原生 checkbox（裝飾 span 攔截 pointer events），測試改點整列 label；日後寫相關測試比照。
+
+### Verified
+- `npx playwright test e2e/site-settings.spec.js` 1 passed（7.9s）。
+## [docs] -- 2026-07-06 -- 真後端全鏈路 smoke test 結果紀錄（無程式變更）
+
+### Verified
+- 實跑 gateway(8080)+member(8081)+wallet(8082)+game(8083)（Docker infra healthy）：註冊(201) → 登入(200) → 查餘額 → 模擬充值 → 老虎機 5 局 → 百家樂 36 局（閒/莊/和輪押）。
+- 派彩契約與 mock 全部一致：老虎機 `payout = bet × multiplier`、逐局錢包對帳吻合；百家樂閒贏 2x、莊贏 1.95x（5% 傭金）、押和中 9x（含本金 900）、和局押閒/莊 push 退本金、返水 `max(1, totalBet/200)`（與 `mockApi` 公式相同）。
+- 錯誤碼：餘額不足 422「星幣餘額不足」（mock 同文案）、注額違規 400（單局 100~5,000）、無 token 401。
+
+### 發現的兩個世界分歧（未修改，留待產品決策）
+1. **新玩家初始資金**：真後端新手禮僅 100 星幣（`GM_REWARD`，經 outbox 約 5 秒入帳），而老虎機最低注 100 → 真環境新玩家只能玩一把就必須充值；mock 新註冊直接給大額測試餘額。
+2. **限流與非同步行為 mock 沒有**：(a) gateway 對 `/api/v1/game/**` 有 per-player 1 秒窗口限流，連打回 429 `"Too many requests"`，前端無專門處理、會把英文訊息直接顯示；(b) 註冊後立刻查餘額會 404 `Wallet not found`（Kafka 開戶延遲 <1s），mock 永遠即時。實際 UI 流程通常不會踩到，但寫前端重試/文案時要知道。
+
+### Why
+- 本輪前置診斷只跑過 mock 模式；此筆補上真後端鏈路驗證的結果與分歧清單，避免下次重查。
+## [changed] -- 2026-07-06 -- 調高老虎機風控全局 RTP 門檻（0.97 → 1.30）
+
+### Changed
+- `backend/game-service/src/main/resources/application.yml`：`risk.global-rtp-limit.SLOT` 由 0.97 調至 1.30，並補上量化依據註解。
+
+### Why
+- 舊門檻 0.97 只比老虎機結構性 RTP（≈0.938，`SlotSymbol` Javadoc）高 3.2 個百分點，但賠付表含 70x（SEVEN 三連）/50x（STAR 三連）重尾，單局派彩倍率標準差 ≈ 2.4，`rtp-sample-size: 500` 的窗口 RTP 標準差 ≈ 0.107 —— 0.97 只在均值上方 0.3σ，屬正常波動範圍，非異常訊號。
+- 蒙地卡羅模擬（500 萬局，鏡像 `SlotSymbol` 權重/兩階賠付與 `RiskControlService`/`SlotService` 攔截邏輯）：開環下 0.97 有 36.4% 的檢查判定超限；閉環（超限贏局被 `SlotService.settleInternal` 強制改判 noWin、以 0 派彩入帳）下約 5.9% 的贏局被沒收、玩家實得 RTP 被壓到 0.88。這正是雷區 17 / 2026-06-25 百家樂誤判事故的同類 bug，仍在老虎機上活著。
+- 原候選區間 0.98~0.99 幾乎無改善（閉環沒收率仍 5.2~5.6%），因此比照 FISHING 1.10「高變異留足裕度」的做法放大到 1.30：誤觸降至 0.06% 贏局（實得 RTP 0.938 ≈ 理論值），而真異常（賠付表 bug / 漏洞）會讓窗口 RTP 持續遠超 1.3，攔截力仍在。
+- `RiskControlServiceTest` 不受影響：測試自建門檻 map（SLOT=0.95）驗證判定邏輯，不讀 application.yml。
+
+### Verified
+- `mvn -pl backend/game-service test` 全綠。
+- 模擬腳本（等注額、窗口 500）：門檻 0.97/0.99/1.20/1.30 的閉環贏局沒收率分別為 5.93%/5.19%/0.30%/0.06%，實得 RTP 0.880/0.891/0.935/0.938。
+## [docs] -- 2026-07-06 -- 修正 AGENTS.md 雷區 16 過時的砲台傷害數值
+
+### Fixed
+- `AGENTS.md` 雷區 16：「砲台傷害收斂為 {0,10,14,18}」改為與程式碼一致的 `{0,14,22,32}`（`FishingCombat.CANNON_DAMAGE`，前端 `mockApi.js` 的 `FISHING_CANNON_DAMAGE` 已同步為此值）。
+
+### Why
+- 文件殘留 ADR-004 早期草案數值，與 `FishingCombat.java:61` 實際實作不符，會誤導後續依文件改數值的人。
+
+### Verified
+- 對照 `FishingCombat.java` 與 `frontend/src/services/mockApi.js`，三處數值一致；純文件修改，無程式行為變更。
+## [removed] -- 2026-07-05 -- Fishing buy-in entry note panel
 
 ### Removed
 - `frontend/src/pages/Fishing.jsx`: remove the buy-in screen `fishing-entry-note` note block.
