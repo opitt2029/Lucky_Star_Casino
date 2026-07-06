@@ -2455,3 +2455,166 @@
     grid-column: 2;
   }
 }
+/* Blocker guide and dock stability refinements. */
+.fishing-blocker-card {
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 214, 108, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(58, 8, 20, 0.86), rgba(5, 24, 39, 0.9));
+}
+
+.fishing-blocker-list {
+  display: grid;
+  gap: 9px;
+}
+
+.fishing-blocker-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 72px;
+  padding: 10px;
+  border: 1px solid rgba(255, 224, 132, 0.16);
+  border-radius: 8px;
+  background: rgba(4, 15, 26, 0.52);
+}
+
+.fishing-blocker-row > span {
+  display: block;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 239, 184, 0.42);
+  box-shadow: inset -8px -10px 14px rgba(0, 0, 0, 0.28), 0 0 16px rgba(255, 211, 92, 0.12);
+}
+
+.fishing-blocker-row.is-ink > span {
+  background: radial-gradient(circle at 34% 26%, #7f7bff, #171522 58%, #020207);
+}
+
+.fishing-blocker-row.is-speed > span {
+  background: radial-gradient(circle at 35% 28%, #fff0a8, #ff7a62 45%, #4ddcf8 78%);
+}
+
+.fishing-blocker-row.is-armor > span {
+  background: radial-gradient(circle at 35% 25%, #fff1aa, #5dbb88 48%, #163422 78%);
+}
+
+.fishing-blocker-row strong,
+.fishing-blocker-row small,
+.fishing-blocker-row p {
+  display: block;
+}
+
+.fishing-blocker-row strong {
+  color: #fff1b7;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.fishing-blocker-row small {
+  margin-top: 2px;
+  color: rgba(121, 237, 255, 0.78);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.fishing-blocker-row p {
+  margin: 4px 0 0;
+  color: rgba(255, 238, 190, 0.62);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.fishing-redgold-shell .fishing-control-dock__title,
+.fishing-redgold-shell .fishing-dock-ammo,
+.fishing-dock-cannon-bay,
+.fishing-redgold-shell .fishing-stage-frame .fishing-stage-settle.fishing-stage-settle--dock {
+  min-width: 0;
+}
+
+.fishing-dock-ammo-group {
+  align-items: stretch;
+}
+
+.fishing-redgold-shell .fishing-dock-ammo {
+  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-areas:
+    'badge label'
+    'badge amount';
+}
+
+.fishing-redgold-shell .fishing-dock-ammo[aria-pressed='true'] {
+  outline: 2px solid rgba(255, 243, 185, 0.5);
+  outline-offset: -3px;
+}
+
+@media (max-width: 720px) {
+  .fishing-blocker-list {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(210px, 78vw);
+    overflow-x: auto;
+    padding-bottom: 3px;
+    scroll-snap-type: x mandatory;
+  }
+
+  .fishing-blocker-row {
+    scroll-snap-align: start;
+  }
+}
+
+@media (max-width: 560px) {
+  .fishing-redgold-shell .fishing-stage-frame .fishing-control-dock--ingame {
+    max-height: min(360px, calc(100% - 16px));
+  }
+
+  .fishing-redgold-shell .fishing-dock-ammo {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'label'
+      'amount';
+    justify-items: center;
+  }
+
+  .fishing-dock-cannon-bay small,
+  .fishing-stage-settle--dock span {
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Mobile playing-stage containment: keep the Pixi table inside the shell instead of clipping a desktop-width grid. */
+@media (max-width: 768px) {
+  .fishing-redgold-shell,
+  .fishing-redgold-shell .fishing-page,
+  .fishing-redgold-shell .fishing-main,
+  .fishing-fullscreen-surface,
+  .fishing-stage-card,
+  .fishing-stage-frame {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    justify-self: stretch;
+  }
+
+  .fishing-redgold-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fishing-redgold-shell .fishing-page {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .fishing-redgold-shell .fishing-stage-frame .fishing-arena,
+  .fishing-redgold-shell .fishing-arena,
+  .fishing-redgold-shell .fishing-arena > canvas {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .fishing-redgold-shell .fishing-stage-frame .fishing-control-dock--ingame {
+    width: auto;
+    max-width: calc(100% - 16px);
+  }
+}

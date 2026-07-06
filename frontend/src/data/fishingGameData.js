@@ -52,3 +52,26 @@ export const FISHING_JACKPOT = {
   amount: 888888,
   bonusText: '彩金鯨王倒數巡游中',
 }
+export const FISHING_BLOCKER_GUIDE = [
+  {
+    id: 'octopus',
+    name: '障礙章魚',
+    effect: '5 發擊破',
+    description: '擊破後噴墨遮蔽漁場視野 2 秒。',
+    tone: 'ink',
+  },
+  {
+    id: 'starfish',
+    name: '障礙海星',
+    effect: '5 發擊破',
+    description: '擊破後目前魚群加速 2 秒，障礙魚不加速。',
+    tone: 'speed',
+  },
+  {
+    id: 'turtle',
+    name: '障礙海龜',
+    effect: '5 / 10 / 17 發',
+    description: '小中大尺寸保留原擊破次數，但體型更大、遮擋更明顯。',
+    tone: 'armor',
+  },
+]

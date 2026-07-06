@@ -107,15 +107,63 @@ const CANNON_STYLE = [null, CANNON_STYLE_BY_TONE.copper, CANNON_STYLE_BY_TONE.si
 const BULLET_BASE_R = 5 // 子彈基準半徑（白圓，實際大小由 cannonStyle.bulletR 以 scale 調整）
 const SPARK_BASE_R = 10 // 火花基準半徑
 
+const BLOCKER_EFFECTS = {
+  ink: 'ink',
+  speed: 'speed',
+  none: 'none',
+}
 const BLOCKER_SPECIES = [
-  { code: 'BLOCKER_OCTOPUS', name: '障礙章魚', asset: 'fish-evil-blocker-octopus', sizeMin: 82, sizeMax: 108, durMin: 5.1, durMax: 7.8, tint: 0xffffff, alpha: 0.96, wobble: 0.48 },
-  { code: 'BLOCKER_STARFISH', name: '障礙海星', asset: 'fish-evil-blocker-starfish', sizeMin: 58, sizeMax: 84, durMin: 4.0, durMax: 6.2, tint: 0xffffff, alpha: 0.94, wobble: 0.26 },
-  { code: 'BLOCKER_TURTLE', name: '障礙海龜', asset: 'fish-evil-blocker-turtle', sizeMin: 98, sizeMax: 128, durMin: 6.8, durMax: 10.2, tint: 0xffffff, alpha: 0.98, wobble: 0.2 },
+  {
+    code: 'BLOCKER_OCTOPUS',
+    name: '障礙章魚',
+    asset: 'fish-evil-blocker-octopus',
+    sizeMin: 138,
+    sizeMax: 168,
+    durMin: 5.6,
+    durMax: 8.2,
+    effect: BLOCKER_EFFECTS.ink,
+    tint: 0xffffff,
+    alpha: 0.98,
+    wobble: 0.52,
+    profile: 'largeOnly',
+  },
+  {
+    code: 'BLOCKER_STARFISH',
+    name: '障礙海星',
+    asset: 'fish-evil-blocker-starfish',
+    sizeMin: 118,
+    sizeMax: 148,
+    durMin: 4.6,
+    durMax: 6.8,
+    effect: BLOCKER_EFFECTS.speed,
+    tint: 0xffffff,
+    alpha: 0.97,
+    wobble: 0.3,
+    profile: 'largeOnly',
+  },
+  {
+    code: 'BLOCKER_TURTLE',
+    name: '障礙海龜',
+    asset: 'fish-evil-blocker-turtle',
+    sizeMin: 128,
+    sizeMax: 168,
+    durMin: 7.2,
+    durMax: 11.2,
+    effect: BLOCKER_EFFECTS.none,
+    tint: 0xffffff,
+    alpha: 0.99,
+    wobble: 0.18,
+    profile: 'allSizes',
+  },
 ]
-const BLOCKER_SIZE_PROFILES = [
-  { key: 'small', name: '小型', scale: 0.78, maxHits: 5, durationFactor: 0.74 },
-  { key: 'medium', name: '中型', scale: 1, maxHits: 10, durationFactor: 1 },
-  { key: 'large', name: '大型', scale: 1.32, maxHits: 17, durationFactor: 1.28 },
+const BLOCKER_FIXED_PROFILES = {
+  BLOCKER_OCTOPUS: { key: 'large', name: '大型', scale: 1.32, maxHits: 5, durationFactor: 1.1 },
+  BLOCKER_STARFISH: { key: 'large', name: '大型', scale: 1.32, maxHits: 5, durationFactor: 1.05 },
+}
+const TURTLE_SIZE_PROFILES = [
+  { key: 'small', name: '小型', scale: 0.95, maxHits: 5, durationFactor: 0.78, weight: 4 },
+  { key: 'medium', name: '中型', scale: 1.2, maxHits: 10, durationFactor: 1, weight: 3 },
+  { key: 'large', name: '大型', scale: 1.52, maxHits: 17, durationFactor: 1.28, weight: 2 },
 ]
 const PRELOAD_ASSETS = ['cannon', 'cannon-copper', 'cannon-silver', 'coin', ...FISH_ASSETS]
 
@@ -170,7 +218,7 @@ export class FishingEngine {
     this.ctx = ctx
     this._destroyed = false
 
-    // 顯示層（由下而上）：光暈 → 魚 → 火花/子彈 → HP 條 → 浮字/傷害數字 → 砲台 → 提示
+    // 顯示層（由下而上）：光暈 → 魚 → 火花/子彈 → HP 條 → 浮字/傷害數字 → 砲台 → 畫面特效 → 提示
     this.backdropLayer = new Container()
     this.decorLayer = new Container()
     this.glowLayer = new Container() // 高倍魚光暈（在魚下方）
@@ -179,6 +227,7 @@ export class FishingEngine {
     this.hpLayer = new Container()
     this.floatLayer = new Container()
     this.cannonLayer = new Container()
+    this.screenFxLayer = new Container()
     this.uiLayer = new Container()
     app.stage.addChild(
       this.backdropLayer,
@@ -189,6 +238,7 @@ export class FishingEngine {
       this.hpLayer,
       this.floatLayer,
       this.cannonLayer,
+      this.screenFxLayer,
       this.uiLayer,
     )
     this.fishMask = new Graphics()
@@ -215,6 +265,12 @@ export class FishingEngine {
     this.backdropW = 0
     this.backdropH = 0
     this.backdropTime = 0
+    this.inkMs = 0
+    this.inkDurationMs = 0
+    this.inkBlobs = []
+    this.speedBoostMs = 0
+    this.speedBoostDurationMs = 0
+    this.speedBoostMultiplier = 1.75
 
     // 指標連發狀態
     this.pointer = null
@@ -294,6 +350,14 @@ export class FishingEngine {
       .stroke({ width: 2, color: 0xffe9a8, alpha: 0.85 })
     this.reticle.visible = false
     this.uiLayer.addChild(this.reticle)
+
+    this.effectStatus = new Text({
+      text: '',
+      style: { fill: 0xfff0b8, fontSize: 13, fontWeight: '900', fontFamily: 'inherit' },
+    })
+    this.effectStatus.anchor.set(0.5)
+    this.effectStatus.visible = false
+    this.uiLayer.addChild(this.effectStatus)
 
     // DOM 事件綁在 canvas（座標用 offsetX/offsetY，CSS px，與 stage 邏輯座標一致）
     const canvas = this.app.canvas
@@ -392,6 +456,7 @@ export class FishingEngine {
     const H = this.app.screen.height
     if (this.cannonPulse > 0) this.cannonPulse = Math.max(0, this.cannonPulse - dtMs)
     this._updateBackdrop(dtMs, W, H)
+    this._updateScreenEffects(dtMs, W, H)
     if (this.cannon) this.cannon.visible = false
 
     this._guardFps(dtMs)
@@ -452,9 +517,13 @@ export class FishingEngine {
     this.seaBack = new Graphics()
     this.caustics = new Graphics()
     this.seaFloor = new Graphics()
+    this.vignette = new Graphics()
+    this.speedOverlay = new Graphics()
+    this.inkOverlay = new Graphics()
     this.cannonDeck = new Graphics()
     this.backdropLayer.addChild(this.seaBack, this.caustics)
     this.decorLayer.addChild(this.seaFloor)
+    this.screenFxLayer.addChild(this.vignette, this.speedOverlay, this.inkOverlay)
     this.cannonLayer.addChild(this.cannonDeck)
 
     const bubbleCount = this.reducedMotion ? 10 : 24
@@ -548,6 +617,36 @@ export class FishingEngine {
         .fill({ color, alpha: 0.44 })
     }
 
+    if (this.vignette) {
+      this.vignette
+        .clear()
+        .rect(0, 0, W, fishBottom)
+        .stroke({ width: Math.max(42, W * 0.055), color: 0x01030a, alpha: 0.46 })
+        .rect(0, fishBottom - 72, W, 72)
+        .fill({ color: 0x01040c, alpha: 0.2 })
+    }
+
+    for (let i = 0; i < 9; i += 1) {
+      const x = W * (0.14 + (i % 5) * 0.18) + Math.sin(i * 2.1) * 12
+      const y = fishBottom * (0.58 + (i % 3) * 0.1)
+      const r = 3 + (i % 4)
+      this.seaFloor
+        .circle(x, y, r)
+        .fill({ color: 0xffd76d, alpha: 0.26 })
+        .circle(x + r * 0.32, y - r * 0.28, Math.max(1, r * 0.28))
+        .fill({ color: 0xffffff, alpha: 0.2 })
+    }
+
+    const shadowFishCount = this.perfMode ? 2 : 5
+    for (let i = 0; i < shadowFishCount; i += 1) {
+      const x = W * (0.18 + i * 0.17)
+      const y = fishBottom * (0.18 + (i % 3) * 0.16)
+      this.seaFloor
+        .ellipse(x, y, 32 + i * 4, 7 + (i % 2) * 2)
+        .fill({ color: 0x00131f, alpha: 0.18 })
+        .circle(x + 30 + i * 4, y, 5)
+        .fill({ color: 0x00131f, alpha: 0.14 })
+    }
     this._drawCannonDeck(W, H)
   }
 
@@ -697,6 +796,107 @@ export class FishingEngine {
     this._drawCannonDeck(W, H)
   }
 
+
+  _triggerInkCloud(durationMs = 2000) {
+    this.inkMs = Math.max(this.inkMs || 0, durationMs)
+    this.inkDurationMs = durationMs
+    const blobCount = this.perfMode ? 7 : 16
+    this.inkBlobs = Array.from({ length: blobCount }, (_, i) => ({
+      x: 0.08 + Math.random() * 0.84,
+      y: 0.08 + Math.random() * 0.72,
+      r: 0.09 + Math.random() * 0.22,
+      delay: (i / Math.max(1, blobCount - 1)) * 0.16,
+      wobble: Math.random() * Math.PI * 2,
+    }))
+  }
+
+  _triggerSpeedBoost(durationMs = 2000) {
+    this.speedBoostMs = Math.max(this.speedBoostMs || 0, durationMs)
+    this.speedBoostDurationMs = durationMs
+  }
+
+  _triggerBlockerEffect(f) {
+    if (f.blockerEffect === BLOCKER_EFFECTS.ink) {
+      this._triggerInkCloud(2000)
+      this._spawnSpark(f.x, f.y, { color: 0x17151f, startScale: 0.9, grow: 2.4 })
+      this._showHint('章魚噴墨，視野受阻 2 秒')
+      this.ctx.play?.('crit')
+      return
+    }
+
+    if (f.blockerEffect === BLOCKER_EFFECTS.speed) {
+      this._triggerSpeedBoost(2000)
+      this._spawnSpark(f.x, f.y, { color: 0x8df2ff, startScale: 0.9, grow: 2.2 })
+      this._spawnSpark(f.x + 16, f.y - 10, { color: 0xffe06a, startScale: 0.42, grow: 1.7 })
+      this._showHint('海星爆裂，魚群加速 2 秒')
+      this.ctx.play?.('lockOn')
+      return
+    }
+
+    this._spawnSpark(f.x, f.y, { color: 0xffd76d, startScale: 0.7, grow: 1.9 })
+    this._showHint(`${f.name || '障礙生物'}已擊破`)
+  }
+
+  _updateScreenEffects(dtMs, W, H) {
+    const fishBottom = this._fishViewportBottom(W, H)
+    const hasInk = this.inkMs > 0 && this.inkOverlay
+    const hasSpeed = this.speedBoostMs > 0 && this.speedOverlay
+
+    if (this.inkMs > 0) this.inkMs = Math.max(0, this.inkMs - dtMs)
+    if (this.speedBoostMs > 0) this.speedBoostMs = Math.max(0, this.speedBoostMs - dtMs)
+
+    if (this.speedOverlay) {
+      this.speedOverlay.clear()
+      if (hasSpeed) {
+        const elapsed = Math.max(0, (this.speedBoostDurationMs || 2000) - this.speedBoostMs)
+        const p = elapsed / Math.max(1, this.speedBoostDurationMs || 2000)
+        const fade = p < 0.78 ? 1 : Math.max(0, 1 - (p - 0.78) / 0.22)
+        const lineCount = this.perfMode ? 7 : 15
+        for (let i = 0; i < lineCount; i += 1) {
+          const y = fishBottom * (0.14 + ((i * 0.73 + this.backdropTime * 0.28) % 0.72))
+          const x = ((this.backdropTime * 360 + i * 89) % (W + 180)) - 120
+          this.speedOverlay
+            .moveTo(x, y)
+            .lineTo(x + 120 + (i % 3) * 28, y - 18 + (i % 4) * 8)
+            .stroke({ width: 2 + (i % 3), color: i % 2 ? 0xffd76d : 0x8df2ff, alpha: 0.18 * fade })
+        }
+      }
+    }
+
+    if (this.inkOverlay) {
+      this.inkOverlay.clear()
+      if (hasInk) {
+        const duration = Math.max(1, this.inkDurationMs || 2000)
+        const p = Math.min(1, Math.max(0, (duration - this.inkMs) / duration))
+        const alpha = p < 0.15 ? (p / 0.15) * 0.9 : p < 0.8 ? 0.9 : 0.9 * (1 - (p - 0.8) / 0.2)
+        this.inkOverlay.rect(0, 0, W, fishBottom).fill({ color: 0x030305, alpha: Math.max(0, alpha * 0.72) })
+        for (const blob of this.inkBlobs) {
+          const localP = Math.max(0, Math.min(1, (p - blob.delay) / 0.42))
+          if (localP <= 0) continue
+          const wobble = this.perfMode ? 0 : Math.sin(this.backdropTime * 3 + blob.wobble) * 8
+          const radius = Math.max(W, fishBottom) * blob.r * (0.3 + localP * 1.8)
+          this.inkOverlay
+            .circle(blob.x * W + wobble, blob.y * fishBottom - wobble * 0.45, radius)
+            .fill({ color: 0x020203, alpha: alpha * (0.34 + localP * 0.32) })
+        }
+      } else if (this.inkBlobs.length) {
+        this.inkBlobs = []
+      }
+    }
+
+    if (this.effectStatus) {
+      if (this.inkMs > 0 || this.speedBoostMs > 0) {
+        const seconds = Math.ceil(Math.max(this.inkMs, this.speedBoostMs) / 1000)
+        this.effectStatus.text = this.inkMs > 0 ? `噴墨遮蔽 ${seconds}s` : `魚群加速 ${seconds}s`
+        this.effectStatus.visible = true
+        this.effectStatus.x = W / 2
+        this.effectStatus.y = Math.max(30, Math.min(fishBottom - 18, H * 0.1))
+        this.effectStatus.alpha = this.inkMs > 0 ? 0.92 : 0.86
+      } else {
+        this.effectStatus.visible = false
+      }
+    }
+  }
   _guardFps(dtMs) {
     const fps = this.app.ticker.FPS
     if (fps && fps < 40) this.lowFpsMs += dtMs
@@ -735,6 +935,17 @@ export class FishingEngine {
     }
   }
 
+  _pickBlockerProfile(kind) {
+    const fixed = BLOCKER_FIXED_PROFILES[kind.code]
+    if (fixed) return fixed
+    const total = TURTLE_SIZE_PROFILES.reduce((sum, p) => sum + (p.weight || 1), 0)
+    let roll = Math.random() * total
+    for (const profile of TURTLE_SIZE_PROFILES) {
+      roll -= profile.weight || 1
+      if (roll <= 0) return profile
+    }
+    return TURTLE_SIZE_PROFILES[1]
+  }
   _trySpawn(W, H, opts = {}) {
     if (!this.table || this.table.length === 0) return
     const hardCap = this.maxFish + (opts.boss ? 2 : 0) // Boss 保證降臨，可略超並存上限
@@ -857,7 +1068,7 @@ export class FishingEngine {
     const liveBlockers = this.fish.filter((f) => f.blocker && !f.caught && !f.fleeing).length
     if (liveBlockers >= maxBlockers) return false
     const kind = BLOCKER_SPECIES[Math.floor(Math.random() * BLOCKER_SPECIES.length)] || BLOCKER_SPECIES[0]
-    const profile = BLOCKER_SIZE_PROFILES[Math.floor(Math.random() * BLOCKER_SIZE_PROFILES.length)] || BLOCKER_SIZE_PROFILES[1]
+    const profile = this._pickBlockerProfile(kind)
     const baseSize = kind.sizeMin + Math.random() * (kind.sizeMax - kind.sizeMin)
     const size = baseSize * profile.scale
     const margin = size
@@ -911,6 +1122,8 @@ export class FishingEngine {
       fleeing: false,
       blockerHits: 0,
       blockerMaxHits: profile.maxHits,
+      blockerEffect: kind.effect || BLOCKER_EFFECTS.none,
+      blockerEffectTriggered: false,
       fleeMs: 0,
       glow: null,
       glowPhase: Math.random() * Math.PI * 2,
@@ -957,8 +1170,9 @@ export class FishingEngine {
         if (k >= 1) this._removeFishAt(i)
         continue
       }
-      f.x += f.vx * dtMs
-      f.baseY += (f.vy || 0) * dtMs
+      const speedMul = this.speedBoostMs > 0 && !f.blocker ? this.speedBoostMultiplier : 1
+      f.x += f.vx * dtMs * speedMul
+      f.baseY += (f.vy || 0) * dtMs * speedMul
       const yMin = f.yMin ?? Math.max(f.dispSize * 0.55, H * 0.08)
       const yMax = f.yMax ?? this._fishYMax(W, H, f.dispSize)
       if (f.entrySide === 'top' && f.baseY >= yMin) {
@@ -1124,6 +1338,10 @@ export class FishingEngine {
     f.sprite.alpha = Math.max(0.5, (f.sprite.alpha || 1) - 0.035)
     f.sprite.rotation += (f.dir === 'ltr' ? 1 : -1) * 0.08
     if (f.blockerHits >= maxHits) {
+      if (!f.blockerEffectTriggered) {
+        f.blockerEffectTriggered = true
+        this._triggerBlockerEffect(f)
+      }
       f.fleeing = true
       f.fleeMs = 0
       this._spawnSpark(hitX + 10, hitY - 8, { color: 0xffffff, startScale: 0.34, grow: 1.3 })
@@ -1514,6 +1732,14 @@ export class FishingEngine {
     this.floats = []
     this.dmgs = []
     this.bubbles = []
+    this.inkMs = 0
+    this.inkDurationMs = 0
+    this.inkBlobs = []
+    this.speedBoostMs = 0
+    this.speedBoostDurationMs = 0
+    this.inkOverlay?.clear()
+    this.speedOverlay?.clear()
+    if (this.effectStatus) this.effectStatus.visible = false
     this.pending.clear()
     clearCache() // 下次重掛載重新烘焙紋理
   }

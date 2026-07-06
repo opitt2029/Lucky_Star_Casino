@@ -22,6 +22,7 @@ import { announcePlayerWin } from '../casino-fx/announce/announceBus'
 import { useGameLeaveGuard } from '../hooks/useGameLeaveGuard'
 import '../components/Fishing.css'
 import {
+  FISHING_BLOCKER_GUIDE,
   FISHING_DISPLAY_SPECIES,
   FISHING_JACKPOT,
   FISHING_SKILLS,
@@ -604,6 +605,22 @@ export default function Fishing() {
               </div>
             </div>
 
+            <div className="fishing-blocker-card luxury-panel-soft p-4">
+              <p className="gold-muted text-xs font-black uppercase tracking-[0.24em]">障礙魚種</p>
+              <h3 className="brand-title mt-1 text-xl font-black text-yellow-100">阻擋與擊破效果</h3>
+              <div className="fishing-blocker-list mt-3">
+                {FISHING_BLOCKER_GUIDE.map((blocker) => (
+                  <div key={blocker.id} className={`fishing-blocker-row is-${blocker.tone}`}>
+                    <span aria-hidden="true" />
+                    <div>
+                      <strong>{blocker.name}</strong>
+                      <small>{blocker.effect}</small>
+                      <p>{blocker.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
             <div className="fishing-skill-card luxury-panel-soft p-4">
               <p className="gold-muted text-xs font-black uppercase tracking-[0.24em]">技能</p>
               <h3 className="brand-title mt-1 text-xl font-black text-yellow-100">技能面板</h3>

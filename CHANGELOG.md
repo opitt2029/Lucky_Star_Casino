@@ -1,4 +1,22 @@
-﻿## [removed] -- 2026-07-05 -- Fishing buy-in entry note panel
+## [feat] -- 2026-07-06 -- Fishing blocker effects and stage polish
+
+### Added
+- `frontend/src/components/fishingEngine.js`: add Pixi-only screen effects for blocker breaks: octopus ink遮蔽 and starfish fish-speed boost, with reduced effect density under perf/reduced-motion mode.
+- `frontend/src/data/fishingGameData.js` and `frontend/src/pages/Fishing.jsx`: add a right-side blocker guide card for octopus, starfish, and turtle behavior.
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: move blocker profile selection into per-species settings; octopus/starfish now spawn only as large 5-hit blockers, while turtles keep 5/10/17-hit tiers with larger visual sizes.
+- `frontend/src/components/fishingEngine.js`: enrich the Pixi stage with vignette, gold glints, distant fish silhouettes, and reusable screen effect overlays without changing `FishingCanvas` props or the `fire(fishInstanceId, fishCode)` contract.
+- `frontend/src/components/Fishing.css` and `frontend/src/data/fishingFishConfig.js`: update blocker guide copy and improve dock/card layout stability across desktop and mobile.
+
+### Why
+- Blocker fish needed distinct effects and clearer player-facing rules while keeping the existing Pixi engine, wallet/session flow, settlement, and fairness verification contracts intact.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [removed] -- 2026-07-05 -- Fishing buy-in entry note panel
 
 ### Removed
 - `frontend/src/pages/Fishing.jsx`: remove the buy-in screen `fishing-entry-note` note block.
