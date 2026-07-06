@@ -1,4 +1,28 @@
-﻿## [changed] -- 2026-07-06 -- 調高百家樂風控全局 RTP 門檻（1.02 → 1.20）
+﻿## [feat] -- 2026-07-06 -- 前端三遊戲沉浸感升級：程序化 BGM 大改版＋環境音＋視覺打磨
+
+### Added
+- `frontend/src/casino-fx/sound/musicTheory.js`：MIDI→頻率、音階（宮調五聲/五聲小調/自然小調）、和弦品質與度數換算。純函式，可獨立測試。
+- `frontend/src/casino-fx/sound/bgmInstruments.js`：BGM 樂器配方（pad 和弦墊/低音撥弦/古箏感撥弦/顫音琴/號角/大鼓/刷鼓/ride/沙鈴/氣泡），全部音符節點自我終結；`createAmbience()` 環境音迴圈（loop 噪音＋濾波＋慢速 LFO），handle 由 composer 持有並清理。
+- `frontend/src/casino-fx/sound/bgmThemes.js`：四主題宣告式編曲——slot（96bpm 宮調喜慶、C–Am–F–G）、baccarat（72bpm 小調 lounge、重 swing）、fishing（64bpm 深海氛圍 drone＋機率氣泡）、boss（132bpm 大鼓＋號角 ostinato）；各主題含環境音層（賭場底噪/人聲低鳴/海水湧動）。
+- `frontend/src/casino-fx/sound/bgmComposer.js`：singleton 排程器。lookahead 排程（沿用原 useBgm 數學）＋多音軌/和弦進行/swing/音量人性化；`setIntensity(0~2)` 讓音樂隨遊戲張力增厚（轉輪中/發牌中疊入高層音軌）；主題切換 0.8s crossfade（fishing→boss 不再硬切）。`computeStepEvents` 純函式供測試。
+- 測試 `musicTheory.test.js`＋`bgmComposer.test.js`（21 個）：主題資料完整性全掃描（進行/樂句長度、頻率有限正值、swing 只在反拍）、intensity 分層、rng 可重現、ctx=null 安全、mock AudioContext 下 tick 實排音符、ambience dispose 防洩漏 spy。
+- 視覺：老虎機轉動中光帶掃過櫃體＋跑馬燈加速＋中獎增亮脈動＋爆機級（≥8x）機櫃震動（`animationend` 移除，無魔術數字）；百家樂牌桌 vignette 聚光（結算時加深聚焦贏方）＋籌碼落點微彈跳；捕魚機 Pixi 神光光楔（add 混合、4 道固定池、perfMode 熄滅）＋浮游生物微粒（20 顆固定池、reducedMotion 不生成）。
+
+### Changed
+- `frontend/src/casino-fx/sound/useBgm.js`：改為薄轉接層（THEMES 移入 bgmThemes），API `useBgm(theme, active, {intensity})` 向下相容既有兩參數呼叫。
+- `frontend/src/pages/SlotGame.jsx`、`Baccarat.jsx`：接上 intensity（轉輪中/發牌咪牌中 → 2）；SlotGame 加機櫃震動狀態。
+- `frontend/src/components/SlotMachine.jsx`：轉動中掛 `slot-machine--live`。
+- `frontend/src/index.css`：新增上述 slot/baccarat 樣式，並將新動畫全部補進 `prefers-reduced-motion: reduce` 例外區。
+- `frontend/src/components/fishingEngine.js`：`_buildBackdrop/_redrawBackdrop/_updateBackdrop/destroy` 加神光與浮游生物（比照 caustics/泡泡既有模式，perfMode/reducedMotion 守門）。
+
+### Why
+- 原 BGM 是 16 步打擊點排程（每主題僅 2~4 個 drum/chip 音），聽感如節拍器，是「不沉浸」主因。升級為和聲＋低音＋旋律＋環境音的多層程序化合成：零音檔、零授權依賴，且全部走既有 `bgmGain`——「音樂」開關與音量滑桿免改直接生效（SiteSettings/SoundEngine/sfx.js 零改動）。玩法、後端契約、mock 賠付（雷區 14）完全未動。
+
+### Verified
+- `npm run test` 35 passed（含新增 21）；`npm run lint` 乾淨；`npm run build` 成功。
+- 手動驗證項（開發者本機）：`npm run dev` 進三遊戲聽層次與 intensity 增厚、fishing↔boss crossfade、遊戲中關「音樂」<0.5s 靜音、捕魚頁 perfMode 下神光熄滅/FPS 無劣化。
+
+## [changed] -- 2026-07-06 -- 調高百家樂風控全局 RTP 門檻（1.02 → 1.20）
 
 ### Changed
 - `backend/game-service/src/main/resources/application.yml`：`risk.global-rtp-limit.BACCARAT` 由 1.02 調至 1.20，並補上量化依據註解。

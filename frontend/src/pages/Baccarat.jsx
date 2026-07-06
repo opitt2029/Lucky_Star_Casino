@@ -112,7 +112,8 @@ export default function Baccarat() {
   const [envelopeTrigger, setEnvelopeTrigger] = useState(0)
   const [banner, setBanner] = useState({ trigger: 0, text: '', level: 1 })
 
-  useBgm('baccarat')
+  // 發牌/咪牌時 BGM 升到高潮層（疊入輕柔 ride 推進），結算後回一般層。
+  useBgm('baccarat', true, { intensity: phase === 'dealing' || phase === 'squeezing' ? 2 : 1 })
   useGameLeaveGuard(phase === 'dealing' || phase === 'squeezing', '本局尚未完成，確定要離開嗎？')
 
   useEffect(() => {
@@ -358,7 +359,7 @@ export default function Baccarat() {
 
       <section className="baccarat-page">
         <div className="baccarat-main-grid">
-          <div className="baccarat-table">
+          <div className={['baccarat-table', phase === 'settled' ? 'baccarat-table--settled' : ''].join(' ')}>
             <BaccaratTableHeader
               phase={phase}
               balance={balance}
