@@ -42,10 +42,13 @@ export default function SlotGame() {
   const [coinDensity, setCoinDensity] = useState('light')
   const [envelopeTrigger, setEnvelopeTrigger] = useState(0)
   const [banner, setBanner] = useState({ trigger: 0, text: '', level: 1 })
+  // 爆機級中獎的機櫃震動：class 由 animationend 移除，跟著動畫真實生命週期走（雷區 13）。
+  const [shaking, setShaking] = useState(false)
   const balance = useSelector((state) => state.wallet.balance)
   const player = useSelector((state) => state.auth.player)
   const { status, loading, error, slotGrid, winningCells } = useSelector((state) => state.game)
-  useBgm('slot')
+  // 轉輪中（含 near-miss 慢停）BGM 升到高潮層（疊入高音琶音），輪停回一般層。
+  useBgm('slot', true, { intensity: loading || visualLock ? 2 : 1 })
   const resolvedBet = selectedBet === 'MAX' ? Math.max(Math.min(balance, 5000), 100) : selectedBet
   const canAfford = balance >= resolvedBet
   // 側欄結果一律讀「已結算快照」（輪停才更新），不直接讀 redux，避免動畫未停就揭曉結果。
@@ -96,8 +99,9 @@ export default function SlotGame() {
     setBurstTrigger((n) => n + 1)
 
     if (multiplier >= 8) {
-      // 爆機級：鑼 + 長琶音、遮屏金幣瀑布、紅包雨、全服喜報
+      // 爆機級：鑼 + 長琶音、遮屏金幣瀑布、紅包雨、機櫃震動、全服喜報
       soundEngine.play('winEpic')
+      setShaking(true)
       setCoinDensity('epic')
       setCoinTrigger((n) => n + 1)
       setEnvelopeTrigger((n) => n + 1)
@@ -126,15 +130,17 @@ export default function SlotGame() {
       <RedEnvelopeRain trigger={envelopeTrigger} density="heavy" />
       <BrushBanner trigger={banner.trigger} text={banner.text} level={banner.level} />
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_280px]">
-        <SlotMachine
-          grid={slotGrid}
-          winningCells={winningCells}
-          spinning={loading}
-          canSpin={canAfford && !visualLock}
-          onSpin={handleSpinRound}
-          onSettled={handleSettled}
-          onSpinComplete={() => setVisualLock(false)}
-        />
+        <div className={shaking ? 'slot-shake' : ''} onAnimationEnd={() => setShaking(false)}>
+          <SlotMachine
+            grid={slotGrid}
+            winningCells={winningCells}
+            spinning={loading}
+            canSpin={canAfford && !visualLock}
+            onSpin={handleSpinRound}
+            onSettled={handleSettled}
+            onSpinComplete={() => setVisualLock(false)}
+          />
+        </div>
 
         <aside className="grid gap-4 content-start">
           <MetricCard label="可用星幣" value={balance.toLocaleString()} caption="下注後即時更新" tone="light" />

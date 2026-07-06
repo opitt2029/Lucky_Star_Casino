@@ -212,6 +212,8 @@ export class FishingEngine {
     this.floats = []
     this.dmgs = [] // 浮動傷害數字（命中即冒，含暴擊）
     this.bubbles = []
+    this.godRays = [] // 水面神光光楔（加法混合，數量固定、只調 alpha，perfMode 時歸零）
+    this.plankton = [] // 浮游生物微粒（固定池、緩慢漂移，reducedMotion 時不生成）
     this.backdropW = 0
     this.backdropH = 0
     this.backdropTime = 0
@@ -470,6 +472,29 @@ export class FishingEngine {
         drift: Math.random() * Math.PI * 2,
       })
     }
+
+    // 神光：4 道固定光楔（幾何在 _redrawBackdrop 畫、每幀只調 alpha/位移，零配置成本）
+    for (let i = 0; i < 4; i += 1) {
+      const g = new Graphics()
+      g.blendMode = 'add'
+      this.backdropLayer.addChild(g)
+      this.godRays.push({ g, phase: Math.random() * Math.PI * 2, speed: 0.16 + i * 0.05 })
+    }
+
+    // 浮游生物：固定 20 顆微粒池（比照泡泡的正規化座標更新模式），reducedMotion 不生成
+    const planktonCount = this.reducedMotion ? 0 : 20
+    for (let i = 0; i < planktonCount; i += 1) {
+      const g = new Graphics().circle(0, 0, 1).fill({ color: 0xd8fbe8, alpha: 0.5 })
+      this.decorLayer.addChild(g)
+      this.plankton.push({
+        g,
+        x: Math.random(),
+        y: Math.random(),
+        r: 0.7 + Math.random() * 1.4,
+        speed: 2.5 + Math.random() * 5,
+        drift: Math.random() * Math.PI * 2,
+      })
+    }
   }
 
   _redrawBackdrop(W, H) {
@@ -508,6 +533,31 @@ export class FishingEngine {
         .lineTo(W, y + Math.sin(i) * 18)
         .stroke({ width: 1, color: 0xd8fbff, alpha: 0.07 })
     }
+
+    // 神光光楔：從水面斜射向下、上窄下寬（外層淡、內層稍亮做柔邊），alpha 由每幀更新呼吸
+    this.godRays.forEach((ray, i) => {
+      const anchorX = W * (0.1 + i * 0.24)
+      const slant = W * 0.14
+      const topW = W * 0.022
+      const bottomW = W * 0.1
+      const depth = fishBottom * 0.92
+      ray.g
+        .clear()
+        .poly([
+          anchorX, 0,
+          anchorX + topW, 0,
+          anchorX + slant + bottomW, depth,
+          anchorX + slant - bottomW * 0.4, depth,
+        ])
+        .fill({ color: 0xbdf7ff, alpha: 0.045 })
+        .poly([
+          anchorX + topW * 0.25, 0,
+          anchorX + topW * 0.75, 0,
+          anchorX + slant + bottomW * 0.55, depth,
+          anchorX + slant + bottomW * 0.1, depth,
+        ])
+        .fill({ color: 0xe8fcff, alpha: 0.05 })
+    })
 
     this.seaFloor
       .clear()
@@ -681,6 +731,31 @@ export class FishingEngine {
     this.backdropTime += dtMs / 1000
     this.caustics.x = Math.sin(this.backdropTime * 0.45) * 18
     this.caustics.alpha = this.perfMode ? 0.56 : 0.86
+
+    // 神光呼吸＋隨水流微擺；perfMode 直接熄滅（同 caustics 的守門模式）
+    for (const ray of this.godRays) {
+      if (this.perfMode) {
+        ray.g.alpha = 0
+        continue
+      }
+      ray.phase += (dtMs / 1000) * ray.speed
+      ray.g.alpha = 0.5 + Math.sin(ray.phase) * 0.4
+      ray.g.x = Math.sin(this.backdropTime * 0.3 + ray.phase) * 10
+    }
+
+    // 浮游生物緩慢上漂＋橫向游移；perfMode 減半亮度（不重配置，只調 alpha）
+    for (const p of this.plankton) {
+      p.y -= (p.speed * dtMs) / Math.max(H, 1) / 1000
+      p.drift += dtMs * 0.0007
+      if (p.y < -0.04) {
+        p.y = 1.04
+        p.x = Math.random()
+      }
+      p.g.x = p.x * W + Math.sin(p.drift) * 22
+      p.g.y = p.y * this._fishViewportBottom(W, H)
+      p.g.scale.set(p.r)
+      p.g.alpha = (this.perfMode ? 0.14 : 0.3) + Math.sin(p.drift * 1.6) * 0.1
+    }
 
     for (const b of this.bubbles) {
       b.y -= (b.speed * dtMs) / Math.max(H, 1) / 1000
@@ -1514,6 +1589,8 @@ export class FishingEngine {
     this.floats = []
     this.dmgs = []
     this.bubbles = []
+    this.godRays = []
+    this.plankton = []
     this.pending.clear()
     clearCache() // 下次重掛載重新烘焙紋理
   }
