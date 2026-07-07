@@ -1,3 +1,4 @@
+feature/weiyu-saga-compensation-and-contracts
 ## [refactor] -- 2026-07-07 -- 玩法契約單一來源化：repo 根 contracts/*.json + ContractParityTest 守門（Phase 5）
 
 ### 背景
@@ -44,6 +45,19 @@
 ### 如何驗證
 - `mvn -pl backend/game-service test` 綠燈（176 tests，含新增 10 個補償測試與 3 個失敗路徑測試）。
 - 手動：kill wallet → 打一局 slot（命中）→ 重啟 wallet → 30 秒內補償入帳；`pending_wallet_credits` 標 DONE、`wallet_transactions.idempotency_key` 與補償單一致；`node tools/reconciliation/reconcile-game-wallet.mjs` 對帳通過。
+
+## [fix] -- 2026-07-07 -- postgres init.sql 補上 cashback_records 表，修復全新環境 docker compose 啟動失敗
+
+### Fixed
+- `database/postgres/init.sql`：新增 `cashback_records` 表（+ 索引），內容對應既有的 `database/postgres/migration/V9__add_cashback_records.sql`。
+
+### Why
+- 實測驗證 PR #172（後端容器化）時發現：全新 docker volume 跑 `docker compose up -d --build`，`game-service` 因 Hibernate schema-validation 找不到 `cashback_records` 表而啟動失敗（`Schema-validation: missing table [cashback_records]`），卡住 `gateway-service` 的 `depends_on` 健康鏈。根因是 6/23 新增 cashback 功能時只補了 Flyway migration 檔（`V9`），沒有同步把表結構加進 `init.sql`（全新安裝的權威 schema 來源，migration 不會自動套用進全新 volume，見 AGENTS.md 雷區 3/README 對應章節）。
+
+### 如何驗證
+- 乾淨 docker volume 下 `docker compose up -d --build`：12 個容器（5 infra + 7 後端）全數 `healthy`。
+- 透過 gateway（8080）完成註冊 -> 登入 -> 查餘額冒煙測試，皆回傳 200/201。
+develop
 
 ## [feat] -- 2026-07-07 -- 後端服務全面容器化：docker compose up -d --build 一鍵啟動 7 服務（取代多視窗手動啟動）
 
