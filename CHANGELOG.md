@@ -1,3 +1,15 @@
+## [fix] -- 2026-07-07 -- postgres init.sql 補上 cashback_records 表，修復全新環境 docker compose 啟動失敗
+
+### Fixed
+- `database/postgres/init.sql`：新增 `cashback_records` 表（+ 索引），內容對應既有的 `database/postgres/migration/V9__add_cashback_records.sql`。
+
+### Why
+- 實測驗證 PR #172（後端容器化）時發現：全新 docker volume 跑 `docker compose up -d --build`，`game-service` 因 Hibernate schema-validation 找不到 `cashback_records` 表而啟動失敗（`Schema-validation: missing table [cashback_records]`），卡住 `gateway-service` 的 `depends_on` 健康鏈。根因是 6/23 新增 cashback 功能時只補了 Flyway migration 檔（`V9`），沒有同步把表結構加進 `init.sql`（全新安裝的權威 schema 來源，migration 不會自動套用進全新 volume，見 AGENTS.md 雷區 3/README 對應章節）。
+
+### 如何驗證
+- 乾淨 docker volume 下 `docker compose up -d --build`：12 個容器（5 infra + 7 後端）全數 `healthy`。
+- 透過 gateway（8080）完成註冊 -> 登入 -> 查餘額冒煙測試，皆回傳 200/201。
+
 ## [feat] -- 2026-07-07 -- 後端服務全面容器化：docker compose up -d --build 一鍵啟動 7 服務（取代多視窗手動啟動）
 
 ### 背景
