@@ -1,3 +1,78 @@
+feature/weiyu-admin-console
+﻿## [fix] -- 2026-07-07 -- MySQL 初始化腳本補 SET NAMES utf8mb4：中文種子資料匯入即亂碼
+
+### Fixed
+- `database/mysql/init.sql`、`database/mysql/seed_test_data.sql`：檔頭加 `SET NAMES utf8mb4;`。
+
+### Why
+- MySQL 容器 entrypoint 用容器內建 `mysql` client 執行 `/docker-entrypoint-initdb.d/*.sql`，容器內無 `LANG`（POSIX locale）時 client 預設編碼是 **latin1**，UTF-8 的中文被當 latin1 讀入再轉存 utf8mb4 → 雙重編碼亂碼（`測試員一` 變 `æ¸¬è©¦å“¡ä¸€`）。受影響：`members.nickname`、`shop_items.name/caption`；英數資料不受影響（ASCII 與 latin1 相容）。
+- 既有壞資料以重建 volume 修復（`docker compose down -v && up -d`），本機測試資料一併重置。
+
+### Verified
+- 重建後查 `members.nickname` = 測試員一/二/三、`shop_items` 中文正常；Postgres 錢包種子（1001~1003 各 10000）與 Kafka topics（kafka-init）自動重建。
+- ⚠️ 注意：volume 重建後 `admin_users` 為空，`AdminUserSeeder` 是啟動期 CommandLineRunner，須**重啟 admin-service** 讓種子帳號重新寫入才能登入後台。
+
+## [feat] -- 2026-07-07 -- 管理後台 8 個功能頁完成 API 串接（脫離 stub）
+
+### Added
+- `frontend-admin/src/hooks/useFetch.js`：頁面資料抓取共用 hook（loading/error/reload 樣板＋競態守門：只採用最後一次請求的結果）。頁面資料「進頁抓、離頁丟」無跨頁共享，故不進 redux（auth 除外）。
+- `frontend-admin/src/utils/format.js`：千分位金額、LocalDateTime 裁切顯示（不經 Date 解析避免時區位移）、RTP 百分比、本地時區 `YYYY-MM-DD`。
+- `frontend-admin/src/components/ui.jsx`：共用展示元件（Loading/Error/Empty、Table/Td、Badge、Pagination（吃 Spring Data Page）、PageHeader、StatCard）。
+
+### Changed
+- 8 個頁面由 PageStub 換成實作，串接 adminApi 全部端點：
+  - `Dashboard`：近 7 日 coin-flow + RTP 平行抓取，RTP 異常置頂告警（admin_alerts 查詢端點後端尚未提供，待補後加告警列表）。
+  - `Players` / `PlayerDetail`（T-051）：分頁列表＋送出制關鍵字搜尋；詳情含餘額/凍結、近期帳務/對局、停用/啟用兩段式確認（不用 window.confirm——原生對話框阻塞事件圈且不可控樣式），狀態以 reload 後端結果為準不做前端翻轉。
+  - `CoinFlowReport`（T-052）/ `RtpReport`（T-053）:「編輯中 vs 已查詢」條件分離（按查詢才打 API）；RTP 頁標示含本金口徑與偏差門檻。
+  - `GmGrant`（T-055）：兩段式確認（改任一欄位即退出確認態），成功顯示 QUEUED＋冪等鍵並清空表單防重複發放。
+  - `DiamondCards`（T-105/T-106）：生成表單（1~1000 張）＋序號 textarea/一鍵複製（序號僅生成當下完整可見）＋狀態篩選列表。
+  - `ShopItems`（ADR-006）：收合式新增表單（409=item_code 重複由 extractError 帶出）＋列內編輯（改價/上下架/排序），頁頂提醒同步玩家端 `mockApi.SHOP_CATALOG`（雷區 14/20）。
+
+### Removed
+- `frontend-admin/src/components/PageStub.jsx`：所有頁面已實作，佔位元件無使用處。
+
+### Why
+- 骨架期只有登入可用、7 個功能頁全是佔位，後台實際無法運營；admin-service 後端 API 早已全部完成（T-050~T-055、T-105/T-106、商城目錄），本次純前端串接、未動任何後端。
+
+### Verified
+- `npm run lint` 乾淨；`npm run build` 成功（各頁 code-split 正常，最大頁 ShopItems 6.7 kB）。
+- 端到端需啟動 gateway + admin-service 後以 seeder 帳號登入手動驗證（依 DEPLOY.md）。
+
+## [fix] -- 2026-07-07 -- gateway 放行 /admin/**：後台 API 先前整條被 gateway 401 擋死
+
+### Fixed
+- `backend/gateway-service/src/main/resources/application.yml`：`jwt.whitelist` 新增 `/admin/`。
+- `backend/gateway-service/.../GatewayRoutesConfigTest.java`：新增 `jwtWhitelist_includesAdminPath` 鎖住此設定。
+
+### Why
+- T-050 讓後台改用獨立 `ADMIN_JWT_SECRET` 簽發 JWT，但 gateway 的 `JwtAuthenticationGlobalFilter` 只用玩家 `JWT_SECRET` 驗簽，從未對齊：登入端點 `/admin/auth/login` 不在白名單（無 token → 401 `missing bearer token`），登入後的 ADMIN JWT 也會被判 `invalid token`。**經 gateway 的後台路徑從未通過**——過去沒發現是因為 admin-service 測試都直打 8086。
+- 修法採「gateway 純轉發、admin-service 自身守門」：`AdminJwtAuthFilter` + `@PreAuthorize` 本來就對無效 token 一律 401/403（T-050 有測試驗收），gateway 反正驗不了 admin secret，留著只會誤殺。filter 內 `/admin/** 需 ADMIN role` 的檢查保留未動（防未來有人移除白名單時仍有底線）。
+
+### Verified
+- `mvn -pl backend/gateway-service test`：26 tests 全綠（含新增 1）。
+- 手動驗證項（重啟 gateway 後）：frontend-admin（5174）以 seeder 帳號登入應成功、stub 頁可導航。
+
+## [feat] -- 2026-07-07 -- 新增管理後台前端骨架 frontend-admin/（獨立 Vite 專案）
+
+### Added
+- `frontend-admin/`：獨立於玩家端的管理後台 React 專案（Vite + React 18 + Redux Toolkit + Tailwind，port **5174**）。本次為骨架：登入流程可用，7 個功能頁為佔位 stub。
+  - `src/services/api.js`：axios 實例掛 ADMIN JWT；admin 無 refresh token（`LoginResponse` 只回 accessToken），401 一律登出重導（登入端點 401=帳密錯誤除外），不做玩家端的 single-flight 續期。
+  - `src/services/adminApi.js`：對齊 admin-service 全部既有端點（T-050 登入、T-051 玩家管理、T-052/T-053 報表、T-055 GM 發幣、T-105/T-106 點數卡、ADR-006 商城目錄）。
+  - `src/store/slices/adminAuthSlice.js`：登入狀態含 `role`（SUPER_ADMIN/OPERATOR）；localStorage key 加 `admin` 前綴與玩家端區隔。
+  - `src/App.jsx`：`AdminPrivateRoute` 守未登入、`SuperAdminRoute` 守 GM 發幣；SPA 路由不用 `/admin` 前綴（該前綴是 API 路徑，dev proxy 轉發 gateway 8080）。
+  - `src/components/AdminLayout.jsx`：側邊欄導航，GM 發幣入口僅 SUPER_ADMIN 顯示（後端 `@PreAuthorize` 仍是最終防線）。
+  - 頁面：`Login`（可用）＋ `Dashboard/Players/PlayerDetail/CoinFlowReport/RtpReport/GmGrant/DiamondCards/ShopItems`（stub，標明待串 API）。
+
+### Why
+- admin-service 後端 API（T-050~T-055、T-105/T-106、商城目錄）已全部完成，但前端完全沒有管理介面。
+- 選擇獨立專案而非併入 `frontend/`：後端本來就是獨立 `ADMIN_JWT_SECRET` ＋獨立角色的邊界，前端對齊此切分；後台可獨立部署於內網，管理端路由/API 形狀不進玩家 bundle。
+- dev 走 vite proxy（`/admin` → 8080）＝同源請求，免動 gateway 的 `CORS_ALLOWED_ORIGINS`。
+
+### Verified
+- `npm run lint` 乾淨；`npm run build` 成功（各頁正確 code-split）。
+- 登入流程待啟動 admin-service 後手動驗證（本次僅骨架，無單元測試——頁面實作時比照玩家端補 vitest）。
+
+
 ﻿## [fix] -- 2026-07-07 -- 老虎機震動解除加 animationend 冒泡守門
 
 ### Fixed

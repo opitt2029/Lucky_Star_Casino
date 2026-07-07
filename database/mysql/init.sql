@@ -4,6 +4,10 @@
 -- 對應 ADR-001：MySQL 作為 CQRS 查詢讀端
 -- ============================================================
 
+-- 容器 entrypoint 的 mysql client 在無 LANG 的 POSIX locale 下預設 latin1，
+-- 會把本檔的 UTF-8 中文雙重編碼成亂碼寫入；強制連線編碼堵住此雷。
+SET NAMES utf8mb4;
+
 CREATE DATABASE IF NOT EXISTS lucky_star_casino
     CHARACTER SET utf8mb4
     COLLATE utf8mb4_unicode_ci;

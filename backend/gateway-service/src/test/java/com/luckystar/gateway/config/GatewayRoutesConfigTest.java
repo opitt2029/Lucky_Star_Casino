@@ -46,4 +46,14 @@ class GatewayRoutesConfigTest {
     void jwtWhitelist_includesWsPath() {
         assertThat(jwtProperties.whitelist()).contains("/ws");
     }
+
+    /**
+     * 後台 JWT 用獨立 ADMIN_JWT_SECRET，gateway 的玩家 secret 驗不了 → /admin/** 必須
+     * 白名單純轉發，由 admin-service 自身 Spring Security 守門（T-050）。
+     * 少了此項整條後台路徑會被 gateway 401 擋死（含登入端點）。
+     */
+    @Test
+    void jwtWhitelist_includesAdminPath() {
+        assertThat(jwtProperties.whitelist()).contains("/admin/");
+    }
 }

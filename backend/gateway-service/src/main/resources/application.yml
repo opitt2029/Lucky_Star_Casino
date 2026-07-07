@@ -279,6 +279,11 @@ jwt:
     - /webjars
     # WebSocket（T-070）：STOMP CONNECT 帧才帶 JWT，HTTP 層 SockJS 交握不帶 Authorization header
     - /ws
+    # 後台（T-050）：admin JWT 用獨立 ADMIN_JWT_SECRET 簽發，gateway 的玩家 secret 驗不了它
+    # （驗必失敗 401）。故 /admin/** 純轉發，認證/角色授權全由 admin-service 自身的
+    # Spring Security（AdminJwtAuthFilter + @PreAuthorize）強制——該服務對未帶有效
+    # ADMIN JWT 的請求一律 401/403，不依賴 gateway 守門。勿移除此項，否則後台整條路徑不通。
+    - /admin/
 
 # Swagger 聚合 UI（T-092）：gateway 本身無 REST API（停用自身 api-docs），
 # 僅作為各下游服務文件的聚合入口。瀏覽 http://localhost:8080/swagger-ui.html，
