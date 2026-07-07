@@ -107,24 +107,19 @@
 cp .env.example .env
 ```
 
-**Step 2 — 啟動基礎設施（資料庫、Kafka、Redis）**
+**Step 2 — 一鍵啟動基礎設施 + 後端 7 服務（全部容器化）**
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
+> 第一次啟動或改了後端程式碼後都要加 `--build`。後端不需本機裝 Java/Maven 即可啟動；詳見 [DEPLOY.md](DEPLOY.md)。
 
 **Step 3 — 確認服務健康狀態**
 ```bash
 docker compose ps
-# 所有服務應顯示 healthy 或 running
+# 5 個基礎設施 + 7 個後端服務應顯示 healthy（kafka-ui 為 running、kafka-init 為 Exited (0) 屬正常）
 ```
 
-**Step 4 — 啟動後端 Service（擇一）**
-```bash
-cd backend/member-service
-./mvnw spring-boot:run
-```
-
-**Step 5 — 啟動前端**
+**Step 4 — 啟動前端**
 ```bash
 cd frontend
 npm install
