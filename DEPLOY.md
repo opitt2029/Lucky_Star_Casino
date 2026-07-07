@@ -222,6 +222,22 @@ npm run dev
 | Port 被占用（3307 / 5433 / 8080…） | 本機已有程式佔用 | 改 `.env` 對應 Port，或關掉佔用程式 |
 | 啟動報 schema `validate` 失敗 | `JPA_DDL_AUTO=validate` 但表結構對不上 | 確認 init.sql 有正確執行；或見下方「重置資料庫」 |
 | 改了 init.sql 但沒生效 | init.sql 只在 Volume 首次建立時跑 | 重置資料庫（見下） |
+| `pull` 後服務啟動報 `Schema-validation: missing column/table` | `database/mysql\|postgres/migration/` 新增了檔案，但你的 Volume 是舊的，且**專案沒有 Flyway 自動套用機制**，新 migration 不會自動跑進既有資料庫 | 若不想清資料：手動把新增的 migration 檔案依編號順序跑進對應容器（見下方「手動套用新 migration」）；若不在乎本機資料：直接重置資料庫（見下） |
+| `Could not resolve placeholder 'XXX_SECRET'` | 本機 `.env` 落後於 `.env.example`（新服務/新功能加了新的必填變數） | 對照 `.env.example` 補齊 `.env` 缺的變數（`ADMIN_JWT_SECRET` 等），別整份覆蓋掉自己原有設定 |
+
+### 手動套用新 migration（不清資料）
+
+`pull` 後如果某服務啟動失敗，先看 `git log` 有沒有新增 `database/mysql/migration/V*.sql` 或 `database/postgres/migration/V*.sql`，有就手動套：
+
+```bash
+# MySQL（容器名稱以 docker compose ps 為準，預設 lucky-star-mysql）
+docker exec -i lucky-star-mysql mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" < database/mysql/migration/V<N>__xxx.sql
+
+# PostgreSQL（預設 lucky-star-postgres）
+docker exec -i lucky-star-postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" < database/postgres/migration/V<N>__xxx.sql
+```
+
+依版本編號**由小到大依序**跑完所有你本機還沒套過的檔案。跑錯順序或漏跑，之後的 migration 可能因為前置欄位/表不存在而失敗。
 
 ### 重置資料庫（清空所有資料，重跑 init.sql）
 
