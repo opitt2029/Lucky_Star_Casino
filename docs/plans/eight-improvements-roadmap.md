@@ -1,0 +1,107 @@
+# 八項架構改進施工藍圖（Roadmap）
+
+> 來源：`docs/report` 總體檢報告列出的 8 項改進建議（依影響力排序），化為分階段可施工計畫。
+> 每個 Phase 一個獨立 PR（`feature/名字-描述` → develop），各自可驗證；行為變更記根目錄 `CHANGELOG.md`，架構級決策開 ADR（自 ADR-007 起編）。
+> 本檔為藍圖快照，**進度狀態以 PR / CHANGELOG 為準**，完成一個 Phase 請順手更新下表。
+
+## 進度總覽
+
+| Phase | 內容 | 規模 | 狀態 |
+|---|---|---|---|
+| P1 | Testcontainers 補真 DB 測試（wallet） | M | ✅ 已合併（PR #166，ADR-007） |
+| P2a | 觀測性 Micrometer + Prometheus/Grafana | M | ✅ 已合併（PR #167） |
+| P2b | T-090 壓測完整實跑 | L | 🔶 進行中（中途進度 PR #169；根因鏈已定位，見下） |
+| P3 | 捕魚 Redis session 原子化（Lua CAS） | M | ⬜ 未動工 |
+| P4 | game→wallet 最小 Saga 補償 | L | ⬜ 未動工 |
+| P5 | 玩法契約單一來源化（contracts/*.json） | M | ⬜ 未動工 |
+| P6 | 一鍵全容器化（compose overlay） | M/L | ⬜ 未動工 |
+| P7 | Secret 管理（.env.example 佔位符＋CI 即時生成） | S | ⬜ 未動工 |
+| P8 | AUDIT_REPORT 附錄 A 自動化產生 | S | ⬜ 未動工 |
+
+## 相依關係
+
+```
+P2a 觀測性 ──必先於──> P2b 壓測實跑
+P1 / P3 / P4 / P5 / P7 / P8 互相獨立
+P3 → P4 → P5 建議串行（都動 game-service，避免衝突）；P6 最後
+```
+
+---
+
+## Phase 1 — Testcontainers 補真 DB 測試 ✅
+
+**只新增、不取代 H2**（AGENTS.md 雷區 3 的 CI 零依賴要保住）：`@Tag("containers")` + surefire 預設排除、`-Pcontainers-test` 才跑。只加在 wallet-service（唯一雙資料源＋帳務核心）。容器套真 `database/{postgres,mysql}/init.sql`＋migration、`ddl-auto=validate`——補上 H2 create 模式測不到的「entity ↔ 真 schema 漂移」。詳見 ADR-007 與 CHANGELOG 2026-07-07 條目。
+
+## Phase 2a — 觀測性 ✅
+
+7 服務加 `micrometer-registry-prometheus` 曝露 `/actuator/prometheus`；`docker-compose.yml` 以 `observability` profile 選配 prometheus(9090)/grafana(3000)，預設行為不變。注意：member/admin 有自身 Spring Security，permitAll 需含 `/actuator/prometheus`（PR #169 補修）。
+
+## Phase 2b — T-090 壓測完整實跑 🔶
+
+拓撲維持與 2026-06-16 相同（後端宿主機跑、不用 P6 容器拓撲，數據才可比）。步驟：`.env` 必填確認 → `docker compose --profile observability up -d` → 起 7 後端、Prometheus targets 全綠 → JMeter 5.6.3 → `provision-players.mjs` 產 1000 玩家 → 150 基線 → 1000 主測（Grafana 盯 gateway R4j/P99/GC/CPU）→ `analyze-jtl.mjs` → 帳務對帳 gate → 更新 `docs/performance/T-090-load-test-report.md`。
+
+**2026-07-07 中途發現**（詳見報告「再驗證進度」節）：150 併發即 ~65% 503。根因鏈＝gateway Spring Cloud CircuitBreaker 未設 `timelimiter`（預設 1s 逾時）× spin 路徑 6/22 起接入風控、6/24 加注單稽核變重 × 熔斷 half-open→closed thundering herd 反覆開闔。帳務 gate 全程 PASS。**調 TimeLimiter / R4j 參數另開 PR**，改完重測。
+
+## Phase 3 — 捕魚 Redis session 原子化（Lua CAS）
+
+選 Lua CAS（版本比對後整包寫入），不選 WATCH/MULTI、不重構資料模型。理由：戰鬥運算在 Java（`FishingCombat`）搬不進 Lua，原子化粒度是「儲存」；拆欄位模型會踩雷區 16；WATCH/MULTI 在 Lettuce 連線池要綁連線、寫法脆弱。
+
+- `FishingSession` 加 `long version`（同步 `toHash()/fromHash()`——雷區 16）。
+- 新 Lua script：`HGET version == expected` → HSET 全欄位＋PEXPIRE＋version+1，否則 return 0。
+- `FishingSessionStore.save()` 改 CAS；`FishingService` 的 shots/top-up 在 CAS 失敗時「重讀→重放→重存」重試（上限 3）。
+- 前端 `topUpLockRef` 保留（雷區 16 明文勿移除），降級為 UX 最佳化；更新 AGENTS.md。
+- `FishingSessionStoreTest` 加併發 lost-update 測試；開 ADR-008。
+
+驗證：`mvn -pl backend/game-service test`；手動雙分頁連打＋top-up，餘額不蒸發。
+
+## Phase 4 — game→wallet 最小 Saga 補償
+
+語意先分清：settle 的 credit 失敗＝玩家贏了→補償是**重試同一冪等鍵的 credit**（不是退款）；fishing buy-in/top-up 的 save 失敗→REFUND。安全根基＝wallet 端 `idempotency_key` UNIQUE（雷區 8）。
+
+- game-service Postgres 新表 `pending_wallet_credits`（sub_type 只用 WIN/REFUND，皆已在 CreditRequest 白名單，不觸發雷區 18 四同步）＋migration。
+- 新 `compensation/` 套件：credit 失敗 catch 內以 `REQUIRES_NEW` 寫補償單；`@Scheduled` 每 30s 重試、指數退避、超限標 FAILED。
+- 接入三處失敗路徑：`SlotService.settleInternal`、`BaccaratService` 結算、`FishingService` 退款失敗只 log 的路徑。
+- **雷區 6：補償只走 HTTP WalletClient，絕不新增消費 wallet.credit/debit 事件回呼 credit/debit 的 listener。**
+- 對帳 script：`tools/reconciliation/reconcile-game-wallet.mjs`（Node ESM，跨兩 DB 放服務外）。
+- 開 ADR-009；AGENTS.md 補一條。
+
+驗證：`mvn -pl backend/game-service test`；手動 kill wallet → 打一局 slot → 重啟 wallet → 30s 內補償入帳、冪等鍵一致。
+
+## Phase 5 — 玩法契約單一來源化
+
+- repo 根 `contracts/`：`slot-paytable.json`、`baccarat-rules.json`、`fishing-species.json`、`fishing-combat.json`、`shop-catalog.json`（mock 用；正式目錄在 MySQL——雷區 20）。
+- **後端保留 enum 為執行期權威，JSON 做相等性守門測試**（`ContractParityTest` 逐欄斷言＝`SlotSymbol`/`FishSpecies`/`FishingCombat`/`bankerDraws`）。不 runtime 載 JSON：enum 承載理論 RTP Javadoc 與雷區 15/16 整套測試守門，「漂移＝CI 紅燈」已達標。
+- 前端 `mockApi.js` 各常數表改 import 契約 JSON（Vite 原生支援）；補牌**邏輯**仍是程式碼，JSON 只存表格數值。
+- 更新 AGENTS.md 雷區 14/15/16 的同步敘述。
+
+驗證：`mvn -pl backend/game-service test`；`cd frontend && npm run build`；mock 模式手打三遊戲。
+
+## Phase 6 — 一鍵全容器化
+
+- **另檔 overlay `docker-compose.app.yml`**（非同檔 profiles）：預設 `docker compose up`（只起 infra）行為/tests/infra 斷言/DEPLOY.md SOP 完全不動。
+- 單一參數化 `backend/Dockerfile`（`ARG MODULE`，multi-stage）；`frontend/Dockerfile`＋nginx 反代。
+- app.yml：7 服務 env 覆寫 host 為 compose 服務名（**容器內走 `postgres:5432`/`mysql:3306` 原生 port，非宿主 5433/3307——最易踩的坑**）；`env_file: .env`；depends_on＋healthcheck；Prometheus scrape 目標改服務名（第二份 config volume）。
+- `.dockerignore`、DEPLOY.md 新節、ADR-010。
+
+驗證：overlay up --build 後 gateway health UP；前端 :80 登入打一局 slot 走真 API。
+
+## Phase 7 — Secret 管理
+
+- `.env.example` 全部可用值換佔位符＋產生指引（`openssl rand -base64 48`）。
+- **CI 測試密鑰改 run 內即時生成**（寫入 `$GITHUB_ENV`），不用 GitHub Secrets——fork PR 拿不到 repo secrets 會直接紅；測試密鑰無需持久。
+- 新 `docs/security/secret-rotation.md`：各密鑰用途/影響面/輪替步驟；明列「既有本機 .env 值視同已洩漏，施工後重生一輪」。
+
+驗證：CI 綠（觀察 fork PR run）；依新 example 重建 `.env` 後全服務啟動成功。
+
+## Phase 8 — AUDIT_REPORT 自動化
+
+- `tools/audit/`（Node ESM .mjs）：`tasks.json` 定義每 T-0xx 的證據（檔案 glob＋commit grep）；`generate-audit-snapshot.mjs` 產附錄 A 同格式表格，寫入 `<!-- AUDIT:BEGIN/END -->` 標記區塊（標記外人工敘述不動）；`--check` 模式有 diff 退出碼 1（日後可掛 CI）。
+- AGENTS.md §1 註記更新方式。
+
+驗證：跑 script 後附錄 A 與現況一致（T-027/T-028 類誤報應轉 ✅）；`--check` 退出碼 0。
+
+---
+
+## 通用約定
+
+每 PR 合併前跑 AGENTS.md §4 的七模組 `mvn test` + `node --test tests/infra/*.test.js`；commit 格式 `type(scope): 中文描述`；main 不直接 commit。
