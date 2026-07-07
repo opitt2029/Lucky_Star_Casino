@@ -1,3 +1,25 @@
+## [security] -- 2026-07-07 -- Secret 管理：範本全佔位符化、CI 密鑰 run 內生成、輪替 SOP（Phase 7）
+
+### 背景
+- `.env.example` 與 `ci.yml` 內含可直接使用的密鑰值且進了版控——拿得到 repo 就等於拿到密鑰。本次把「可用值」全數趕出版控：範本只留佔位符、CI 測試密鑰改每次 run 隨機生成，並補上輪替 SOP。
+
+### Added
+- `docs/security/secret-rotation.md`：密鑰清單（各變數用途/誰在用/輪替影響面——`INTERNAL_SECRET` 改了 **7 服務要同步重啟**、`JWT_SECRET` 改了**全部玩家 token 立即失效**且 member/gateway/notification 三服務要一起換）、生成指令（openssl / PowerShell）、本機輪替步驟（JWT 類/內部密鑰/DB 密碼三條 SOP）、CI 密鑰策略說明。明列**既有本機 `.env` 值視同已洩漏，施工後全員重生一輪**。
+
+### Changed
+- `.env.example`：`JWT_SECRET`/`ADMIN_JWT_SECRET`/`ADMIN_SEED_PASSWORD`/`INTERNAL_SECRET`/`INTERNAL_SERVICE_SECRET`/`MYSQL_ROOT_PASSWORD`/`MYSQL_PASSWORD`/`POSTGRES_PASSWORD` 全部換成 `CHANGE_ME` 佔位符＋檔頭生成指引。佔位符刻意短於 HS256 的 32 bytes，拿範本值直接啟動會 fail-fast（`WeakKeyException`），不會靜默用弱密鑰跑起來；佔位符為非空字串，`tests/infra/env.test.js` 的非空斷言不受影響。
+- `.github/workflows/ci.yml`：`backend-test` job 的靜態測試密鑰（`JWT_SECRET`/`INTERNAL_SECRET`/`INTERNAL_SERVICE_SECRET`）移除，改為第一個 step 以 `openssl rand -base64` 於 run 內生成並寫入 `$GITHUB_ENV`；`CORS_ALLOWED_ORIGINS` 非密鑰、留在 job env。
+- `DEPLOY.md` §2：改寫「複製即可啟動」段——現在複製後**必須先生成密鑰**，並連結 `docs/security/secret-rotation.md`。
+
+### Why
+- **CI 不用 GitHub Secrets**：本專案走 fork/PR 工作流，fork PR 拿不到 repo secrets，一依賴就整條 CI 紅；測試密鑰只活在單一 run 內、無持久價值，run 內生成同時消滅了「repo 裡寫死可用密鑰」這件事。
+- 範本值曾進版控＝已洩漏，所以文件明訂全員重生一輪，而不是只改範本。
+
+### 如何驗證
+- `node --test tests/infra/*.test.js` 全綠（env.test.js 對密碼變數只斷言非空，佔位符通過）。
+- CI 綠：觀察下一個 fork PR 的 run——「產生本次 run 專用測試密鑰」step 成功、backend-test 兩個 mvn step 照常通過。
+- 依新 `.env.example` 重建 `.env`（填入生成值）後 `docker compose up -d --build`，12 容器 healthy、註冊/登入 smoke 正常。
+
 ## [refactor] -- 2026-07-07 -- 玩法契約單一來源化：repo 根 contracts/*.json + ContractParityTest 守門（Phase 5）
 
 ### 背景
