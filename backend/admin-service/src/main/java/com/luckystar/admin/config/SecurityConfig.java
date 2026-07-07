@@ -44,7 +44,8 @@ public class SecurityConfig {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/admin/auth/**").permitAll()
-                        .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        // /actuator/prometheus 供本機 Prometheus scrape（gateway 不轉發 actuator 路徑）
+                        .requestMatchers("/actuator/health", "/actuator/info", "/actuator/prometheus").permitAll()
                         // Swagger UI / OpenAPI 文件放行（T-092）。僅文件端點放寬；
                         // /admin/** 仍維持 ROLE_ADMIN，不可繞過授權。
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()

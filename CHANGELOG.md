@@ -1,3 +1,17 @@
+## [fix] -- 2026-07-07 -- member/admin 放行 /actuator/prometheus ＋ T-090 重跑中途進度記錄
+
+### Fixed
+- `backend/member-service/.../config/SecurityConfig.java`、`backend/admin-service/.../config/SecurityConfig.java`：permitAll 清單補 `/actuator/prometheus`。原本只放行 `health`/`info`，Prometheus scrape 被 member 403 / admin 401 擋下，觀測性上線後 targets 從未全綠。gateway 不轉發 actuator 路徑、僅本機 scrape，風險面有限。
+
+### Changed
+- `docs/performance/T-090-load-test-report.md`：新增「2026-07-07 再驗證進度（進行中）」一節——同拓撲重跑的 150 基線（冷/熱皆 ~65% 503）與 1000 主測（P99 2,190 ms）實測值、Prometheus 佐證的根因鏈（Spring Cloud CircuitBreaker 未設 TimeLimiter 預設 1s 逾時 × spin 路徑 6/22 起接入風控變重 × half-open→closed thundering herd 反覆開闔）、單發延遲健康（28–125 ms）、帳務 gate 持續 PASS（overdraw=0、冪等失敗=0）。
+
+### Why
+- T-090 重跑（Phase 2b）中途暫停留檔：targets 全綠是壓測指標佐證的前置；根因已從 6/16 的「單機資源」細化到可指名的 CB 設定與路徑變重，調 TimeLimiter/R4j 屬另開 PR 範疇。
+
+### Verified
+- `mvn -pl backend/member-service,backend/admin-service test` 綠燈；重啟兩服務後 Prometheus targets 7/7 up；`curl :8081/actuator/prometheus`、`:8086/actuator/prometheus` 皆 200。
+
 ## [feat] -- 2026-07-07 -- 觀測性上線：7 服務曝露 Prometheus 指標＋compose 選配監控棧（T-090 前置）
 
 ### Added
