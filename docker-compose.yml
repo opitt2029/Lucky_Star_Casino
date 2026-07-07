@@ -118,10 +118,48 @@ services:
     networks:
       - lucky-network
 
+  # ── 觀測性（選配）：docker compose --profile observability up -d 才會啟動 ──
+  # 後端服務跑在宿主機（mvn spring-boot:run），故 scrape 目標用 host.docker.internal
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: lucky-star-prometheus
+    restart: always
+    profiles: ["observability"]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - lucky_prometheus_data:/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - lucky-network
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: lucky-star-grafana
+    restart: always
+    profiles: ["observability"]
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    environment:
+      # 本機觀測用，免登入直接匿名 Admin（無真實金流專案、不對外）
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - lucky_grafana_data:/var/lib/grafana
+    networks:
+      - lucky-network
+
 volumes:
   lucky_mysql80_data:
   lucky_postgres_data:
   lucky_kafka_data:
+  lucky_prometheus_data:
+  lucky_grafana_data:
 
 networks:
   lucky-network:

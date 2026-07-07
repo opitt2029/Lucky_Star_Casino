@@ -145,6 +145,38 @@ describe('docker-compose.yml — 網路與 Volume', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 測試群組：觀測性（選配 profile，T-090）
+// prometheus/grafana 必須綁在 observability profile 之下，
+// 確保預設 `docker compose up` 行為不變（只起基礎設施）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('docker-compose.yml — 觀測性 profile', () => {
+
+  test('應定義 prometheus 服務', () => {
+    assert.ok(
+      hasService('prometheus'),
+      '找不到 prometheus 服務，觀測性 profile（--profile observability）需要它'
+    );
+  });
+
+  test('應定義 grafana 服務', () => {
+    assert.ok(
+      hasService('grafana'),
+      '找不到 grafana 服務，觀測性 profile（--profile observability）需要它'
+    );
+  });
+
+  test('prometheus/grafana 應綁定 observability profile（預設 up 不啟動）', () => {
+    const count = (composeContent.match(/profiles: \["observability"\]/g) || []).length;
+    assert.strictEqual(
+      count, 2,
+      `observability profile 應恰好出現 2 次（prometheus、grafana），實際 ${count} 次；` +
+      '若拿掉 profile，預設 docker compose up 會多起監控容器、破壞 DEPLOY.md SOP'
+    );
+  });
+
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 測試群組：Port 使用環境變數（不寫死）
 // ─────────────────────────────────────────────────────────────────────────────
 describe('docker-compose.yml — Port 設定', () => {

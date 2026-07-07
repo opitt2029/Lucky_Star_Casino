@@ -1,3 +1,22 @@
+## [feat] -- 2026-07-07 -- 觀測性上線：7 服務曝露 Prometheus 指標＋compose 選配監控棧（T-090 前置）
+
+### Added
+- 7 個後端服務 `pom.xml`：加 `micrometer-registry-prometheus`（runtime scope，版本由 Spring Boot BOM 管控）。
+- `observability/prometheus.yml`：scrape 7 服務 `/actuator/prometheus`（現行拓撲後端跑宿主機，target 用 `host.docker.internal`）。
+- `observability/grafana/provisioning/`：Prometheus datasource ＋「Lucky Star — 服務總覽」儀表板（HTTP P99/吞吐/5xx/Resilience4j 熔斷/JVM Heap/CPU）。
+- `docker-compose.yml`：新增 `prometheus`(9090)/`grafana`(3000) 兩服務，綁 `observability` profile——**預設 `docker compose up` 行為不變**。
+- `tests/infra/docker-compose.test.js`：新增觀測性 profile 守門測試（服務存在＋profile 恰好綁 2 個）。
+
+### Changed
+- 7 個服務 `application.yml`：`management.endpoints.web.exposure.include` 加 `prometheus`；開啟 `[http.server.requests]` percentiles-histogram（否則 Prometheus 無 bucket 可算 P99）。
+- `DEPLOY.md` §3：補「選配：啟動觀測性」一節。
+
+### Why
+- T-090 壓測重跑的硬前置：上次（2026-06-16）只有 JMeter JTL 可看，缺服務端指標，無法佐證「單機資源 vs gateway 限流」的瓶頸判定。監控容器走 profile 是為了不破壞既有 SOP 與 infra 測試。
+
+### Verified
+- `node --test tests/infra/*.test.js` 全綠；`docker compose config --profile observability` 解析通過；七模組 `mvn test` 全綠（見 PR）。
+
 feature/weiyu-admin-console
 ﻿## [fix] -- 2026-07-07 -- MySQL 初始化腳本補 SET NAMES utf8mb4：中文種子資料匯入即亂碼
 
