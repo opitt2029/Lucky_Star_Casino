@@ -1,3 +1,4 @@
+feature/weiyu-admin-console
 ﻿## [fix] -- 2026-07-07 -- MySQL 初始化腳本補 SET NAMES utf8mb4：中文種子資料匯入即亂碼
 
 ### Fixed
@@ -70,6 +71,29 @@
 ### Verified
 - `npm run lint` 乾淨；`npm run build` 成功（各頁正確 code-split）。
 - 登入流程待啟動 admin-service 後手動驗證（本次僅骨架，無單元測試——頁面實作時比照玩家端補 vitest）。
+
+
+﻿## [fix] -- 2026-07-07 -- 老虎機震動解除加 animationend 冒泡守門
+
+### Fixed
+- `frontend/src/pages/SlotGame.jsx`：機櫃震動包裹層的 `onAnimationEnd` 加 `e.target !== e.currentTarget` 守門。原寫法會收到 SlotMachine 所有後代（含 pseudo-element）冒泡上來的 `animationend`——目前同時段子動畫（`slot-win-glow` 2.1s）比震動（0.55s）晚結束所以無實害，但日後任何 <0.55s 的有限子動畫都會提早砍掉震動。
+
+### Why
+- code-reviewer 審 179d9bb 時發現的潛伏地雷，趁未踩雷先修：守門後只認包裹層自己的 `slot-shake` 結束事件，語意與原設計（震動播完即解除）一致。
+
+### Verified
+- `npm run lint` 乾淨、`npm run build` 成功、`npx vitest run` 36/36 綠。
+
+## [chore] -- 2026-07-07 -- 新增 .claude/agents 六角色 subagent 定義
+
+### Added
+- `.claude/agents/`：dev-coder / frontend-dev / qa-tester / code-reviewer / ui-ux / devops 六角色 + README（pipeline 與使用方式）。全英文（給 AI 讀）；雷區知識一律指回根目錄 `AGENTS.md`，不複製進 agent 檔（防六份漂移）。code-reviewer / ui-ux 工具白名單無 Edit/Write（審改利益衝突、設計不寫碼）。
+
+### Why
+- 移植自另一專案的六角色分工骨架，領域守則全部改寫為本專案雷區（帳務冪等/樂觀鎖、Kafka 指令/事件、遊戲三鐵則、mock 鏡像、四同步）。clone 專案即得，跨成員共用。
+
+### Verified
+- 以 general-purpose agent 載入角色 prompt 實測：code-reviewer 審 179d9bb（照雷區清單審、實跑 vitest、找到 SlotGame animationend 冒泡問題、輸出 PASS/FAIL 格式）；ui-ux 產出 Lobby 近期贏分規格（正確查證後端資料源、拒用 botFeed 假資料）。新 agent 檔需重啟 session 才註冊。
 
 ## [feat] -- 2026-07-06 -- 前端三遊戲沉浸感升級：程序化 BGM 大改版＋環境音＋視覺打磨
 

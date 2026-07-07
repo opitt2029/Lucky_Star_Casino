@@ -130,7 +130,14 @@ export default function SlotGame() {
       <RedEnvelopeRain trigger={envelopeTrigger} density="heavy" />
       <BrushBanner trigger={banner.trigger} text={banner.text} level={banner.level} />
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_280px]">
-        <div className={shaking ? 'slot-shake' : ''} onAnimationEnd={() => setShaking(false)}>
+        {/* 只認自己的 slot-shake 結束事件：子孫動畫的 animationend 會冒泡上來，不守門會提早解除震動。 */}
+        <div
+          className={shaking ? 'slot-shake' : ''}
+          onAnimationEnd={(e) => {
+            if (e.target !== e.currentTarget) return
+            setShaking(false)
+          }}
+        >
           <SlotMachine
             grid={slotGrid}
             winningCells={winningCells}
