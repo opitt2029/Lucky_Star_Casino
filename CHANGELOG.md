@@ -1,3 +1,27 @@
+## [feat] -- 2026-07-07 -- 後端服務全面容器化：docker compose up -d --build 一鍵啟動 7 服務（取代多視窗手動啟動）
+
+### 背景
+- 舊流程每人要手動開 6-7 個終端機視窗跑 `mvn spring-boot:run`（或用 `start-all.bat`/`start-backend.ps1` 各開一個新視窗），且每人本機 `.env` 易與 `.env.example` 漂移導致啟動失敗、環境不一致。改為全容器化後，`docker compose up -d --build` 即可用一致環境一次啟動全部 5 個基礎設施 + 7 個後端服務。此次僅容器化後端，前端（`frontend/`、`frontend-admin/`）仍走 `npm run dev`。
+
+### Added
+- `backend/<service>/Dockerfile`（7 個：gateway/member/wallet/game/rank/admin/notification-service）：multi-stage build（`eclipse-temurin:21-jdk-jammy` 建置 + `21-jre-jammy` 執行期），BuildKit cache mount 共用 Maven 依賴快取，non-root `appuser` 執行，內建 `curl` 供 actuator healthcheck 使用。
+- `docker-compose.yml`：新增 7 個後端服務容器，env 對應容器網路（DB/Redis/Kafka 改容器名與內部 listener、下游 `*_SERVICE_URL` 改容器名），依 healthcheck 建立啟動順序（DB healthy → 該服務 healthy → 依賴它的下游服務，如 game-service 等 wallet-service、admin-service 等 member-service、gateway-service 等其餘 6 個）。
+- `tests/infra/docker-compose.test.js`：新增「後端服務容器化」測試群組，涵蓋 7 個服務存在性、各自 Dockerfile 路徑、actuator healthcheck、容器內部 Kafka listener、game→wallet 與 gateway→其餘 6 服務的 `depends_on` 鏈。
+
+### Changed
+- `.env.example`：補齊缺漏的 `NOTIFICATION_SERVICE_URL`/`NOTIFICATION_SERVICE_PORT`（gateway 原本即讀取，範本檔案漏了）；`*_SERVICE_URL` 的 localhost 預設不變（原生開發用，容器網路的 hostname 直接寫在 compose 的 `environment:` 覆寫）。
+- `DEPLOY.md`：全面改寫為 Docker 單一啟動路徑——§3「啟動基礎設施」與原 §4「啟動後端服務」合併為 `docker compose up -d --build` 一步到位，§0 前置需求移除 Java/Maven 必要性，§6 疑難排解新增容器相關症狀，其餘章節依序重新編號。
+
+### Removed
+- `start-all.bat`、`start-backend.ps1`、`stop-all.bat`、`stop-all.ps1`：原生多視窗啟動腳本已被 `docker compose up -d --build` 取代，不再保留原生 mvn 熱重載路徑（團隊已確認接受此取捨）。
+
+### Why
+- 多視窗手動啟動易漏開/漏載入 `.env`、且各人環境不一致；容器化統一了本機開發環境，`docker compose up -d --build` 一行指令即可重現整套拓撲，符合團隊「docker 化為唯一啟動路徑」的決定。
+
+### 如何驗證
+- `node --test tests/infra/*.test.js` 全綠（142 tests pass，含新增的後端容器化測試群組）。
+- `docker compose up -d --build` 需開發者本機驗證 12 個容器（5 infra + 7 後端）皆達 `healthy`，並透過 gateway 走完整 smoke test（註冊 → 登入 → 查餘額 → 老虎機 spin）。
+
 ## [fix] -- 2026-07-07 -- member/admin 放行 /actuator/prometheus ＋ T-090 重跑中途進度記錄
 
 ### Fixed

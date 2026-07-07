@@ -118,8 +118,293 @@ services:
     networks:
       - lucky-network
 
+  # ── 後端服務（全部容器化，docker compose up -d 一次啟動，取代各自 mvn spring-boot:run 開視窗）──
+  member-service:
+    build:
+      context: .
+      dockerfile: backend/member-service/Dockerfile
+    container_name: lucky-star-member-service
+    restart: always
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: lucky-star-kafka:29092
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_TOKEN_EXPIRY_MS: ${JWT_ACCESS_TOKEN_EXPIRY_MS}
+      JWT_REFRESH_TOKEN_EXPIRY_MS: ${JWT_REFRESH_TOKEN_EXPIRY_MS}
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+      JPA_DDL_AUTO: ${JPA_DDL_AUTO}
+      LOG_LEVEL_APP: ${LOG_LEVEL_APP}
+      LOG_LEVEL_SQL: ${LOG_LEVEL_SQL}
+      LOG_LEVEL_SECURITY: ${LOG_LEVEL_SECURITY}
+    ports:
+      - "${MEMBER_SERVICE_PORT}:8081"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - lucky-network
+
+  wallet-service:
+    build:
+      context: .
+      dockerfile: backend/wallet-service/Dockerfile
+    container_name: lucky-star-wallet-service
+    restart: always
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: lucky-star-kafka:29092
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+      JPA_DDL_AUTO: ${JPA_DDL_AUTO}
+      LOG_LEVEL_APP: ${LOG_LEVEL_APP}
+      LOG_LEVEL_SQL: ${LOG_LEVEL_SQL}
+    ports:
+      - "${WALLET_SERVICE_PORT}:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - lucky-network
+
+  game-service:
+    build:
+      context: .
+      dockerfile: backend/game-service/Dockerfile
+    container_name: lucky-star-game-service
+    restart: always
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: lucky-star-kafka:29092
+      WALLET_SERVICE_URL: http://wallet-service:8082
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+      JPA_DDL_AUTO: ${JPA_DDL_AUTO}
+      LOG_LEVEL_APP: ${LOG_LEVEL_APP}
+      LOG_LEVEL_SQL: ${LOG_LEVEL_SQL}
+    ports:
+      - "${GAME_SERVICE_PORT}:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      wallet-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - lucky-network
+
+  rank-service:
+    build:
+      context: .
+      dockerfile: backend/rank-service/Dockerfile
+    container_name: lucky-star-rank-service
+    restart: always
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: lucky-star-kafka:29092
+      JPA_DDL_AUTO: ${JPA_DDL_AUTO}
+      LOG_LEVEL_APP: ${LOG_LEVEL_APP}
+      LOG_LEVEL_SQL: ${LOG_LEVEL_SQL}
+    ports:
+      - "${RANK_SERVICE_PORT}:8084"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - lucky-network
+
+  admin-service:
+    build:
+      context: .
+      dockerfile: backend/admin-service/Dockerfile
+    container_name: lucky-star-admin-service
+    restart: always
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: lucky-star-kafka:29092
+      MEMBER_SERVICE_URL: http://member-service:8081
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET}
+      ADMIN_JWT_EXPIRY_MS: ${ADMIN_JWT_EXPIRY_MS}
+      ADMIN_SEED_ENABLED: ${ADMIN_SEED_ENABLED}
+      ADMIN_SEED_USERNAME: ${ADMIN_SEED_USERNAME}
+      ADMIN_SEED_PASSWORD: ${ADMIN_SEED_PASSWORD}
+      JPA_DDL_AUTO: ${JPA_DDL_AUTO}
+      LOG_LEVEL_APP: ${LOG_LEVEL_APP}
+      LOG_LEVEL_SQL: ${LOG_LEVEL_SQL}
+    ports:
+      - "${ADMIN_SERVICE_PORT}:8086"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      member-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - lucky-network
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: backend/notification-service/Dockerfile
+    container_name: lucky-star-notification-service
+    restart: always
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: lucky-star-kafka:29092
+      JWT_SECRET: ${JWT_SECRET}
+      LOG_LEVEL_APP: ${LOG_LEVEL_APP}
+    ports:
+      - "${NOTIFICATION_SERVICE_PORT}:8087"
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8087/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - lucky-network
+
+  gateway-service:
+    build:
+      context: .
+      dockerfile: backend/gateway-service/Dockerfile
+    container_name: lucky-star-gateway-service
+    restart: always
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      MEMBER_SERVICE_URL: http://member-service:8081
+      WALLET_SERVICE_URL: http://wallet-service:8082
+      GAME_SERVICE_URL: http://game-service:8083
+      RANK_SERVICE_URL: http://rank-service:8084
+      ADMIN_SERVICE_URL: http://admin-service:8086
+      NOTIFICATION_SERVICE_URL: http://notification-service:8087
+      LOG_LEVEL_APP: ${LOG_LEVEL_APP}
+      LOG_LEVEL_GATEWAY: ${LOG_LEVEL_GATEWAY}
+      LOG_LEVEL_SECURITY: ${LOG_LEVEL_SECURITY}
+    ports:
+      - "${GATEWAY_PORT}:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      member-service:
+        condition: service_healthy
+      wallet-service:
+        condition: service_healthy
+      game-service:
+        condition: service_healthy
+      rank-service:
+        condition: service_healthy
+      admin-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - lucky-network
+
   # ── 觀測性（選配）：docker compose --profile observability up -d 才會啟動 ──
-  # 後端服務跑在宿主機（mvn spring-boot:run），故 scrape 目標用 host.docker.internal
+  # 後端服務已容器化改用 host.docker.internal 的 target 仍可運作（同網路可雙向解析）；
+  # scrape 目標改為容器服務名屬後續優化，非本次阻斷項，見 observability/prometheus.yml 註解
   prometheus:
     image: prom/prometheus:v2.53.0
     container_name: lucky-star-prometheus
