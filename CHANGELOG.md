@@ -1,3 +1,26 @@
+## [refactor] -- 2026-07-07 -- 玩法契約單一來源化：repo 根 contracts/*.json + ContractParityTest 守門（Phase 5）
+
+### 背景
+- 玩法表格數值（老虎機賠付表、百家樂補牌表/賠率、捕魚魚種/戰鬥常數、商城 mock 目錄）此前在後端 enum/常數與 `frontend/src/services/mockApi.js` 各寫一份，靠雷區 14 的人工紀律同步，漂移只能靠 code review 抓。本次把表格數值抽成 repo 根 `contracts/*.json` 單一檔案：前端 mock 直接 import，後端以相等性測試守門——漂移＝CI 紅燈。
+
+### Added
+- `contracts/`：`slot-paytable.json`（符號/權重/兩階倍率/總權重）、`baccarat-rules.json`（TIE_PAYOUT/傭金率/莊家補牌表）、`fishing-species.json`（魚種表/HP 係數/搖錢樹區間）、`fishing-combat.json`（TARGET_RTP/RECOVERY_RATE/暴擊/砲台傷害表）、`shop-catalog.json`（**僅供 mock**；正式目錄單一真相在 MySQL `shop_items`，雷區 20）。
+- `backend/game-service/src/test/java/com/luckystar/game/baccarat/ContractParityTest.java`：Jackson 讀 `../../contracts/*.json`，逐欄斷言＝`SlotSymbol`/`FishSpecies`/`FishingCombat` 常數/`bankerDraws` 補牌表（莊點 0~7 × 閒三張值 0~9 全域窮舉）。放 `baccarat` 套件是為了直接呼叫 package-private 的 `bankerDraws`。
+
+### Changed
+- `frontend/src/services/mockApi.js`：`SLOT_PAYTABLE`/`FISH_SPECIES`/fishing 常數/`SHOP_CATALOG`/百家樂賠率與補牌表改為 import 契約 JSON；補牌「邏輯」（天牌、閒 0~5 補、pCapture 反推、兩階賠付評估）仍是鏡像程式碼，JSON 只存表格數值。
+- `frontend/vite.config.js`：`server.fs.allow` 放行 `../contracts`（dev server 預設不服務專案根外檔案；build 本就不受影響）。
+- `AGENTS.md`：雷區 14（契約單一來源與改數值 SOP）、15（`ContractParityTest` 加入紅燈清單）、16（四同步的 ① 改為契約檔）、20（目錄同步對象改 `contracts/shop-catalog.json`）。
+
+### Why
+- **後端 enum 保留為執行期權威、不 runtime 載 JSON**：enum 承載 Javadoc 理論 RTP 推導與雷區 15/16 的整套測試守門，推倒重來收益低、風險高；「漂移＝CI 紅燈」用相等性測試即可達標。
+- `shop-catalog.json` 不入守門範圍：正式目錄在 MySQL（admin 後台可改），JSON 只是 mock 的預設體驗快照。
+
+### 如何驗證
+- `mvn -pl backend/game-service test` 綠燈（180 tests，含新增 `ContractParityTest` 4 個）。
+- `cd frontend && npm run build` 成功、`npm test` 綠燈（36 tests）。
+- mock 三遊戲以臨時 vitest smoke 實跑驗證（spinSlot 盤面/派彩、baccaratBet 押閒派彩、fishing start→shots→end 結算），驗畢即刪。
+
 ## [feat] -- 2026-07-07 -- game→wallet 最小 Saga 補償：credit 失敗落補償單、排程冪等重試（Phase 4，ADR-009）
 
 ### 背景

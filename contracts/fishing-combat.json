@@ -1,0 +1,8 @@
+{
+  "$comment": "捕魚機戰鬥常數單一來源（Phase 5，ADR-003/ADR-004）。執行期權威仍是後端 FishingCombat；本檔由 ContractParityTest 守門，前端 mockApi.js 直接 import。cannonDamage 索引 0 不用（銅/銀/金 = 1/2/3）。pCapture 不存表：由 targetRtp 與期望擊殺發數反推（邏輯在程式碼）。改數值務必走 AGENTS 雷區 16 的四同步。",
+  "targetRtp": 0.96,
+  "recoveryRate": 0.7,
+  "critChance": 0.2,
+  "critMultiplier": 2,
+  "cannonDamage": [0, 14, 22, 32]
+}

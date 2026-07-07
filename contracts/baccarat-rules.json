@@ -1,0 +1,18 @@
+{
+  "$comment": "百家樂表格數值單一來源（Phase 5）。執行期權威仍是後端 BaccaratGameService；本檔由 ContractParityTest 守門，前端 mockApi.js 直接 import。補牌『邏輯』（天牌 8/9 不補、閒 0~5 補）仍在程式碼，本檔只存表格數值：byBankerScore[莊點] = 閒家第三張牌值為其中之一時莊家補牌；whenPlayerStandsDrawOnMax = 閒家未補牌時莊點 ≤ 此值即補。",
+  "tiePayoutRatio": 8,
+  "bankerCommissionRate": 0.05,
+  "bankerDraws": {
+    "whenPlayerStandsDrawOnMax": 5,
+    "byBankerScore": {
+      "0": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+      "1": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+      "2": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+      "3": [0, 1, 2, 3, 4, 5, 6, 7, 9],
+      "4": [2, 3, 4, 5, 6, 7],
+      "5": [4, 5, 6, 7],
+      "6": [6, 7],
+      "7": []
+    }
+  }
+}
