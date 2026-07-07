@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <radialGradient id="evilShell" cx="41%" cy="30%" r="74%">
+      <stop offset="0" stop-color="#8cf7a9"/>
+      <stop offset="0.35" stop-color="#16845c"/>
+      <stop offset="0.72" stop-color="#06382f"/>
+      <stop offset="1" stop-color="#020b10"/>
+    </radialGradient>
+    <linearGradient id="evilFin" x1="0" x2="1">
+      <stop offset="0" stop-color="#2ce0a7"/>
+      <stop offset="1" stop-color="#064539"/>
+    </linearGradient>
+    <filter id="turtleShadow" x="-18%" y="-18%" width="136%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="5" flood-color="#00110f" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+  <g filter="url(#turtleShadow)">
+    <path d="M84 80c-38-19-66-10-69 10-3 19 25 31 61 21" fill="url(#evilFin)" stroke="#06231e" stroke-width="5" opacity=".96"/>
+    <path d="M87 171c-35 24-66 18-71-2-5-20 21-35 59-30" fill="url(#evilFin)" stroke="#06231e" stroke-width="5" opacity=".96"/>
+    <path d="M155 78c33-23 62-18 69 1 7 20-19 35-52 29" fill="url(#evilFin)" stroke="#06231e" stroke-width="5" opacity=".96"/>
+    <path d="M152 174c37 20 66 13 69-7 3-20-24-33-60-23" fill="url(#evilFin)" stroke="#06231e" stroke-width="5" opacity=".96"/>
+    <ellipse cx="126" cy="126" rx="74" ry="55" fill="url(#evilShell)" stroke="#071614" stroke-width="8"/>
+    <path d="M73 104c29-44 90-55 128-16" fill="none" stroke="#e4ffe8" stroke-width="7" stroke-linecap="round" opacity=".24"/>
+    <ellipse cx="206" cy="116" rx="31" ry="25" fill="#12694f" stroke="#071614" stroke-width="7"/>
+    <path d="M194 102l23 7" stroke="#06110f" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="215" cy="111" r="6" fill="#050808"/>
+    <circle cx="217" cy="111" r="2.5" fill="#ff2738"/>
+    <path d="M82 126h88M126 75v102M96 93c20 21 43 21 62 0M94 160c22-19 47-19 69 0" fill="none" stroke="#061f1c" stroke-width="8" stroke-linecap="round" opacity=".72"/>
+    <g fill="#15120a" stroke="#ffe16a" stroke-width="3" stroke-linejoin="round">
+      <path d="M91 81l-4-25 20 16"/><path d="M122 69l8-25 10 25"/><path d="M160 82l21-14-5 24"/>
+    </g>
+    <g fill="#ff3147" opacity=".88">
+      <circle cx="96" cy="121" r="4"/><circle cx="124" cy="96" r="4"/><circle cx="151" cy="132" r="4"/><circle cx="122" cy="158" r="4"/>
+    </g>
+  </g>
+</svg>

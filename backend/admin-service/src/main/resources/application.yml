@@ -58,11 +58,23 @@ spring:
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       enable-auto-commit: false
 
+# 內部服務呼叫（T-051 補完）：停用/啟用玩家時持久化 members.status。
+# secret 比照 game-service 慣例由 INTERNAL_SECRET 環境變數提供。
+internal:
+  member-service:
+    base-url: ${MEMBER_SERVICE_URL:http://localhost:8081}
+    secret: ${INTERNAL_SECRET:?INTERNAL_SECRET environment variable is required}
+
 management:
+  metrics:
+    distribution:
+      percentiles-histogram:
+        # P99 直方圖（T-090 觀測性）：供 Prometheus histogram_quantile 計算延遲分位數
+        "[http.server.requests]": true
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: always

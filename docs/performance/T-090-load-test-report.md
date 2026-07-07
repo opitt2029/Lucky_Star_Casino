@@ -8,6 +8,17 @@
 
 > ⚠️ The P99 < 500 ms / 5xx = 0 gates were defined for a properly resourced multi-host deployment. Running 5 service JVMs + JMeter + 6 infra containers on one laptop is itself the bottleneck — the 503s are gateway circuit-breaker load-shedding under host CPU saturation, not application accounting defects. See "Measured Results" for the full breakdown.
 
+## 2026-07-07 再驗證進度（進行中，Phase 2b）
+
+同拓撲（後端宿主機 mvn 起、Docker infra + observability 監控棧）重跑，**本節為中途進度、非最終結論**；完整重跑與指標佐證待後續補齊。目前實測：
+
+- **前置全數就緒**：7 服務 `/actuator/health` UP、Prometheus targets 全綠（member/admin 需放行 `/actuator/prometheus`，本次已修）、JMeter 5.6.3、重新 provision 1,000 名玩家（GM 發幣每人 100 萬）。
+- **150 併發基線（冷、熱各一輪）**：兩輪皆 ~65% HTTP 503（overdraw=0、冪等失敗=0 仍 PASS）。與 6/16 的 150 併發（P99 545 ms、0.28% 錯誤）相比顯著劣化。
+- **1000 併發主測**：P99 2,190 ms、失敗 31,409/32,749（其中 5xx 8,039，其餘為斷言失敗）；帳務 gate 仍 PASS（overdraw=0）。
+- **根因鏈（Prometheus 佐證）**：壓測窗內 gateway `resilience4j_circuitbreaker_not_permitted_calls_total{name="game-service"}` ≈ 12,852（≈全部 503）；被放行的 ~980 發中 ~64% 被判 failed（延遲落在 900–1,100 ms 區間）。即：**Spring Cloud CircuitBreaker 未設 TimeLimiter，預設 1 秒逾時**；而 spin 路徑自 6/22 起接入風控（每局 Redis 並發閘 + 2 次 DB 聚合）、6/24 又加注單稽核，150 併發下延遲被推過 1 s → 熔斷開路 → half-open 放行 3 發成功 → 關路瞬間 150 執行緒 thundering herd 再次推爆延遲 → 反覆開闔（self-sustaining flapping）。
+- **單發延遲健康**：單人低速連打 spin 為 28–125 ms；game-service 窗內平均 1.07 s、wallet `/internal/wallet/debit` 平均 344 ms 皆為併發排隊所致，非單發能力問題。
+- **結論方向**：帳務完整性在混沌下持續 PASS；效能 gate 的瓶頸已從「單機資源」細化為「gateway CB 預設 1s TimeLimiter × spin 路徑變重 × thundering herd」。調整 TimeLimiter / R4j 參數依計畫**另開 PR** 處理後再重測。
+
 ## Test Objective
 
 Simulate 1,000 authenticated players betting on the slot game concurrently for 60 seconds and verify:

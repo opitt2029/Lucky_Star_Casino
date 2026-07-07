@@ -2,6 +2,7 @@ package com.luckystar.game.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.luckystar.game.client.WalletClient;
+import com.luckystar.game.compensation.WalletCompensationService;
 import com.luckystar.game.client.dto.WalletCreditResponse;
 import com.luckystar.game.client.dto.WalletDebitResponse;
 import com.luckystar.game.dto.PrepareRoundResponse;
@@ -67,6 +68,7 @@ public class SlotService {
     private final GameSessionService sessionService;
     private final ObjectMapper objectMapper;
     private final RiskControlService riskControlService;
+    private final WalletCompensationService compensationService;
 
     /**
      * 單次模式：扣款、轉動並於同一回應揭露 serverSeed（相容前端一次呼叫）。
@@ -172,8 +174,18 @@ public class SlotService {
         long balanceAfter = debit.balanceAfter();
         long frozenAfter = 0L;
         if (outcome.payout() > 0) {
-            WalletCreditResponse credit = walletClient.credit(
-                    playerId, outcome.payout(), "slot-win-" + roundId, roundId);
+            WalletCreditResponse credit;
+            try {
+                credit = walletClient.credit(
+                        playerId, outcome.payout(), "slot-win-" + roundId, roundId);
+            } catch (RuntimeException ex) {
+                // 玩家已贏但派彩送不進 wallet（ADR-009）：落補償單（同一冪等鍵）後把原例外拋回。
+                // 請求以 5xx 失敗、玩家可重試結算（結果由 seed 確定性重算，帳務冪等）；
+                // 即使玩家不重試，排程 30 秒內會補入帳——「贏的錢不會消失」。
+                compensationService.recordPending(GAME_TYPE, roundId, playerId, outcome.payout(),
+                        "WIN", "slot-win-" + roundId, ex);
+                throw ex;
+            }
             balanceAfter = credit.balanceAfter();
             frozenAfter = credit.frozenAfter() == null ? 0L : credit.frozenAfter();
         }

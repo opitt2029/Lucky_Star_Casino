@@ -1,0 +1,12 @@
+{
+  "name": "reconcile-game-wallet",
+  "private": true,
+  "type": "module",
+  "description": "game↔wallet 對帳（ADR-009）：盤點遊戲對局與錢包流水/補償單的缺漏，輸出 check_name,violation_count 報表",
+  "scripts": {
+    "reconcile": "node reconcile-game-wallet.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.12.0"
+  }
+}

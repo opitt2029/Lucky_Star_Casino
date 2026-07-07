@@ -1,7 +1,1103 @@
-# Changelog — Lucky Star Casino
+## [refactor] -- 2026-07-07 -- 玩法契約單一來源化：repo 根 contracts/*.json + ContractParityTest 守門（Phase 5）
+
+### 背景
+- 玩法表格數值（老虎機賠付表、百家樂補牌表/賠率、捕魚魚種/戰鬥常數、商城 mock 目錄）此前在後端 enum/常數與 `frontend/src/services/mockApi.js` 各寫一份，靠雷區 14 的人工紀律同步，漂移只能靠 code review 抓。本次把表格數值抽成 repo 根 `contracts/*.json` 單一檔案：前端 mock 直接 import，後端以相等性測試守門——漂移＝CI 紅燈。
+
+### Added
+- `contracts/`：`slot-paytable.json`（符號/權重/兩階倍率/總權重）、`baccarat-rules.json`（TIE_PAYOUT/傭金率/莊家補牌表）、`fishing-species.json`（魚種表/HP 係數/搖錢樹區間）、`fishing-combat.json`（TARGET_RTP/RECOVERY_RATE/暴擊/砲台傷害表）、`shop-catalog.json`（**僅供 mock**；正式目錄單一真相在 MySQL `shop_items`，雷區 20）。
+- `backend/game-service/src/test/java/com/luckystar/game/baccarat/ContractParityTest.java`：Jackson 讀 `../../contracts/*.json`，逐欄斷言＝`SlotSymbol`/`FishSpecies`/`FishingCombat` 常數/`bankerDraws` 補牌表（莊點 0~7 × 閒三張值 0~9 全域窮舉）。放 `baccarat` 套件是為了直接呼叫 package-private 的 `bankerDraws`。
+
+### Changed
+- `frontend/src/services/mockApi.js`：`SLOT_PAYTABLE`/`FISH_SPECIES`/fishing 常數/`SHOP_CATALOG`/百家樂賠率與補牌表改為 import 契約 JSON；補牌「邏輯」（天牌、閒 0~5 補、pCapture 反推、兩階賠付評估）仍是鏡像程式碼，JSON 只存表格數值。
+- `frontend/vite.config.js`：`server.fs.allow` 放行 `../contracts`（dev server 預設不服務專案根外檔案；build 本就不受影響）。
+- `AGENTS.md`：雷區 14（契約單一來源與改數值 SOP）、15（`ContractParityTest` 加入紅燈清單）、16（四同步的 ① 改為契約檔）、20（目錄同步對象改 `contracts/shop-catalog.json`）。
+
+### Why
+- **後端 enum 保留為執行期權威、不 runtime 載 JSON**：enum 承載 Javadoc 理論 RTP 推導與雷區 15/16 的整套測試守門，推倒重來收益低、風險高；「漂移＝CI 紅燈」用相等性測試即可達標。
+- `shop-catalog.json` 不入守門範圍：正式目錄在 MySQL（admin 後台可改），JSON 只是 mock 的預設體驗快照。
+
+### 如何驗證
+- `mvn -pl backend/game-service test` 綠燈（180 tests，含新增 `ContractParityTest` 4 個）。
+- `cd frontend && npm run build` 成功、`npm test` 綠燈（36 tests）。
+- mock 三遊戲以臨時 vitest smoke 實跑驗證（spinSlot 盤面/派彩、baccaratBet 押閒派彩、fishing start→shots→end 結算），驗畢即刪。
+
+## [feat] -- 2026-07-07 -- game→wallet 最小 Saga 補償：credit 失敗落補償單、排程冪等重試（Phase 4，ADR-009）
+
+### 背景
+- game-service 對 wallet 的派彩/退款 credit 是同步 HTTP；wallet 短暫不可用時，「玩家已扣款、已贏（或該退款）」的錢只剩一行 log（fishing 退款失敗甚至明寫「需人工對帳」）。本次把它系統化：credit 失敗 → 落 `pending_wallet_credits` 補償單 → 排程每 30 秒帶**同一冪等鍵**重試，wallet 端 `idempotency_key` UNIQUE（雷區 8）保證與玩家重試並發也絕不重複入帳。詳見 `docs/adr/ADR-009.md`。
+
+### Added
+- `database/postgres/migration/V14__add_pending_wallet_credits.sql` ＋ `database/postgres/init.sql`：新表 `pending_wallet_credits`（game_type、round_id、player_id、amount、sub_type WIN/REFUND、idempotency_key UNIQUE、status PENDING/DONE/FAILED、retry_count、last_error、next_retry_at、時間戳；`(status, next_retry_at)` 索引）。
+- game-service 新 `compensation/` 套件：`PendingWalletCredit`／`PendingWalletCreditRepository`／`WalletCompensationService.recordPending()`（TransactionTemplate `REQUIRES_NEW` 寫入——主流程 rollback 也留單；絕不拋出例外，避免遮蔽 catch 內的原始錯誤）／`WalletCompensationRetryJob`（`@Scheduled` 每 30s 撈 PENDING 到期單、指數退避 30s→上限 30min、10 次超限標 FAILED＋log.error）。補償只走 HTTP `WalletClient`（雷區 6），sub_type 僅 WIN/REFUND（已在白名單，不觸發雷區 18 四同步）。
+- `tools/reconciliation/reconcile-game-wallet.mjs`（＋package.json，Node ESM＋pg，比照 tools/ 慣例）：跨 game/wallet 服務邊界對帳——已結算對局缺 credit 流水（且無補償單兜底）、金額不符、FAILED/滯留 PENDING 補償單、DONE 卻無流水；輸出格式比照 `tests/performance/accounting-reconciliation.sql`，違規退出碼 1。
+- 測試：`WalletCompensationServiceTest`（失敗→寫單、冪等鍵原封不動、去重、絕不拋出）、`WalletCompensationRetryJobTest`（重試→DONE、退避、超限 FAILED、單筆失敗不斷批）；Slot/Baccarat/Fishing 測試各補「credit 失敗→落補償單＋拋回原例外」。
+
+### Changed
+- `SlotService.settleInternal`、`BaccaratService.settle`：派彩 credit 失敗 → `recordPending(WIN, 同冪等鍵)` 後拋回原例外（主流程行為不變，玩家仍可重試結算）。
+- `FishingService`：start/topUp 的退款再失敗 → `recordPending(REFUND)`（原本只 log）；`settleInternal` 的場次返還失敗 → `recordPending(REFUND, fishing-end-<sessionId>)` 後拋回。
+- `AGENTS.md`：新增雷區 22（credit 失敗必落補償單、冪等鍵絕不可換）。
+
+### Why
+- 語意分清（ADR-009）：settle 的 credit 失敗＝玩家贏了，補償是「重試同一冪等鍵的 credit」而非退款；fishing 扣款後 save 失敗才是 REFUND。統一抽象為「pending outbound wallet credit」，安全根基是 wallet 冪等，因此補償排程可盲目重試、與玩家重試並發也安全。
+- 補償單放 game-service 自己的 Postgres：欠據由 game 產生、屬 game 邊界，且重用 `WalletClient` 的 internal-secret 設定；對帳跨兩服務邊界，故獨立成 tools/ script。
+
+### 如何驗證
+- `mvn -pl backend/game-service test` 綠燈（176 tests，含新增 10 個補償測試與 3 個失敗路徑測試）。
+- 手動：kill wallet → 打一局 slot（命中）→ 重啟 wallet → 30 秒內補償入帳；`pending_wallet_credits` 標 DONE、`wallet_transactions.idempotency_key` 與補償單一致；`node tools/reconciliation/reconcile-game-wallet.mjs` 對帳通過。
+
+## [feat] -- 2026-07-07 -- 後端服務全面容器化：docker compose up -d --build 一鍵啟動 7 服務（取代多視窗手動啟動）
+
+### 背景
+- 舊流程每人要手動開 6-7 個終端機視窗跑 `mvn spring-boot:run`（或用 `start-all.bat`/`start-backend.ps1` 各開一個新視窗），且每人本機 `.env` 易與 `.env.example` 漂移導致啟動失敗、環境不一致。改為全容器化後，`docker compose up -d --build` 即可用一致環境一次啟動全部 5 個基礎設施 + 7 個後端服務。此次僅容器化後端，前端（`frontend/`、`frontend-admin/`）仍走 `npm run dev`。
+
+### Added
+- `backend/<service>/Dockerfile`（7 個：gateway/member/wallet/game/rank/admin/notification-service）：multi-stage build（`eclipse-temurin:21-jdk-jammy` 建置 + `21-jre-jammy` 執行期），BuildKit cache mount 共用 Maven 依賴快取，non-root `appuser` 執行，內建 `curl` 供 actuator healthcheck 使用。
+- `docker-compose.yml`：新增 7 個後端服務容器，env 對應容器網路（DB/Redis/Kafka 改容器名與內部 listener、下游 `*_SERVICE_URL` 改容器名），依 healthcheck 建立啟動順序（DB healthy → 該服務 healthy → 依賴它的下游服務，如 game-service 等 wallet-service、admin-service 等 member-service、gateway-service 等其餘 6 個）。
+- `tests/infra/docker-compose.test.js`：新增「後端服務容器化」測試群組，涵蓋 7 個服務存在性、各自 Dockerfile 路徑、actuator healthcheck、容器內部 Kafka listener、game→wallet 與 gateway→其餘 6 服務的 `depends_on` 鏈。
+
+### Changed
+- `.env.example`：補齊缺漏的 `NOTIFICATION_SERVICE_URL`/`NOTIFICATION_SERVICE_PORT`（gateway 原本即讀取，範本檔案漏了）；`*_SERVICE_URL` 的 localhost 預設不變（原生開發用，容器網路的 hostname 直接寫在 compose 的 `environment:` 覆寫）。
+- `DEPLOY.md`：全面改寫為 Docker 單一啟動路徑——§3「啟動基礎設施」與原 §4「啟動後端服務」合併為 `docker compose up -d --build` 一步到位，§0 前置需求移除 Java/Maven 必要性，§6 疑難排解新增容器相關症狀，其餘章節依序重新編號。
+
+### Removed
+- `start-all.bat`、`start-backend.ps1`、`stop-all.bat`、`stop-all.ps1`：原生多視窗啟動腳本已被 `docker compose up -d --build` 取代，不再保留原生 mvn 熱重載路徑（團隊已確認接受此取捨）。
+
+### Why
+- 多視窗手動啟動易漏開/漏載入 `.env`、且各人環境不一致；容器化統一了本機開發環境，`docker compose up -d --build` 一行指令即可重現整套拓撲，符合團隊「docker 化為唯一啟動路徑」的決定。
+
+### 如何驗證
+- `node --test tests/infra/*.test.js` 全綠（142 tests pass，含新增的後端容器化測試群組）。
+- `docker compose up -d --build` 需開發者本機驗證 12 個容器（5 infra + 7 後端）皆達 `healthy`，並透過 gateway 走完整 smoke test（註冊 → 登入 → 查餘額 → 老虎機 spin）。
+
+## [fix] -- 2026-07-07 -- member/admin 放行 /actuator/prometheus ＋ T-090 重跑中途進度記錄
+
+### Fixed
+- `backend/member-service/.../config/SecurityConfig.java`、`backend/admin-service/.../config/SecurityConfig.java`：permitAll 清單補 `/actuator/prometheus`。原本只放行 `health`/`info`，Prometheus scrape 被 member 403 / admin 401 擋下，觀測性上線後 targets 從未全綠。gateway 不轉發 actuator 路徑、僅本機 scrape，風險面有限。
+
+### Changed
+- `docs/performance/T-090-load-test-report.md`：新增「2026-07-07 再驗證進度（進行中）」一節——同拓撲重跑的 150 基線（冷/熱皆 ~65% 503）與 1000 主測（P99 2,190 ms）實測值、Prometheus 佐證的根因鏈（Spring Cloud CircuitBreaker 未設 TimeLimiter 預設 1s 逾時 × spin 路徑 6/22 起接入風控變重 × half-open→closed thundering herd 反覆開闔）、單發延遲健康（28–125 ms）、帳務 gate 持續 PASS（overdraw=0、冪等失敗=0）。
+
+### Why
+- T-090 重跑（Phase 2b）中途暫停留檔：targets 全綠是壓測指標佐證的前置；根因已從 6/16 的「單機資源」細化到可指名的 CB 設定與路徑變重，調 TimeLimiter/R4j 屬另開 PR 範疇。
+
+### Verified
+- `mvn -pl backend/member-service,backend/admin-service test` 綠燈；重啟兩服務後 Prometheus targets 7/7 up；`curl :8081/actuator/prometheus`、`:8086/actuator/prometheus` 皆 200。
+
+## [feat] -- 2026-07-07 -- 觀測性上線：7 服務曝露 Prometheus 指標＋compose 選配監控棧（T-090 前置）
+
+### Added
+- 7 個後端服務 `pom.xml`：加 `micrometer-registry-prometheus`（runtime scope，版本由 Spring Boot BOM 管控）。
+- `observability/prometheus.yml`：scrape 7 服務 `/actuator/prometheus`（現行拓撲後端跑宿主機，target 用 `host.docker.internal`）。
+- `observability/grafana/provisioning/`：Prometheus datasource ＋「Lucky Star — 服務總覽」儀表板（HTTP P99/吞吐/5xx/Resilience4j 熔斷/JVM Heap/CPU）。
+- `docker-compose.yml`：新增 `prometheus`(9090)/`grafana`(3000) 兩服務，綁 `observability` profile——**預設 `docker compose up` 行為不變**。
+- `tests/infra/docker-compose.test.js`：新增觀測性 profile 守門測試（服務存在＋profile 恰好綁 2 個）。
+
+### Changed
+- 7 個服務 `application.yml`：`management.endpoints.web.exposure.include` 加 `prometheus`；開啟 `[http.server.requests]` percentiles-histogram（否則 Prometheus 無 bucket 可算 P99）。
+- `DEPLOY.md` §3：補「選配：啟動觀測性」一節。
+
+### Why
+- T-090 壓測重跑的硬前置：上次（2026-06-16）只有 JMeter JTL 可看，缺服務端指標，無法佐證「單機資源 vs gateway 限流」的瓶頸判定。監控容器走 profile 是為了不破壞既有 SOP 與 infra 測試。
+
+### Verified
+- `node --test tests/infra/*.test.js` 全綠；`docker compose config --profile observability` 解析通過；七模組 `mvn test` 全綠（見 PR）。
+
+## [test] -- 2026-07-07 -- wallet-service 新增 Testcontainers 真實資料庫測試（ADR-007）
+
+### Added
+- 根 `pom.xml`：dependencyManagement 匯入 `testcontainers-bom:1.21.3`。
+- `backend/wallet-service/pom.xml`：test 依賴 `testcontainers-{junit-jupiter,postgresql,mysql}`；surefire 預設 `excludedGroups=containers`；新 profile **`containers-test`**（只跑 `@Tag("containers")`，並把 system property 切成 `jpa.ddl-auto=validate` + 真方言——`DataSourceConfig` 讀的是 system property，故必須在 surefire 層切）。
+- `backend/wallet-service/src/test/java/com/luckystar/wallet/containers/`：
+  - `AbstractDualDatasourceContainerTest`：singleton postgres:16 + mysql:8.4（版本對齊 compose），套 `database/` 真 schema（PG＝init.sql＋migration 依數字版號重放；MySQL＝僅 init.sql，因其 migration 不冪等且 init.sql 已是累積最新版），`ddl-auto=validate` 讓 context 啟動即斷言 entity↔schema 無漂移。
+  - `WalletCheckConstraintContainerTest`：非法 sub_type 在 PG/MySQL 撞 `chk_wt_sub_type`（H2 create 模式根本沒有這條約束）；白名單最新子型 SHOP_PURCHASE 可寫（兼驗 migration 重放順序）。
+  - `WalletOptimisticLockContainerTest`：真 PG 樂觀鎖——stale version 存檔被拒、雙併發 800 扣款於餘額 1000 恰一方成功、不超扣、流水恰一筆。
+  - `DualDatasourceTxSemanticsContainerTest`：postgres/mysql 兩 TransactionManager 各自 commit/rollback 互不帶動（雷區 5/20 的根源語意）。
+- `.github/workflows/ci.yml`：backend-test job 新增 step `mvn -pl backend/wallet-service test -Pcontainers-test`（ubuntu-latest 內建 Docker）。
+- `docs/adr/ADR-007.md`：決策全文（為何只加 wallet、為何不取代 H2、兩端 schema 初始化策略差異）。
+
+### Changed
+- `AGENTS.md` 雷區 3：補「唯一例外（ADR-007）」說明與新增此類測試的規範。
+
+### Why
+- H2 測試由 entity 反向建表，永遠測不到「entity ↔ 真 schema 漂移」「DB 層 CHECK 約束」「真 PG 鎖語意」三類問題；wallet-service 是唯一雙資料源＋帳務核心，H2 假象風險最高。只新增、不取代，保住 CI/本機 `mvn test` 零外部依賴的既有約定（雷區 3）。
+
+### Verified
+- `mvn -pl backend/wallet-service test`：161 tests 全綠（containers 測試被排除，行為不變）。
+- `mvn -pl backend/wallet-service test -Pcontainers-test`（本機 Docker Desktop）：8 個容器測試全綠。
+
+﻿## [fix] -- 2026-07-07 -- MySQL 初始化腳本補 SET NAMES utf8mb4：中文種子資料匯入即亂碼
+=======
+## [feat] -- 2026-07-07 -- T-054 補完：告警查詢/處理 API + Dashboard 未處理告警列表
+
+### Added
+- `backend/admin-service/.../controller/AdminAlertController.java`：`GET /admin/alerts`（分頁、alertType/resolved 可選篩選、id DESC 新到舊）+ `PATCH /admin/alerts/{id}/resolve`（冪等，404=不存在）。
+- `backend/admin-service/.../service/AdminAlertService.java`：查詢分流（衍生查詢三組合 + findAll）與標記已處理，掛 `postgresTransactionManager`（雙資料源，admin_alerts 在 Postgres）。
+- `backend/admin-service/.../dto/AlertView.java`、`AdminAlertRepository` 衍生查詢、`AdminAlert.markResolved()`（單向、不提供退回）。
+- `backend/admin-service/.../service/AdminAlertServiceTest.java`：篩選分流 4 例 + resolve 3 例（含冪等）。
+- `frontend-admin`：`adminApi.listAlerts/resolveAlert`；Dashboard 新增「未處理異常告警」區塊（獨立 useFetch、標記已處理只重載告警不重抓報表、玩家 ID 連到詳情頁）。
+
+### Why
+- T-054 規則引擎只有寫入端：偵測到異常後管理員只能收 Kafka 推播，後台翻不到歷史告警——功能斷在半路。查詢用衍生方法列舉篩選組合而非 null 參數 JPQL，避開 Postgres null 綁定參數的型別推斷雷。
+
+### Verified
+- `mvn -pl backend/admin-service test` 綠燈；frontend-admin `npm test`（14 tests）/ `lint` / `build` 全過。
+
+## [feat] -- 2026-07-07 -- T-051 補完：玩家停用狀態持久化到 members.status（member 內部 API）
+
+### Added
+- `backend/member-service/.../controller/InternalMemberController.java`：`PATCH /internal/members/{id}/status`（body `{enabled}`→ ACTIVE/DISABLED），由既有 `InternalSecretFilter`（X-Internal-Secret）守門、不經 gateway；`PlayerService.updateStatus()`、`UpdateMemberStatusRequest`。
+- `backend/admin-service/.../client/MemberClient.java` + `config/MemberClientConfig.java`（RestClient 直連 member，比照 game→wallet 的 WalletClientConfig）；`MemberServiceException` → `AdminExceptionHandler` 轉 502。
+- `application.yml` 新增 `internal.member-service.base-url`（`MEMBER_SERVICE_URL`，預設 8081）與 secret（`INTERNAL_SECRET`）。
+
+### Changed
+- `AdminPlayerService.setStatus()`：先呼叫 member 內部 API 持久化 `members.status`（真相來源），成功後才寫 Redis 封鎖/解封。member 失敗整個操作失敗（502），不留「Redis 已封鎖但 DB 仍 ACTIVE」半套狀態；反向不一致由登入時的 DB status 檢查兜底。
+- `AUDIT_REPORT.md`：T-051 移除「跨組待辦」註記、T-054 補查詢端點說明。
+
+### Why
+- 原本停用只寫 Redis `disabled:player:{id}`，Redis 資料清空（重啟/淘汰）後停用玩家即可重新登入。member 登入本就同時檢查 `members.status=DISABLED` 與 Redis（2026-06 修過），補上 DB 持久化後兩層防線才完整。
+
+### Verified
+- `mvn -pl backend/admin-service,backend/member-service test` 綠燈（新增 admin setStatus 4 例改版含 member 失敗不動 Redis、member updateStatus 3 例）。
+
+## [fix] -- 2026-07-07 -- MySQL 初始化腳本補 SET NAMES utf8mb4：中文種子資料匯入即亂碼
+
+### Fixed
+- `database/mysql/init.sql`、`database/mysql/seed_test_data.sql`：檔頭加 `SET NAMES utf8mb4;`。
+
+### Why
+- MySQL 容器 entrypoint 用容器內建 `mysql` client 執行 `/docker-entrypoint-initdb.d/*.sql`，容器內無 `LANG`（POSIX locale）時 client 預設編碼是 **latin1**，UTF-8 的中文被當 latin1 讀入再轉存 utf8mb4 → 雙重編碼亂碼（`測試員一` 變 `æ¸¬è©¦å“¡ä¸€`）。受影響：`members.nickname`、`shop_items.name/caption`；英數資料不受影響（ASCII 與 latin1 相容）。
+- 既有壞資料以重建 volume 修復（`docker compose down -v && up -d`），本機測試資料一併重置。
+
+### Verified
+- 重建後查 `members.nickname` = 測試員一/二/三、`shop_items` 中文正常；Postgres 錢包種子（1001~1003 各 10000）與 Kafka topics（kafka-init）自動重建。
+- ⚠️ 注意：volume 重建後 `admin_users` 為空，`AdminUserSeeder` 是啟動期 CommandLineRunner，須**重啟 admin-service** 讓種子帳號重新寫入才能登入後台。
+
+## [feat] -- 2026-07-07 -- 管理後台 8 個功能頁完成 API 串接（脫離 stub）
+
+### Added
+- `frontend-admin/src/hooks/useFetch.js`：頁面資料抓取共用 hook（loading/error/reload 樣板＋競態守門：只採用最後一次請求的結果）。頁面資料「進頁抓、離頁丟」無跨頁共享，故不進 redux（auth 除外）。
+- `frontend-admin/src/utils/format.js`：千分位金額、LocalDateTime 裁切顯示（不經 Date 解析避免時區位移）、RTP 百分比、本地時區 `YYYY-MM-DD`。
+- `frontend-admin/src/components/ui.jsx`：共用展示元件（Loading/Error/Empty、Table/Td、Badge、Pagination（吃 Spring Data Page）、PageHeader、StatCard）。
+
+### Changed
+- 8 個頁面由 PageStub 換成實作，串接 adminApi 全部端點：
+  - `Dashboard`：近 7 日 coin-flow + RTP 平行抓取，RTP 異常置頂告警（admin_alerts 查詢端點後端尚未提供，待補後加告警列表）。
+  - `Players` / `PlayerDetail`（T-051）：分頁列表＋送出制關鍵字搜尋；詳情含餘額/凍結、近期帳務/對局、停用/啟用兩段式確認（不用 window.confirm——原生對話框阻塞事件圈且不可控樣式），狀態以 reload 後端結果為準不做前端翻轉。
+  - `CoinFlowReport`（T-052）/ `RtpReport`（T-053）:「編輯中 vs 已查詢」條件分離（按查詢才打 API）；RTP 頁標示含本金口徑與偏差門檻。
+  - `GmGrant`（T-055）：兩段式確認（改任一欄位即退出確認態），成功顯示 QUEUED＋冪等鍵並清空表單防重複發放。
+  - `DiamondCards`（T-105/T-106）：生成表單（1~1000 張）＋序號 textarea/一鍵複製（序號僅生成當下完整可見）＋狀態篩選列表。
+  - `ShopItems`（ADR-006）：收合式新增表單（409=item_code 重複由 extractError 帶出）＋列內編輯（改價/上下架/排序），頁頂提醒同步玩家端 `mockApi.SHOP_CATALOG`（雷區 14/20）。
+
+### Removed
+- `frontend-admin/src/components/PageStub.jsx`：所有頁面已實作，佔位元件無使用處。
+
+### Why
+- 骨架期只有登入可用、7 個功能頁全是佔位，後台實際無法運營；admin-service 後端 API 早已全部完成（T-050~T-055、T-105/T-106、商城目錄），本次純前端串接、未動任何後端。
+
+### Verified
+- `npm run lint` 乾淨；`npm run build` 成功（各頁 code-split 正常，最大頁 ShopItems 6.7 kB）。
+- 端到端需啟動 gateway + admin-service 後以 seeder 帳號登入手動驗證（依 DEPLOY.md）。
+
+## [fix] -- 2026-07-07 -- gateway 放行 /admin/**：後台 API 先前整條被 gateway 401 擋死
+
+### Fixed
+- `backend/gateway-service/src/main/resources/application.yml`：`jwt.whitelist` 新增 `/admin/`。
+- `backend/gateway-service/.../GatewayRoutesConfigTest.java`：新增 `jwtWhitelist_includesAdminPath` 鎖住此設定。
+
+### Why
+- T-050 讓後台改用獨立 `ADMIN_JWT_SECRET` 簽發 JWT，但 gateway 的 `JwtAuthenticationGlobalFilter` 只用玩家 `JWT_SECRET` 驗簽，從未對齊：登入端點 `/admin/auth/login` 不在白名單（無 token → 401 `missing bearer token`），登入後的 ADMIN JWT 也會被判 `invalid token`。**經 gateway 的後台路徑從未通過**——過去沒發現是因為 admin-service 測試都直打 8086。
+- 修法採「gateway 純轉發、admin-service 自身守門」：`AdminJwtAuthFilter` + `@PreAuthorize` 本來就對無效 token 一律 401/403（T-050 有測試驗收），gateway 反正驗不了 admin secret，留著只會誤殺。filter 內 `/admin/** 需 ADMIN role` 的檢查保留未動（防未來有人移除白名單時仍有底線）。
+
+### Verified
+- `mvn -pl backend/gateway-service test`：26 tests 全綠（含新增 1）。
+- 手動驗證項（重啟 gateway 後）：frontend-admin（5174）以 seeder 帳號登入應成功、stub 頁可導航。
+
+## [feat] -- 2026-07-07 -- 新增管理後台前端骨架 frontend-admin/（獨立 Vite 專案）
+
+### Added
+- `frontend-admin/`：獨立於玩家端的管理後台 React 專案（Vite + React 18 + Redux Toolkit + Tailwind，port **5174**）。本次為骨架：登入流程可用，7 個功能頁為佔位 stub。
+  - `src/services/api.js`：axios 實例掛 ADMIN JWT；admin 無 refresh token（`LoginResponse` 只回 accessToken），401 一律登出重導（登入端點 401=帳密錯誤除外），不做玩家端的 single-flight 續期。
+  - `src/services/adminApi.js`：對齊 admin-service 全部既有端點（T-050 登入、T-051 玩家管理、T-052/T-053 報表、T-055 GM 發幣、T-105/T-106 點數卡、ADR-006 商城目錄）。
+  - `src/store/slices/adminAuthSlice.js`：登入狀態含 `role`（SUPER_ADMIN/OPERATOR）；localStorage key 加 `admin` 前綴與玩家端區隔。
+  - `src/App.jsx`：`AdminPrivateRoute` 守未登入、`SuperAdminRoute` 守 GM 發幣；SPA 路由不用 `/admin` 前綴（該前綴是 API 路徑，dev proxy 轉發 gateway 8080）。
+  - `src/components/AdminLayout.jsx`：側邊欄導航，GM 發幣入口僅 SUPER_ADMIN 顯示（後端 `@PreAuthorize` 仍是最終防線）。
+  - 頁面：`Login`（可用）＋ `Dashboard/Players/PlayerDetail/CoinFlowReport/RtpReport/GmGrant/DiamondCards/ShopItems`（stub，標明待串 API）。
+
+### Why
+- admin-service 後端 API（T-050~T-055、T-105/T-106、商城目錄）已全部完成，但前端完全沒有管理介面。
+- 選擇獨立專案而非併入 `frontend/`：後端本來就是獨立 `ADMIN_JWT_SECRET` ＋獨立角色的邊界，前端對齊此切分；後台可獨立部署於內網，管理端路由/API 形狀不進玩家 bundle。
+- dev 走 vite proxy（`/admin` → 8080）＝同源請求，免動 gateway 的 `CORS_ALLOWED_ORIGINS`。
+
+### Verified
+- `npm run lint` 乾淨；`npm run build` 成功（各頁正確 code-split）。
+- 登入流程待啟動 admin-service 後手動驗證（本次僅骨架，無單元測試——頁面實作時比照玩家端補 vitest）。
+
+
+﻿## [fix] -- 2026-07-07 -- 老虎機震動解除加 animationend 冒泡守門
+
+### Fixed
+- `frontend/src/pages/SlotGame.jsx`：機櫃震動包裹層的 `onAnimationEnd` 加 `e.target !== e.currentTarget` 守門。原寫法會收到 SlotMachine 所有後代（含 pseudo-element）冒泡上來的 `animationend`——目前同時段子動畫（`slot-win-glow` 2.1s）比震動（0.55s）晚結束所以無實害，但日後任何 <0.55s 的有限子動畫都會提早砍掉震動。
+
+### Why
+- code-reviewer 審 179d9bb 時發現的潛伏地雷，趁未踩雷先修：守門後只認包裹層自己的 `slot-shake` 結束事件，語意與原設計（震動播完即解除）一致。
+
+### Verified
+- `npm run lint` 乾淨、`npm run build` 成功、`npx vitest run` 36/36 綠。
+
+## [chore] -- 2026-07-07 -- 新增 .claude/agents 六角色 subagent 定義
+
+### Added
+- `.claude/agents/`：dev-coder / frontend-dev / qa-tester / code-reviewer / ui-ux / devops 六角色 + README（pipeline 與使用方式）。全英文（給 AI 讀）；雷區知識一律指回根目錄 `AGENTS.md`，不複製進 agent 檔（防六份漂移）。code-reviewer / ui-ux 工具白名單無 Edit/Write（審改利益衝突、設計不寫碼）。
+
+### Why
+- 移植自另一專案的六角色分工骨架，領域守則全部改寫為本專案雷區（帳務冪等/樂觀鎖、Kafka 指令/事件、遊戲三鐵則、mock 鏡像、四同步）。clone 專案即得，跨成員共用。
+
+### Verified
+- 以 general-purpose agent 載入角色 prompt 實測：code-reviewer 審 179d9bb（照雷區清單審、實跑 vitest、找到 SlotGame animationend 冒泡問題、輸出 PASS/FAIL 格式）；ui-ux 產出 Lobby 近期贏分規格（正確查證後端資料源、拒用 botFeed 假資料）。新 agent 檔需重啟 session 才註冊。
+
+## [feat] -- 2026-07-06 -- 前端三遊戲沉浸感升級：程序化 BGM 大改版＋環境音＋視覺打磨
+
+### Added
+- `frontend/src/casino-fx/sound/musicTheory.js`：MIDI→頻率、音階（宮調五聲/五聲小調/自然小調）、和弦品質與度數換算。純函式，可獨立測試。
+- `frontend/src/casino-fx/sound/bgmInstruments.js`：BGM 樂器配方（pad 和弦墊/低音撥弦/古箏感撥弦/顫音琴/號角/大鼓/刷鼓/ride/沙鈴/氣泡），全部音符節點自我終結；`createAmbience()` 環境音迴圈（loop 噪音＋濾波＋慢速 LFO），handle 由 composer 持有並清理。
+- `frontend/src/casino-fx/sound/bgmThemes.js`：四主題宣告式編曲——slot（96bpm 宮調喜慶、C–Am–F–G）、baccarat（72bpm 小調 lounge、重 swing）、fishing（64bpm 深海氛圍 drone＋機率氣泡）、boss（132bpm 大鼓＋號角 ostinato）；各主題含環境音層（賭場底噪/人聲低鳴/海水湧動）。
+- `frontend/src/casino-fx/sound/bgmComposer.js`：singleton 排程器。lookahead 排程（沿用原 useBgm 數學）＋多音軌/和弦進行/swing/音量人性化；`setIntensity(0~2)` 讓音樂隨遊戲張力增厚（轉輪中/發牌中疊入高層音軌）；主題切換 0.8s crossfade（fishing→boss 不再硬切）。`computeStepEvents` 純函式供測試。
+- 測試 `musicTheory.test.js`＋`bgmComposer.test.js`（21 個）：主題資料完整性全掃描（進行/樂句長度、頻率有限正值、swing 只在反拍）、intensity 分層、rng 可重現、ctx=null 安全、mock AudioContext 下 tick 實排音符、ambience dispose 防洩漏 spy。
+- 視覺：老虎機轉動中光帶掃過櫃體＋跑馬燈加速＋中獎增亮脈動＋爆機級（≥8x）機櫃震動（`animationend` 移除，無魔術數字）；百家樂牌桌 vignette 聚光（結算時加深聚焦贏方）＋籌碼落點微彈跳；捕魚機 Pixi 神光光楔（add 混合、4 道固定池、perfMode 熄滅）＋浮游生物微粒（20 顆固定池、reducedMotion 不生成）。
+
+### Changed
+- `frontend/src/casino-fx/sound/useBgm.js`：改為薄轉接層（THEMES 移入 bgmThemes），API `useBgm(theme, active, {intensity})` 向下相容既有兩參數呼叫。
+- `frontend/src/pages/SlotGame.jsx`、`Baccarat.jsx`：接上 intensity（轉輪中/發牌咪牌中 → 2）；SlotGame 加機櫃震動狀態。
+- `frontend/src/components/SlotMachine.jsx`：轉動中掛 `slot-machine--live`。
+- `frontend/src/index.css`：新增上述 slot/baccarat 樣式，並將新動畫全部補進 `prefers-reduced-motion: reduce` 例外區。
+- `frontend/src/components/fishingEngine.js`：`_buildBackdrop/_redrawBackdrop/_updateBackdrop/destroy` 加神光與浮游生物（比照 caustics/泡泡既有模式，perfMode/reducedMotion 守門）。
+
+### Why
+- 原 BGM 是 16 步打擊點排程（每主題僅 2~4 個 drum/chip 音），聽感如節拍器，是「不沉浸」主因。升級為和聲＋低音＋旋律＋環境音的多層程序化合成：零音檔、零授權依賴，且全部走既有 `bgmGain`——「音樂」開關與音量滑桿免改直接生效（SiteSettings/SoundEngine/sfx.js 零改動）。玩法、後端契約、mock 賠付（雷區 14）完全未動。
+
+### Verified
+- `npm run test` 35 passed（含新增 21）；`npm run lint` 乾淨；`npm run build` 成功。
+- 手動驗證項（開發者本機）：`npm run dev` 進三遊戲聽層次與 intensity 增厚、fishing↔boss crossfade、遊戲中關「音樂」<0.5s 靜音、捕魚頁 perfMode 下神光熄滅/FPS 無劣化。
+
+## [changed] -- 2026-07-06 -- 調高百家樂風控全局 RTP 門檻（1.02 → 1.20）
+
+### Changed
+- `backend/game-service/src/main/resources/application.yml`：`risk.global-rtp-limit.BACCARAT` 由 1.02 調至 1.20，並補上量化依據註解。
+
+### Why
+- 與同日 SLOT 門檻調整同一類問題、用同一套蒙地卡羅方法覆核（300 萬局，鏡像 `BaccaratGameService` 無限靴發牌/補牌表、`win_amount = totalPayout + rebate` 口徑、`BaccaratService.settle` 的攔截改判邏輯）。
+- 風控口徑內的百家樂正常水位 ≈ 0.97~1.00（結構性 ≈0.99 ＋ 返水 0.5~1%，隨押注輪廓與注額浮動），500 局窗口 RTP 標準差 ≈ 0.04~0.06（押和 9x 比例越高越大）。舊門檻 1.02 只在均值上方約 0.5σ：開環下 23~31% 的檢查誤判超限；閉環下約 7% 的局被強制改判為莊家贏（押閒/押和的合法中獎被沒收，實得 RTP 被壓約 1.3 個百分點）——與 2026-06-25 修過的誤判事故同類，只是幅度較小、持續存在。
+- 取 1.20：即使在押和偏多（40/40/20）輪廓下誤觸率 ≤0.08%，實得 RTP ≈ 自然值；而真異常（派彩 bug、和局漏洞單局 9x）會讓窗口 RTP 持續遠超 1.2，攔截力仍在。百家樂尾巴（最大 9x）比老虎機（70x）輕，故門檻低於 SLOT 的 1.30。
+- `RiskControlServiceTest` 不受影響（測試自建門檻 map，不讀 application.yml）。
+
+### Verified
+- `mvn -pl backend/game-service test` 全綠。
+- 模擬（窗口 500、45/45/10 押注輪廓、返水 1%）：門檻 1.02/1.05/1.10/1.15/1.20 的閉環強制改判率分別為 7.42%/3.66%/0.65%/0.08%/0.003%，實得 RTP 0.971/0.979/0.985/0.986/0.985（自然值 ≈0.985）。
+## [test] -- 2026-07-06 -- 新增網站設定面板 e2e 測試（SiteSettings）
+
+### Added
+- `frontend/e2e/site-settings.spec.js`：Playwright e2e（mock 模式、免後端）覆蓋 commit 327c7cf 的網站設定面板——開啟面板、關閉「全網公告效果／網站背景效果」、音量調整、驗證 localStorage（`lucky-star-site-preferences-v1`／`lucky-star-sound-settings-v1`）寫入、消費端即時反應（`.coin-rain` 從 DOM 移除）、重新整理後設定讀回、ESC 關閉。
+
+### Why
+- 該面板此前無任何測試覆蓋（vitest 只有 api/mockApi）。設定為純前端偏好（localStorage + storage 事件跨分頁同步），無後端 API，故以 e2e 驗證「儲存/讀取/實際作用」整條鏈。
+- 註：自訂開關樣式會讓 Playwright 的 `check()/uncheck()` 點不到原生 checkbox（裝飾 span 攔截 pointer events），測試改點整列 label；日後寫相關測試比照。
+
+### Verified
+- `npx playwright test e2e/site-settings.spec.js` 1 passed（7.9s）。
+## [docs] -- 2026-07-06 -- 真後端全鏈路 smoke test 結果紀錄（無程式變更）
+
+### Verified
+- 實跑 gateway(8080)+member(8081)+wallet(8082)+game(8083)（Docker infra healthy）：註冊(201) → 登入(200) → 查餘額 → 模擬充值 → 老虎機 5 局 → 百家樂 36 局（閒/莊/和輪押）。
+- 派彩契約與 mock 全部一致：老虎機 `payout = bet × multiplier`、逐局錢包對帳吻合；百家樂閒贏 2x、莊贏 1.95x（5% 傭金）、押和中 9x（含本金 900）、和局押閒/莊 push 退本金、返水 `max(1, totalBet/200)`（與 `mockApi` 公式相同）。
+- 錯誤碼：餘額不足 422「星幣餘額不足」（mock 同文案）、注額違規 400（單局 100~5,000）、無 token 401。
+
+### 發現的兩個世界分歧（未修改，留待產品決策）
+1. **新玩家初始資金**：真後端新手禮僅 100 星幣（`GM_REWARD`，經 outbox 約 5 秒入帳），而老虎機最低注 100 → 真環境新玩家只能玩一把就必須充值；mock 新註冊直接給大額測試餘額。
+2. **限流與非同步行為 mock 沒有**：(a) gateway 對 `/api/v1/game/**` 有 per-player 1 秒窗口限流，連打回 429 `"Too many requests"`，前端無專門處理、會把英文訊息直接顯示；(b) 註冊後立刻查餘額會 404 `Wallet not found`（Kafka 開戶延遲 <1s），mock 永遠即時。實際 UI 流程通常不會踩到，但寫前端重試/文案時要知道。
+
+### Why
+- 本輪前置診斷只跑過 mock 模式；此筆補上真後端鏈路驗證的結果與分歧清單，避免下次重查。
+## [changed] -- 2026-07-06 -- 調高老虎機風控全局 RTP 門檻（0.97 → 1.30）
+
+### Changed
+- `backend/game-service/src/main/resources/application.yml`：`risk.global-rtp-limit.SLOT` 由 0.97 調至 1.30，並補上量化依據註解。
+
+### Why
+- 舊門檻 0.97 只比老虎機結構性 RTP（≈0.938，`SlotSymbol` Javadoc）高 3.2 個百分點，但賠付表含 70x（SEVEN 三連）/50x（STAR 三連）重尾，單局派彩倍率標準差 ≈ 2.4，`rtp-sample-size: 500` 的窗口 RTP 標準差 ≈ 0.107 —— 0.97 只在均值上方 0.3σ，屬正常波動範圍，非異常訊號。
+- 蒙地卡羅模擬（500 萬局，鏡像 `SlotSymbol` 權重/兩階賠付與 `RiskControlService`/`SlotService` 攔截邏輯）：開環下 0.97 有 36.4% 的檢查判定超限；閉環（超限贏局被 `SlotService.settleInternal` 強制改判 noWin、以 0 派彩入帳）下約 5.9% 的贏局被沒收、玩家實得 RTP 被壓到 0.88。這正是雷區 17 / 2026-06-25 百家樂誤判事故的同類 bug，仍在老虎機上活著。
+- 原候選區間 0.98~0.99 幾乎無改善（閉環沒收率仍 5.2~5.6%），因此比照 FISHING 1.10「高變異留足裕度」的做法放大到 1.30：誤觸降至 0.06% 贏局（實得 RTP 0.938 ≈ 理論值），而真異常（賠付表 bug / 漏洞）會讓窗口 RTP 持續遠超 1.3，攔截力仍在。
+- `RiskControlServiceTest` 不受影響：測試自建門檻 map（SLOT=0.95）驗證判定邏輯，不讀 application.yml。
+
+### Verified
+- `mvn -pl backend/game-service test` 全綠。
+- 模擬腳本（等注額、窗口 500）：門檻 0.97/0.99/1.20/1.30 的閉環贏局沒收率分別為 5.93%/5.19%/0.30%/0.06%，實得 RTP 0.880/0.891/0.935/0.938。
+## [docs] -- 2026-07-06 -- 修正 AGENTS.md 雷區 16 過時的砲台傷害數值
+
+### Fixed
+- `AGENTS.md` 雷區 16：「砲台傷害收斂為 {0,10,14,18}」改為與程式碼一致的 `{0,14,22,32}`（`FishingCombat.CANNON_DAMAGE`，前端 `mockApi.js` 的 `FISHING_CANNON_DAMAGE` 已同步為此值）。
+
+### Why
+- 文件殘留 ADR-004 早期草案數值，與 `FishingCombat.java:61` 實際實作不符，會誤導後續依文件改數值的人。
+
+### Verified
+- 對照 `FishingCombat.java` 與 `frontend/src/services/mockApi.js`，三處數值一致；純文件修改，無程式行為變更。
+## [removed] -- 2026-07-05 -- Fishing buy-in entry note panel
+
+### Removed
+- `frontend/src/pages/Fishing.jsx`: remove the buy-in screen `fishing-entry-note` note block.
+- `frontend/src/components/Fishing.css`: remove the now-unused `fishing-entry-note` styles.
+
+### Why
+- The buy-in panel should be cleaner and no longer show the entry note card.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+## [changed] -- 2026-07-05 -- Fishing missed shots consume ammo
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: route empty-water shots through the normal `fire()` flow using a `MISS` shot type, so shots that do not hit any fish still deduct the current `betPerShot` before showing the bullet animation.
+- `backend/game-service/src/main/java/com/luckystar/game/service/FishingService.java`: accept `MISS` shots as charged non-hit results with no damage, no capture, no payout, and no residual recovery.
+- `frontend/src/services/mockApi.js`: mirror the backend `MISS` shot behavior in mock mode.
+
+### Why
+- Every fired bullet should consume ammo consistently, whether it hits a normal fish, hits an obstacle creature, or misses all fish.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+- `mvn -pl backend/game-service clean test`
+## [changed] -- 2026-07-05 -- Fishing blocker shots consume session balance
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: route blocker hits through the normal `fire()` flow so shooting obstacle creatures deducts the current `betPerShot` and shows the deducted amount in the blocker hint.
+- `backend/game-service/src/main/java/com/luckystar/game/service/FishingService.java`: accept `BLOCKER_OCTOPUS`, `BLOCKER_STARFISH`, and `BLOCKER_TURTLE` shots as charged no-payout obstacle hits without running normal fish combat.
+- `frontend/src/services/mockApi.js`: mirror the backend blocker-shot behavior in mock mode.
+
+### Why
+- Obstacle creatures should cost ammo like any shot while still behaving as blockers: no damage, no capture, no payout, and no residual recovery.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+- `mvn -pl backend/game-service clean test`
+## [changed] -- 2026-07-05 -- Fishing evil blocker pressure scaling
+
+### Changed
+- `frontend/public/images/fishing/blocker-octopus.svg`, `blocker-starfish.svg`, and `blocker-turtle.svg`: remove the white mouth/teeth line from each evil blocker asset.
+- `frontend/src/components/fishingEngine.js`: scale evil blocker spawn pressure by active fish tier; medium, high/special, and boss fish now shorten blocker spawn intervals, raise simultaneous blocker caps, and can trigger multi-blocker waves.
+
+### Fixed
+- Confirmed the previous non-applied evil blocker issue came from the Pixi asset pipeline: the game could still use stale `fish-blocker-*` texture keys, and the texture cache previously ignored the resolved asset URL. The current game path uses `fish-evil-blocker-*` ids and URL-aware texture cache keys.
+
+### Why
+- Higher-value fish should be harder to line up cleanly, and the evil blocker art should not retain the bright white mouth strokes that made the face look off.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+## [fixed] -- 2026-07-05 -- Fishing evil blocker asset pipeline
+
+### Fixed
+- `frontend/src/components/fishingEngine.js`: switch in-game blocker spawning to dedicated `fish-evil-blocker-*` asset ids so the Pixi stage no longer reuses the old blocker texture keys.
+- `frontend/src/casino-fx/assets/registry.js`: register the dedicated evil blocker asset ids with fresh cache-busted SVG URLs.
+- `frontend/src/casino-fx/assets/bakeTextures.js`: include the resolved asset source URL/component name in the texture cache key so future art URL changes create a fresh texture instead of reusing stale in-memory assets.
+
+### Why
+- The evil blocker SVG files were updated, but the running Pixi asset pipeline could still resolve or cache textures by the old blocker asset ids, making the game appear to use the previous obstacle art.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+## [changed] -- 2026-07-05 -- Fishing evil blocker size tiers
+
+### Changed
+- `frontend/public/images/fishing/blocker-octopus.svg`, `blocker-starfish.svg`, and `blocker-turtle.svg`: redesign blocker creatures with darker palettes, sharper silhouettes, angry red eyes, teeth/spikes, and heavier shadows.
+- `frontend/src/components/fishingEngine.js`: add small / medium / large blocker size profiles; small blockers absorb 5 bullets, medium blockers absorb 10 bullets, and large blockers absorb 17 bullets before leaving.
+- `frontend/src/casino-fx/assets/registry.js` and `frontend/src/data/fishingFishConfig.js`: bump blocker asset URLs and update the fish guide copy to explain the 5 / 10 / 17 bullet blocking rule.
+
+### Why
+- Obstacles should feel more threatening and should create varied shooting lanes with clearly different blocking durability by size.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+## [changed] -- 2026-07-05 -- Fishing blocker durability and cleaner hit feedback
+
+### Added
+- `frontend/src/data/fishingFishConfig.js` and `frontend/src/components/FishingFishInfoPanel.jsx`: add obstacle octopus, starfish, and turtle entries to the bottom fish guide with no-coin and 10-shot blocking labels.
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: make blocker creatures withstand exactly 10 intercepted bullets before leaving, while keeping their size and speed variation across octopus, starfish, and turtle variants.
+- `frontend/src/components/fishingEngine.js`: hide normal damage numbers and HP bars during play; critical hits still show a floating critical label.
+
+### Why
+- The fishing stage should keep combat feedback lively without visual clutter, and obstacle creatures should be explained clearly as no-cost blockers rather than normal fish targets.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+## [changed] -- 2026-07-05 -- Fishing blocker creature variety
+
+### Added
+- `frontend/public/images/fishing/blocker-octopus.svg`, `blocker-starfish.svg`, and `blocker-turtle.svg`: add dedicated obstacle creature visuals for the fishing stage.
+
+### Changed
+- `frontend/src/casino-fx/assets/registry.js`: register the new blocker creature SVG assets for Pixi preload.
+- `frontend/src/components/fishingEngine.js`: randomize blocker spawns across octopus, starfish, and turtle variants with different sizes, speeds, and movement wobble while preserving no-cost bullet blocking behavior.
+
+### Why
+- Obstacle blockers should read as distinct sea creatures rather than another normal fish, and their sizes should vary to make the shooting lane feel less uniform.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+## [changed] -- 2026-07-05 -- Fishing live ammo switching and hit feedback
+
+### Added
+- `frontend/src/components/fishingEngine.js`: add immediate hit sparks/damage floats/HP preview, blocker fish that intercept bullets without calling `fire()`, and safer fish spawn bounds away from the cannon zone.
+- `backend/game-service/src/main/java/com/luckystar/game/dto/FishingShotsRequest.java`: allow each shot to carry an optional `cannonLevel` for in-round ammo switching.
+
+### Changed
+- `backend/game-service/src/main/java/com/luckystar/game/fishing/FishingCombat.java`, `FishingSession.java`, `FishingSessionStore.java`, and `service/FishingService.java`: raise cannon damage to 14 / 22 / 32, resolve damage per shot, persist per-instance residual recovery, and verify killing shots with their actual cannon level.
+- `frontend/src/hooks/useFishingSession.js`, `frontend/src/pages/Fishing.jsx`, `frontend/src/components/FishingControlDock.jsx`, and `frontend/src/services/mockApi.js`: let ammo/cannon selection change while playing, send per-shot cannon level, and mirror the backend damage/recovery model in mock mode.
+- `frontend/src/casino-fx/sound/SoundEngine.js`: prevent queued BGM notes from playing after BGM is disabled, including Boss transitions.
+
+### Why
+- Fishing needs faster visual feedback, in-game ammo switching, blocker fish that create no-cost shot obstruction, and spawn rules that avoid fish appearing directly beside the cannon.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+- `mvn -pl backend/game-service test`
+## [fixed] -- 2026-07-05 -- Fishing fullscreen top-up and entry flow refinements
+
+### Changed
+- `frontend/src/hooks/useFishingSession.js`: stop auto-resuming an active fishing session on page mount so every `/game/fishing` entry shows the buy-in screen first.
+- `frontend/src/pages/Fishing.jsx`: wrap the stage and top-up dialog in the fullscreen target, move the performance toggle into the stage marquee, and pass active ammo tone into canvas/dock controls.
+- `frontend/src/components/FishingCanvas.jsx`, `frontend/src/components/FishingControlDock.jsx`, and `frontend/src/components/fishingEngine.js`: map ammo tone to the actual Pixi firing cannon, including copper single-barrel, silver dual-barrel, and gold heavy triple-barrel silhouettes, plus bullet color, cannon scale, barrel tint, muzzle flash, and dock cannon bay styling.
+- `frontend/src/components/Fishing.css`: increase HUD metric height/radius, place the performance toggle on the marquee right side, support the new fullscreen surface, and add ammo-specific cannon bay skins.
+
+### Why
+- Fullscreen only renders descendants of the requested element, so the top-up dialog must live inside the fullscreen target. The fishing page should not skip buy-in from any navigation entry, and ammo choices should have clearer cannon feedback without changing backend-authoritative damage/RTP rules.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+## [fixed] -- 2026-07-04 -- Jackpot fish king front silhouette cleanup
+
+### Fixed
+- `frontend/public/images/fishing/rainbow-jackpot-fish-king.svg`: removed the two front protruding sharp points and removed the mouth, teeth, and mouth highlight paths from the active jackpot fish king asset.
+- `frontend/src/data/fishingFishConfig.js` and `frontend/src/casino-fx/assets/registry.js`: bumped the active rainbow jackpot fish king asset URL to force the updated SVG to load in the game and fish guide.
+
+### Why
+- The visible in-game asset was still the active rainbow SVG, which retained the old front points and mouth even after earlier legacy asset edits.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+## [changed] -- 2026-07-04 -- Fishing fullscreen and golden dragon king guide
+
+### Added
+- `frontend/src/components/FishingFullscreenButton.jsx`: add Fullscreen API toggle for the Pixi fishing stage.
+- `frontend/src/components/FishingFishInfoPanel.jsx` and `frontend/src/data/fishingFishConfig.js`: add lobby fish guide data, rewards, rarity, and golden dragon king display metadata.
+- `frontend/public/images/fishing/golden-dragon-king.svg`: add a dedicated dragon-shaped golden dragon king visual asset.
+
+### Changed
+- `frontend/src/pages/Fishing.jsx`: wire fullscreen state, unsupported/failure messaging, immersive stage class, and move the fish guide into a bottom page information section.
+- `frontend/src/services/fishingApi.js`, `frontend/src/casino-fx/assets/registry.js`, and `frontend/src/components/fishingEngine.js`: keep backend `DRAGON_KING` shot validation compatible, prioritize 彩金魚王 in the timed Boss spawn, and load the new rainbow-colored jackpot fish king SVG with a smooth front face without protruding fins, a fresh non-cached asset id/file, quick in-game spawn, and the largest in-game body size through a cache-busted asset URL.
+- `frontend/src/components/Fishing.css`: add red-gold fullscreen button states, fullscreen stage layout, centered lobby content, and responsive fish guide card styling.
+
+### Why
+- The fishing page needed a more immersive play mode and clearer lobby-side game information while remaining compatible with the current backend fishing species contract.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+
+﻿# Changelog — Lucky Star Casino
 
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+
+## [changed] -- 2026-07-04 -- Fishing page API alignment and control dock refinement
+### Added
+- `frontend/src/services/fishingApi.js`: added a fishing-specific adapter over the existing game API mock/real switch.
+- `frontend/src/data/fishingConfig.js`: centralized the three fishing ammo options as 10 / 50 / 100 star-coin bet-per-shot presets.
+- `frontend/src/components/FishingControlDock.jsx` and `FishingSettlementPanel.jsx`: split reusable fishing controls and settlement summary UI out of the page.
+
+### Changed
+- `frontend/src/pages/Fishing.jsx`: refreshes wallet balance on entry, uses the fishing adapter/config, shows full-round catch count, gates top-up to depleted session balance, and presents settlement as consumption / catch count / reward / net result.
+- `frontend/src/hooks/useFishingSession.js`: routes through `fishingApi`, persists session buy-in in view state, and tracks full-round caught fish count separately from the capped verify-shot log.
+- `frontend/src/components/fishingEngine.js`: raises the Pixi cannon origin so the cannon remains visible above the in-stage control dock.
+- `frontend/src/components/Fishing.css`: added scoped red-gold dock overrides for consistent ammo card sizing, disabled/active states, RWD layout, and API error messaging.
+
+### Why
+- Align `/game/fishing` with the current backend contract: `betPerShot` is the player-selected ammo amount, cannon damage remains a separate session-level backend setting, and top-up should only appear when the current session balance is insufficient.
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+
+## [changed] -- 2026-07-04 -- Baccarat table UI rebuilt into casino-style layout
+### Added
+- `frontend/src/components/baccarat/*`: added Baccarat-specific table header, status bar, hand/card panels, betting mat, chip tray, settlement panel, roadmap tabs, and disabled Side Bet UI.
+
+### Changed
+- `frontend/src/pages/Baccarat.jsx`: reorganized Baccarat around `idle` / `betting` / `dealing` / `squeezing` / `settled` phases while preserving `betBaccarat`, wallet updates, squeeze mode, sound effects, win effects, result history, and leave guard behavior.
+- `frontend/src/components/BaccaratRoadmap.jsx`: kept the existing import path as a compatibility wrapper over the new roadmap panel.
+- `frontend/src/index.css`: added scoped `.baccarat-page` / `.baccarat-*` styles for the red-gold table layout, felt betting mat, sticky mobile chip tray, roadmap tabs, and settlement banner.
+
+### Fixed
+- Baccarat settlement copy now distinguishes Tie push refunds from direct Tie wins while leaving API and wallet math unchanged.
+
+### Why
+- Make `/game/baccarat` feel like an actual online baccarat table, improve mobile betting ergonomics, and keep all new styling scoped away from Slot, Fishing, Lobby, Member, and Profile pages.
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+## [changed] -- 2026-07-04 -- Site settings button moved into header
+### Changed
+- `frontend/src/App.jsx`: removed the global floating settings button from the root site chrome.
+- `frontend/src/components/AppShell.jsx`: placed the settings gear inside the header control row beside the existing wallet and notification controls.
+- `frontend/src/components/SiteSettings.jsx` and `frontend/src/components/SiteSettings.css`: simplified the settings component to the header-integrated layout and normalized its Chinese labels.
+
+### Why
+- Keep the settings entry aligned with the site's header controls instead of floating independently over page content.
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+
+## [changed] -- 2026-07-03 -- Centralized site settings panel
+### Added
+- `frontend/src/components/SiteSettings.jsx` and `frontend/src/components/SiteSettings.css`: added a gear settings panel for volume, sound effects, music, global announcement effects, and background effects.
+- `frontend/src/utils/sitePreferences.js`: added localStorage-backed site preferences shared by visual effects and announcements.
+
+### Changed
+- `frontend/src/components/QuickToolbar.jsx`: removed the old sound/music controls so audio settings live only in the settings panel.
+- `frontend/src/components/CoinRain.jsx` and `frontend/src/casino-fx/announce/AnnouncementTicker.jsx`: made background and announcement effects respect the shared site preferences.
+- `frontend/src/App.jsx` and `frontend/src/components/AppShell.jsx`: mounted the settings button and stopped/started bot announcements based on the announcement preference.
+
+### Why
+- Keep site-wide audio and visual effect controls in one predictable place and prevent duplicate controls in the quick toolbar.
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+
+## [changed] -- 2026-07-03 -- Mock wallet test balance set to 999999999
+### Changed
+- `frontend/src/services/mockApi.js`: set mock star coin wallets to `999999999` for the active player, seeded demo/test accounts, and new mock registrations.
+
+### Why
+- Enable effectively unlimited frontend game testing in mock mode without manual top-ups.
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+
+## [changed] -- 2026-07-03 -- Quick toolbar no longer covers game views as much
+### Changed
+- `frontend/src/components/QuickToolbar.jsx`: removed the fishing game shortcut from the open quick toolbar.
+- `frontend/src/components/QuickToolbar.css`: changed the quick toolbar to bottom anchoring globally so the expand/collapse toggle stays in the same lower position on every page.
+
+### Why
+- The toolbar toggle should not remain mid-screen on non-game routes or jump between open and collapsed states.
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+
+## [fix] — 2026-07-03 — 捕魚場中加值三修：彈藥進場固定（契約對齊）、top-up 併發鎖、亂碼註解/訊息復原
+
+> **背景**：健檢捕魚場中加值（top-up）+ 彈藥切換這批變更時發現三類問題：
+> ① 前端新增的 `changeBetPerShot`/`changeCannonLevel` 允許**場中**切換彈藥，但後端 `FishingService.validateBatch` 強制每發 `betPerShot`==進場面額（ADR-004 整場固定）、傷害只認 `session.cannonLevel`（`Shot` DTO 根本沒有 cannonLevel 欄位）——接真 API 時切換後每批射擊整批 400；mock 又不驗注額，導致 mock 能玩、真 API 壞（違反雷區 14）。
+> ② top-up 雖有 `drainPendingShots()`，但 drain 後、請求 in-flight 期間 `fire()` 未被擋，且 drain 逾時仍放行——`shots` 與 `topUp` 在後端都是「讀→改→整包 save」session 且無鎖，併發會互相覆寫（最壞：錢包已扣款、加值卻被射擊批次回寫吃掉）。
+> ③ 4 個檔案的中文註解/使用者訊息被存成亂碼（`?` 或 Big5 二次編碼），玩家會看到問號錯誤訊息、日誌印亂碼。
+
+### Fixed
+- **彈藥進場固定（採前端對齊後端契約，不動後端）**：
+  - `frontend/src/hooks/useFishingSession.js`：`changeBetPerShot`/`changeCannonLevel` 在 `phase === 'playing'` 時拒絕並提示；shot payload 移除後端 DTO 沒有的 `cannonLevel` 欄位。
+  - `frontend/src/pages/Fishing.jsx`：進場面板**新增彈藥選擇器**（原本大廳無法選彈藥、只能場中切，鎖場中後若不補會永遠只有銅砲）；場中控制列彈藥鈕改為 `disabled` 唯讀展示；`handleAmmoSelect` 移除場中開加值窗的死路徑；進場說明/入場提示/遊戲規則文案同步改為「進場後固定」。
+  - `frontend/src/services/mockApi.js`：`fishingShots` 補上鏡像後端 `validateBatch` 的整批注額驗證（雷區 14）。
+- **top-up 併發鎖**：`useFishingSession` 新增 `topUpLockRef`——topUp 先上鎖（`fire()` 回 `{ok:false, reason:'topup'}`）再 `drainPendingShots()`；drain 逾時未清空改為**中止加值**（原本照樣送出）。
+- **亂碼復原**：`FishingController.java`（類 Javadoc 整段、2 處行內註解，並補 top-up 端點條目）、`FishingSessionStore.java`（`readTopUpRequestIds` Javadoc 與 `log.warn` 訊息，並修正 `readKills` Javadoc 被錯位黏到 `readTopUpRequestIds` 的問題）、`mockApi.js`（`fishingTopUp` 三處 `throw new Error('???')` 與帳務描述）、`useFishingSession.js`（4 處 `setError` 訊息）。
+
+### Changed
+- `AGENTS.md` 雷區 14/15：老虎機描述由過時的「單中線僅三連、RTP=Σpᵢ³·mᵢ」更正為兩階賠付（三連＋左二同，理論 RTP ≈ 93.8%、命中率 ≈ 30.7%，與 `SlotSymbol` Javadoc 一致）。
+- `AGENTS.md` 雷區 16：補記「面額/砲台 session 級進場固定、勿在場中開放切換」與「top-up 冪等 + `topUpLockRef` 勿移除」兩條新雷。
+
+### 為什麼
+- 方案取捨：對齊既有契約（前端鎖場中切換）而非放寬後端——後端若支援場中換面額，`validateBatch`/結算/`verifyShot`/殘血回收全要重設計，屬 ADR 級變更；且 ADR-004 明定面額整場固定是防「大注小注混打繞過費率」的風控設計。
+- top-up 鎖選在前端最小修補；後端 session 原子性（Redis WATCH/Lua 或 per-player lock）另開任務處理才是根治。
+
+### 如何驗證
+- `mvn -pl backend/game-service test`（後端僅註解/文案變更，需綠燈確認未破壞）。
+- 前端手動路徑：mock 模式進場選銀/金砲 → 場中彈藥鈕呈 disabled → 開火中按「臨時加值」→ 加值瞬間子彈暫停、完成後恢復 → 收網結算 → 重新進場可換彈藥。
+
+## [docs] — 2026-07-01 — 健檢後續補丁：AGENTS.md 措辭修正、CI 擋關擴大、CHANGELOG 格式修復
+
+> **背景**：全面健檢 7 個微服務 + gateway 時累積了幾個「該補但先擱著」的小項目，這次一次補齊，避免累積成下一輪健檢的重複發現。
+
+### Changed
+- `AGENTS.md` 雷區 #6：措辭從「永遠不要在 wallet-service 消費 `wallet.credit`」改為「消費者不可重呼 `credit()/debit()`」，並記錄 `WalletReadSyncListener`（`kafka/WalletReadSyncListener.java:45,80`）這個安全例外（CQRS 讀視圖同步、冪等 `existsById`、從不重呼入帳/扣款方法）——舊措辭字面上與現有程式碼矛盾，容易誤導後續開發者以為那是 bug。
+- `AGENTS.md` §4 驗證指令：`mvn -pl ...test` 清單補上 `backend/game-service`、`backend/rank-service`、`backend/notification-service`——這三個服務其實已完工且測試綠燈（H2 + `@EmbeddedKafka`，免外部基礎設施），舊清單只列 gateway/member/wallet/admin 過於保守。
+- `.github/workflows/ci.yml` 的 `backend-test` job：`-pl` 清單同步補上這三個服務；修正過時註解（原寫「game/rank/admin 仍為骨架」與實際已列入清單的 admin 矛盾）。
+- `CHANGELOG.md` 本身：修復一個既有格式 bug——檔案標頭 `# Changelog — Lucky Star Casino` 不知何時被多次歷史合併擠到檔案中段（原第 433 行，`## [docs] — 2026-06-30 — 校正 AUDIT_REPORT...` 條目前），導致檔案真正開頭反而沒有標頭。搬回檔案最上方，內容不變。
+
+### 為什麼
+- 雷區 #6 舊措辭與 `WalletReadSyncListener` 的既有、正確、已測試行為矛盾，若照字面「永遠不要消費」去理解會誤判現有程式碼有 bug，浪費下一次健檢的時間去重新確認同一件事。
+- CI／§4 清單保守，代表 game/rank/notification 的迴歸永遠不會被擋關，即使測試本身早就綠燈。
+- CHANGELOG 標頭錯位是純格式問題，但擺在中間看起來像是「檔案在這裡重新開始」，容易誤導閱讀者。
+
+### 如何驗證
+- 純文件 + CI 設定變更，不影響服務執行邏輯，無需跑後端測試。
+- `.github/workflows/ci.yml` 改動已用 `actionlint`（若本機有裝）或直接看 diff 確認語法未破壞（YAML 縮排/清單語法沿用既有風格，僅擴充 `-pl` 清單與註解）。
+
+## [fix] — 2026-07-01 — Gateway 補上 `/ws` 路由，補上即時推播的最後一哩
+
+> **背景**：全面盤點各微服務與 gateway 時發現，notification-service 的 T-070~T-072（WebSocket STOMP + Kafka 橋接）雖已完工，但 `docs/architecture.md` 留著一條 2026-06-02 的 TODO，坦承 Gateway 從未轉發 `/ws/**`——這件事在服務完工後被漏掉沒補。前端所有 `.env` 的 `VITE_ENABLE_WS` 預設皆為 `false`（或走 mock WS 短路），所以目前是「休眠中」不影響一般開發/測試，但只要有人手動開啟真實 WebSocket 測試即時推播，SockJS 交握就會打不到 gateway 對應路由。
+
+### Added
+- `backend/gateway-service/src/main/resources/application.yml`：新增 `notification-ws` 路由，`Path=/ws,/ws/**` 轉發至 `${NOTIFICATION_SERVICE_URL:http://localhost:8087}`。用一般 `http://` URI 即可——帶 `Upgrade` header 的請求會被 Spring Cloud Gateway 的 `RouteToRequestUrlFilter` 自動把 scheme 轉成 `ws`，SockJS 的 HTTP 交握子路徑（`/ws/info`、`/ws/{server}/{session}/{transport}`）則正常走 http 路由；不掛 `CircuitBreaker`（長連線熔斷後轉發 JSON fallback 沒有意義）。
+- `jwt.whitelist` 新增 `/ws`：SockJS 交握階段不帶 `Authorization` header（JWT 改由 STOMP CONNECT 帧攜帶，`StompAuthChannelInterceptor` 驗證），若不放行會被 `JwtAuthenticationGlobalFilter` 擋在 HTTP 層；`PlayerRateLimitGlobalFilter` 讀同一份 whitelist，因此也一併免除玩家級限流。
+
+### Changed
+- `docs/architecture.md` 2.7 節：移除已解決的 2026-06-02 TODO，改記錄修復內容與日期。
+
+### 為什麼
+帳面上 notification-service 已完工，但少了 gateway 路由等於「功能存在卻連不到」，會在有人真的打開即時推播功能時才爆炸；趁健檢一次補齊，避免日後排查時誤以為是 notification-service 本身的 bug。
+
+### 如何驗證
+- 新增 `GatewayRoutesConfigTest`（讀 `RouteDefinitionLocator`/`JwtProperties` 實際載入的設定，非 mock）：斷言 `notification-ws` 路由存在、Path predicate 同時含 `/ws` 與 `/ws/**`、URI port 為 8087；另斷言 `jwt.whitelist` 含 `/ws`。
+- `mvn -pl backend/gateway-service test`：25/25 綠燈（23 既有 + 2 新增），新路由未影響既有 JWT/限流/CircuitBreaker 邏輯。
+- **端對端手動驗證**（Docker 起 Redis/Kafka/MySQL/Postgres 後，本機跑 `mvn spring-boot:run` 啟動 gateway + notification-service）：
+  - HTTP 層：`curl http://localhost:8080/ws/info`（經 gateway）與直連 `http://localhost:8087/ws/info` 回傳結構相同的 SockJS info JSON，且未帶 `Authorization` header 也未被 401 擋下。
+  - WebSocket 層：用 Node 24 原生 `WebSocket` 對兩個位址送出不帶 JWT 的 STOMP `CONNECT` 帧，經 gateway（`ws://localhost:8080/ws`）與直連（`ws://localhost:8087/ws`）收到的 STOMP `ERROR` 帧內容逐位元組相同——證實 gateway 對真實 WebSocket 升級與雙向 STOMP 訊框轉發完全透明（`ERROR` 為預期結果，因故意未帶 JWT 觸發 `StompAuthChannelInterceptor` 拒絕）。
+
+## [docs] — 2026-07-01 — 新增 API 串接與架構面試文件（含離線彩圖 HTML）
+
+> **背景**：`docs/interview-prep/` 缺一份專講「API 怎麼串接、為什麼這樣串」的面試文件。現有資料只零散涵蓋：`LOCAL_API_INTEGRATION_GUIDE.md` 偏「怎麼跑起來」（操作）、`architecture.md` 偏規格、`interview-prep/01`+`02` 只零星提到。本次補一份**全鏈路、技術參考＋面試「為什麼」混合**的文件，用「玩老虎機一局」貫穿前端 axios → Gateway → 服務間 REST → Kafka，並以連結指向上述三份避免重複。
+
+### Added
+- `docs/interview-prep/10-API串接與架構.md`：七章節——§1 全鏈路總覽、§2 前端串接（axios 攔截器 JWT 注入 / 401 single-flight 續期 / mock 鏡像後端 / Redux thunk 三態）、§3 Gateway（路由宣告順序陷阱 / filter 執行順序 / 韌性設定）、§4 JWT 簽發驗證 + 服務間信任邊界（`X-Internal-Secret` vs JWT、為何用 `RestClient` 不用 Feign）、§5 Kafka（ADR-002 指令/事件分離、防無限迴圈、Outbox 原子性）、§6 端到端老虎機一局（含冪等鍵/樂觀鎖一致性界線）、§7 面試速查對照表。為降低閱讀門檻，加入 3 張 mermaid 彩色圖（§1 全鏈路、§5.2 指令/事件分離、§6 老虎機循序圖）、🎯 每章重點框、💬 面試對話小劇場與 ❌/✅ 對照表。
+- `docs/interview-prep/10-API串接與架構.html`：上述 md 的**離線自帶** HTML——mermaid 圖已預先渲染成內嵌 SVG，無任何 `<script>`/CDN 外連，斷網也能開；瀏覽器 `Ctrl+P` 可直接轉 PDF。
+
+### Changed
+- `docs/interview-prep/00-index.md`：§0 導覽表新增第 9 列（`10-API串接與架構.md`）；§4「面試官問 X → 翻到哪」對照表補三題（API 串接 / 前端帶 token / 服務間呼叫）。
+
+### 如何驗證
+- 純文件，不影響程式行為，無需跑測試。
+- 文中事實已逐項對回程式碼核對：路由順序（`gateway-service/application.yml`）、filter order 數值（`FilterOrder.java`）、topic 清單（`kafka/kafka-init.sh`）、冪等鍵字串 `slot-bet-`/`slot-win-`（`SlotService.java:157,176`）、axios 攔截器與 `WalletClientConfig`/`CheckinService` outbox 片段皆取自實檔。
+- 離線 HTML 以 headless Edge 渲染驗證：3 張 mermaid 圖全部輸出 inline SVG（svgCount=3、零 console error），並確認產物無 `<script>`/`<link>`/外部 `src`。
+
+## [changed] -- 2026-07-01 -- Fishing ammo dock and shortage top-up modal
+### Changed
+- `frontend/src/pages/Fishing.jsx`: rebuilt the in-canvas fishing control dock into ammo amount summary, three ammo choices, cannon bay, and settle action; removed the always-visible live top-up field.
+- `frontend/src/data/fishingGameData.js`: removed the old `FISHING_MULTIPLIERS` x1/x5/x10/x20 data because firing cost now comes from the selected ammo type.
+- `frontend/src/components/Fishing.css`: removed active `fishing-dock-chip` styling, added unified red-gold ammo buttons, in-stage settle button layout, cannon bay spacing, shortage top-up modal, and responsive dock rules.
+- `frontend/src/components/fishingEngine.js`: raised the Pixi cannon zone so the cannon sits above the in-canvas control dock instead of being covered by it.
+
+### Why
+- The fishing table controls should match the current ammo-based gameplay, keep the cannon visible, and show temporary top-up only when the player runs out of usable session balance.
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+
+## [changed] -- 2026-07-01 -- Fishing in-stage controls and live top-up
+### Added
+- `backend/game-service/src/main/java/com/luckystar/game/dto/FishingTopUpRequest.java` and `FishingTopUpResponse.java`: added request/response DTOs for live fishing session top-up.
+- `backend/game-service/src/main/java/com/luckystar/game/controller/FishingController.java`: added `POST /api/v1/game/fishing/{sessionId}/top-up` for adding session balance during active play.
+
+### Changed
+- `frontend/src/pages/Fishing.jsx`: moved `.fishing-control-dock` into the fishing stage frame so cannon, bullet, skill, and live top-up controls appear inside the game canvas area.
+- `frontend/src/components/Fishing.css`: added in-stage control dock layout, responsive top-up controls, and compact stage-safe spacing around the settle button.
+- `frontend/src/hooks/useFishingSession.js`, `frontend/src/services/gameApi.js`, and `frontend/src/services/mockApi.js`: added live top-up flow that drains pending shots, debits wallet/session balance, updates Redux wallet state, and mirrors behavior in mock mode.
+- `backend/game-service/src/main/java/com/luckystar/game/service/FishingService.java`: added idempotent live top-up handling with wallet debit and refund-on-save-failure behavior.
+- `backend/game-service/src/main/java/com/luckystar/game/fishing/FishingSession.java` and `FishingSessionStore.java`: persisted top-up request IDs in Redis so repeated client request IDs remain idempotent across session reloads.
+- `backend/game-service/src/test/java/com/luckystar/game/fishing/FishingSessionStoreTest.java`: covered top-up request ID round-trip persistence.
+
+### Why
+- Players should not need to settle the fishing round before adding more funds, and the control surface should feel like part of the fishing table instead of a detached panel below it.
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+- `mvn -pl backend/game-service test`
+
+## [changed] -- 2026-06-30 -- Fishing buy-in flow and cannon switching
+### Changed
+- `frontend/src/pages/Fishing.jsx`: changed the fishing entry flow so players enter only a buy-in amount before the round, then switch bullet amount and cannon type inside the game control panel.
+- `frontend/src/hooks/useFishingSession.js`: added in-session bet and cannon setters, and tagged buffered shots with the currently selected cannon level for frontend/mock play.
+- `frontend/src/services/mockApi.js`: made mock fishing shots honor per-shot cannon level and current bullet amount during the default mock experience.
+- `frontend/src/components/fishingEngine.js`: scaled Pixi cannon visuals by cannon level so copper is smaller, silver is medium, and gold is larger with stronger muzzle/deck energy.
+- `frontend/src/components/Fishing.css`: styled the buy-in guidance note and active gold/black in-game cannon controls, with distinct copper/silver/gold button sizes.
+
+### Why
+- Match the requested arcade fishing flow: buy in first, then freely adjust cannon and firing settings during play, with higher-grade cannons looking more powerful.
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+- Playwright smoke: unauthenticated users are redirected to login; after login, /game/fishing shows buy-in-only entry, no old locked-settings copy, active bullet/cannon controls after entering the stage, and no page errors.
+
+## [changed] -- 2026-06-30 -- Fishing Traditional Chinese copy polish
+### Changed
+- `frontend/src/pages/Fishing.jsx`: rewrote the visible `/game/fishing` copy in Traditional Chinese, including hero text, HUD labels, buy-in flow, settlement screen, rule dialog content, fish table labels, skill panel text, and verification messages.
+- `frontend/src/data/fishingGameData.js`: localized fishing multipliers, skill labels, species names, rarity labels, descriptions, and jackpot text to Traditional Chinese.
+- `frontend/src/components/Fishing.css`: centered the contents of `.fishing-hud__metric` cards for easier scanning.
+### Why
+- Remove mojibake/unclear copy and make the fishing game interface easier for players to understand at a glance.
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+- Playwright smoke: `/game/fishing` hero/rules/HUD copy renders in Traditional Chinese, the rules dialog opens, HUD metric content is centered, and no page errors were emitted.
+## [changed] -- 2026-06-30 -- Fishing viewport stat strip and ray targeting cleanup
+### Changed
+- `frontend/src/pages/Fishing.jsx`: removed the `fishing-stat-strip` summary row above the fishing table.
+- `frontend/src/components/Fishing.css`: removed stale stat-strip and energy-readout styles after the row was removed from the page.
+- `frontend/src/components/fishingEngine.js`: fish no longer bounce off the top/bottom swim bounds and can now leave through the top or bottom of the playfield; shooting now extends from the cannon through the pointer direction to the stage edge instead of stopping at the cursor point.
+### Why
+- Keep the fishing table visually focused, make fish movement feel less boxed-in, and make cannon targeting behave like a directional shot across the whole playfield.
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+- Playwright smoke: `/game/fishing` has no `.fishing-stat-strip`, the Pixi canvas loads, the in-stage settle control remains present, and no page errors were emitted.
+## [changed] -- 2026-06-30 -- Fishing settle control integrated into stage
+### Changed
+- `frontend/src/pages/Fishing.jsx`: moved the fishing settle action from the external cannon dock into the game stage frame so it appears as an in-game lower-right control.
+- `frontend/src/components/Fishing.css`: added in-stage settle button positioning and reduced the cannon dock back to multiplier/cannon controls only.
+- `frontend/.env.development`: changed local dev default to `VITE_USE_MOCK_API=true` while keeping `VITE_ENABLE_WS=false`, so running the frontend without gateway 8080 does not spam `ERR_CONNECTION_REFUSED`.
+### Why
+- The settle action should feel integrated with the active fishing table, and local UI work should not require backend services unless explicitly opted in.
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+- Playwright smoke: `/game/fishing` starts in mock mode without localhost 8080 refused requests; the settle button is visible inside `.fishing-stage-frame` and absent from `.fishing-control-dock`.
+## [fixed] -- 2026-06-30 -- Fishing rules dialog visibility
+### Fixed
+- `frontend/src/components/GameRuleCard.jsx`: renders the rules dialog through `createPortal(document.body)` so `/game/fishing` side-panel child-order CSS cannot hide the modal after pressing the rules button.
+- `frontend/src/components/GameRuleCard.jsx`: added Escape-to-close and background scroll locking while the rules dialog is open.
+### Why
+- The fishing page moves and hides side-panel children with `nth-child` rules; the old inline dialog became a hidden side-panel child instead of a visible prompt window.
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+- Playwright smoke: `/game/fishing` Guide button opens a visible `[role="dialog"]` with `display: grid`, and Escape closes it.
+## [changed] -- 2026-06-30 -- Fishing cannon console status cleanup
+### Changed
+- `frontend/src/pages/Fishing.jsx`: removed the Auto fire controls, moved boss/error/settling table feedback into the `aria-label="Fishing table status"` marquee, and relocated the settle action to the far-right side of the cannon console.
+- `frontend/src/components/FishingCanvas.jsx` / `frontend/src/components/fishingEngine.js`: removed the unused Auto fire prop, ticker branch, target selection, and reticle lock path so the current fishing table is manual-only.
+- `frontend/src/components/Fishing.css`: added marquee status emphasis styles and a gold casino-style settle button for the cannon control area; removed stale banner-slot and Auto-toggle selectors.
+### Why
+- Keep fishing controls focused on manual aiming, avoid duplicated table status banners, and make settlement feel like part of the cannon console instead of a separate HUD action.
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+## [changed] — 2026-06-30 — 捕魚規則區上移並精簡下方資訊
+
+### Changed
+- `frontend/src/pages/Fishing.jsx`: 將場內砲台控制列補上砲台 / 子彈類別狀態按鈕，與既有倍率按鈕同區呈現。
+- `frontend/src/components/Fishing.css`: 將遊戲規則卡排序到舞台上方，下方資訊區只保留魚種倍率表與技能面板，隱藏餘額、Fortune 與 Premium Jackpot 卡。
+- `frontend/src/components/Fishing.css`: 將砲台區倍率與砲台類別按鈕改為金色按鈕、黑色字體，讓控制區更像娛樂城機台操作面板。
+
+### Why
+- 回應使用者希望規則區放到遊戲上方、下方只保留魚種倍率與技能面板，並把倍率與子彈類別切換按鈕整合到砲台區的需求。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+## [changed] — 2026-06-30 — 捕魚舞台加寬並將資訊面板移至下方
+
+### Changed
+- `frontend/src/components/Fishing.css`: 強制 `/game/fishing` 主版面改為單欄，主遊戲舞台置於上方，原側邊資訊面板改為下方自適應卡片區。
+- `frontend/src/components/Fishing.css`: 放大捕魚舞台最大寬度與高度，桌機版使用更沉浸式的寬版 canvas，平板與手機維持響應式高度避免破版。
+- `frontend/src/components/Fishing.css`: 下方資訊區改為 12 欄自適應 grid，魚種表、規則、Jackpot、技能與 Fortune 資訊不再擠在右側窄欄。
+
+### Why
+- 回應使用者希望遊戲畫面加長加寬，並將旁邊資訊欄位移至下方的需求，讓捕魚主舞台成為頁面焦點。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+## [fixed] — 2026-06-29 — 捕魚垂直生成改為視窗外進場
+
+### Fixed
+- `frontend/src/components/fishingEngine.js`: 上方與下方生成的魚改從 canvas 視窗外出生，不再貼著畫面內邊界重生。
+- `frontend/src/components/fishingEngine.js`: 新增 `entrySide` 進場狀態，魚游進可活動水域後才啟用上下邊界反彈，避免剛生成就被 clamp 回畫面內。
+
+### Why
+- 使用者指出魚在畫面邊界內重生很違和；捕魚機魚群應從視窗外游入，讓垂直與斜角生成更自然。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+## [changed] — 2026-06-29 — 捕魚新增垂直與斜角生成位置
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: 魚生成時新增左右、上方水域、下方水域等進場模式，讓魚群可從垂直方向與斜角位置切入舞台。
+- `frontend/src/components/fishingEngine.js`: 魚的面向改由實際水平速度 `vx` 決定，保留正確游向並搭配斜向路徑移動。
+
+### Why
+- 回應 `/game/fishing` 魚群生成位置需要新增垂直方向與斜角的需求，避免魚群永遠只從左右水平邊界出生，提升場景流動感。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+## [changed] — 2026-06-29 — 捕魚魚群加入上下與斜向游動
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: 魚生成時加入垂直速度與活動水域上下界，魚群會沿斜向路徑移動並在水域邊界反彈。
+- `frontend/src/components/fishingEngine.js`: 魚身旋轉角度會依斜向速度微調，讓游動姿態更接近深海魚群而不是單純水平滑動。
+
+### Why
+- 回應 `/game/fishing` 視覺升級需求，讓魚群移動增加上下與斜角變化，提升捕魚機舞台的生命感與打擊路徑判讀一致性。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+## [changed] — 2026-06-29 — 捕魚射擊改為彈道路徑優先碰撞
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: 將手動與自動射擊的目標判定從「游標附近最近魚」改為「砲口到目標點的彈道路徑碰撞」，若路徑上有魚阻擋，會優先射擊最先碰到子彈的魚。
+- `frontend/src/components/fishingEngine.js`: 新增砲口來源點、魚體碰撞半徑與路徑投影判定，保留既有 `useFishingSession.fire(fishInstanceId, fishCode)` 流程，不改後端傷害、捕獲或派彩模型。
+
+### Why
+- 使用者要求射擊應遵守捕魚機彈道路徑邏輯：子彈若被前方魚擋住，應先擊中路徑上第一條魚，而不是直接命中滑鼠位置附近或被點選的魚。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+## [fixed] — 2026-06-29 — 收斂前端 console 警告與捕魚頁首載樣式
+
+### Fixed
+- `frontend/src/App.jsx`: 為 `BrowserRouter` 啟用 `v7_startTransition` 與 `v7_relativeSplatPath` future flags，消除 React Router v7 升級提示。
+- `frontend/src/pages/Fishing.jsx` / `frontend/src/components/FishingCanvas.jsx`: 將 `Fishing.css` 改由捕魚頁本體載入，不再依賴 lazy canvas chunk，避免首次進入 `/game/fishing` 停在 lobby 時 `fishing-hero-copy`、`fishing-hero-actions`、`fishing-stat-strip` 等樣式尚未套用。
+- `frontend/src/hooks/useWebSocket.js`: WebSocket 改為 mock API 時走 mock WS，且本機 dev 預設不連實體 `/ws`，避免 gateway/notification 服務未啟動時持續產生 `ERR_CONNECTION_REFUSED`。
+- `frontend/.env.development` / `frontend/.env.mock`: 新增 `VITE_ENABLE_WS` / `VITE_USE_MOCK_WS` 設定，讓 realtime WebSocket 在本機開發可明確 opt-in。
+
+### Why
+- 使用者回報 console 出現 React Router future warning、`localhost:8080/ws/info` connection refused，以及捕魚頁部分資訊區樣式在首次進入網站時消失；本次修正聚焦開發體驗與 lazy CSS 載入時序。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+- Playwright mock console check: React Router future warning 消失、無 `/ws/info` failed request；首次進入 `/game/fishing` lobby 時 `.fishing-stat-strip` 已套用 grid 樣式。
+## [fixed] — 2026-06-29 — 重做捕魚機 canvas 底部砲台區
+
+### Fixed
+- `frontend/src/components/fishingEngine.js`: 將 Pixi canvas 內原本意義不明的底部裝飾改為更小的砲台座、中央能量核心與左右儀表導軌，並進一步縮小砲台尺寸與後座位移，讓底部視覺明確響應開火脈衝。
+- `frontend/src/components/Fishing.css`: 關閉舞台內重複疊在 canvas 底部的 CSS 裝飾條，避免與 Pixi 砲台座互相干擾。
+
+### Why
+- 使用者多次回報遊戲畫面底部裝飾沒有對應砲台、視覺意義不明，且砲台仍顯得過大；實際應修改 Pixi 引擎內的底部砲台區，而不是只調整外層頁面控制列。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+- Playwright mock smoke: mock 登入後可進 `/game/fishing` 並載入 Pixi canvas；頁面無水平 overflow、無 page error。
+## [changed] — 2026-06-29 — 重構捕魚機紅金深海娛樂城介面
+
+### Changed
+- `frontend/src/pages/Fishing.jsx`: 新增紅金深海頁面外殼、頁首風格標籤、正式遊戲舞台框、桌台狀態銘牌、底部倍率控制台標題與側欄 Premium Table 資訊卡，保留既有 Pixi 捕魚玩法、射擊、結算與登入保護流程。
+- `frontend/src/components/Fishing.css`: 新增 red-gold deep sea casino skin，強化紅金金屬框、深海玻璃 HUD、16:9 舞台外框、控制台燈條、Jackpot 卡與 RWD 呈現。
+
+### Why
+- 使用者選擇「紅金深海娛樂城」風格，希望 `/game/fishing` 從 demo 感提升為符合 Lucky Star Casino 主題的正式娛樂城捕魚機畫面。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+- Playwright mock smoke: 未登入 `/game/fishing` 導向 `/member?mode=login`；mock 登入後可進場並載入 Pixi canvas；390/430/768/1024/1440 viewport 無水平 overflow、無 page error。
+## [fixed] — 2026-06-29 — 停用捕魚命中後全頁掉落特效
+
+### Fixed
+- `frontend/src/pages/Fishing.jsx`: 移除命中魚後觸發的 `GoldBurst`、`CoinRainPro`、`RedEnvelopeRain` 與 `BrushBanner` 頁面級特效，避免金幣雨圖層殘留在遊戲畫面中央或延續到結算畫面。
+
+### Why
+- 使用者回報金幣雨首次出現後會卡在 `/game/fishing` 畫面中央；先關閉命中後生成的全頁 FX layer，保留射擊、命中判定、分數、音效與結算流程。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+## [fixed] — 2026-06-29 — 修正捕魚結算金幣雨殘留與砲台縮放覆蓋
+
+### Fixed
+- `frontend/src/pages/Fishing.jsx`: 將 `CoinRainPro` / `RedEnvelopeRain` 限定只在 `phase === "playing"` 時掛載，離開遊戲中狀態後立即卸載，避免金幣雨殘留到結算畫面。
+- `frontend/src/components/fishingEngine.js`: 修正砲台縮放順序，移除覆蓋 `width/height` 的 `scale.set()`，改用 `cannonDisplaySize` 控制實際顯示尺寸，讓砲台真正縮小並保留開火 recoil。
+
+### Why
+- 使用者回報擊殺後的金幣雨會卡在畫面中間並延續到結算頁，以及發射子彈的大砲沒有實際變小；本次修正聚焦視覺層生命週期與 Pixi sprite 尺寸覆蓋問題。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`（Vitest 7 passed）
+- Playwright mock verification：進場後 canvas 非空渲染；點結算後 `.fx-layer` 數量為 0，確認金幣雨不殘留到結算畫面。
+## [fixed] — 2026-06-29 — 修正捕魚機金幣殘留、魚面向與砲台比例
+
+### Fixed
+- `frontend/src/components/fishingEngine.js`: 移除固定在舞台中下方的永久金幣裝飾，避免看起來像未消失的金幣圖層。
+- `frontend/src/components/fishingEngine.js`: 修正 SVG 魚素材的左右翻面邏輯，讓魚的頭部朝游動方向。
+- `frontend/src/components/fishingEngine.js`: 縮小砲台尺寸並改為依舞台大小響應，砲座改成每幀依 `cannonPulse` 更新能量燈與軌道，讓底部裝飾與開火狀態有明確關聯。
+
+### Why
+- 使用者回報捕魚畫面中央有不消失的金幣層、魚倒著游、砲台過大且底部裝飾意義不明；本次修正聚焦視覺清理與互動語意，不更動下注、傷害、派彩或 session 流程。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`（Vitest 7 passed）
+- Playwright mock verification：未登入 `/game/fishing` 導向 `/member?mode=login`；已登入可進場、點擊舞台、顯示 control dock；390/430/768/1024/1440 無 horizontal overflow，canvas 非空渲染，新 SVG 魚素材載入 5 個，無 page error。
+## [changed] — 2026-06-29 — 重製捕魚機魚群素材與舞台打擊感
+
+### Added
+- `frontend/public/images/game/fishing/*.svg`: 新增小丑魚、藍寶石魚、黃金魚、水晶魟魚、彩金鯨王 5 組本地高質感 SVG 魚素材。
+
+### Changed
+- `frontend/src/casino-fx/assets/registry.js`: 將現有捕魚 `fish-*` assetId 映射到本地 SVG 素材，保留既有 fishTable / 後端魚種契約。
+- `frontend/src/components/fishingEngine.js`: 強化 Pixi 舞台景深、海底寶箱/金幣前景、魚群游動擺身、砲台 recoil、能量彈拖尾與高倍率命中 burst。
+- `frontend/src/pages/Fishing.jsx`: 新增場內 arcade control dock 結構，呈現鎖定倍率、自動射擊與技能狀態。
+- `frontend/src/components/Fishing.css`: 補上場內 control dock、倍率晶片、技能按鈕與 16:9 舞台收斂樣式，提升手機與桌機的一致性。
+
+### Why
+- 讓 `/game/fishing` 的實際遊戲畫面從 demo 感提升為正式娛樂城捕魚機視覺，同時不改下注、派彩、RTP 或 session 權威流程。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`（Vitest 7 passed）
+## [changed] — 2026-06-29 — 強化 /game/fishing 深海彩金捕魚介面
+
+### Added
+- `frontend/src/data/fishingGameData.js`: 新增集中式捕魚 UI 展示資料，包含 x1/x5/x10/x20 快速倍率、Demo 技能、五種魚種倍率表與 Jackpot 狀態。
+
+### Changed
+- `frontend/src/pages/Fishing.jsx`: 沿用既有 `AppShell`、登入保護、`useFishingSession` 與 Pixi canvas，引入頁首、返回大廳、資訊列、快速倍率、技能面板與魚種說明。
+- `frontend/src/components/Fishing.css`: 補強深海紅金娛樂城視覺、玻璃 HUD、彩金晶片、倍率按鈕、魚種卡片、技能按鈕與 390/430/768/1024/1440 RWD 收斂。
+- `frontend/src/components/fishingEngine.js`: 保留 Pixi 漁場引擎並延續先前加入的深海背景、氣泡、水波、海床與霓虹舞台層，讓主舞台更接近市面捕魚機視覺。
+
+### Why
+- 捕魚機需要從功能型頁面提升為高級線上娛樂城體驗，同時遵守專案既有規則：路由登入保護不變、錢包不在 UI demo 直接扣款、下注/戰鬥流程仍由現有 session hook 與後端鏡像 mock 掌控。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`（Vitest 7 passed）
+- Playwright mock verification：未登入 `/game/fishing` 導向 `/member?mode=login`；已登入可切 x5、進場、等待 Pixi canvas、點擊舞台發射；390/430/768/1024/1440 viewport 無 horizontal overflow，canvas 皆有非空渲染。未啟動後端時僅忽略既有 realtime/API 資源 `ERR_CONNECTION_REFUSED` 訊息。
+## [changed] — 2026-06-29 — 捕魚機畫面升級為街機海底風格
+
+### Changed
+- `frontend/src/pages/Fishing.jsx`: 為捕魚主頁、入場面板與側欄加入穩定樣式掛點，方便建立完整機台外觀。
+- `frontend/src/components/Fishing.css`: 強化 `/game/fishing` 的街機框體、霓虹 HUD、海底場景邊框、入場控制台與 RWD 排版。
+- `frontend/src/components/fishingEngine.js`: 新增 Pixi 背景/裝飾層，包含海底深度、光束、泡泡、海床珊瑚與底部砲座。
+
+### Why
+- 讓捕魚機畫面更接近市面 H5/街機捕魚遊戲的視覺密度與機台氛圍，同時保持前端只負責演出，不改下注、派彩、RTP 或後端權威流程。
+
+### Verified
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- Playwright mock flow: 登入測試帳號後進入 `/game/fishing`、開局、確認 canvas/HUD 顯示、無 page error，並以臨時截圖確認畫面。
+
+## [changed] — 2026-06-28 — 前端路由層級 lazy loading
+
+### Changed
+- `frontend/src/App.jsx`：保留首頁與會員頁同步載入，其餘玩家頁、遊戲頁、商店頁改為 route-level lazy loading。
+- `frontend/src/App.jsx`：新增共用 `LazyPage` / `ProtectedPage` 包裝，避免每個 protected route 重複處理 `PrivateRoute` 與 `Suspense`。
+- `frontend/src/index.css`：新增 route fallback 載入狀態與 reduced-motion 對應。
+
+### 為什麼
+- 降低首頁與登入頁初始 bundle 負擔，讓遊戲、錢包、排行榜等非首屏頁面在需要時再載入。
+- route guard 先於 lazy chunk 執行，未登入使用者不會為 protected pages 下載不必要頁面程式碼。
+
+### 如何驗證
+- `cd frontend && npm run lint`
+- `cd frontend && npm run test`（7 passed）
+- `cd frontend && npm run build`（主 JS 約 441 kB / gzip 140 kB → 310 kB / gzip 103 kB）
+- `cd frontend && npm run e2e`（1 passed, 1 skipped）
+## [changed] — 2026-06-28 — 前端正式模式與 CI 擋關收斂
+
+### Added
+- `frontend/e2e/smoke.spec.js`：新增 Playwright smoke，使用 mock 模式登入並走過遊戲大廳、鑽石錢包、遊戲紀錄。
+
+### Changed
+- `frontend/src/services/{api,memberApi,walletApi,rankApi,gameApi,diamondApi,integrationTestApi}.js`：mock API 改成只有 `VITE_USE_MOCK_API=true` 才啟用，避免正式環境未設定時誤走假資料。
+- `frontend/src/App.jsx`：`/dev/integration` 改由 `VITE_ENABLE_DEV_TOOLS=true` 顯式開啟，正式 build 不再產出整合測試頁 chunk。
+- `frontend/.env.development`、`frontend/.env.mock`、`.env.example`：補齊 mock/dev tools 旗標設定。
+- `.github/workflows/ci.yml`：前端 CI 從單跑 Vitest 擴充為 lint、Vitest、production build、Playwright smoke。
+
+### 為什麼
+- 正式站應預設打真實 Gateway，不可因環境變數漏設而回退 mock；開發診斷頁也不應暴露在一般玩家路由或正式資產中。
+- CI 需要實際驗證前端可 lint、可測、可建置、可由瀏覽器啟動並完成核心玩家流程。
+
+### 如何驗證
+- `node --test tests/infra/*.test.js`（127 passed）
+- `mvn -B -ntp -pl backend/gateway-service,backend/member-service,backend/wallet-service clean test`（150 passed，BUILD SUCCESS）
+- `cd frontend && npm run lint`
+- `cd frontend && npm run test`（7 passed）
+- `cd frontend && npm run build`
+- `cd frontend && npm run e2e`（1 passed, 1 skipped）
+## [changed] — 2026-06-27 — 整合測試面板改為獨立工具頁
+
+### Changed
+- `frontend/src/pages/IntegrationTestPage.jsx`：移除 `AppShell` 包裝，改為獨立 full-screen 工具頁。
+- `frontend/src/App.jsx`：`/dev/integration` 保持受保護路由，但在此路徑不渲染 QuickToolbar、好友浮窗與客服 modal。
+
+### 為什麼
+- 整合測試面板是開發/驗收工具，不應出現在玩家網站體驗中；保留直接網址方便前後端串接測試。
+
+### 如何驗證
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
+
+## [feat] — 2026-06-27 — 新增前後端整合測試面板
+
+### Added
+- `frontend/src/services/integrationTestApi.js`：新增 Gateway / member / wallet / game / rank 的瀏覽器端探針，記錄 HTTP 狀態、耗時與摘要。
+- `frontend/src/pages/IntegrationTestPage.jsx`：新增 `/dev/integration` 受保護頁，可執行安全讀取檢查，並提供破產補助與老虎機下注兩個明確的手動整合動作。
+
+### Changed
+- `frontend/src/App.jsx`：接上 `/dev/integration` 受保護路由；此工具不加入網站導覽入口。
+
+### 為什麼
+- 既有 `tests/smoke/smoke.mjs` 適合命令列全流程驗證；前端日常對接還需要一個可視化入口，快速分辨 gateway、JWT、CORS、服務路由或業務 API 哪一層出問題。
+
+### 如何驗證
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm run test`
 
 ## [docs] — 2026-06-30 — 校正 AUDIT_REPORT 過時進度標記（以程式碼為準）
 
@@ -2223,3 +3319,5 @@ client DTO）`javac` 編譯通過。Lombok 檔案與 `@SpringBootTest` 待團隊
 
 ### Verified
 - `mvn -pl backend/wallet-service test` → 142 tests, 0 failures
+
+

@@ -14,12 +14,15 @@ import { preload, clearCache } from '../casino-fx/assets/bakeTextures'
 const MAX_FISH = 14
 const MAX_FISH_PERF = 9
 const SPAWN_INTERVAL_MS = 850
+const BLOCKER_INTERVAL_MS = 5200
+const BLOCKER_MIN_INTERVAL_MS = 1800
+const MAX_BLOCKERS = 3
+const MAX_BLOCKER_THREAT_BONUS = 4
 const SWARM_INTERVAL_MS = 36000 // 魚群潮週期（短時間密集放小魚，LDW 小額回收手感）
 const SWARM_SIZE = 6 // 每波魚群潮的小魚數
 const SWARM_SPAWN_MS = 240 // 魚群潮期間每尾間隔
 const BOSS_INTERVAL_MS = 58000 // Boss（龍王）定時降臨週期（場上無 boss 時才放，保證事件節奏）
 const FIRE_INTERVAL_MS = 110 // 按住連發取樣節奏（實際射速由 hook 的 token bucket 限到 8 發/秒）
-const AIM_RADIUS = 92 // 游標命中容錯半徑（px）
 const TEX_PX = 256 // 紋理烘焙解析度
 const BOB_AMP = 8 // 魚上下浮動幅度（px）
 const BOB_SPEED = 2.2 // 浮動頻率
@@ -34,25 +37,86 @@ const HP_SHOW_MS = 2600 // 命中後血條顯示時間（之後淡出，平時�
 const FLEE_MS = 440 // 致命一擊未捕獲（掙脫逃跑）的淡出時間
 // HP 條顏色（依剩餘比例）：綠 → 黃 → 紅
 const HP_GREEN = 0x66e06a
-const HP_YELLOW = 0xf0cf4c
-const HP_RED = 0xef5a4c
 
 // 漁場所有可能用到的素材 id（與 registry / 後端 FishSpecies 對齊）。
 const FISH_ASSETS = [
   'fish-koi', 'fish-goldfish', 'fish-lantern', 'fish-puffer', 'fish-angelfish',
   'fish-devil-ray', 'fish-gold-dragon', 'fish-pixiu', 'fish-caishen',
-  'fish-dragon-king', 'fish-money-tree',
+  'fish-dragon-king', 'fish-golden-dragon-king', 'fish-jackpot-fish-king', 'fish-rainbow-jackpot-fish-king', 'fish-money-tree',
+  'fish-evil-blocker-octopus', 'fish-evil-blocker-starfish', 'fish-evil-blocker-turtle',
 ]
 // 砲台等級差異化：貼圖 / 子彈顏色 / 子彈半徑 / 射擊音調 / 砲口火光大小（idx0 不用，對齊 cannonLevel 1~3）。
 // 傷害差異在後端（FishingCombat.CANNON_DAMAGE 銅10/銀14/金18，ADR-004）；此處只管「手感與表現」，不影響 RTP。
-const CANNON_STYLE = [
-  null,
-  { asset: 'cannon-copper', bullet: 0xffd98a, bulletR: 4, pitch: 0.9, muzzle: 13 }, // 銅炮 L1：小、暖黃、低沉
-  { asset: 'cannon-silver', bullet: 0xcfe4ff, bulletR: 5, pitch: 1.06, muzzle: 17 }, // 銀炮 L2：中、銀藍
-  { asset: 'cannon', bullet: 0xffd24a, bulletR: 6.5, pitch: 1.2, muzzle: 23 }, // 金炮 L3：大、金赤、高亢
-]
+const CANNON_STYLE_BY_TONE = {
+  copper: {
+    tone: 'copper',
+    asset: 'cannon-copper',
+    bullet: 0xffd98a,
+    bulletR: 4,
+    pitch: 0.9,
+    muzzle: 13,
+    scale: 0.9,
+    deckScale: 0.94,
+    core: 0xffb45c,
+    barrel: 0x8f2d25,
+    trim: 0xffc978,
+    glow: 0xffd98a,
+    barrelOffsets: [0],
+    barrelWidthScale: 0.92,
+    barrelLengthScale: 0.86,
+    damage: 14,
+  },
+  silver: {
+    tone: 'silver',
+    asset: 'cannon-silver',
+    bullet: 0xcfe4ff,
+    bulletR: 5,
+    pitch: 1.06,
+    muzzle: 17,
+    scale: 1.05,
+    deckScale: 1.02,
+    core: 0x9bd8ff,
+    barrel: 0x375b72,
+    trim: 0xdbeafe,
+    glow: 0x7dd3fc,
+    barrelOffsets: [-0.46, 0.46],
+    barrelWidthScale: 0.62,
+    barrelLengthScale: 1.02,
+    damage: 22,
+  },
+  gold: {
+    tone: 'gold',
+    asset: 'cannon',
+    bullet: 0xffd24a,
+    bulletR: 6.5,
+    pitch: 1.2,
+    muzzle: 23,
+    scale: 1.2,
+    deckScale: 1.1,
+    core: 0xffca5c,
+    barrel: 0x971c2c,
+    trim: 0xffd36b,
+    glow: 0x66efff,
+    barrelOffsets: [-0.78, 0, 0.78],
+    barrelWidthScale: 0.56,
+    barrelLengthScale: 1.16,
+    damage: 32,
+  },
+}
+const CANNON_STYLE = [null, CANNON_STYLE_BY_TONE.copper, CANNON_STYLE_BY_TONE.silver, CANNON_STYLE_BY_TONE.gold]
 const BULLET_BASE_R = 5 // 子彈基準半徑（白圓，實際大小由 cannonStyle.bulletR 以 scale 調整）
 const SPARK_BASE_R = 10 // 火花基準半徑
+
+const BLOCKER_SPECIES = [
+  { code: 'BLOCKER_OCTOPUS', name: '障礙章魚', asset: 'fish-evil-blocker-octopus', sizeMin: 82, sizeMax: 108, durMin: 5.1, durMax: 7.8, tint: 0xffffff, alpha: 0.96, wobble: 0.48 },
+  { code: 'BLOCKER_STARFISH', name: '障礙海星', asset: 'fish-evil-blocker-starfish', sizeMin: 58, sizeMax: 84, durMin: 4.0, durMax: 6.2, tint: 0xffffff, alpha: 0.94, wobble: 0.26 },
+  { code: 'BLOCKER_TURTLE', name: '障礙海龜', asset: 'fish-evil-blocker-turtle', sizeMin: 98, sizeMax: 128, durMin: 6.8, durMax: 10.2, tint: 0xffffff, alpha: 0.98, wobble: 0.2 },
+]
+const BLOCKER_SIZE_PROFILES = [
+  { key: 'small', name: '小型', scale: 0.78, maxHits: 5, durationFactor: 0.74 },
+  { key: 'medium', name: '中型', scale: 1, maxHits: 10, durationFactor: 1 },
+  { key: 'large', name: '大型', scale: 1.32, maxHits: 17, durationFactor: 1.28 },
+]
 const PRELOAD_ASSETS = ['cannon', 'cannon-copper', 'cannon-silver', 'coin', ...FISH_ASSETS]
 
 // 各 tier 的渲染基準：體型 / 游速（duration 越大游越慢、停越久）/ 辨識光暈強度。
@@ -72,15 +136,16 @@ const TIER_RENDER = {
 function deriveMeta(fish) {
   const tierKey = (fish.tier || 'SMALL').toUpperCase()
   const base = TIER_RENDER[tierKey] || TIER_RENDER.SMALL
-  // 小魚同 tier 內依倍率微調體型（錦鯉<金魚<燈籠魚），讓辨識更連續
+  const isLegendaryFishKing = fish.assetId === 'fish-rainbow-jackpot-fish-king'
+  // Small fish within the same tier get subtle size variation for easier recognition.
   const sizeAdj = tierKey === 'SMALL' ? (fish.multiplier || 2) * 1.6 : 0
   return {
     tier: tierKey.toLowerCase(),
-    size: base.size + sizeAdj,
-    weight: fish.spawnWeight || 1,
-    durMin: base.durMin,
-    durMax: base.durMax,
-    glow: base.glow,
+    size: base.size + sizeAdj + (isLegendaryFishKing ? 78 : 0),
+    weight: isLegendaryFishKing ? Math.max(1, Math.min(fish.spawnWeight || 1, 1)) : fish.spawnWeight || 1,
+    durMin: base.durMin + (isLegendaryFishKing ? 6 : 0),
+    durMax: base.durMax + (isLegendaryFishKing ? 8 : 0),
+    glow: base.glow + (isLegendaryFishKing ? 1.6 : 0),
   }
 }
 
@@ -106,6 +171,8 @@ export class FishingEngine {
     this._destroyed = false
 
     // 顯示層（由下而上）：光暈 → 魚 → 火花/子彈 → HP 條 → 浮字/傷害數字 → 砲台 → 提示
+    this.backdropLayer = new Container()
+    this.decorLayer = new Container()
     this.glowLayer = new Container() // 高倍魚光暈（在魚下方）
     this.fishLayer = new Container()
     this.fxLayer = new Container()
@@ -114,6 +181,8 @@ export class FishingEngine {
     this.cannonLayer = new Container()
     this.uiLayer = new Container()
     app.stage.addChild(
+      this.backdropLayer,
+      this.decorLayer,
       this.glowLayer,
       this.fishLayer,
       this.fxLayer,
@@ -122,6 +191,11 @@ export class FishingEngine {
       this.cannonLayer,
       this.uiLayer,
     )
+    this.fishMask = new Graphics()
+    app.stage.addChild(this.fishMask)
+    this.glowLayer.mask = this.fishMask
+    this.fishLayer.mask = this.fishMask
+    this.hpLayer.mask = this.fishMask
 
     this.tex = {} // assetId → Texture（preload 後填入）
     this.fish = []
@@ -137,11 +211,18 @@ export class FishingEngine {
     this.sparks = []
     this.floats = []
     this.dmgs = [] // 浮動傷害數字（命中即冒，含暴擊）
+    this.bubbles = []
+    this.godRays = [] // 水面神光光楔（加法混合，數量固定、只調 alpha，perfMode 時歸零）
+    this.plankton = [] // 浮游生物微粒（固定池、緩慢漂移，reducedMotion 時不生成）
+    this.backdropW = 0
+    this.backdropH = 0
+    this.backdropTime = 0
 
     // 指標連發狀態
     this.pointer = null
     this.holding = false
     this.aim = 0
+    this.cannonPulse = 0
     this.fireAccMs = 0
     this.spawnAccMs = 0
 
@@ -150,11 +231,7 @@ export class FishingEngine {
     this.swarmRemaining = 0
     this.swarmAccMs = 0
     this.bossTimerMs = 0
-
-    // 自動射擊（auto-fire）：開啟後自動鎖定畫面內最高價值魚連發（手動按住時讓位給手動）
-    this.autoFire = false
-    this.autoTarget = null
-    this.autoFireAccMs = 0
+    this.blockerAccMs = 0
 
     // 效能：FPS 守門
     this.autoPerf = false
@@ -182,12 +259,18 @@ export class FishingEngine {
     this.tex = await preload(PRELOAD_ASSETS, TEX_PX)
     if (this._destroyed) return
 
+    this._buildBackdrop()
+
     // 砲台（錨點在底部中心，旋轉以底座為支點）；貼圖依砲台等級（銅/銀/金）
     this.cannon = new Sprite(this.tex[this.cannonStyle.asset] || this.tex.cannon || Texture.WHITE)
     this.cannon.anchor.set(0.5, 0.92)
-    this.cannon.width = 96
-    this.cannon.height = 96
+    this.cannon.visible = false
     this.cannonLayer.addChild(this.cannon)
+    this.cannonTurret = new Container()
+    this.cannonGlow = new Graphics()
+    this.cannonBarrel = new Graphics()
+    this.cannonTurret.addChild(this.cannonGlow, this.cannonBarrel)
+    this.cannonLayer.addChild(this.cannonTurret)
 
     // 提示文字（餘額不足等）
     this.hint = new Text({
@@ -242,6 +325,7 @@ export class FishingEngine {
 
   setFishTable(table) {
     this.table = (table || []).map((f) => ({ ...f, _meta: deriveMeta(f) }))
+    if (this.table.some((f) => f.visualKey === 'jackpot-fish-king')) this.bossTimerMs = BOSS_INTERVAL_MS
   }
 
   setPerfMode(on) {
@@ -250,19 +334,18 @@ export class FishingEngine {
 
   setCannon(level) {
     this.ctx.cannonLevel = level
-    // init 後才有 cannon sprite；場中切等級或初值灌入時換貼圖
-    if (this.cannon && this.tex) {
-      const tex = this.tex[this.cannonStyle.asset]
-      if (tex) this.cannon.texture = tex
-    }
+    this._syncCannonTexture()
   }
 
-  setAutoFire(on) {
-    this.autoFire = on
-    if (!on) {
-      this.autoTarget = null
-      this.autoFireAccMs = 0
-    }
+  setAmmoTone(tone) {
+    this.ctx.ammoTone = tone
+    this._syncCannonTexture()
+  }
+
+  _syncCannonTexture() {
+    if (!this.cannon || !this.tex) return
+    const tex = this.tex[this.cannonStyle.asset]
+    if (tex) this.cannon.texture = tex
   }
 
   get perfMode() {
@@ -270,24 +353,48 @@ export class FishingEngine {
   }
 
   get cannonStyle() {
-    return CANNON_STYLE[this.ctx.cannonLevel] || CANNON_STYLE[1]
+    return CANNON_STYLE_BY_TONE[this.ctx.ammoTone] || CANNON_STYLE[this.ctx.cannonLevel] || CANNON_STYLE[1]
   }
 
   get maxFish() {
     return this.perfMode ? MAX_FISH_PERF : MAX_FISH
   }
 
+  _cannonZoneHeight(W, H) {
+    return Math.max(148, Math.min(190, H * 0.28, W * 0.18))
+  }
+
+  _cannonZoneTop(W, H) {
+    return H - this._cannonZoneHeight(W, H)
+  }
+
+  _fishViewportBottom(W, H) {
+    return this._cannonZoneTop(W, H) - 8
+  }
+
+  _fishYMax(W, H, size) {
+    const yMin = Math.max(size * 0.55, H * 0.08)
+    const safeBottom = this._fishViewportBottom(W, H) - Math.max(70, size * 0.55)
+    return Math.max(yMin + 24, safeBottom)
+  }
+
+  _cannonOrigin(W = this.app.screen.width, H = this.app.screen.height) {
+    const zoneTop = this._cannonZoneTop(W, H)
+    const zoneH = H - zoneTop
+    return {
+      x: W / 2,
+      y: zoneTop + Math.max(30, Math.min(44, zoneH * 0.32)),
+    }
+  }
   // ---- 遊戲迴圈 ----
   _tick(ticker) {
     if (this._destroyed) return
     const dtMs = ticker.deltaMS
     const W = this.app.screen.width
     const H = this.app.screen.height
-
-    // 砲台貼底置中
-    this.cannon.x = W / 2
-    this.cannon.y = H - 8
-    this.cannon.rotation = this.aim
+    if (this.cannonPulse > 0) this.cannonPulse = Math.max(0, this.cannonPulse - dtMs)
+    this._updateBackdrop(dtMs, W, H)
+    if (this.cannon) this.cannon.visible = false
 
     this._guardFps(dtMs)
 
@@ -297,6 +404,12 @@ export class FishingEngine {
       if (this.spawnAccMs >= SPAWN_INTERVAL_MS) {
         this.spawnAccMs = 0
         this._trySpawn(W, H)
+      }
+      this.blockerAccMs += dtMs
+      const blockerInterval = this._blockerIntervalMs()
+      if (this.blockerAccMs >= blockerInterval) {
+        this.blockerAccMs = 0
+        this._spawnBlockerWave(W, H)
       }
       // 魚群潮：週期觸發後短時間密集放小魚
       this.swarmTimerMs += dtMs
@@ -325,14 +438,6 @@ export class FishingEngine {
         this.fireAccMs = 0
         this._fireToward(this.pointer.x, this.pointer.y)
       }
-      // 自動射擊（手動按住時讓位給手動）
-      if (this.autoFire && !this.holding) {
-        this.autoFireAccMs += dtMs
-        if (this.autoFireAccMs >= FIRE_INTERVAL_MS) {
-          this.autoFireAccMs = 0
-          this._autoFireOnce()
-        }
-      }
     }
 
     this._updateReticle()
@@ -345,6 +450,328 @@ export class FishingEngine {
     this._notifyBoss()
   }
 
+  _buildBackdrop() {
+    this.seaBack = new Graphics()
+    this.caustics = new Graphics()
+    this.seaFloor = new Graphics()
+    this.cannonDeck = new Graphics()
+    this.backdropLayer.addChild(this.seaBack, this.caustics)
+    this.decorLayer.addChild(this.seaFloor)
+    this.cannonLayer.addChild(this.cannonDeck)
+
+    const bubbleCount = this.reducedMotion ? 10 : 24
+    for (let i = 0; i < bubbleCount; i += 1) {
+      const g = new Graphics().circle(0, 0, 1).fill({ color: 0xbdf7ff, alpha: 0.62 })
+      this.decorLayer.addChild(g)
+      this.bubbles.push({
+        g,
+        x: Math.random(),
+        y: Math.random(),
+        r: 2 + Math.random() * 7,
+        speed: 10 + Math.random() * 26,
+        drift: Math.random() * Math.PI * 2,
+      })
+    }
+
+    // 神光：4 道固定光楔（幾何在 _redrawBackdrop 畫、每幀只調 alpha/位移，零配置成本）
+    for (let i = 0; i < 4; i += 1) {
+      const g = new Graphics()
+      g.blendMode = 'add'
+      this.backdropLayer.addChild(g)
+      this.godRays.push({ g, phase: Math.random() * Math.PI * 2, speed: 0.16 + i * 0.05 })
+    }
+
+    // 浮游生物：固定 20 顆微粒池（比照泡泡的正規化座標更新模式），reducedMotion 不生成
+    const planktonCount = this.reducedMotion ? 0 : 20
+    for (let i = 0; i < planktonCount; i += 1) {
+      const g = new Graphics().circle(0, 0, 1).fill({ color: 0xd8fbe8, alpha: 0.5 })
+      this.decorLayer.addChild(g)
+      this.plankton.push({
+        g,
+        x: Math.random(),
+        y: Math.random(),
+        r: 0.7 + Math.random() * 1.4,
+        speed: 2.5 + Math.random() * 5,
+        drift: Math.random() * Math.PI * 2,
+      })
+    }
+  }
+
+  _redrawBackdrop(W, H) {
+    this.backdropW = W
+    this.backdropH = H
+    const fishBottom = this._fishViewportBottom(W, H)
+    const zoneTop = this._cannonZoneTop(W, H)
+
+    if (this.fishMask) {
+      this.fishMask.clear().rect(0, 0, W, fishBottom).fill({ color: 0xffffff, alpha: 1 })
+    }
+
+    this.seaBack
+      .clear()
+      .rect(0, 0, W, fishBottom)
+      .fill({ color: 0x073f61, alpha: 0.44 })
+      .rect(0, fishBottom * 0.42, W, fishBottom * 0.58)
+      .fill({ color: 0x031827, alpha: 0.48 })
+      .rect(0, fishBottom * 0.72, W, fishBottom * 0.28)
+      .fill({ color: 0x020b16, alpha: 0.42 })
+      .rect(0, fishBottom, W, H - fishBottom)
+      .fill({ color: 0x05020a, alpha: 0.88 })
+
+    this.caustics.clear()
+    for (let i = 0; i < 9; i += 1) {
+      const x = (W / 8) * i - W * 0.12
+      this.caustics
+        .moveTo(x, 0)
+        .lineTo(x + W * 0.2, fishBottom * 0.86)
+        .stroke({ width: 18 + (i % 3) * 6, color: 0x8ff4ff, alpha: 0.055 })
+    }
+    for (let i = 0; i < 7; i += 1) {
+      const y = fishBottom * 0.18 + i * 34
+      this.caustics
+        .moveTo(0, y)
+        .lineTo(W, y + Math.sin(i) * 18)
+        .stroke({ width: 1, color: 0xd8fbff, alpha: 0.07 })
+    }
+
+    // 神光光楔：從水面斜射向下、上窄下寬（外層淡、內層稍亮做柔邊），alpha 由每幀更新呼吸
+    this.godRays.forEach((ray, i) => {
+      const anchorX = W * (0.1 + i * 0.24)
+      const slant = W * 0.14
+      const topW = W * 0.022
+      const bottomW = W * 0.1
+      const depth = fishBottom * 0.92
+      ray.g
+        .clear()
+        .poly([
+          anchorX, 0,
+          anchorX + topW, 0,
+          anchorX + slant + bottomW, depth,
+          anchorX + slant - bottomW * 0.4, depth,
+        ])
+        .fill({ color: 0xbdf7ff, alpha: 0.045 })
+        .poly([
+          anchorX + topW * 0.25, 0,
+          anchorX + topW * 0.75, 0,
+          anchorX + slant + bottomW * 0.55, depth,
+          anchorX + slant + bottomW * 0.1, depth,
+        ])
+        .fill({ color: 0xe8fcff, alpha: 0.05 })
+    })
+
+    this.seaFloor
+      .clear()
+      .ellipse(W * 0.18, fishBottom - 74, 120, 24)
+      .fill({ color: 0x010814, alpha: 0.4 })
+      .ellipse(W * 0.72, fishBottom - 90, 170, 32)
+      .fill({ color: 0x010814, alpha: 0.34 })
+      .roundRect(W * 0.1, fishBottom - 96, 74, 40, 12)
+      .fill({ color: 0x111f2c, alpha: 0.68 })
+      .roundRect(W * 0.1 + 8, fishBottom - 106, 58, 20, 8)
+      .fill({ color: 0x6d1421, alpha: 0.78 })
+      .rect(W * 0.1 + 10, fishBottom - 94, 54, 7)
+      .fill({ color: 0xffcf5d, alpha: 0.62 })
+      .circle(W * 0.1 + 18, fishBottom - 111, 5)
+      .fill({ color: 0xffe38a, alpha: 0.82 })
+      .circle(W * 0.1 + 32, fishBottom - 113, 4)
+      .fill({ color: 0xffe38a, alpha: 0.72 })
+      .circle(W * 0.1 + 46, fishBottom - 111, 5)
+      .fill({ color: 0xffe38a, alpha: 0.82 })
+      .roundRect(-24, fishBottom - 44, W + 48, 62, 22)
+      .fill({ color: 0x042033, alpha: 0.78 })
+      .roundRect(24, fishBottom - 28, W - 48, 28, 14)
+      .fill({ color: 0x0b3140, alpha: 0.58 })
+      .rect(0, zoneTop - 2, W, 2)
+      .fill({ color: 0xffd66a, alpha: 0.36 })
+
+    const coralColors = [0xff5e82, 0xffc14d, 0x62e0c6, 0x8d7cff]
+    for (let i = 0; i < 14; i += 1) {
+      const side = i % 2 === 0 ? 0 : 1
+      const x = side === 0 ? 32 + (i % 7) * 28 : W - 38 - (i % 7) * 31
+      const base = fishBottom - 8
+      const h = 20 + (i % 4) * 7
+      const color = coralColors[i % coralColors.length]
+      this.seaFloor
+        .roundRect(x, base - h, 8, h, 4)
+        .fill({ color, alpha: 0.5 })
+        .circle(x + 3, base - h - 3, 6 + (i % 3), 6 + (i % 3))
+        .fill({ color, alpha: 0.44 })
+    }
+
+    this._drawCannonDeck(W, H)
+  }
+
+  _drawCannonDeck(W, H) {
+    if (!this.cannonDeck) return
+    const deckPulse = this.cannonPulse / 150
+    const zoneTop = this._cannonZoneTop(W, H)
+    const zoneH = H - zoneTop
+    const origin = this._cannonOrigin(W, H)
+    const glow = deckPulse * 0.36
+    const style = this.cannonStyle
+    const scale = style.deckScale || 1
+    const podW = Math.max(210, Math.min(460, W * 0.52 * scale))
+    const podH = Math.max(54, Math.min(92, zoneH * 0.78 * scale))
+    const podX = W / 2 - podW / 2
+    const podY = H - podH - 8
+    const accent = style.bullet
+
+    this.cannonDeck
+      .clear()
+      .rect(0, zoneTop, W, zoneH)
+      .fill({ color: 0x07020b, alpha: 0.94 })
+      .rect(0, zoneTop, W, 3)
+      .fill({ color: 0xffd86b, alpha: 0.42 + glow })
+      .rect(0, zoneTop + 4, W, 1)
+      .fill({ color: 0x56f0ff, alpha: 0.18 + glow * 0.4 })
+      .roundRect(podX, podY, podW, podH, 22)
+      .fill({ color: 0x180611, alpha: 0.96 })
+      .roundRect(podX + 7, podY + 7, podW - 14, podH - 14, 17)
+      .fill({ color: 0x5c0f1e, alpha: 0.86 })
+      .roundRect(podX + 18, podY + podH * 0.58, podW - 36, 8, 8)
+      .fill({ color: 0xffcc5d, alpha: 0.24 + glow })
+      .roundRect(podX + podW * 0.18, podY + podH * 0.72, podW * (0.42 + deckPulse * 0.16), 4, 4)
+      .fill({ color: 0x54eaff, alpha: 0.28 + glow })
+      .roundRect(podX + 18, podY + 13, podW * 0.2, 14, 7)
+      .fill({ color: 0x0e2330, alpha: 0.92 })
+      .roundRect(podX + podW - podW * 0.2 - 18, podY + 13, podW * 0.2, 14, 7)
+      .fill({ color: 0x0e2330, alpha: 0.92 })
+      .circle(origin.x, origin.y + 5, (28 + deckPulse * 5) * scale)
+      .fill({ color: 0xffd260, alpha: 0.22 + deckPulse * 0.18 })
+      .circle(origin.x, origin.y + 5, (21 + deckPulse * 3) * scale)
+      .fill({ color: 0x1b0712, alpha: 0.95 })
+      .circle(origin.x, origin.y + 5, (13 + deckPulse * 2) * scale)
+      .fill({ color: style.core || accent, alpha: 0.34 + deckPulse * 0.28 })
+
+    this._drawCannonTurret(W, H, deckPulse)
+  }
+
+  _drawCannonTurret(W, H, deckPulse) {
+    if (!this.cannonTurret || !this.cannonBarrel || !this.cannonGlow) return
+    const origin = this._cannonOrigin(W, H)
+    const style = this.cannonStyle
+    const scale = style.scale || 1
+    const recoil = deckPulse * (5 + scale * 4)
+    const barrelLen = Math.max(34, Math.min(70, H * 0.105 * scale)) * (style.barrelLengthScale || 1)
+    const barrelW = Math.max(12, Math.min(28, W * 0.026 * (0.86 + scale * 0.18)))
+    const baseR = 15 + scale * 8
+    const offsets = style.barrelOffsets || [0]
+    const barrelUnitW = barrelW * (style.barrelWidthScale || 1)
+    const spread = barrelW * 1.08
+    const g = this.cannonBarrel
+
+    this.cannonTurret.x = origin.x
+    this.cannonTurret.y = origin.y + deckPulse * 4
+    this.cannonTurret.rotation = this.aim
+    this.cannonGlow
+      .clear()
+      .circle(0, -barrelLen - 4, 18 * scale + deckPulse * 10)
+      .fill({ color: style.bullet, alpha: 0.08 + deckPulse * 0.18 })
+      .circle(0, -barrelLen - 4, Math.max(6, barrelUnitW * 0.72) + deckPulse * 2)
+      .fill({ color: style.glow || style.bullet, alpha: 0.16 + deckPulse * 0.2 })
+
+    g.clear()
+
+    if (style.tone === 'gold') {
+      g.roundRect(-baseR * 1.55, -baseR * 0.28, baseR * 0.72, baseR * 0.72, 10)
+        .fill({ color: 0x5a101b, alpha: 0.95 })
+        .roundRect(baseR * 0.83, -baseR * 0.28, baseR * 0.72, baseR * 0.72, 10)
+        .fill({ color: 0x5a101b, alpha: 0.95 })
+        .circle(-baseR * 1.16, 0, baseR * 0.33)
+        .fill({ color: style.trim, alpha: 0.7 })
+        .circle(baseR * 1.16, 0, baseR * 0.33)
+        .fill({ color: style.trim, alpha: 0.7 })
+    } else if (style.tone === 'silver') {
+      g.circle(-baseR * 0.82, baseR * 0.08, baseR * 0.34)
+        .fill({ color: 0x1d4054, alpha: 0.9 })
+        .circle(baseR * 0.82, baseR * 0.08, baseR * 0.34)
+        .fill({ color: 0x1d4054, alpha: 0.9 })
+    }
+
+    for (const offset of offsets) {
+      const ox = offset * spread
+      const muzzleR = barrelUnitW * (offsets.length > 1 ? 0.64 : 0.72)
+      g.roundRect(ox - barrelUnitW / 2 - 4, -barrelLen + recoil, barrelUnitW + 8, barrelLen, 10)
+        .fill({ color: 0x180611, alpha: 0.98 })
+        .roundRect(ox - barrelUnitW / 2, -barrelLen + 5 + recoil, barrelUnitW, barrelLen - 6, 8)
+        .fill({ color: style.barrel || 0x971c2c, alpha: 0.94 })
+        .roundRect(ox - barrelUnitW / 2 + 3, -barrelLen + 9 + recoil, Math.max(5, barrelUnitW - 6), barrelLen * 0.54, 6)
+        .fill({ color: style.trim || 0xffd36b, alpha: 0.58 })
+        .roundRect(ox - barrelUnitW / 2 + 5, -barrelLen + 14 + recoil, Math.max(3, barrelUnitW - 10), barrelLen * 0.38, 5)
+        .fill({ color: style.glow || 0x66efff, alpha: 0.25 + deckPulse * 0.28 })
+        .circle(ox, -barrelLen + recoil, muzzleR + deckPulse * 2)
+        .fill({ color: style.bullet, alpha: 0.56 + deckPulse * 0.22 })
+    }
+
+    g.circle(0, 0, baseR * (style.tone === 'gold' ? 1.18 : 1))
+      .fill({ color: 0x230816, alpha: 0.98 })
+      .circle(0, 0, baseR * (style.tone === 'gold' ? 0.72 : 0.62))
+      .fill({ color: style.core || 0xffca5c, alpha: 0.64 })
+      .circle(0, 0, baseR * 0.34 + deckPulse * 3)
+      .fill({ color: style.bullet, alpha: 0.58 + deckPulse * 0.24 })
+
+    if (style.tone === 'copper') {
+      g.circle(0, baseR * 0.18, baseR * 0.18).fill({ color: 0xffe2a4, alpha: 0.55 })
+    } else if (style.tone === 'silver') {
+      g.roundRect(-baseR * 0.75, baseR * 0.34, baseR * 1.5, baseR * 0.2, 999)
+        .fill({ color: 0xdbeafe, alpha: 0.42 })
+    } else if (style.tone === 'gold') {
+      g.circle(0, -baseR * 0.42, baseR * 0.16)
+        .fill({ color: 0xffffff, alpha: 0.42 })
+        .circle(-baseR * 0.52, -baseR * 0.12, baseR * 0.12)
+        .fill({ color: 0xfff0aa, alpha: 0.36 })
+        .circle(baseR * 0.52, -baseR * 0.12, baseR * 0.12)
+        .fill({ color: 0xfff0aa, alpha: 0.36 })
+    }
+  }
+  _updateBackdrop(dtMs, W, H) {
+    if (!this.seaBack) return
+    if (W !== this.backdropW || H !== this.backdropH) this._redrawBackdrop(W, H)
+
+    this.backdropTime += dtMs / 1000
+    this.caustics.x = Math.sin(this.backdropTime * 0.45) * 18
+    this.caustics.alpha = this.perfMode ? 0.56 : 0.86
+
+    // 神光呼吸＋隨水流微擺；perfMode 直接熄滅（同 caustics 的守門模式）
+    for (const ray of this.godRays) {
+      if (this.perfMode) {
+        ray.g.alpha = 0
+        continue
+      }
+      ray.phase += (dtMs / 1000) * ray.speed
+      ray.g.alpha = 0.5 + Math.sin(ray.phase) * 0.4
+      ray.g.x = Math.sin(this.backdropTime * 0.3 + ray.phase) * 10
+    }
+
+    // 浮游生物緩慢上漂＋橫向游移；perfMode 減半亮度（不重配置，只調 alpha）
+    for (const p of this.plankton) {
+      p.y -= (p.speed * dtMs) / Math.max(H, 1) / 1000
+      p.drift += dtMs * 0.0007
+      if (p.y < -0.04) {
+        p.y = 1.04
+        p.x = Math.random()
+      }
+      p.g.x = p.x * W + Math.sin(p.drift) * 22
+      p.g.y = p.y * this._fishViewportBottom(W, H)
+      p.g.scale.set(p.r)
+      p.g.alpha = (this.perfMode ? 0.14 : 0.3) + Math.sin(p.drift * 1.6) * 0.1
+    }
+
+    for (const b of this.bubbles) {
+      b.y -= (b.speed * dtMs) / Math.max(H, 1) / 1000
+      b.drift += dtMs * 0.0012
+      if (b.y < -0.08) {
+        b.y = 1.08
+        b.x = Math.random()
+      }
+      b.g.x = b.x * W + Math.sin(b.drift) * 14
+      b.g.y = b.y * this._fishViewportBottom(W, H)
+      b.g.scale.set(b.r)
+      b.g.alpha = this.perfMode ? 0.24 : 0.42 + Math.sin(b.drift) * 0.12
+    }
+    this._drawCannonDeck(W, H)
+  }
+
   _guardFps(dtMs) {
     const fps = this.app.ticker.FPS
     if (fps && fps < 40) this.lowFpsMs += dtMs
@@ -352,12 +779,45 @@ export class FishingEngine {
     if (this.lowFpsMs > 2000) this.autoPerf = true // 連續低幀 → 自動降載（不再回升，避免抖動）
   }
 
+  _blockerThreatLevel() {
+    return this.fish.reduce((sum, f) => {
+      if (f.blocker || f.caught || f.fleeing) return sum
+      if (f.tier === 'boss') return sum + 3
+      if (f.tier === 'high' || f.tier === 'special') return sum + 2
+      if (f.tier === 'medium') return sum + 1
+      return sum
+    }, 0)
+  }
+
+  _blockerIntervalMs() {
+    const pressure = this._blockerThreatLevel()
+    const interval = BLOCKER_INTERVAL_MS - pressure * 650
+    return Math.max(this.perfMode ? BLOCKER_MIN_INTERVAL_MS + 700 : BLOCKER_MIN_INTERVAL_MS, interval)
+  }
+
+  _blockerMaxCount(pressure = this._blockerThreatLevel()) {
+    const bonus = Math.min(MAX_BLOCKER_THREAT_BONUS, Math.floor((pressure + 1) / 2))
+    return Math.min(this.perfMode ? 5 : MAX_BLOCKERS + MAX_BLOCKER_THREAT_BONUS, MAX_BLOCKERS + bonus)
+  }
+
+  _spawnBlockerWave(W, H) {
+    const pressure = this._blockerThreatLevel()
+    const maxBlockers = this._blockerMaxCount(pressure)
+    const burst = pressure >= 5 ? 3 : pressure >= 2 ? 2 : 1
+    for (let i = 0; i < burst; i += 1) {
+      if (i > 0 && Math.random() > Math.min(0.82, 0.28 + pressure * 0.11)) break
+      if (!this._trySpawnBlocker(W, H, { maxBlockers })) break
+    }
+  }
+
   _trySpawn(W, H, opts = {}) {
     if (!this.table || this.table.length === 0) return
     const hardCap = this.maxFish + (opts.boss ? 2 : 0) // Boss 保證降臨，可略超並存上限
     if (this.fish.length >= hardCap) return
     let pick
-    if (opts.code) {
+    if (opts.pick) {
+      pick = opts.pick
+    } else if (opts.code) {
       pick = this.table.find((f) => f.code === opts.code)
     } else if (opts.smallOnly) {
       const smalls = this.table.filter((f) => f._meta.tier === 'small')
@@ -367,19 +827,48 @@ export class FishingEngine {
     }
     if (!pick) return
     const meta = pick._meta
-    const dir = Math.random() > 0.5 ? 'ltr' : 'rtl'
     const size = meta.size
     const margin = size
     const baseScale = size / TEX_PX
     const speed = (W + margin * 2) / (meta.durMin + Math.random() * (meta.durMax - meta.durMin)) / 1000
-    const baseY = H * (0.08 + Math.random() * 0.6)
+    const yMin = Math.max(size * 0.55, H * 0.08)
+    const yMax = this._fishYMax(W, H, size)
+    const ySpan = Math.max(1, yMax - yMin)
+    const verticalRatio = meta.tier === 'boss' ? 0.1 : meta.tier === 'small' ? 0.32 : 0.22
+    const spawnRoll = meta.tier === 'boss' ? Math.random() * 0.58 : Math.random()
+    let vx
+    let vy
+    let startX
+    let baseY
+    let entrySide = null
+    if (spawnRoll < 0.52) {
+      const fromLeft = Math.random() > 0.5
+      startX = fromLeft ? -margin : W + margin
+      baseY = yMin + Math.random() * ySpan
+      vx = (fromLeft ? 1 : -1) * speed
+      vy = (Math.random() > 0.5 ? 1 : -1) * speed * verticalRatio * (0.45 + Math.random() * 0.75)
+    } else if (spawnRoll < 0.76) {
+      startX = W * (0.12 + Math.random() * 0.76)
+      baseY = -margin
+      entrySide = 'top'
+      vx = (Math.random() > 0.5 ? 1 : -1) * speed * (0.55 + Math.random() * 0.5)
+      vy = Math.abs(speed) * (0.26 + Math.random() * 0.42)
+    } else {
+      const fromLeft = Math.random() > 0.5
+      startX = fromLeft ? -margin : W + margin
+      baseY = yMin + Math.random() * ySpan
+      entrySide = null
+      vx = (fromLeft ? 1 : -1) * speed * (0.58 + Math.random() * 0.52)
+      vy = -Math.abs(speed) * (0.1 + Math.random() * 0.24)
+    }
+    const dir = vx >= 0 ? 'ltr' : 'rtl'
 
     if (meta.tier === 'boss') this.ctx.play?.('bossAlarm')
 
     const sprite = new Sprite(this.tex[pick.assetId] || Texture.WHITE)
     sprite.anchor.set(0.5)
-    sprite.scale.set(dir === 'ltr' ? -baseScale : baseScale, baseScale) // 朝向翻面
-    sprite.x = dir === 'ltr' ? -margin : W + margin
+    sprite.scale.set(dir === 'ltr' ? baseScale : -baseScale, baseScale) // 朝向翻面
+    sprite.x = startX
     sprite.y = baseY
     this.fishLayer.addChild(sprite)
 
@@ -412,10 +901,14 @@ export class FishingEngine {
       dir,
       baseScale,
       dispSize: size,
-      vx: dir === 'ltr' ? speed : -speed,
+      vx,
+      vy,
       x: sprite.x,
       y: baseY,
       baseY,
+      yMin,
+      yMax,
+      entrySide,
       margin,
       bob: Math.random() * Math.PI * 2,
       caught: false,
@@ -433,16 +926,84 @@ export class FishingEngine {
     })
   }
 
-  // Boss（龍王）定時降臨：場上無 boss 時強制 spawn boss tier 魚種，_trySpawn 內對 boss 觸發 bossAlarm 預警。
+  // Boss 定時降臨：優先讓彩金魚王出場，且射擊仍沿用後端 DRAGON_KING 合約。
+  _trySpawnBlocker(W, H, opts = {}) {
+    const maxBlockers = opts.maxBlockers ?? this._blockerMaxCount()
+    const liveBlockers = this.fish.filter((f) => f.blocker && !f.caught && !f.fleeing).length
+    if (liveBlockers >= maxBlockers) return false
+    const kind = BLOCKER_SPECIES[Math.floor(Math.random() * BLOCKER_SPECIES.length)] || BLOCKER_SPECIES[0]
+    const profile = BLOCKER_SIZE_PROFILES[Math.floor(Math.random() * BLOCKER_SIZE_PROFILES.length)] || BLOCKER_SIZE_PROFILES[1]
+    const baseSize = kind.sizeMin + Math.random() * (kind.sizeMax - kind.sizeMin)
+    const size = baseSize * profile.scale
+    const margin = size
+    const yMin = Math.max(size * 0.6, H * 0.15)
+    const yMax = this._fishYMax(W, H, size)
+    if (yMax <= yMin) return false
+    const fromLeft = Math.random() > 0.5
+    const duration = (kind.durMin + Math.random() * (kind.durMax - kind.durMin)) * profile.durationFactor
+    const speed = (W + margin * 2) / duration / 1000
+    const vx = (fromLeft ? 1 : -1) * speed
+    const vy = (Math.random() - 0.5) * speed * kind.wobble
+    const baseScale = size / TEX_PX
+    const sprite = new Sprite(this.tex[kind.asset] || Texture.WHITE)
+    sprite.anchor.set(0.5)
+    sprite.tint = kind.tint
+    sprite.alpha = kind.alpha
+    sprite.scale.set(fromLeft ? baseScale : -baseScale, baseScale)
+    sprite.x = fromLeft ? -margin : W + margin
+    sprite.y = yMin + Math.random() * (yMax - yMin)
+    this.fishLayer.addChild(sprite)
+    this.fish.push({
+      id: (this.idSeq += 1),
+      code: kind.code,
+      name: profile.name + kind.name,
+      blockerSize: profile.key,
+      blockerSizeName: profile.name,
+      multiplier: 0,
+      tier: 'blocker',
+      blocker: true,
+      sprite,
+      dir: fromLeft ? 'ltr' : 'rtl',
+      baseScale,
+      dispSize: size,
+      vx,
+      vy,
+      x: sprite.x,
+      y: sprite.y,
+      baseY: sprite.y,
+      yMin,
+      yMax,
+      entrySide: null,
+      margin,
+      bob: Math.random() * Math.PI * 2,
+      caught: false,
+      caughtMs: 0,
+      maxHp: profile.maxHits,
+      hp: profile.maxHits,
+      hpBar: null,
+      hpFill: null,
+      hpShownMs: 0,
+      fleeing: false,
+      blockerHits: 0,
+      blockerMaxHits: profile.maxHits,
+      fleeMs: 0,
+      glow: null,
+      glowPhase: Math.random() * Math.PI * 2,
+      glowAmp: 0,
+    })
+    return true
+  }
   _spawnBoss(W, H) {
     if (!this.table) return
     if (this.fish.some((f) => !f.caught && !f.fleeing && f.tier === 'boss')) return
-    const boss = this.table.find((f) => f._meta.tier === 'boss')
-    if (!boss) return
-    this._trySpawn(W, H, { code: boss.code, boss: true })
+    const bosses = this.table.filter((f) => f._meta.tier === 'boss')
+    if (bosses.length === 0) return
+    const jackpotFishKing = bosses.find((f) => f.visualKey === 'jackpot-fish-king')
+    const boss = jackpotFishKing || weightedPick(bosses)
+    this._trySpawn(W, H, { pick: boss, boss: true })
   }
 
-  _updateFish(dtMs, W) {
+  _updateFish(dtMs, W, H) {
     const dt = dtMs / 1000
     for (let i = this.fish.length - 1; i >= 0; i -= 1) {
       const f = this.fish[i]
@@ -451,7 +1012,7 @@ export class FishingEngine {
         const k = Math.min(1, f.caughtMs / CAUGHT_MS)
         f.sprite.alpha = 1 - k
         const s = f.baseScale * (1 + k * 0.35)
-        f.sprite.scale.set(f.dir === 'ltr' ? -s : s, s)
+        f.sprite.scale.set(f.dir === 'ltr' ? s : -s, s)
         if (f.hpBar) f.hpBar.visible = false
         if (f.glow) f.glow.alpha = (1 - k) * 0.3
         if (k >= 1) this._removeFishAt(i)
@@ -472,8 +1033,24 @@ export class FishingEngine {
         continue
       }
       f.x += f.vx * dtMs
+      f.baseY += (f.vy || 0) * dtMs
+      const yMin = f.yMin ?? Math.max(f.dispSize * 0.55, H * 0.08)
+      const yMax = f.yMax ?? this._fishYMax(W, H, f.dispSize)
+      if (f.entrySide === 'top' && f.baseY >= yMin) {
+        f.baseY = yMin
+        f.entrySide = null
+      } else if (f.entrySide === 'bottom' && f.baseY <= yMax) {
+        f.baseY = yMax
+        f.entrySide = null
+      }
       f.bob += BOB_SPEED * dt
       f.y = f.baseY + (this.perfMode ? 0 : Math.sin(f.bob) * BOB_AMP)
+      const swim = this.perfMode ? 0 : Math.sin(f.bob * 1.8 + f.glowPhase)
+      const sx = f.baseScale * (1 + swim * 0.035)
+      const sy = f.baseScale * (1 - swim * 0.018)
+      f.sprite.scale.set(f.dir === 'ltr' ? sx : -sx, sy)
+      const pathTilt = Math.atan2(f.vy || 0, Math.max(Math.abs(f.vx), 0.001)) * (f.dir === 'ltr' ? 0.24 : -0.24)
+      f.sprite.rotation = pathTilt + swim * 0.028 * (f.dir === 'ltr' ? -1 : 1)
       f.sprite.x = f.x
       f.sprite.y = f.y
       this._updateHpBar(f, dtMs)
@@ -485,29 +1062,11 @@ export class FishingEngine {
         f.glow.alpha = this.perfMode ? pulse * 0.5 : pulse
       }
       // 游出畫面回收
-      if (f.x < -f.margin - 4 || f.x > W + f.margin + 4) this._removeFishAt(i)
+      if (f.x < -f.margin - 4 || f.x > W + f.margin + 4 || f.baseY < -f.margin - 4 || f.baseY > this._fishViewportBottom(W, H) + f.margin + 4) this._removeFishAt(i)
     }
   }
-
-  // HP 條跟隨魚移動；命中後全亮顯示，計時結束後若魚仍有傷害則以半透明保持可見。
-  // 無傷害時才完全隱藏（讓玩家清楚看到累積傷害，尤其大魚需多發子彈時）。
-  _updateHpBar(f, dtMs) {
-    const bar = f.hpBar
-    if (!bar) return
-    const hasDamage = f.hp < f.maxHp
-    if (f.hpShownMs <= 0 && !hasDamage) {
-      if (bar.visible) bar.visible = false
-      return
-    }
-    if (f.hpShownMs > 0) f.hpShownMs -= dtMs
-    bar.visible = true
-    bar.x = f.x
-    bar.y = f.y - f.dispSize / 2 - 9
-    const ratio = Math.max(0, Math.min(1, f.hp / f.maxHp))
-    f.hpFill.scale.x = ratio
-    f.hpFill.tint = ratio > 0.5 ? HP_GREEN : ratio > 0.25 ? HP_YELLOW : HP_RED
-    // 命中 2.6s 內全亮；之後若有傷害則保持半透明（讓玩家看到累積傷害）
-    bar.alpha = f.hpShownMs > 360 ? 1 : hasDamage ? 0.55 : f.hpShownMs / 360
+  _updateHpBar() {
+    // HP bars are intentionally hidden; combat feedback is handled by hit sparks and crit text.
   }
 
   _removeFishAt(i) {
@@ -530,47 +1089,68 @@ export class FishingEngine {
   }
 
   _aimFor(px, py) {
-    const W = this.app.screen.width
-    const H = this.app.screen.height
-    // 0 = 朝正上方，順時針為正（與砲台 anchor 底座支點一致）
-    return Math.atan2(px - W / 2, H - py)
+    const { x, y } = this._cannonOrigin()
+    return Math.atan2(px - x, y - py)
+  }
+  _bulletOrigin() {
+    return this._cannonOrigin()
   }
 
-  _nearestFish(px, py) {
+  _rayTargetThrough(px, py) {
+    const { x: sx, y: sy } = this._bulletOrigin()
+    const dx = px - sx
+    const dy = py - sy
+    const len = Math.hypot(dx, dy)
+    if (len < 1) return { x: px, y: py }
+
+    const ux = dx / len
+    const uy = dy / len
+    const W = this.app.screen.width
+    const H = this._fishViewportBottom(this.app.screen.width, this.app.screen.height)
+    const candidates = []
+
+    if (ux > 0) candidates.push((W - sx) / ux)
+    else if (ux < 0) candidates.push((0 - sx) / ux)
+
+    if (uy > 0) candidates.push((H - sy) / uy)
+    else if (uy < 0) candidates.push((0 - sy) / uy)
+
+    const distance = candidates.filter((t) => Number.isFinite(t) && t > 0).reduce((best, t) => Math.min(best, t), Infinity)
+    if (!Number.isFinite(distance)) return { x: px, y: py }
+
+    return { x: sx + ux * distance, y: sy + uy * distance }
+  }
+
+  _fishHitRadius(f) {
+    const tierBoost = f.tier === 'boss' ? 0.44 : f.tier === 'high' || f.tier === 'special' ? 0.4 : 0.34
+    return Math.max(14, Math.min(86, f.dispSize * tierBoost + this.cannonStyle.bulletR))
+  }
+
+  _firstFishOnPath(tx, ty) {
+    const { x: sx, y: sy } = this._bulletOrigin()
+    const dx = tx - sx
+    const dy = ty - sy
+    const lenSq = dx * dx + dy * dy
+    if (lenSq < 1) return null
+
     let best = null
-    let bestDist = AIM_RADIUS
+    let bestT = Infinity
     for (const f of this.fish) {
       if (f.caught || f.fleeing) continue
+      const fx = f.x - sx
+      const fy = f.y - sy
+      const t = (fx * dx + fy * dy) / lenSq
+      if (t < 0.02 || t > 1) continue
+
+      const px = sx + dx * t
+      const py = sy + dy * t
       const dist = Math.hypot(f.x - px, f.y - py)
-      if (dist <= bestDist) {
-        bestDist = dist
-        best = f
+      if (dist <= this._fishHitRadius(f) && t < bestT) {
+        bestT = t
+        best = { fish: f, x: px, y: py }
       }
     }
     return best
-  }
-
-  // 自動射擊選靶：畫面內未死魚中，價值（倍率）最高者優先，平手取離砲台近的。
-  _bestTarget() {
-    const W = this.app.screen.width
-    let best = null
-    let bestScore = -Infinity
-    for (const f of this.fish) {
-      if (f.caught || f.fleeing) continue
-      if (f.x < 0 || f.x > W) continue
-      const score = f.multiplier * 1000 - Math.abs(f.x - W / 2)
-      if (score > bestScore) {
-        bestScore = score
-        best = f
-      }
-    }
-    return best
-  }
-
-  _autoFireOnce() {
-    const target = this._bestTarget()
-    this.autoTarget = target
-    if (target) this._engageFish(target)
   }
 
   // 準心跟隨：自動射擊鎖定目標優先（轉橘紅），否則跟游標。
@@ -580,8 +1160,7 @@ export class FishingEngine {
       this.reticle.visible = false
       return
     }
-    const locked = this.autoFire && this.autoTarget && !this.autoTarget.caught && !this.autoTarget.fleeing
-    const t = locked ? this.autoTarget : this.pointer
+    const t = this.pointer
     if (!t) {
       this.reticle.visible = false
       return
@@ -589,22 +1168,68 @@ export class FishingEngine {
     this.reticle.visible = true
     this.reticle.x = t.x
     this.reticle.y = t.y
-    this.reticle.tint = locked ? 0xff8a5a : 0xffffff
+    this.reticle.tint = 0xffffff
   }
 
   // 對指定魚開一發；回傳 'fired' | 'ratelimited' | 'insufficient' | 'inactive'
-  _engageFish(f) {
+  _blockShot(f, opts = {}) {
+    const aimX = opts.aimX ?? f.x
+    const aimY = opts.aimY ?? f.y
+    this.aim = this._aimFor(aimX, aimY)
+
+    const res = this.ctx.fire?.(String(f.id), f.code)
+    if (!res || !res.ok) {
+      if (res?.reason === 'insufficient') this._showHint('星幣不足，請加值後再開火')
+      return res?.reason || 'inactive'
+    }
+
+    this.ctx.play?.('shoot', { pitch: this.cannonStyle.pitch + Math.random() * 0.08 })
+    this.ctx.play?.('hit')
+    const hitX = opts.bulletX ?? f.x
+    const hitY = opts.bulletY ?? f.y
+    this._spawnBullet(hitX, hitY)
+    this._spawnSpark(hitX, hitY, { color: 0x8df2ff, startScale: 0.55, grow: 1.85 })
+
+    f.blockerHits = Math.min((f.blockerHits || 0) + 1, f.blockerMaxHits || 10)
+    const maxHits = f.blockerMaxHits || 10
+    const cost = Number(res.betPerShot || this.ctx.betPerShot || 0)
+    const costLabel = cost > 0 ? '，扣 ' + cost.toLocaleString() + ' 星幣' : '，已扣星幣'
+    const blockedLabel = (f.name || '障礙生物') + '擋下子彈 ' + f.blockerHits + '/' + maxHits + costLabel
+    this._showHint(blockedLabel)
+    f.sprite.alpha = Math.max(0.5, (f.sprite.alpha || 1) - 0.035)
+    f.sprite.rotation += (f.dir === 'ltr' ? 1 : -1) * 0.08
+    if (f.blockerHits >= maxHits) {
+      f.fleeing = true
+      f.fleeMs = 0
+      this._spawnSpark(hitX + 10, hitY - 8, { color: 0xffffff, startScale: 0.34, grow: 1.3 })
+    }
+    return 'blocked'
+  }
+  _engageFish(f, opts = {}) {
     if (this.ctx.phase !== 'playing' || f.caught) return 'inactive'
-    this.aim = this._aimFor(f.x, f.y)
+    if (f.blocker) return this._blockShot(f, opts)
+    const aimX = opts.aimX ?? f.x
+    const aimY = opts.aimY ?? f.y
+    this.aim = this._aimFor(aimX, aimY)
     if (f.tier === 'boss' || f.tier === 'high' || f.tier === 'special') this.ctx.play?.('lockOn')
 
     const res = this.ctx.fire?.(String(f.id), f.code)
     if (!res || !res.ok) {
-      if (res?.reason === 'insufficient') this._showHint('局內餘額不足，請結算後再加值')
+      if (res?.reason === 'insufficient') this._showHint('星幣不足，請加值後再開火')
       return res?.reason || 'inactive'
     }
     this.ctx.play?.('shoot', { pitch: this.cannonStyle.pitch + Math.random() * 0.08 })
-    this._spawnBullet(f.x, f.y)
+    const hitX = opts.bulletX ?? f.x
+    const hitY = opts.bulletY ?? f.y
+    this._spawnBullet(hitX, hitY)
+
+    const previewDamage = Math.max(0, Number(this.cannonStyle.damage || 0))
+    if (previewDamage > 0 && typeof f.hp === 'number' && typeof f.maxHp === 'number') {
+      f.hp = Math.max(0, Math.min(f.maxHp, f.hp - previewDamage))
+      f.hpShownMs = HP_SHOW_MS
+      this._spawnSpark(hitX, hitY, { color: this.cannonStyle.bullet, startScale: 0.5, grow: 1.45 })
+    }
+
     this.pending.set(res.shotSeq, {
       fishId: f.id,
       code: f.code,
@@ -612,24 +1237,30 @@ export class FishingEngine {
       tier: f.tier,
       x: f.x,
       y: f.y,
+      previewDamage,
     })
     return 'fired'
   }
-
-  // 朝游標方向開火：瞄到魚就實際開火（扣注）；空海域才放純視覺曳光，不扣注。
+  // 朝游標方向開火：沿砲口→游標路徑做碰撞，先打到最先擋住彈道的魚；空海域才放純視覺曳光。
   // 限流時不生成視覺子彈，避免玩家誤以為大量子彈有效果（實際上未扣注、未傷魚）。
   _fireToward(px, py) {
     if (this.ctx.phase !== 'playing') return
-    this.aim = this._aimFor(px, py)
-    const f = this._nearestFish(px, py)
-    if (!f) {
-      // 空海域：純視覺曳光
+    const rayTarget = this._rayTargetThrough(px, py)
+    this.aim = this._aimFor(rayTarget.x, rayTarget.y)
+    const hit = this._firstFishOnPath(rayTarget.x, rayTarget.y)
+    if (!hit) {
+      const missId = 'miss-' + (this.idSeq += 1)
+      const res = this.ctx.fire?.(missId, 'MISS')
+      if (!res || !res.ok) {
+        if (res?.reason === 'insufficient') this._showHint('星幣不足，請加值後再開火')
+        return res?.reason || 'inactive'
+      }
       this.ctx.play?.('shoot', { pitch: this.cannonStyle.pitch + Math.random() * 0.08 })
-      this._spawnBullet(px, py)
-    } else {
-      // 有魚：嘗試開火；成功時 _engageFish 內部已呼叫 _spawnBullet；限流時靜默不生成子彈
-      this._engageFish(f)
+      this._spawnBullet(rayTarget.x, rayTarget.y)
+      return 'miss'
     }
+
+    this._engageFish(hit.fish, { aimX: rayTarget.x, aimY: rayTarget.y, bulletX: hit.x, bulletY: hit.y })
   }
 
   _onPointerDown(event) {
@@ -692,9 +1323,9 @@ export class FishingEngine {
 
       // 命中音（統一）：暴擊用 crit、一般用 hit，讓三種結果都有打擊感
       this.ctx.play?.(r.crit ? 'crit' : 'hit')
-      // 浮動傷害數字（命中即冒，不論死活；暴擊橘紅放大）
-      if (r.damage > 0) this._spawnDamage(px, py, r.damage, !!r.crit)
-      // HP 條：以伺服器權威 hpRemaining 更新並顯示一段時間
+      // Critical hits still show text; normal damage numbers are hidden.
+      if (r.crit) this._spawnDamage(px, py, r.damage, true)
+      // Keep authoritative HP internally without drawing HP bars.
       // 夾在 [0, maxHp]：純防禦，避免任何異常偏高回傳讓 HP 條視覺溢出/看似回滿
       if (f && typeof r.hpRemaining === 'number') {
         f.hp = Math.max(0, Math.min(f.maxHp, r.hpRemaining))
@@ -706,7 +1337,9 @@ export class FishingEngine {
         const effMult = Math.max(1, Math.round(r.payout / bet))
         this.ctx.play?.('net')
         this.ctx.play?.('fishCaught')
-        this._spawnSpark(px, py)
+        this._spawnSpark(px, py, { color: effMult >= 30 ? 0xffd75d : 0xfff3c4, startScale: effMult >= 30 ? 0.9 : 0.55, grow: effMult >= 30 ? 2.4 : 1.7 })
+        if (effMult >= 10) this._spawnSpark(px + 16, py - 8, { color: 0x5cf2ff, startScale: 0.38, grow: 1.8 })
+        if (effMult >= 30) this._spawnSpark(px - 20, py + 8, { color: 0xff4f75, startScale: 0.42, grow: 2.1 })
         this._spawnFloat(px, py, r.payout)
         if (f) {
           f.caught = true
@@ -745,29 +1378,37 @@ export class FishingEngine {
     const style = this.cannonStyle
     let g = this.bulletPool.pop()
     if (!g) {
-      g = new Graphics().circle(0, 0, BULLET_BASE_R).fill({ color: 0xffffff }) // 白圓，tint 上色 + scale 調大小
+      g = new Graphics()
+        .ellipse(-10, 0, 18, 5)
+        .fill({ color: 0xffffff, alpha: 0.34 })
+        .circle(0, 0, BULLET_BASE_R)
+        .fill({ color: 0xffffff, alpha: 0.98 })
+        .circle(2, -2, BULLET_BASE_R * 0.35)
+        .fill({ color: 0xffffff, alpha: 0.95 }) // 白圓，tint 上色 + scale 調大小
       this.fxLayer.addChild(g)
     }
     g.visible = true
     g.alpha = 1
     g.tint = style.bullet // 銅暖黃 / 銀藍 / 金赤
     g.scale.set(style.bulletR / BULLET_BASE_R) // 砲台越高子彈越大
-    const sx = this.app.screen.width / 2
-    const sy = this.app.screen.height - 54
+    const { x: sx, y: sy } = this._bulletOrigin()
     g.x = sx
     g.y = sy
+    g.rotation = Math.atan2(ty - sy, tx - sx)
     this.bullets.push({ g, sx, sy, tx, ty, ms: 0 })
     this._spawnMuzzle() // 砲口火光（依砲台等級的大小/顏色）
   }
 
   // 砲口火光：在砲口（沿 aim 方向偏移）噴一個短促放大淡出的火花，顏色/大小依砲台等級。
   _spawnMuzzle() {
-    const W = this.app.screen.width
-    const H = this.app.screen.height
     const style = this.cannonStyle
-    const mx = W / 2 + Math.sin(this.aim) * 44
-    const my = H - 54 - Math.cos(this.aim) * 44
-    this._spawnSpark(mx, my, { color: style.bullet, startScale: style.muzzle / 22, grow: 0.8 })
+    const { x, y } = this._cannonOrigin()
+    const muzzleOffset = Math.max(30, Math.min(64, this.app.screen.height * 0.105 * (style.scale || 1)))
+    const mx = x + Math.sin(this.aim) * muzzleOffset
+    const my = y - Math.cos(this.aim) * muzzleOffset
+    this.cannonPulse = 150
+    this._spawnSpark(mx, my, { color: style.bullet, startScale: style.muzzle / 18, grow: 1.25 })
+    this._spawnSpark(mx + Math.sin(this.aim) * 9, my - Math.cos(this.aim) * 9, { color: 0xffffff, startScale: 0.3, grow: 0.95 })
   }
 
   _updateBullets(dtMs) {
@@ -783,6 +1424,7 @@ export class FishingEngine {
       }
       b.g.x = b.sx + (b.tx - b.sx) * t
       b.g.y = b.sy + (b.ty - b.sy) * t
+      b.g.alpha = t < 0.72 ? 1 : 1 - (t - 0.72) / 0.28
     }
   }
 
@@ -791,7 +1433,16 @@ export class FishingEngine {
     if (this.sparks.length >= cap) return
     let g = this.sparkPool.pop()
     if (!g) {
-      g = new Graphics().circle(0, 0, SPARK_BASE_R).fill({ color: 0xffffff }) // 白圓 + tint 上色
+      g = new Graphics()
+        .circle(0, 0, SPARK_BASE_R)
+        .fill({ color: 0xffffff, alpha: 0.62 })
+        .circle(0, 0, SPARK_BASE_R * 0.42)
+        .fill({ color: 0xffffff, alpha: 1 })
+        .moveTo(-SPARK_BASE_R * 1.4, 0)
+        .lineTo(SPARK_BASE_R * 1.4, 0)
+        .moveTo(0, -SPARK_BASE_R * 1.4)
+        .lineTo(0, SPARK_BASE_R * 1.4)
+        .stroke({ color: 0xffffff, alpha: 0.5, width: 2 }) // 白圓 + tint 上色
       this.fxLayer.addChild(g)
     }
     g.visible = true
@@ -855,9 +1506,9 @@ export class FishingEngine {
       fl.txt.alpha = 1 - t
     }
   }
-
-  // 浮動傷害數字：一般白字、暴擊橘紅放大 + 「暴擊!」。用 tint 上色（避免改 style.fill 重繪），scale 區分大小。
+  // Critical hits still show text; normal damage numbers are hidden.
   _spawnDamage(x, y, dmg, crit) {
+    if (!crit) return
     const cap = this.perfMode ? 10 : 22
     if (this.dmgs.length >= cap) return
     let txt = this.dmgPool.pop()
@@ -869,16 +1520,16 @@ export class FishingEngine {
       txt.anchor.set(0.5)
       this.floatLayer.addChild(txt)
     }
-    txt.text = crit ? `${dmg.toLocaleString()} 暴擊!` : `-${dmg.toLocaleString()}`
-    txt.tint = crit ? 0xff7a3c : 0xfff0d8
+    txt.text = '\u66b4\u64ca'
+    txt.tint = 0xff7a3c
     txt.visible = true
     txt.alpha = 1
     const jx = (Math.random() - 0.5) * 22
-    const baseScale = crit ? 1.55 : 1
+    const baseScale = 1.55
     txt.x = x + jx
     txt.y = y
-    txt.scale.set(crit ? baseScale * 0.5 : baseScale) // 暴擊從小彈出
-    this.dmgs.push({ txt, x: x + jx, y, ms: 0, crit, baseScale })
+    txt.scale.set(baseScale * 0.5)
+    this.dmgs.push({ txt, x: x + jx, y, ms: 0, crit: true, baseScale })
   }
 
   _updateDamage(dtMs) {
@@ -910,7 +1561,7 @@ export class FishingEngine {
   _updateHint(dtMs, W, H) {
     if (!this.hint.visible) return
     this.hint.x = W / 2
-    this.hint.y = H - 90
+    this.hint.y = this._cannonZoneTop(W, H) - 24
     this.hintMs += dtMs
     if (this.hintMs > 1400) this.hint.visible = false
   }
@@ -937,7 +1588,9 @@ export class FishingEngine {
     this.sparks = []
     this.floats = []
     this.dmgs = []
-    this.autoTarget = null
+    this.bubbles = []
+    this.godRays = []
+    this.plankton = []
     this.pending.clear()
     clearCache() // 下次重掛載重新烘焙紋理
   }

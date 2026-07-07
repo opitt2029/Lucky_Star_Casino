@@ -11,6 +11,9 @@
 -- 冪等：ON DUPLICATE KEY UPDATE，可重複執行不報錯。
 -- ============================================================
 
+-- 同 init.sql：容器 mysql client 預設 latin1，不設連線編碼中文暱稱會變亂碼
+SET NAMES utf8mb4;
+
 USE lucky_star_casino;
 
 INSERT INTO members

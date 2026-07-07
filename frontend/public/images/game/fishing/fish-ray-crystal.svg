@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 290 150" role="img" aria-label="Crystal ray fish">
+  <defs>
+    <linearGradient id="ray" x1="36" y1="22" x2="237" y2="118">
+      <stop offset="0" stop-color="#e7ffff" stop-opacity=".92"/>
+      <stop offset=".25" stop-color="#90f4ff" stop-opacity=".72"/>
+      <stop offset=".62" stop-color="#8659ff" stop-opacity=".8"/>
+      <stop offset="1" stop-color="#2a0d66" stop-opacity=".9"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="52%" cy="48%" r="63%">
+      <stop offset="0" stop-color="#d9ffff" stop-opacity=".46"/>
+      <stop offset=".55" stop-color="#966cff" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#44e9ff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-28%" y="-50%" width="162%" height="205%">
+      <feDropShadow dx="0" dy="0" stdDeviation="9" flood-color="#88f7ff" flood-opacity=".45"/>
+      <feDropShadow dx="0" dy="10" stdDeviation="7" flood-color="#050018" flood-opacity=".55"/>
+    </filter>
+  </defs>
+  <ellipse cx="143" cy="74" rx="134" ry="68" fill="url(#halo)"/>
+  <g filter="url(#glow)">
+    <path d="M28 72c42-47 103-63 172-47 23 6 47 20 67 42-31 7-62 20-91 43-41 33-93 24-126-8-9-9-16-19-22-30z" fill="url(#ray)"/>
+    <path d="M155 95c31 4 55 18 84 42-44-9-76-16-108-37z" fill="#815cff" opacity=".42"/>
+    <path d="M83 57c42-17 92-18 142 0" fill="none" stroke="#f0ffff" stroke-width="6" stroke-linecap="round" opacity=".38"/>
+    <path d="M67 76c49 28 101 30 159 4" fill="none" stroke="#d5ffff" stroke-width="4" stroke-linecap="round" opacity=".24"/>
+    <path d="M88 41l34 53M132 29l13 78M181 35l-28 72" stroke="#ffffff" stroke-width="2" opacity=".28"/>
+    <ellipse cx="211" cy="65" rx="7" ry="7" fill="#070917"/>
+    <ellipse cx="214" cy="62" rx="2.3" ry="2.3" fill="#ffffff"/>
+    <path d="M30 72C15 59 8 45 4 31c23 8 42 19 60 37z" fill="#6deeff" opacity=".28"/>
+  </g>
+</svg>

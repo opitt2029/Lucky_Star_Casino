@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 270 135" role="img" aria-label="Metallic gold fish">
+  <defs>
+    <linearGradient id="gold" x1="36" y1="20" x2="230" y2="112">
+      <stop offset="0" stop-color="#fff8be"/>
+      <stop offset=".18" stop-color="#ffd35d"/>
+      <stop offset=".48" stop-color="#d88b18"/>
+      <stop offset=".78" stop-color="#ffce53"/>
+      <stop offset="1" stop-color="#7a3007"/>
+    </linearGradient>
+    <linearGradient id="stripe" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#fff6b0" stop-opacity=".95"/>
+      <stop offset="1" stop-color="#9c3d08" stop-opacity=".2"/>
+    </linearGradient>
+    <radialGradient id="shine" cx="41%" cy="26%" r="58%">
+      <stop stop-color="#fffbe4" stop-opacity=".95"/>
+      <stop offset=".35" stop-color="#fff1a5" stop-opacity=".3"/>
+      <stop offset="1" stop-color="#fff1a5" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="metal" x="-25%" y="-35%" width="155%" height="175%">
+      <feDropShadow dx="0" dy="9" stdDeviation="5" flood-color="#150705" flood-opacity=".58"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#ffd35d" flood-opacity=".45"/>
+    </filter>
+  </defs>
+  <g filter="url(#metal)">
+    <path d="M43 65C25 47 14 29 8 11c26 8 45 23 62 45v19c-18 23-40 38-64 48 7-20 18-40 37-58z" fill="#df8b19"/>
+    <path d="M61 66c39-48 126-57 177-16 21 17 19 35-4 51-58 39-142 22-173-35z" fill="url(#gold)"/>
+    <path d="M96 31c31-17 76-20 113-5-26 8-69 12-113 5z" fill="#fff2a2" opacity=".72"/>
+    <path d="M102 107c35 10 77 7 111-14-18 26-76 36-111 14z" fill="#8f3508" opacity=".48"/>
+    <path d="M91 47c39-21 87-23 129-2" fill="none" stroke="url(#stripe)" stroke-width="9" stroke-linecap="round" opacity=".55"/>
+    <path d="M91 73c44 16 91 15 132-3" fill="none" stroke="#fff1a8" stroke-width="4" stroke-linecap="round" opacity=".32"/>
+    <path d="M138 38l11 16 18 2-13 12 4 18-17-9-16 9 3-18-13-12 18-2z" fill="#fff0a0" opacity=".55"/>
+    <ellipse cx="218" cy="57" rx="10" ry="10" fill="#130d10"/>
+    <ellipse cx="221" cy="53" rx="3" ry="3" fill="#fffbd0"/>
+    <path d="M78 44c44-24 98-26 143-4-45-10-96-8-143 4z" fill="url(#shine)"/>
+  </g>
+</svg>

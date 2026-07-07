@@ -239,7 +239,11 @@ export default function SlotMachine({
 
   return (
     <section
-      className={['slot-machine luxury-panel rounded p-4 sm:p-5', compact ? 'slot-machine--compact' : ''].join(' ')}
+      className={[
+        'slot-machine luxury-panel rounded p-4 sm:p-5',
+        compact ? 'slot-machine--compact' : '',
+        visualBusy ? 'slot-machine--live' : '',
+      ].join(' ')}
       style={{ '--slot-symbol-height': `${symbolHeight}px` }}
     >
       <div className="slot-machine__marquee" aria-hidden="true">

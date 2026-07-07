@@ -1,0 +1,99 @@
+{
+  "uid": "lucky-star-overview",
+  "title": "Lucky Star — 服務總覽（T-090 觀測性）",
+  "tags": ["lucky-star"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "HTTP P99 延遲（秒，by service）",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "-- Grafana --", "default": true },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, service) (rate(http_server_requests_seconds_bucket[1m])))",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "HTTP 吞吐（req/s，by service）",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "-- Grafana --", "default": true },
+      "targets": [
+        {
+          "expr": "sum by (service) (rate(http_server_requests_seconds_count[1m]))",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "HTTP 5xx 錯誤率（req/s，by service/status）",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "-- Grafana --", "default": true },
+      "targets": [
+        {
+          "expr": "sum by (service, status) (rate(http_server_requests_seconds_count{status=~\"5..\"}[1m]))",
+          "legendFormat": "{{service}} {{status}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Resilience4j 熔斷/拒絕（gateway load-shed 元兇）",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "-- Grafana --", "default": true },
+      "targets": [
+        {
+          "expr": "sum by (service, name) (rate(resilience4j_circuitbreaker_not_permitted_calls_total[1m]))",
+          "legendFormat": "{{service}} {{name}} not-permitted"
+        },
+        {
+          "expr": "sum by (service, name, state) (resilience4j_circuitbreaker_state == 1)",
+          "legendFormat": "{{service}} {{name}} state={{state}}"
+        }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "JVM Heap 使用（bytes，by service）",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "-- Grafana --", "default": true },
+      "targets": [
+        {
+          "expr": "sum by (service) (jvm_memory_used_bytes{area=\"heap\"})",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Process CPU 使用率（by service）",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "-- Grafana --", "default": true },
+      "targets": [
+        {
+          "expr": "process_cpu_usage",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1 }, "overrides": [] }
+    }
+  ]
+}

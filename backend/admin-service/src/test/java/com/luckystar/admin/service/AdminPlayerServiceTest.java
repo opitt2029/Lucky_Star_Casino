@@ -1,13 +1,19 @@
 package com.luckystar.admin.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.luckystar.admin.client.MemberClient;
+import com.luckystar.admin.client.MemberServiceException;
 import com.luckystar.admin.dto.PlayerDetail;
 import com.luckystar.admin.dto.PlayerStatusResponse;
 import com.luckystar.admin.dto.PlayerSummary;
@@ -37,13 +43,14 @@ class AdminPlayerServiceTest {
     @Mock WalletTransactionReadRepository transactionRepository;
     @Mock GameRoundReadRepository gameRoundRepository;
     @Mock PlayerBanService playerBanService;
+    @Mock MemberClient memberClient;
 
     AdminPlayerService service;
 
     @BeforeEach
     void setUp() {
         service = new AdminPlayerService(memberRepository, walletRepository,
-                transactionRepository, gameRoundRepository, playerBanService);
+                transactionRepository, gameRoundRepository, playerBanService, memberClient);
     }
 
     private MemberRead member(long id, String username, String nickname) {
@@ -109,23 +116,25 @@ class AdminPlayerServiceTest {
     }
 
     @Test
-    void setStatus_disable_bansAndReportsDisabled() {
+    void setStatus_disable_persistsThenBans() {
         when(memberRepository.existsById(1L)).thenReturn(true);
 
         Optional<PlayerStatusResponse> result = service.setStatus(1L, false);
 
         assertThat(result).contains(new PlayerStatusResponse(1L, true));
+        verify(memberClient).updateStatus(1L, false);
         verify(playerBanService).ban(1L);
         verify(playerBanService, never()).unban(eq(1L));
     }
 
     @Test
-    void setStatus_enable_unbansAndReportsEnabled() {
+    void setStatus_enable_persistsThenUnbans() {
         when(memberRepository.existsById(1L)).thenReturn(true);
 
         Optional<PlayerStatusResponse> result = service.setStatus(1L, true);
 
         assertThat(result).contains(new PlayerStatusResponse(1L, false));
+        verify(memberClient).updateStatus(1L, true);
         verify(playerBanService).unban(1L);
     }
 
@@ -134,6 +143,19 @@ class AdminPlayerServiceTest {
         when(memberRepository.existsById(99L)).thenReturn(false);
 
         assertThat(service.setStatus(99L, false)).isEmpty();
+        verify(memberClient, never()).updateStatus(anyLong(), anyBoolean());
         verify(playerBanService, never()).ban(any());
+    }
+
+    @Test
+    void setStatus_memberServiceDown_throwsAndSkipsRedis() {
+        // DB 持久化失敗就整個操作失敗（→ 502），不可留下「Redis 已封鎖但 DB 仍 ACTIVE」的半套狀態
+        when(memberRepository.existsById(1L)).thenReturn(true);
+        doThrow(new MemberServiceException("down")).when(memberClient).updateStatus(1L, false);
+
+        assertThatThrownBy(() -> service.setStatus(1L, false))
+                .isInstanceOf(MemberServiceException.class);
+        verify(playerBanService, never()).ban(any());
+        verify(playerBanService, never()).unban(any());
     }
 }

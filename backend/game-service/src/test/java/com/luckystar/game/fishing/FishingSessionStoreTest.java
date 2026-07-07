@@ -93,12 +93,19 @@ class FishingSessionStoreTest {
         Map<String, Long> fishDamage = new LinkedHashMap<>();
         fishDamage.put("f1", 15L);
         fishDamage.put("f2", 40L);
+        Map<String, Long> fishRecovery = new LinkedHashMap<>();
+        fishRecovery.put("f1", 210L);
+        fishRecovery.put("f2", 420L);
         List<FishingSession.KillRecord> kills = new ArrayList<>();
-        kills.add(new FishingSession.KillRecord(7L, "DRAGON_KING", 1990L));
+        kills.add(new FishingSession.KillRecord(7L, "DRAGON_KING", 1990L, 3));
+        List<String> topUpRequestIds = new ArrayList<>();
+        topUpRequestIds.add("topup-1");
 
         store.save(baseSession()
                 .fishDamage(fishDamage)
+                .fishRecovery(fishRecovery)
                 .kills(kills)
+                .topUpRequestIds(topUpRequestIds)
                 .build());
 
         FishingSession loaded = store.find(PLAYER_ID).orElseThrow();
@@ -107,6 +114,9 @@ class FishingSessionStoreTest {
         assertEquals(2, loaded.getFishDamage().size());
         assertEquals(15L, loaded.getFishDamage().get("f1"));
         assertEquals(40L, loaded.getFishDamage().get("f2"));
+        assertEquals(2, loaded.getFishRecovery().size());
+        assertEquals(210L, loaded.getFishRecovery().get("f1"));
+        assertEquals(420L, loaded.getFishRecovery().get("f2"));
 
         // 致命一擊紀錄必須完整還原（供結算後 verifyShot 重放）
         assertEquals(1, loaded.getKills().size());
@@ -114,9 +124,11 @@ class FishingSessionStoreTest {
         assertEquals(7L, k.getShotSeq());
         assertEquals("DRAGON_KING", k.getFishType());
         assertEquals(1990L, k.getDamageBefore());
+        assertEquals(3, k.getCannonLevel());
 
         // 子彈面額（玩家自選、整場固定，ADR-004）必須完整還原——漏存會讓跨批 validateBatch 注額對不上、整批被拒
         assertEquals(100L, loaded.getBetPerShot());
+        assertEquals(List.of("topup-1"), loaded.getTopUpRequestIds());
     }
 
     @Test
@@ -127,6 +139,7 @@ class FishingSessionStoreTest {
         FishingSession loaded = store.find(PLAYER_ID).orElseThrow();
 
         assertTrue(loaded.getFishDamage().isEmpty(), "fishDamage 應為空表");
+        assertTrue(loaded.getFishRecovery().isEmpty(), "fishRecovery 應為空表");
         assertTrue(loaded.getKills().isEmpty(), "kills 應為空清單");
     }
 

@@ -39,6 +39,11 @@ public class FishingShotsRequest {
         @Max(value = 10000, message = "betPerShot 上限 10,000")
         private Long betPerShot;
 
+        /** Per-shot cannon/ammo level. Omitted by old clients means: use the current session cannon. */
+        @Min(value = 1, message = "cannonLevel 最小為 1")
+        @Max(value = 3, message = "cannonLevel 最大為 3")
+        private Integer cannonLevel;
+
         /** 目標魚種代碼（FishSpecies 名稱）。 */
         @NotBlank(message = "缺少魚種代碼 fishType")
         private String fishType;

@@ -55,11 +55,15 @@ public class FishingSessionStore {
     private static final String F_LAST_ACTIVITY_AT = "lastActivityAt";
     private static final String F_INTERCEPTED = "intercepted";
     private static final String F_FISH_DAMAGE = "fishDamage";
+    private static final String F_FISH_RECOVERY = "fishRecovery";
     private static final String F_KILLS = "kills";
+    private static final String F_TOP_UP_REQUEST_IDS = "topUpRequestIds";
 
     private static final TypeReference<LinkedHashMap<String, Long>> FISH_DAMAGE_TYPE =
             new TypeReference<>() {};
     private static final TypeReference<List<FishingSession.KillRecord>> KILLS_TYPE =
+            new TypeReference<>() {};
+    private static final TypeReference<List<String>> TOP_UP_IDS_TYPE =
             new TypeReference<>() {};
 
     private final StringRedisTemplate redisTemplate;
@@ -151,7 +155,9 @@ public class FishingSessionStore {
         putIfNotNull(h, F_INTERCEPTED, s.getIntercepted());
         // 血量/傷害模型的跨批狀態：以 JSON 持久化，缺了會讓每批重讀後累傷歸零（魚永遠打不死）。
         writeJson(h, F_FISH_DAMAGE, s.getFishDamage());
+        writeJson(h, F_FISH_RECOVERY, s.getFishRecovery());
         writeJson(h, F_KILLS, s.getKills());
+        writeJson(h, F_TOP_UP_REQUEST_IDS, s.getTopUpRequestIds());
         return h;
     }
 
@@ -190,7 +196,9 @@ public class FishingSessionStore {
                 .lastActivityAt(parseInstant(h.get(F_LAST_ACTIVITY_AT)))
                 .intercepted(parseBoolean(h.get(F_INTERCEPTED)))
                 .fishDamage(readFishDamage(h.get(F_FISH_DAMAGE)))
+                .fishRecovery(readFishDamage(h.get(F_FISH_RECOVERY)))
                 .kills(readKills(h.get(F_KILLS)))
+                .topUpRequestIds(readTopUpRequestIds(h.get(F_TOP_UP_REQUEST_IDS)))
                 .build();
     }
 
@@ -205,6 +213,20 @@ public class FishingSessionStore {
         } catch (JsonProcessingException ex) {
             log.warn("反序列化 fishing fishDamage 失敗，改用空表: {}", ex.toString());
             return new LinkedHashMap<>();
+        }
+    }
+
+    /** 還原場中加值 idempotency key 清單；欄位缺失或 JSON 毀損時保守回空 List。 */
+    private List<String> readTopUpRequestIds(String json) {
+        if (!StringUtils.hasText(json)) {
+            return new ArrayList<>();
+        }
+        try {
+            List<String> parsed = objectMapper.readValue(json, TOP_UP_IDS_TYPE);
+            return parsed != null ? parsed : new ArrayList<>();
+        } catch (JsonProcessingException ex) {
+            log.warn("反序列化 fishing topUpRequestIds 失敗，改用空清單: {}", ex.toString());
+            return new ArrayList<>();
         }
     }
 

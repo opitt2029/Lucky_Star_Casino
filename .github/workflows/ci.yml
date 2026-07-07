@@ -36,11 +36,12 @@ jobs:
   #   各服務的 @SpringBootTest（contextLoads）會實際載入整個 Spring context，
   #   能在合併前就攔截「服務根本起不來」這類設定錯誤。
   #
-  # 不需外部資料庫：member / wallet 的測試皆使用 H2 記憶體資料庫（見各自
-  #   src/test/resources/application.yml），所以 CI 不必啟動 PostgreSQL/MySQL/Kafka。
+  # 不需外部資料庫/Kafka：全部服務的測試皆使用 H2 記憶體資料庫（見各自
+  #   src/test/resources/application.yml），game/rank/notification 另用
+  #   @EmbeddedKafka 起內嵌 broker，所以 CI 不必啟動 PostgreSQL/MySQL/Kafka。
   #
-  # 範圍：目前只跑「已實作」的三個服務。game/rank/admin 仍為骨架，待其補上
-  #   可獨立啟動的測試設定後，再加進下面的 -pl 清單。
+  # 範圍：七個服務全部已實作且測試綠燈（見 CHANGELOG 2026-07-01 健檢紀錄），
+  #   全部納入擋關清單。
   # ---------------------------------------------------------------------------
   backend-test:
     name: 後端服務測試
@@ -65,38 +66,53 @@ jobs:
           java-version: '21'
           cache: maven   # 快取 ~/.m2，加速後續執行
 
-      - name: 執行後端測試（gateway / member / wallet / admin）
+      - name: 執行後端測試（gateway / member / wallet / admin / game / rank / notification）
         run: >-
           mvn -B -ntp
-          -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/admin-service
+          -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/admin-service,backend/game-service,backend/rank-service,backend/notification-service
           clean test
 
+      # ADR-007：wallet-service 真實資料庫（Testcontainers）測試。
+      # 上面的 H2 測試驗證「服務起得來、邏輯正確」；這一步用真 postgres:16 + mysql:8.4
+      # 套 database/ 真 schema + ddl-auto=validate，攔截 entity↔schema 漂移、
+      # CHECK 約束與樂觀鎖等 H2 測不到的問題。ubuntu-latest 內建 Docker，免額外服務設定。
+      - name: 執行 wallet-service 真實資料庫測試（Testcontainers）
+        run: mvn -B -ntp -pl backend/wallet-service test -Pcontainers-test
+
   # ---------------------------------------------------------------------------
-  # Job 3：前端單元測試（Vitest）
-  #
-  # 範圍：純單元測試（不含 Playwright e2e，e2e 走 npm run e2e 另行執行）。
-  #   目前覆蓋 src/services/api.test.js —— axios 401 攔截器的自動續期/single-flight/
-  #   續期失敗登出等流程。新增前端單元測試只要放 src/**/*.test.{js,jsx} 即會被納入。
+  # Job 3: frontend quality gate (lint / unit / build / browser smoke)
   # ---------------------------------------------------------------------------
   frontend-test:
-    name: 前端單元測試
+    name: Frontend quality gate
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontend
     steps:
-      - name: Checkout 程式碼
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 安裝 Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: 安裝相依
+      - name: Install dependencies
         run: npm ci
 
-      - name: 執行 Vitest
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run Vitest
         run: npm test
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright smoke
+        run: npm run e2e

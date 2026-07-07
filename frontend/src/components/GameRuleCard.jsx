@@ -1,48 +1,33 @@
 import { useEffect, useId, useState } from 'react'
+import { createPortal } from 'react-dom'
 
-export default function GameRuleCard({ title, subtitle, rules, payouts = [] }) {
+export default function GameRuleCard({ title, subtitle, rules = [], payouts = [] }) {
   const [open, setOpen] = useState(false)
   const titleId = useId()
 
   useEffect(() => {
     if (!open) return undefined
 
+    const previousOverflow = document.body.style.overflow
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
         setOpen(false)
       }
     }
 
+    document.body.style.overflow = 'hidden'
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
   }, [open])
 
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="luxury-panel group w-full rounded p-4 text-left transition hover:border-yellow-200/60 hover:brightness-110"
-      >
-        <span className="flex items-center justify-between gap-3">
-          <span>
-            <span className="gold-muted block text-xs font-black uppercase tracking-[0.25em]">
-              Guide
-            </span>
-            <span className="brand-title mt-1 block text-xl font-black">遊戲規則</span>
-          </span>
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-yellow-200/40 bg-yellow-200/10 text-lg font-black text-yellow-100 transition group-hover:bg-yellow-200 group-hover:text-red-950">
-            ?
-          </span>
-        </span>
-        <span className="mt-3 block text-sm font-bold leading-6 text-yellow-100/66">
-          {subtitle}
-        </span>
-      </button>
-
-      {open && (
+  const dialog = open && typeof document !== 'undefined'
+    ? createPortal(
         <section
-          className="fixed inset-0 z-50 grid place-items-center bg-red-950/74 px-4 py-6 backdrop-blur-sm"
+          className="fixed inset-0 z-[1000] grid place-items-center bg-red-950/74 px-4 py-6 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
@@ -54,9 +39,7 @@ export default function GameRuleCard({ title, subtitle, rules, payouts = [] }) {
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="gold-muted text-xs font-black uppercase tracking-[0.25em]">
-                  Rules
-                </p>
+                <p className="gold-muted text-xs font-black uppercase tracking-[0.25em]">Rules</p>
                 <h2 id={titleId} className="brand-title mt-1 text-2xl font-black">
                   {title}
                 </h2>
@@ -73,7 +56,7 @@ export default function GameRuleCard({ title, subtitle, rules, payouts = [] }) {
             <div className="mt-5 grid gap-3">
               {rules.map((rule, index) => (
                 <div
-                  key={rule}
+                  key={`${index}-${rule}`}
                   className="flex gap-3 rounded border border-yellow-200/15 bg-red-950/70 p-3"
                 >
                   <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-yellow-200 text-sm font-black text-red-950">
@@ -86,9 +69,7 @@ export default function GameRuleCard({ title, subtitle, rules, payouts = [] }) {
 
             {payouts.length > 0 && (
               <div className="mt-4 rounded border border-yellow-200/15 bg-red-950/70 p-3">
-                <p className="gold-muted text-xs font-black uppercase tracking-[0.2em]">
-                  Payout
-                </p>
+                <p className="gold-muted text-xs font-black uppercase tracking-[0.2em]">Payout</p>
                 <div className="mt-3 grid gap-2">
                   {payouts.map((item) => (
                     <div key={item.label} className="flex items-center justify-between gap-3 text-sm">
@@ -100,8 +81,31 @@ export default function GameRuleCard({ title, subtitle, rules, payouts = [] }) {
               </div>
             )}
           </div>
-        </section>
-      )}
+        </section>,
+        document.body,
+      )
+    : null
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="luxury-panel group w-full rounded p-4 text-left transition hover:border-yellow-200/60 hover:brightness-110"
+      >
+        <span className="flex items-center justify-between gap-3">
+          <span>
+            <span className="gold-muted block text-xs font-black uppercase tracking-[0.25em]">Guide</span>
+            <span className="brand-title mt-1 block text-xl font-black">遊戲規則</span>
+          </span>
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-yellow-200/40 bg-yellow-200/10 text-lg font-black text-yellow-100 transition group-hover:bg-yellow-200 group-hover:text-red-950">
+            ?
+          </span>
+        </span>
+        <span className="mt-3 block text-sm font-bold leading-6 text-yellow-100/66">{subtitle}</span>
+      </button>
+
+      {dialog}
     </>
   )
 }

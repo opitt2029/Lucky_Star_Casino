@@ -190,6 +190,16 @@ spring:
               args:
                 name: admin-service
                 fallbackUri: forward:/fallback/admin
+        # 即時推播 WebSocket（STOMP over SockJS，T-070~T-072）：端點在 notification-service。
+        # SockJS 交握含 /ws/info、/ws/{server}/{session}/{transport} 等子路徑，用 http:// URI 即可——
+        # 帶 Upgrade header 的請求會被 RouteToRequestUrlFilter 自動把 scheme 轉成 ws，一般 SockJS
+        # HTTP 交握（info/polling）仍走普通路由。JWT 驗證延後到 STOMP CONNECT 帧，由 notification-service
+        # 的 StompAuthChannelInterceptor 處理（見 docs/architecture.md），故此路徑列入下方 JWT whitelist；
+        # 長連線不套用 CircuitBreaker（熔斷後轉發 JSON fallback 對已升級的 WS 連線沒有意義）。
+        - id: notification-ws
+          uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8087}
+          predicates:
+            - Path=/ws,/ws/**
 
 # 每玩家限流設定（PlayerRateLimitGlobalFilter 使用）
 rate-limit:
@@ -267,6 +277,13 @@ jwt:
     - /swagger-ui
     - /v3/api-docs
     - /webjars
+    # WebSocket（T-070）：STOMP CONNECT 帧才帶 JWT，HTTP 層 SockJS 交握不帶 Authorization header
+    - /ws
+    # 後台（T-050）：admin JWT 用獨立 ADMIN_JWT_SECRET 簽發，gateway 的玩家 secret 驗不了它
+    # （驗必失敗 401）。故 /admin/** 純轉發，認證/角色授權全由 admin-service 自身的
+    # Spring Security（AdminJwtAuthFilter + @PreAuthorize）強制——該服務對未帶有效
+    # ADMIN JWT 的請求一律 401/403，不依賴 gateway 守門。勿移除此項，否則後台整條路徑不通。
+    - /admin/
 
 # Swagger 聚合 UI（T-092）：gateway 本身無 REST API（停用自身 api-docs），
 # 僅作為各下游服務文件的聚合入口。瀏覽 http://localhost:8080/swagger-ui.html，
@@ -291,10 +308,15 @@ springdoc:
         url: /v3/api-docs/notification
 
 management:
+  metrics:
+    distribution:
+      percentiles-histogram:
+        # P99 直方圖（T-090 觀測性）：供 Prometheus histogram_quantile 計算延遲分位數
+        "[http.server.requests]": true
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: always

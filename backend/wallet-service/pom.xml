@@ -63,6 +63,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>runtime</scope>
+        </dependency>
 
         <!-- PostgreSQL Driver (ADR-001: wallets / wallet_transactions 寫庫) -->
         <dependency>
@@ -110,6 +115,26 @@
             <artifactId>h2</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- Testcontainers（ADR-007）：真實 PostgreSQL/MySQL 容器測試，套用
+             database/{postgres,mysql} 的真 schema + ddl-auto=validate，
+             補 H2 測不到的 CHECK 約束 / 樂觀鎖 / 雙資料源交易語意。
+             測試類標 @Tag("containers")，預設不跑，-Pcontainers-test 啟用（需 Docker）。 -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>mysql</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -134,6 +159,10 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
+                    <!-- 預設排除 Testcontainers 測試（@Tag("containers")），保住「CI/本機
+                         mvn test 零外部依賴」的既有約定（AGENTS.md 雷區 3）；
+                         要跑真容器測試用 -Pcontainers-test（見下方 profile）。 -->
+                    <excludedGroups>containers</excludedGroups>
                     <systemPropertyVariables>
                         <jpa.ddl-auto>create</jpa.ddl-auto>
                         <!-- 測試用 H2：兩端皆以 H2Dialect 產 SQL，避免 PostgreSQLDialect 對 H2
@@ -145,4 +174,31 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- ADR-007：真實資料庫容器測試。只跑 @Tag("containers")，並把 JPA 切回
+             真方言 + ddl-auto=validate（驗證 entity ↔ database/ 真 schema 無漂移——
+             這正是 H2 create 模式永遠測不到的）。需要本機 Docker。
+             用法：mvn -pl backend/wallet-service test -Pcontainers-test -->
+        <profile>
+            <id>containers-test</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <groups>containers</groups>
+                            <excludedGroups combine.self="override"/>
+                            <systemPropertyVariables>
+                                <jpa.ddl-auto>validate</jpa.ddl-auto>
+                                <jpa.dialect.postgres>org.hibernate.dialect.PostgreSQLDialect</jpa.dialect.postgres>
+                                <jpa.dialect.mysql>org.hibernate.dialect.MySQLDialect</jpa.dialect.mysql>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

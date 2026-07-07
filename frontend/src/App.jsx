@@ -1,27 +1,44 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchProfile } from './store/slices/authSlice'
 
 import Home from './pages/Home'
 import Member from './pages/Member'
-import Lobby from './pages/Lobby'
-import SlotGame from './pages/SlotGame'
-import Baccarat from './pages/Baccarat'
-import Fishing from './pages/Fishing'
-import Rank from './pages/Rank'
-import Profile from './pages/Profile'
-import Transactions from './pages/Transactions'
-import GameHistory from './pages/GameHistory'
-import CasinoShop from './pages/CasinoShop'
-import Inventory from './pages/Inventory'
-import CheckIn from './pages/CheckIn'
-import Diamond from './pages/Diamond'
-import Topup from './pages/Topup'
 import PageTransition from './components/PageTransition'
 import QuickToolbar from './components/QuickToolbar'
 import FriendFloatingPanel from './components/FriendFloatingPanel'
 import SupportModal from './components/SupportModal'
+
+const Lobby = lazy(() => import('./pages/Lobby'))
+const SlotGame = lazy(() => import('./pages/SlotGame'))
+const Baccarat = lazy(() => import('./pages/Baccarat'))
+const Fishing = lazy(() => import('./pages/Fishing'))
+const Rank = lazy(() => import('./pages/Rank'))
+const Profile = lazy(() => import('./pages/Profile'))
+const Transactions = lazy(() => import('./pages/Transactions'))
+const GameHistory = lazy(() => import('./pages/GameHistory'))
+const CasinoShop = lazy(() => import('./pages/CasinoShop'))
+const Inventory = lazy(() => import('./pages/Inventory'))
+const CheckIn = lazy(() => import('./pages/CheckIn'))
+const Diamond = lazy(() => import('./pages/Diamond'))
+const Topup = lazy(() => import('./pages/Topup'))
+
+const enableDevTools = import.meta.env.VITE_ENABLE_DEV_TOOLS === 'true'
+const IntegrationTestPage = enableDevTools ? lazy(() => import('./pages/IntegrationTestPage')) : null
+
+function RouteFallback() {
+  return (
+    <div className="route-fallback" role="status" aria-live="polite">
+      <span className="route-fallback__mark" aria-hidden="true" />
+      <span>頁面載入中...</span>
+    </div>
+  )
+}
+
+function LazyPage({ children }) {
+  return <Suspense fallback={<RouteFallback />}>{children}</Suspense>
+}
 
 function PrivateRoute({ children }) {
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
@@ -29,11 +46,34 @@ function PrivateRoute({ children }) {
   return isAuthenticated ? children : <Navigate to="/member?mode=login" replace state={{ from: location }} />
 }
 
+function ProtectedPage({ children }) {
+  return (
+    <PrivateRoute>
+      <LazyPage>{children}</LazyPage>
+    </PrivateRoute>
+  )
+}
+
+function SiteChrome() {
+  const location = useLocation()
+  const isStandaloneTool = enableDevTools && location.pathname.startsWith('/dev/integration')
+
+  if (isStandaloneTool) return null
+
+  return (
+    <>
+      <QuickToolbar />
+      <FriendFloatingPanel />
+      <SupportModal />
+
+    </>
+  )
+}
+
 export default function App() {
   const dispatch = useDispatch()
   const { isAuthenticated, player } = useSelector((state) => state.auth)
 
-  // 頁面重整後 token 還在，但 player 是 null，自動重新抓一次 profile
   useEffect(() => {
     if (isAuthenticated && !player) {
       dispatch(fetchProfile())
@@ -41,7 +81,7 @@ export default function App() {
   }, [dispatch, isAuthenticated, player])
 
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <PageTransition>
         <Routes>
           {/* Public routes */}
@@ -49,113 +89,128 @@ export default function App() {
           <Route path="/member" element={<Member />} />
           <Route path="/login" element={<Navigate to="/member?mode=login" replace />} />
           <Route path="/register" element={<Navigate to="/member?mode=register" replace />} />
-          <Route path="/shop" element={<CasinoShop />} />
+          <Route
+            path="/shop"
+            element={
+              <LazyPage>
+                <CasinoShop />
+              </LazyPage>
+            }
+          />
 
           {/* Protected routes */}
           <Route
             path="/check-in"
             element={
-              <PrivateRoute>
+              <ProtectedPage>
                 <CheckIn />
-              </PrivateRoute>
+              </ProtectedPage>
             }
           />
           <Route
             path="/games"
             element={
-              <PrivateRoute>
+              <ProtectedPage>
                 <Lobby />
-              </PrivateRoute>
+              </ProtectedPage>
             }
           />
           <Route
             path="/diamond"
             element={
-              <PrivateRoute>
+              <ProtectedPage>
                 <Diamond />
-              </PrivateRoute>
+              </ProtectedPage>
             }
           />
           <Route
             path="/topup"
             element={
-              <PrivateRoute>
+              <ProtectedPage>
                 <Topup />
-              </PrivateRoute>
+              </ProtectedPage>
             }
           />
           <Route
             path="/game/slot"
             element={
-              <PrivateRoute>
+              <ProtectedPage>
                 <SlotGame />
-              </PrivateRoute>
+              </ProtectedPage>
             }
           />
           <Route
             path="/game/baccarat"
             element={
-              <PrivateRoute>
+              <ProtectedPage>
                 <Baccarat />
-              </PrivateRoute>
+              </ProtectedPage>
             }
           />
           <Route
             path="/game/fishing"
             element={
-              <PrivateRoute>
+              <ProtectedPage>
                 <Fishing />
-              </PrivateRoute>
+              </ProtectedPage>
             }
           />
           <Route
             path="/rank"
             element={
-              <PrivateRoute>
+              <ProtectedPage>
                 <Rank />
-              </PrivateRoute>
+              </ProtectedPage>
             }
           />
           <Route
             path="/profile"
             element={
-              <PrivateRoute>
+              <ProtectedPage>
                 <Profile />
-              </PrivateRoute>
+              </ProtectedPage>
             }
           />
           <Route
             path="/inventory"
             element={
-              <PrivateRoute>
+              <ProtectedPage>
                 <Inventory />
-              </PrivateRoute>
+              </ProtectedPage>
             }
           />
           <Route
             path="/transactions"
             element={
-              <PrivateRoute>
+              <ProtectedPage>
                 <Transactions />
-              </PrivateRoute>
+              </ProtectedPage>
             }
           />
           <Route
             path="/game-history"
             element={
-              <PrivateRoute>
+              <ProtectedPage>
                 <GameHistory />
-              </PrivateRoute>
+              </ProtectedPage>
             }
           />
 
+          {enableDevTools && IntegrationTestPage && (
+            <Route
+              path="/dev/integration"
+              element={
+                <ProtectedPage>
+                  <IntegrationTestPage />
+                </ProtectedPage>
+              }
+            />
+          )}
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </PageTransition>
-      <QuickToolbar />
-      <FriendFloatingPanel />
-      <SupportModal />
+      <SiteChrome />
     </BrowserRouter>
   )
 }

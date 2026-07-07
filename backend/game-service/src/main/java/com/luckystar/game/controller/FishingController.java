@@ -7,6 +7,8 @@ import com.luckystar.game.dto.FishingShotVerifyResponse;
 import com.luckystar.game.dto.FishingShotsRequest;
 import com.luckystar.game.dto.FishingShotsResponse;
 import com.luckystar.game.dto.FishingStartRequest;
+import com.luckystar.game.dto.FishingTopUpRequest;
+import com.luckystar.game.dto.FishingTopUpResponse;
 import com.luckystar.game.service.FishingService;
 import jakarta.validation.Valid;
 import java.util.Optional;
@@ -29,6 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
  *   <li>{@code POST /session/start}：buy-in 開場（冪等扣款；已有場次則續玩）。</li>
  *   <li>{@code GET  /session/active}：查進行中場次（斷線重連恢復）。</li>
  *   <li>{@code POST /{sessionId}/shots}：批次射擊（只動局內餘額）。</li>
+ *   <li>{@code POST /{sessionId}/top-up}：場中加值（冪等自 wallet 扣款轉入局內餘額，不結算）。</li>
  *   <li>{@code POST /{sessionId}/end}：結算（剩餘局內餘額回 wallet、揭露 serverSeed）。</li>
  *   <li>{@code GET  /{sessionId}/verify-shot}：結算後逐發公平性驗證。</li>
  * </ul>
@@ -79,6 +82,21 @@ public class FishingController {
             return badPlayerId(playerIdStr);
         }
         FishingShotsResponse response = fishingService.shots(playerId, sessionId, request.getShots());
+        return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
+    @PostMapping("/{sessionId}/top-up")
+    public ResponseEntity<ApiResponse<FishingTopUpResponse>> topUp(
+            @RequestHeader(value = "X-User-Id", required = false) String playerIdStr,
+            @PathVariable String sessionId,
+            @Valid @RequestBody FishingTopUpRequest request) {
+
+        Long playerId = parsePlayerId(playerIdStr);
+        if (playerId == null) {
+            return badPlayerId(playerIdStr);
+        }
+        FishingTopUpResponse response = fishingService.topUp(
+                playerId, sessionId, request.getAmount(), request.getClientRequestId());
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 

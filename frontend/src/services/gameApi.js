@@ -1,7 +1,7 @@
 import api from './api'
 import { mockApi } from './mockApi'
 
-const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
+const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true'
 
 // 封裝對 game-service（透過 Gateway）真實 API 的呼叫。
 // 玩家身分由 gateway 驗證 JWT 後以 X-User-Id 注入，前端只需帶 access token（api.js 已處理）。
@@ -86,6 +86,14 @@ export const gameApi = {
   },
 
   // POST /{sessionId}/end → 結算（剩餘局內餘額 credit 回 wallet、揭露 serverSeed）。
+  async fishingTopUp({ sessionId, amount, clientRequestId }) {
+    if (useMockApi) {
+      return mockApi.fishingTopUp({ sessionId, amount, clientRequestId })
+    }
+    const res = await api.post(`/api/v1/game/fishing/${sessionId}/top-up`, { amount, clientRequestId })
+    return res.data.data
+  },
+
   async fishingEnd({ sessionId }) {
     if (useMockApi) {
       return mockApi.fishingEnd({ sessionId })

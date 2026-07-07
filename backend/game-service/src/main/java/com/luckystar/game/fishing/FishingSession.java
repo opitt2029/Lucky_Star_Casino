@@ -98,12 +98,20 @@ public class FishingSession {
     @Builder.Default
     private Map<String, Long> fishDamage = new LinkedHashMap<>();
 
+    /** Residual recovery accrued per fish instance when ammo/cannon can change during a round. */
+    @Builder.Default
+    private Map<String, Long> fishRecovery = new LinkedHashMap<>();
+
     /**
      * 致命一擊紀錄（供結算後 verifyShot 精確重放）：記錄每次「血量歸零」那一發的
      * shotSeq、魚種與該發之前的累積傷害（damageBefore）。
      */
     @Builder.Default
     private List<KillRecord> kills = new ArrayList<>();
+
+    /** Idempotency keys for in-session top-up requests. */
+    @Builder.Default
+    private List<String> topUpRequestIds = new ArrayList<>();
 
     public boolean isActive() {
         return "ACTIVE".equals(state);
@@ -118,5 +126,7 @@ public class FishingSession {
         private String fishType;
         /** 該致命一擊之前該魚已累積的傷害（verifyShot 用以對齊判定）。 */
         private long damageBefore;
+        /** Cannon level used by the killing shot; needed when ammo can change mid-round. */
+        private int cannonLevel;
     }
 }
