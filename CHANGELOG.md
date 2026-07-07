@@ -17,7 +17,6 @@
 ### Verified
 - `node --test tests/infra/*.test.js` 全綠；`docker compose config --profile observability` 解析通過；七模組 `mvn test` 全綠（見 PR）。
 
-feature/weiyu-admin-console
 ## [test] -- 2026-07-07 -- wallet-service 新增 Testcontainers 真實資料庫測試（ADR-007）
 
 ### Added
