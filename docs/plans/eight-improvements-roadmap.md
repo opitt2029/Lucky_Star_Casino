@@ -12,7 +12,7 @@
 | P2a | 觀測性 Micrometer + Prometheus/Grafana | M | ✅ 已合併（PR #167） |
 | P2b | T-090 壓測完整實跑 | L | 🔶 進行中（中途進度 PR #169；根因鏈已定位，見下） |
 | P3 | 捕魚 Redis session 原子化（Lua CAS） | M | ⬜ 未動工 |
-| P4 | game→wallet 最小 Saga 補償 | L | ⬜ 未動工 |
+| P4 | game→wallet 最小 Saga 補償 | L | ✅ 已完成（ADR-009，直推 develop，見 CHANGELOG 2026-07-07） |
 | P5 | 玩法契約單一來源化（contracts/*.json） | M | ⬜ 未動工 |
 | P6 | 一鍵全容器化（compose overlay） | M/L | ⬜ 未動工 |
 | P7 | Secret 管理（.env.example 佔位符＋CI 即時生成） | S | ⬜ 未動工 |

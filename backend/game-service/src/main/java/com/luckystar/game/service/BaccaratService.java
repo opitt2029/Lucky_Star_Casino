@@ -8,6 +8,7 @@ import com.luckystar.game.baccarat.BaccaratSettlement;
 import com.luckystar.game.baccarat.Card;
 import com.luckystar.game.client.WalletClient;
 import com.luckystar.game.client.dto.WalletCreditResponse;
+import com.luckystar.game.compensation.WalletCompensationService;
 import com.luckystar.game.client.dto.WalletDebitResponse;
 import com.luckystar.game.dto.BaccaratBetResponse;
 import com.luckystar.game.dto.BaccaratResultResponse;
@@ -67,6 +68,7 @@ public class BaccaratService {
     private final GameSessionService sessionService;
     private final ObjectMapper objectMapper;
     private final RiskControlService riskControlService;
+    private final WalletCompensationService compensationService;
 
     /**
      * 下注（commit-ahead 第一階段）：驗證多區押注、扣款、建立 STARTED Session、回傳 serverSeedHash 承諾。
@@ -191,8 +193,18 @@ public class BaccaratService {
         long rebate = Math.max(1L, totalBet / 200);
 
         // 派彩 + 反水一併入帳（冪等）；反水保證每局都有 credit 呼叫。
-        WalletCreditResponse credit = walletClient.credit(
-                playerId, totalPayout + rebate, "bac-win-" + roundId, roundId);
+        WalletCreditResponse credit;
+        try {
+            credit = walletClient.credit(
+                    playerId, totalPayout + rebate, "bac-win-" + roundId, roundId);
+        } catch (RuntimeException ex) {
+            // 結算派彩送不進 wallet（ADR-009）：落補償單（同一冪等鍵）後把原例外拋回。
+            // Session 仍是 STARTED，玩家可重試 /result（結果由 seed 確定性重算，帳務冪等）；
+            // 不重試也有排程 30 秒內補入帳。
+            compensationService.recordPending(GAME_TYPE, roundId, playerId, totalPayout + rebate,
+                    "WIN", "bac-win-" + roundId, ex);
+            throw ex;
+        }
         WalletView wallet = WalletView.builder()
                 .balance(credit.balanceAfter())
                 .frozenAmount(credit.frozenAfter() == null ? 0L : credit.frozenAfter())

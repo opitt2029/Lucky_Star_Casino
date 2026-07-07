@@ -1,3 +1,27 @@
+## [feat] -- 2026-07-07 -- game→wallet 最小 Saga 補償：credit 失敗落補償單、排程冪等重試（Phase 4，ADR-009）
+
+### 背景
+- game-service 對 wallet 的派彩/退款 credit 是同步 HTTP；wallet 短暫不可用時，「玩家已扣款、已贏（或該退款）」的錢只剩一行 log（fishing 退款失敗甚至明寫「需人工對帳」）。本次把它系統化：credit 失敗 → 落 `pending_wallet_credits` 補償單 → 排程每 30 秒帶**同一冪等鍵**重試，wallet 端 `idempotency_key` UNIQUE（雷區 8）保證與玩家重試並發也絕不重複入帳。詳見 `docs/adr/ADR-009.md`。
+
+### Added
+- `database/postgres/migration/V14__add_pending_wallet_credits.sql` ＋ `database/postgres/init.sql`：新表 `pending_wallet_credits`（game_type、round_id、player_id、amount、sub_type WIN/REFUND、idempotency_key UNIQUE、status PENDING/DONE/FAILED、retry_count、last_error、next_retry_at、時間戳；`(status, next_retry_at)` 索引）。
+- game-service 新 `compensation/` 套件：`PendingWalletCredit`／`PendingWalletCreditRepository`／`WalletCompensationService.recordPending()`（TransactionTemplate `REQUIRES_NEW` 寫入——主流程 rollback 也留單；絕不拋出例外，避免遮蔽 catch 內的原始錯誤）／`WalletCompensationRetryJob`（`@Scheduled` 每 30s 撈 PENDING 到期單、指數退避 30s→上限 30min、10 次超限標 FAILED＋log.error）。補償只走 HTTP `WalletClient`（雷區 6），sub_type 僅 WIN/REFUND（已在白名單，不觸發雷區 18 四同步）。
+- `tools/reconciliation/reconcile-game-wallet.mjs`（＋package.json，Node ESM＋pg，比照 tools/ 慣例）：跨 game/wallet 服務邊界對帳——已結算對局缺 credit 流水（且無補償單兜底）、金額不符、FAILED/滯留 PENDING 補償單、DONE 卻無流水；輸出格式比照 `tests/performance/accounting-reconciliation.sql`，違規退出碼 1。
+- 測試：`WalletCompensationServiceTest`（失敗→寫單、冪等鍵原封不動、去重、絕不拋出）、`WalletCompensationRetryJobTest`（重試→DONE、退避、超限 FAILED、單筆失敗不斷批）；Slot/Baccarat/Fishing 測試各補「credit 失敗→落補償單＋拋回原例外」。
+
+### Changed
+- `SlotService.settleInternal`、`BaccaratService.settle`：派彩 credit 失敗 → `recordPending(WIN, 同冪等鍵)` 後拋回原例外（主流程行為不變，玩家仍可重試結算）。
+- `FishingService`：start/topUp 的退款再失敗 → `recordPending(REFUND)`（原本只 log）；`settleInternal` 的場次返還失敗 → `recordPending(REFUND, fishing-end-<sessionId>)` 後拋回。
+- `AGENTS.md`：新增雷區 22（credit 失敗必落補償單、冪等鍵絕不可換）。
+
+### Why
+- 語意分清（ADR-009）：settle 的 credit 失敗＝玩家贏了，補償是「重試同一冪等鍵的 credit」而非退款；fishing 扣款後 save 失敗才是 REFUND。統一抽象為「pending outbound wallet credit」，安全根基是 wallet 冪等，因此補償排程可盲目重試、與玩家重試並發也安全。
+- 補償單放 game-service 自己的 Postgres：欠據由 game 產生、屬 game 邊界，且重用 `WalletClient` 的 internal-secret 設定；對帳跨兩服務邊界，故獨立成 tools/ script。
+
+### 如何驗證
+- `mvn -pl backend/game-service test` 綠燈（176 tests，含新增 10 個補償測試與 3 個失敗路徑測試）。
+- 手動：kill wallet → 打一局 slot（命中）→ 重啟 wallet → 30 秒內補償入帳；`pending_wallet_credits` 標 DONE、`wallet_transactions.idempotency_key` 與補償單一致；`node tools/reconciliation/reconcile-game-wallet.mjs` 對帳通過。
+
 ## [feat] -- 2026-07-07 -- 後端服務全面容器化：docker compose up -d --build 一鍵啟動 7 服務（取代多視窗手動啟動）
 
 ### 背景
