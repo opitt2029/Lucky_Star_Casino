@@ -1,3 +1,29 @@
+feature/weiyu-admin-console
+## [test] -- 2026-07-07 -- wallet-service 新增 Testcontainers 真實資料庫測試（ADR-007）
+
+### Added
+- 根 `pom.xml`：dependencyManagement 匯入 `testcontainers-bom:1.21.3`。
+- `backend/wallet-service/pom.xml`：test 依賴 `testcontainers-{junit-jupiter,postgresql,mysql}`；surefire 預設 `excludedGroups=containers`；新 profile **`containers-test`**（只跑 `@Tag("containers")`，並把 system property 切成 `jpa.ddl-auto=validate` + 真方言——`DataSourceConfig` 讀的是 system property，故必須在 surefire 層切）。
+- `backend/wallet-service/src/test/java/com/luckystar/wallet/containers/`：
+  - `AbstractDualDatasourceContainerTest`：singleton postgres:16 + mysql:8.4（版本對齊 compose），套 `database/` 真 schema（PG＝init.sql＋migration 依數字版號重放；MySQL＝僅 init.sql，因其 migration 不冪等且 init.sql 已是累積最新版），`ddl-auto=validate` 讓 context 啟動即斷言 entity↔schema 無漂移。
+  - `WalletCheckConstraintContainerTest`：非法 sub_type 在 PG/MySQL 撞 `chk_wt_sub_type`（H2 create 模式根本沒有這條約束）；白名單最新子型 SHOP_PURCHASE 可寫（兼驗 migration 重放順序）。
+  - `WalletOptimisticLockContainerTest`：真 PG 樂觀鎖——stale version 存檔被拒、雙併發 800 扣款於餘額 1000 恰一方成功、不超扣、流水恰一筆。
+  - `DualDatasourceTxSemanticsContainerTest`：postgres/mysql 兩 TransactionManager 各自 commit/rollback 互不帶動（雷區 5/20 的根源語意）。
+- `.github/workflows/ci.yml`：backend-test job 新增 step `mvn -pl backend/wallet-service test -Pcontainers-test`（ubuntu-latest 內建 Docker）。
+- `docs/adr/ADR-007.md`：決策全文（為何只加 wallet、為何不取代 H2、兩端 schema 初始化策略差異）。
+
+### Changed
+- `AGENTS.md` 雷區 3：補「唯一例外（ADR-007）」說明與新增此類測試的規範。
+
+### Why
+- H2 測試由 entity 反向建表，永遠測不到「entity ↔ 真 schema 漂移」「DB 層 CHECK 約束」「真 PG 鎖語意」三類問題；wallet-service 是唯一雙資料源＋帳務核心，H2 假象風險最高。只新增、不取代，保住 CI/本機 `mvn test` 零外部依賴的既有約定（雷區 3）。
+
+### Verified
+- `mvn -pl backend/wallet-service test`：161 tests 全綠（containers 測試被排除，行為不變）。
+- `mvn -pl backend/wallet-service test -Pcontainers-test`（本機 Docker Desktop）：8 個容器測試全綠。
+
+﻿## [fix] -- 2026-07-07 -- MySQL 初始化腳本補 SET NAMES utf8mb4：中文種子資料匯入即亂碼
+=======
 ## [feat] -- 2026-07-07 -- T-054 補完：告警查詢/處理 API + Dashboard 未處理告警列表
 
 ### Added
