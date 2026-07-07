@@ -1,3 +1,51 @@
+feature/weiyu-saga-compensation-and-contracts
+## [refactor] -- 2026-07-07 -- 玩法契約單一來源化：repo 根 contracts/*.json + ContractParityTest 守門（Phase 5）
+
+### 背景
+- 玩法表格數值（老虎機賠付表、百家樂補牌表/賠率、捕魚魚種/戰鬥常數、商城 mock 目錄）此前在後端 enum/常數與 `frontend/src/services/mockApi.js` 各寫一份，靠雷區 14 的人工紀律同步，漂移只能靠 code review 抓。本次把表格數值抽成 repo 根 `contracts/*.json` 單一檔案：前端 mock 直接 import，後端以相等性測試守門——漂移＝CI 紅燈。
+
+### Added
+- `contracts/`：`slot-paytable.json`（符號/權重/兩階倍率/總權重）、`baccarat-rules.json`（TIE_PAYOUT/傭金率/莊家補牌表）、`fishing-species.json`（魚種表/HP 係數/搖錢樹區間）、`fishing-combat.json`（TARGET_RTP/RECOVERY_RATE/暴擊/砲台傷害表）、`shop-catalog.json`（**僅供 mock**；正式目錄單一真相在 MySQL `shop_items`，雷區 20）。
+- `backend/game-service/src/test/java/com/luckystar/game/baccarat/ContractParityTest.java`：Jackson 讀 `../../contracts/*.json`，逐欄斷言＝`SlotSymbol`/`FishSpecies`/`FishingCombat` 常數/`bankerDraws` 補牌表（莊點 0~7 × 閒三張值 0~9 全域窮舉）。放 `baccarat` 套件是為了直接呼叫 package-private 的 `bankerDraws`。
+
+### Changed
+- `frontend/src/services/mockApi.js`：`SLOT_PAYTABLE`/`FISH_SPECIES`/fishing 常數/`SHOP_CATALOG`/百家樂賠率與補牌表改為 import 契約 JSON；補牌「邏輯」（天牌、閒 0~5 補、pCapture 反推、兩階賠付評估）仍是鏡像程式碼，JSON 只存表格數值。
+- `frontend/vite.config.js`：`server.fs.allow` 放行 `../contracts`（dev server 預設不服務專案根外檔案；build 本就不受影響）。
+- `AGENTS.md`：雷區 14（契約單一來源與改數值 SOP）、15（`ContractParityTest` 加入紅燈清單）、16（四同步的 ① 改為契約檔）、20（目錄同步對象改 `contracts/shop-catalog.json`）。
+
+### Why
+- **後端 enum 保留為執行期權威、不 runtime 載 JSON**：enum 承載 Javadoc 理論 RTP 推導與雷區 15/16 的整套測試守門，推倒重來收益低、風險高；「漂移＝CI 紅燈」用相等性測試即可達標。
+- `shop-catalog.json` 不入守門範圍：正式目錄在 MySQL（admin 後台可改），JSON 只是 mock 的預設體驗快照。
+
+### 如何驗證
+- `mvn -pl backend/game-service test` 綠燈（180 tests，含新增 `ContractParityTest` 4 個）。
+- `cd frontend && npm run build` 成功、`npm test` 綠燈（36 tests）。
+- mock 三遊戲以臨時 vitest smoke 實跑驗證（spinSlot 盤面/派彩、baccaratBet 押閒派彩、fishing start→shots→end 結算），驗畢即刪。
+
+## [feat] -- 2026-07-07 -- game→wallet 最小 Saga 補償：credit 失敗落補償單、排程冪等重試（Phase 4，ADR-009）
+
+### 背景
+- game-service 對 wallet 的派彩/退款 credit 是同步 HTTP；wallet 短暫不可用時，「玩家已扣款、已贏（或該退款）」的錢只剩一行 log（fishing 退款失敗甚至明寫「需人工對帳」）。本次把它系統化：credit 失敗 → 落 `pending_wallet_credits` 補償單 → 排程每 30 秒帶**同一冪等鍵**重試，wallet 端 `idempotency_key` UNIQUE（雷區 8）保證與玩家重試並發也絕不重複入帳。詳見 `docs/adr/ADR-009.md`。
+
+### Added
+- `database/postgres/migration/V14__add_pending_wallet_credits.sql` ＋ `database/postgres/init.sql`：新表 `pending_wallet_credits`（game_type、round_id、player_id、amount、sub_type WIN/REFUND、idempotency_key UNIQUE、status PENDING/DONE/FAILED、retry_count、last_error、next_retry_at、時間戳；`(status, next_retry_at)` 索引）。
+- game-service 新 `compensation/` 套件：`PendingWalletCredit`／`PendingWalletCreditRepository`／`WalletCompensationService.recordPending()`（TransactionTemplate `REQUIRES_NEW` 寫入——主流程 rollback 也留單；絕不拋出例外，避免遮蔽 catch 內的原始錯誤）／`WalletCompensationRetryJob`（`@Scheduled` 每 30s 撈 PENDING 到期單、指數退避 30s→上限 30min、10 次超限標 FAILED＋log.error）。補償只走 HTTP `WalletClient`（雷區 6），sub_type 僅 WIN/REFUND（已在白名單，不觸發雷區 18 四同步）。
+- `tools/reconciliation/reconcile-game-wallet.mjs`（＋package.json，Node ESM＋pg，比照 tools/ 慣例）：跨 game/wallet 服務邊界對帳——已結算對局缺 credit 流水（且無補償單兜底）、金額不符、FAILED/滯留 PENDING 補償單、DONE 卻無流水；輸出格式比照 `tests/performance/accounting-reconciliation.sql`，違規退出碼 1。
+- 測試：`WalletCompensationServiceTest`（失敗→寫單、冪等鍵原封不動、去重、絕不拋出）、`WalletCompensationRetryJobTest`（重試→DONE、退避、超限 FAILED、單筆失敗不斷批）；Slot/Baccarat/Fishing 測試各補「credit 失敗→落補償單＋拋回原例外」。
+
+### Changed
+- `SlotService.settleInternal`、`BaccaratService.settle`：派彩 credit 失敗 → `recordPending(WIN, 同冪等鍵)` 後拋回原例外（主流程行為不變，玩家仍可重試結算）。
+- `FishingService`：start/topUp 的退款再失敗 → `recordPending(REFUND)`（原本只 log）；`settleInternal` 的場次返還失敗 → `recordPending(REFUND, fishing-end-<sessionId>)` 後拋回。
+- `AGENTS.md`：新增雷區 22（credit 失敗必落補償單、冪等鍵絕不可換）。
+
+### Why
+- 語意分清（ADR-009）：settle 的 credit 失敗＝玩家贏了，補償是「重試同一冪等鍵的 credit」而非退款；fishing 扣款後 save 失敗才是 REFUND。統一抽象為「pending outbound wallet credit」，安全根基是 wallet 冪等，因此補償排程可盲目重試、與玩家重試並發也安全。
+- 補償單放 game-service 自己的 Postgres：欠據由 game 產生、屬 game 邊界，且重用 `WalletClient` 的 internal-secret 設定；對帳跨兩服務邊界，故獨立成 tools/ script。
+
+### 如何驗證
+- `mvn -pl backend/game-service test` 綠燈（176 tests，含新增 10 個補償測試與 3 個失敗路徑測試）。
+- 手動：kill wallet → 打一局 slot（命中）→ 重啟 wallet → 30 秒內補償入帳；`pending_wallet_credits` 標 DONE、`wallet_transactions.idempotency_key` 與補償單一致；`node tools/reconciliation/reconcile-game-wallet.mjs` 對帳通過。
+
 ## [fix] -- 2026-07-07 -- postgres init.sql 補上 cashback_records 表，修復全新環境 docker compose 啟動失敗
 
 ### Fixed
@@ -9,6 +57,7 @@
 ### 如何驗證
 - 乾淨 docker volume 下 `docker compose up -d --build`：12 個容器（5 infra + 7 後端）全數 `healthy`。
 - 透過 gateway（8080）完成註冊 -> 登入 -> 查餘額冒煙測試，皆回傳 200/201。
+develop
 
 ## [feat] -- 2026-07-07 -- 後端服務全面容器化：docker compose up -d --build 一鍵啟動 7 服務（取代多視窗手動啟動）
 

@@ -1,0 +1,18 @@
+{
+  "$comment": "捕魚機魚種表單一來源（Phase 5，ADR-003）。執行期權威仍是後端 FishSpecies enum；本檔由 ContractParityTest 守門，前端 mockApi.js 直接 import。HP = multiplier × hpPerMultiplier（不另存，避免雙寫漂移）；搖錢樹捕獲時隨機 [moneyTreeMultiplier.min, max] 倍。",
+  "hpPerMultiplier": 10,
+  "moneyTreeMultiplier": { "min": 10, "max": 50 },
+  "species": [
+    { "code": "KOI", "displayName": "錦鯉", "assetId": "fish-koi", "multiplier": 2, "tier": "SMALL", "spawnWeight": 100 },
+    { "code": "GOLDFISH", "displayName": "金魚", "assetId": "fish-goldfish", "multiplier": 3, "tier": "SMALL", "spawnWeight": 90 },
+    { "code": "LANTERN", "displayName": "燈籠魚", "assetId": "fish-lantern", "multiplier": 5, "tier": "SMALL", "spawnWeight": 70 },
+    { "code": "PUFFER", "displayName": "河豚", "assetId": "fish-puffer", "multiplier": 8, "tier": "MEDIUM", "spawnWeight": 50 },
+    { "code": "ANGELFISH", "displayName": "神仙魚", "assetId": "fish-angelfish", "multiplier": 15, "tier": "MEDIUM", "spawnWeight": 35 },
+    { "code": "DEVIL_RAY", "displayName": "魔鬼魚", "assetId": "fish-devil-ray", "multiplier": 25, "tier": "MEDIUM", "spawnWeight": 22 },
+    { "code": "GOLD_DRAGON", "displayName": "金龍", "assetId": "fish-gold-dragon", "multiplier": 60, "tier": "HIGH", "spawnWeight": 12 },
+    { "code": "PIXIU", "displayName": "貔貅", "assetId": "fish-pixiu", "multiplier": 88, "tier": "HIGH", "spawnWeight": 7 },
+    { "code": "CAISHEN", "displayName": "財神爺", "assetId": "fish-caishen", "multiplier": 100, "tier": "HIGH", "spawnWeight": 6 },
+    { "code": "DRAGON_KING", "displayName": "龍王", "assetId": "fish-dragon-king", "multiplier": 200, "tier": "BOSS", "spawnWeight": 2 },
+    { "code": "MONEY_TREE", "displayName": "搖錢樹", "assetId": "fish-money-tree", "multiplier": 30, "tier": "SPECIAL", "spawnWeight": 5 }
+  ]
+}

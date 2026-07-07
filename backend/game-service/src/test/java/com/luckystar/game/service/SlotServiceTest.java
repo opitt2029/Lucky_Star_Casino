@@ -20,6 +20,7 @@ import com.luckystar.game.dto.SpinResponse;
 import com.luckystar.game.entity.GameRound;
 import com.luckystar.game.exception.InsufficientBalanceException;
 import com.luckystar.game.exception.RoundNotFoundException;
+import com.luckystar.game.exception.WalletUnavailableException;
 import com.luckystar.game.kafka.GameResultEventPublisher;
 import com.luckystar.game.repository.GameRoundRepository;
 import com.luckystar.game.rng.ProvablyFairRng;
@@ -53,6 +54,8 @@ class SlotServiceTest {
     private final GameSessionService sessionService = org.mockito.Mockito.mock(GameSessionService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final RiskControlService riskControlService = org.mockito.Mockito.mock(RiskControlService.class);
+    private final com.luckystar.game.compensation.WalletCompensationService compensationService =
+            org.mockito.Mockito.mock(com.luckystar.game.compensation.WalletCompensationService.class);
 
     private SlotService service;
 
@@ -85,7 +88,7 @@ class SlotServiceTest {
     @BeforeEach
     void setUp() {
         service = new SlotService(rng, slotMachine, walletClient, roundRepository,
-                publisher, sessionService, objectMapper, riskControlService);
+                publisher, sessionService, objectMapper, riskControlService, compensationService);
         // 預設：風控不攔截
         when(riskControlService.shouldIntercept(anyLong(), anyString())).thenReturn(false);
         when(rng.generateServerSeed()).thenReturn("srv");
@@ -157,6 +160,25 @@ class SlotServiceTest {
         assertEquals("slot-win-" + roundId, creditKey.getValue());
 
         assertEquals("gen-client", res.getClientSeed());
+    }
+
+    @Test
+    @DisplayName("spin 命中但派彩失敗：落補償單（同一冪等鍵、subType=WIN）並拋回原例外，不寫對局")
+    void spin_win_creditFails_recordsCompensationAndRethrows() {
+        when(slotMachine.spin(any(), eq(BET))).thenReturn(winOutcome());
+        when(walletClient.credit(eq(PLAYER_ID), eq(500L), anyString(), anyString()))
+                .thenThrow(new WalletUnavailableException("wallet down"));
+
+        assertThrows(WalletUnavailableException.class, () -> service.spin(PLAYER_ID, BET, "my-seed"));
+
+        // 補償單的冪等鍵必須＝剛剛失敗的 credit 冪等鍵（slot-win-<roundId>），排程重試才不會重複入帳
+        ArgumentCaptor<String> creditKey = ArgumentCaptor.forClass(String.class);
+        verify(walletClient).credit(eq(PLAYER_ID), eq(500L), creditKey.capture(), anyString());
+        verify(compensationService).recordPending(eq("SLOT"), anyString(), eq(PLAYER_ID), eq(500L),
+                eq("WIN"), eq(creditKey.getValue()), any(WalletUnavailableException.class));
+        // 主流程中止：對局未落地、不發事件（玩家重試結算時由 seed 確定性重算）
+        verify(roundRepository, never()).save(any());
+        verify(publisher, never()).publishSlotResult(any(), any());
     }
 
     @Test

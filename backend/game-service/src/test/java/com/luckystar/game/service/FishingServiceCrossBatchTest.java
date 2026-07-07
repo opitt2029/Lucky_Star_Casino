@@ -73,7 +73,8 @@ class FishingServiceCrossBatchTest {
         when(riskControlService.shouldIntercept(anyLong(), anyString())).thenReturn(false);
 
         service = new FishingService(rng, walletClient, sessionStore, roundRepository, publisher,
-                new ObjectMapper(), riskControlService);
+                new ObjectMapper(), riskControlService,
+                mock(com.luckystar.game.compensation.WalletCompensationService.class));
 
         // 直接建立一個 ACTIVE 場次（略過 start() 的 wallet 扣款；shots() 不碰 wallet）
         String serverSeed = rng.generateServerSeed();

@@ -45,12 +45,15 @@ class FishingServiceTest {
     private final GameResultEventPublisher publisher = org.mockito.Mockito.mock(GameResultEventPublisher.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final RiskControlService riskControlService = org.mockito.Mockito.mock(RiskControlService.class);
+    private final com.luckystar.game.compensation.WalletCompensationService compensationService =
+            org.mockito.Mockito.mock(com.luckystar.game.compensation.WalletCompensationService.class);
 
     private FishingService service;
 
     @BeforeEach
     void setUp() {
-        service = new FishingService(rng, walletClient, sessionStore, roundRepository, publisher, objectMapper, riskControlService);
+        service = new FishingService(rng, walletClient, sessionStore, roundRepository, publisher, objectMapper,
+                riskControlService, compensationService);
         // 預設：風控不攔截
         when(riskControlService.shouldIntercept(anyLong(), anyString())).thenReturn(false);
         when(rng.generateServerSeed()).thenReturn("server-seed");
@@ -82,7 +85,7 @@ class FishingServiceTest {
     }
 
     @Test
-    @DisplayName("退款本身也失敗時不吞掉原例外（仍上拋，留待人工/排程對帳）")
+    @DisplayName("退款本身也失敗時不吞掉原例外（仍上拋），且落補償單（同一冪等鍵，ADR-009）")
     void start_whenRefundAlsoFails_stillThrowsOriginal() {
         org.mockito.Mockito.doThrow(new RuntimeException("redis down"))
                 .when(sessionStore).save(any(FishingSession.class));
@@ -92,7 +95,11 @@ class FishingServiceTest {
         assertThrows(RuntimeException.class,
                 () -> service.start(PLAYER_ID, BUY_IN, CANNON_LEVEL, BET_PER_SHOT, "client-seed"));
 
-        verify(walletClient).credit(eq(PLAYER_ID), eq(BUY_IN), eq("REFUND"), anyString(), anyString());
+        ArgumentCaptor<String> refundKey = ArgumentCaptor.forClass(String.class);
+        verify(walletClient).credit(eq(PLAYER_ID), eq(BUY_IN), eq("REFUND"), refundKey.capture(), anyString());
+        // 補償單必須帶「與剛剛失敗的退款完全相同的冪等鍵」，排程重試才不會重複入帳
+        verify(compensationService).recordPending(eq("FISHING"), anyString(), eq(PLAYER_ID), eq(BUY_IN),
+                eq("REFUND"), eq(refundKey.getValue()), any(WalletUnavailableException.class));
     }
 
     @Test
