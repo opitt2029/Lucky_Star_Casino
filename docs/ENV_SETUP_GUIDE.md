@@ -153,9 +153,9 @@ ADMIN_SERVICE_PORT=8086
 
 ---
 
-## 4. 啟動所有基礎服務（Docker）
+## 4. 啟動基礎設施 + 後端服務（Docker）
 
-本專案使用 **Docker Compose** 一次啟動所有基礎設施（資料庫、Kafka 等）。
+本專案使用 **Docker Compose** 一次啟動所有基礎設施（資料庫、Kafka 等）**與全部 7 個後端服務**（後端已容器化，見 DEPLOY.md §3）。
 
 ### 4.1 確認 Docker Desktop 已啟動
 
@@ -165,11 +165,12 @@ ADMIN_SERVICE_PORT=8086
 
 ```bash
 # 在專案根目錄執行（有 docker-compose.yml 的地方）
-docker compose up -d
+docker compose up -d --build
 ```
 
 > `-d` 代表「背景執行」（detached），這樣終端機不會被佔用。  
-> 第一次執行會**自動下載映像檔**，視網路速度可能需要 5～15 分鐘。
+> `--build` 會在容器裡編譯後端（第一次、或改了後端程式碼後都要加）。  
+> 第一次執行會**自動下載映像檔並建置 7 個後端 image**，視網路與機器速度可能需要 10～20 分鐘。
 
 ### 4.3 查看啟動狀態
 
@@ -180,14 +181,15 @@ docker compose ps
 正常狀態下，所有服務應顯示 `healthy` 或 `running`：
 
 ```
-NAME                STATUS
-mysql               Up (healthy)
-postgres            Up (healthy)
-redis               Up (healthy)
-kafka               Up (healthy)
-zookeeper           Up (healthy)
-kafka-ui            Up
-kafka-init          Exited (0)   ← 這是正常的，初始化完就會退出
+NAME                              STATUS
+lucky-star-mysql                  Up (healthy)
+lucky-star-postgres               Up (healthy)
+lucky-star-redis                  Up (healthy)
+lucky-star-kafka                  Up (healthy)
+lucky-star-kafka-ui               Up
+lucky-star-gateway-service        Up (healthy)
+...（member/wallet/game/rank/admin/notification 共 7 個後端皆應 healthy）
+lucky-star-kafka-init             Exited (0)   ← 這是正常的，初始化完就會退出
 ```
 
 > **kafka-init 顯示 Exited (0) 是正常的**，代表 Kafka Topics 已成功建立完畢。
@@ -301,15 +303,17 @@ server:
   port: 8081  # 對應 .env 的 MEMBER_SERVICE_PORT
 ```
 
-### 6.4 啟動單一 Service
+### 6.4 啟動單一 Service（IDE 除錯用；日常啟動走 docker compose）
+
+後端 7 服務平常由 `docker compose up -d --build` 一次啟動（§4），**本節只在你要用 IDE 除錯單一服務時**才需要。
 
 在 IntelliJ 中，找到對應 Service 的 `Application.java`（主程式），右鍵 → **Run**。
 
-或用終端機：
+或用終端機（注意：專案**沒有 mvnw**，要用系統安裝的 `mvn`，且需先把 `.env` 載入 shell）：
 
 ```bash
 cd backend/member-service
-./mvnw spring-boot:run
+mvn spring-boot:run
 ```
 
 成功啟動時，終端機會出現：

@@ -75,7 +75,7 @@ PLAYERS=50 node tests/performance/provision-players.mjs  # smaller dry-run
 
 ## Execution
 
-1. Start the full topology: `docker compose up -d` (infra) **and** the six backend services (gateway, member, wallet, game, rank, admin) — the services are not containerized and must be started with `mvn spring-boot:run` per module after loading `.env`.
+1. Start the full topology: `docker compose up -d --build` — since PR #172 all 7 backend services are containerized and start together with the infra (no per-module `mvn spring-boot:run` needed).
 2. `node tests/performance/provision-players.mjs` to create `tests/performance/players.csv` with ≥ 1,000 funded players.
 3. Run:
 
