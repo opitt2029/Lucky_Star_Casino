@@ -1,4 +1,18 @@
-﻿## [feat] -- 2026-07-07 -- 新增管理後台前端骨架 frontend-admin/（獨立 Vite 專案）
+﻿## [fix] -- 2026-07-07 -- gateway 放行 /admin/**：後台 API 先前整條被 gateway 401 擋死
+
+### Fixed
+- `backend/gateway-service/src/main/resources/application.yml`：`jwt.whitelist` 新增 `/admin/`。
+- `backend/gateway-service/.../GatewayRoutesConfigTest.java`：新增 `jwtWhitelist_includesAdminPath` 鎖住此設定。
+
+### Why
+- T-050 讓後台改用獨立 `ADMIN_JWT_SECRET` 簽發 JWT，但 gateway 的 `JwtAuthenticationGlobalFilter` 只用玩家 `JWT_SECRET` 驗簽，從未對齊：登入端點 `/admin/auth/login` 不在白名單（無 token → 401 `missing bearer token`），登入後的 ADMIN JWT 也會被判 `invalid token`。**經 gateway 的後台路徑從未通過**——過去沒發現是因為 admin-service 測試都直打 8086。
+- 修法採「gateway 純轉發、admin-service 自身守門」：`AdminJwtAuthFilter` + `@PreAuthorize` 本來就對無效 token 一律 401/403（T-050 有測試驗收），gateway 反正驗不了 admin secret，留著只會誤殺。filter 內 `/admin/** 需 ADMIN role` 的檢查保留未動（防未來有人移除白名單時仍有底線）。
+
+### Verified
+- `mvn -pl backend/gateway-service test`：26 tests 全綠（含新增 1）。
+- 手動驗證項（重啟 gateway 後）：frontend-admin（5174）以 seeder 帳號登入應成功、stub 頁可導航。
+
+## [feat] -- 2026-07-07 -- 新增管理後台前端骨架 frontend-admin/（獨立 Vite 專案）
 
 ### Added
 - `frontend-admin/`：獨立於玩家端的管理後台 React 專案（Vite + React 18 + Redux Toolkit + Tailwind，port **5174**）。本次為骨架：登入流程可用，7 個功能頁為佔位 stub。
