@@ -414,10 +414,10 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據 |
 |---|:--:|---|:--:|---|
 | T-050 | P1 | Admin JWT 認證（角色區分） | ✅ | 獨立 ADMIN_JWT_SECRET + SUPER_ADMIN/OPERATOR 角色 + Spring Security（/admin/** 需 ROLE_ADMIN、@PreAuthorize）+ `POST /admin/auth/login` + admin_users 表 + seeder；19 test pass（含 401/403 驗收，2026-06-15） |
-| T-051 | P1 | 玩家帳號管理 API | ✅ | `/admin/players` 列表(分頁+關鍵字)、`/{id}` 詳情(跨庫彙整 member/wallet/game)、`PATCH /{id}/status` 停用→Redis `disabled:player:{id}`，gateway 全域 filter 強制即時失效；member.status DB 持久化待 member internal API（跨組待辦） |
+| T-051 | P1 | 玩家帳號管理 API | ✅ | `/admin/players` 列表(分頁+關鍵字)、`/{id}` 詳情(跨庫彙整 member/wallet/game)、`PATCH /{id}/status` 停用→同時 ① member 內部 API `PATCH /internal/members/{id}/status` 持久化 `members.status`（真相來源，2026-07-07 補完）② Redis `disabled:player:{id}` gateway 強制即時失效 |
 | T-052 | P1 | 星幣流通量報表 API | ✅ | `GET /admin/reports/coin-flow?dimension=day\|week\|month&from=&to=`，讀 MySQL wallet_transactions、Java 彙整發放/消耗/淨流通 |
 | T-053 | P1 | 遊戲 RTP 監控儀表板 API | ✅ | `GET /admin/reports/rtp?game=&from=&to=`，讀 PostgreSQL game_rtp_stats 比對設計 RTP，偏差>5% 標 ABNORMAL |
-| T-054 | P2 | 異常玩家偵測機制 | ✅ | `game.result` 偵測 BIG_WIN/HIGH_FREQUENCY，`wallet.credit/debit` 偵測 ABNORMAL_TRANSFER，寫入 PostgreSQL `admin_alerts` 並發送 Kafka `notification.push` 管理員告警 |
+| T-054 | P2 | 異常玩家偵測機制 | ✅ | `game.result` 偵測 BIG_WIN/HIGH_FREQUENCY，`wallet.credit/debit` 偵測 ABNORMAL_TRANSFER，寫入 PostgreSQL `admin_alerts` 並發送 Kafka `notification.push` 管理員告警；查詢/處理端 `GET /admin/alerts`（分頁+type/resolved 篩選）+ `PATCH /admin/alerts/{id}/resolve`（2026-07-07 補完，Dashboard 顯示未處理告警） |
 | T-055 | P2 | 手動發放星幣 API（GM 工具） | ✅ | `POST /admin/gm/grant` 僅 SUPER_ADMIN 可用；發送 `wallet.credit.request` (`subType=GM_REWARD`) 由 wallet-service 入帳，並寫入 PostgreSQL `admin_action_logs` 操作日誌（操作者/玩家/金額/原因/冪等鍵/時間） |
 
 ### A.7 Gateway（組長A）

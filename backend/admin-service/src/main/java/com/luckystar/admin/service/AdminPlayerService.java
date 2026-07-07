@@ -1,5 +1,6 @@
 package com.luckystar.admin.service;
 
+import com.luckystar.admin.client.MemberClient;
 import com.luckystar.admin.dto.PlayerDetail;
 import com.luckystar.admin.dto.PlayerStatusResponse;
 import com.luckystar.admin.dto.PlayerSummary;
@@ -22,8 +23,9 @@ import org.springframework.util.StringUtils;
  * 後台玩家帳號管理（T-051）。
  *
  * 跨庫唯讀彙整：member（MySQL）、wallets / game_rounds（PostgreSQL）、wallet_transactions（MySQL）。
- * 停用/啟用透過 {@link PlayerBanService} 寫 Redis 使用者級封鎖（gateway 強制即時失效）。
- * admin 不直接寫 member 庫。
+ * 停用/啟用兩路並行：{@link MemberClient} 經 member 內部 API 持久化 members.status（真相來源），
+ * {@link PlayerBanService} 寫 Redis 使用者級封鎖（gateway 強制既有 token 即時失效）。
+ * admin 不直接寫 member 庫——狀態更新一律走 member-service 內部 API。
  */
 @Service
 public class AdminPlayerService {
@@ -33,17 +35,20 @@ public class AdminPlayerService {
     private final WalletTransactionReadRepository transactionRepository;
     private final GameRoundReadRepository gameRoundRepository;
     private final PlayerBanService playerBanService;
+    private final MemberClient memberClient;
 
     public AdminPlayerService(MemberReadRepository memberRepository,
                               WalletReadRepository walletRepository,
                               WalletTransactionReadRepository transactionRepository,
                               GameRoundReadRepository gameRoundRepository,
-                              PlayerBanService playerBanService) {
+                              PlayerBanService playerBanService,
+                              MemberClient memberClient) {
         this.memberRepository = memberRepository;
         this.walletRepository = walletRepository;
         this.transactionRepository = transactionRepository;
         this.gameRoundRepository = gameRoundRepository;
         this.playerBanService = playerBanService;
+        this.memberClient = memberClient;
     }
 
     public Page<PlayerSummary> listPlayers(String keyword, Pageable pageable) {
@@ -86,13 +91,17 @@ public class AdminPlayerService {
     }
 
     /**
-     * 停用/啟用玩家：enabled=false → Redis 封鎖（既有 token 立刻失效）；true → 解除封鎖。
+     * 停用/啟用玩家：先經 member 內部 API 持久化 members.status（真相來源），
+     * 成功後才寫 Redis 封鎖/解封（既有 token 即時失效）。
+     * member 呼叫失敗直接拋出（→ 502），避免留下「Redis 已封鎖但 DB 仍 ACTIVE」的半套狀態；
+     * 反向（DB 已改、Redis 未寫）由登入時的 DB status 檢查兜底，重按一次即可補齊。
      * 玩家不存在回 {@link Optional#empty()}（→ 404）。
      */
     public Optional<PlayerStatusResponse> setStatus(Long playerId, boolean enabled) {
         if (!memberRepository.existsById(playerId)) {
             return Optional.empty();
         }
+        memberClient.updateStatus(playerId, enabled);
         if (enabled) {
             playerBanService.unban(playerId);
         } else {

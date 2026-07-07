@@ -48,6 +48,20 @@ public class PlayerService {
         return mapToResponse(member);
     }
 
+    /**
+     * 更新帳號狀態（內部 API 用，T-051 補完）：enabled=false → DISABLED、true → ACTIVE。
+     * DB status 是停用狀態的持久化真相來源（Redis 封鎖標記只負責「即時生效」，
+     * 資料清空後靠這裡的 status 讓登入檢查仍能擋住停用玩家）。回傳更新後的狀態字串。
+     */
+    @Transactional
+    public String updateStatus(Long memberId, boolean enabled) {
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new MemberNotFoundException("Member not found: " + memberId));
+        member.setStatus(enabled ? "ACTIVE" : "DISABLED");
+        memberRepository.save(member);
+        return member.getStatus();
+    }
+
     private ProfileResponse mapToResponse(Member member) {
         return new ProfileResponse(
                 member.getId(),

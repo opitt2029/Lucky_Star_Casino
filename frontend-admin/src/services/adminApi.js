@@ -50,6 +50,19 @@ export const adminApi = {
     return res.data
   },
 
+  // ─── T-054 異常告警 ───
+  // alertType: BIG_WIN | HIGH_FREQUENCY | ABNORMAL_TRANSFER；resolved: true/false（不帶 = 全部）
+  async listAlerts({ page = 0, size = 20, alertType, resolved } = {}) {
+    const res = await api.get('/admin/alerts', { params: { page, size, alertType, resolved } })
+    return res.data
+  },
+
+  // 標記已處理（後端冪等，重複標記不報錯）
+  async resolveAlert(alertId) {
+    const res = await api.patch(`/admin/alerts/${alertId}/resolve`)
+    return res.data
+  },
+
   // ─── T-055 GM 發幣（僅 SUPER_ADMIN，OPERATOR 呼叫會 403）───
   async gmGrant(payload) {
     const res = await api.post('/admin/gm/grant', payload)

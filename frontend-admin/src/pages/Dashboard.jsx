@@ -1,8 +1,8 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { adminApi } from '../services/adminApi'
+import { adminApi, extractError } from '../services/adminApi'
 import { useFetch } from '../hooks/useFetch'
-import { daysAgo, fmtInt, fmtPercent, isoDate } from '../utils/format'
+import { daysAgo, fmtDateTime, fmtInt, fmtPercent, isoDate } from '../utils/format'
 import {
   Badge,
   EmptyBlock,
@@ -14,8 +14,14 @@ import {
   Td,
 } from '../components/ui'
 
-// 總覽：近 7 日流通概況 + 各遊戲 RTP 健康度。
-// admin_alerts（T-054）目前只有寫入、還沒有查詢端點，告警區塊待後端補 API 後加上。
+// T-054 告警類型 → 顯示文字/徽章色
+const ALERT_TYPE_LABELS = {
+  BIG_WIN: { text: '大額中獎', color: 'amber' },
+  HIGH_FREQUENCY: { text: '高頻下注', color: 'red' },
+  ABNORMAL_TRANSFER: { text: '帳務異常', color: 'red' },
+}
+
+// 總覽：未處理異常告警（T-054）+ 近 7 日流通概況 + 各遊戲 RTP 健康度。
 export default function Dashboard() {
   const fetchOverview = useCallback(async () => {
     const from = isoDate(daysAgo(6))
@@ -28,6 +34,30 @@ export default function Dashboard() {
     return { coinFlow, rtp }
   }, [])
   const { data, loading, error, reload } = useFetch(fetchOverview)
+
+  // 告警獨立抓取：標記已處理後只重載告警區塊，不重抓整頁報表
+  const fetchAlerts = useCallback(() => adminApi.listAlerts({ size: 10, resolved: false }), [])
+  const {
+    data: alerts,
+    loading: alertsLoading,
+    error: alertsError,
+    reload: reloadAlerts,
+  } = useFetch(fetchAlerts)
+  const [resolvingId, setResolvingId] = useState(null)
+  const [resolveError, setResolveError] = useState(null)
+
+  async function handleResolve(alertId) {
+    setResolvingId(alertId)
+    setResolveError(null)
+    try {
+      await adminApi.resolveAlert(alertId)
+      await reloadAlerts()
+    } catch (err) {
+      setResolveError(extractError(err))
+    } finally {
+      setResolvingId(null)
+    }
+  }
 
   if (loading) return <LoadingBlock />
   if (error) return <ErrorBlock message={error} onRetry={reload} />
@@ -55,6 +85,60 @@ export default function Dashboard() {
           </p>
         </div>
       )}
+
+      {/* 未處理異常告警（T-054）：置於報表之前，異常要第一眼看到 */}
+      <div className="mb-2 flex items-baseline justify-between">
+        <h2 className="text-lg font-semibold">未處理異常告警</h2>
+        {alerts && alerts.totalElements > 0 && (
+          <span className="text-xs text-slate-500">共 {alerts.totalElements} 筆未處理</span>
+        )}
+      </div>
+      {resolveError && (
+        <p className="mb-2 text-sm text-red-600" role="alert">
+          標記失敗：{resolveError}
+        </p>
+      )}
+      <div className="mb-8">
+        {alertsLoading ? (
+          <LoadingBlock />
+        ) : alertsError ? (
+          <ErrorBlock message={alertsError} onRetry={reloadAlerts} />
+        ) : !alerts || alerts.content.length === 0 ? (
+          <EmptyBlock text="目前沒有未處理的告警" />
+        ) : (
+          <Table head={['時間', '玩家 ID', '類型', '詳情', '操作']}>
+            {alerts.content.map((alert) => {
+              const label = ALERT_TYPE_LABELS[alert.alertType] || { text: alert.alertType, color: 'slate' }
+              return (
+                <tr key={alert.id}>
+                  <Td className="tabular-nums text-slate-500">{fmtDateTime(alert.createdAt)}</Td>
+                  <Td>
+                    <Link to={`/players/${alert.playerId}`} className="font-medium text-blue-600 hover:underline">
+                      {alert.playerId}
+                    </Link>
+                  </Td>
+                  <Td>
+                    <Badge color={label.color}>{label.text}</Badge>
+                  </Td>
+                  <Td className="max-w-md truncate text-slate-500" title={alert.detail}>
+                    {alert.detail}
+                  </Td>
+                  <Td>
+                    <button
+                      type="button"
+                      disabled={resolvingId === alert.id}
+                      onClick={() => handleResolve(alert.id)}
+                      className="rounded border border-slate-300 bg-white px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {resolvingId === alert.id ? '處理中...' : '標記已處理'}
+                    </button>
+                  </Td>
+                </tr>
+              )
+            })}
+          </Table>
+        )}
+      </div>
 
       {/* 近 7 日流通量 */}
       <div className="mb-2 flex items-baseline justify-between">
