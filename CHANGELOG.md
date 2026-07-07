@@ -1,4 +1,24 @@
-﻿## [feat] -- 2026-07-06 -- 前端三遊戲沉浸感升級：程序化 BGM 大改版＋環境音＋視覺打磨
+﻿## [feat] -- 2026-07-07 -- 新增管理後台前端骨架 frontend-admin/（獨立 Vite 專案）
+
+### Added
+- `frontend-admin/`：獨立於玩家端的管理後台 React 專案（Vite + React 18 + Redux Toolkit + Tailwind，port **5174**）。本次為骨架：登入流程可用，7 個功能頁為佔位 stub。
+  - `src/services/api.js`：axios 實例掛 ADMIN JWT；admin 無 refresh token（`LoginResponse` 只回 accessToken），401 一律登出重導（登入端點 401=帳密錯誤除外），不做玩家端的 single-flight 續期。
+  - `src/services/adminApi.js`：對齊 admin-service 全部既有端點（T-050 登入、T-051 玩家管理、T-052/T-053 報表、T-055 GM 發幣、T-105/T-106 點數卡、ADR-006 商城目錄）。
+  - `src/store/slices/adminAuthSlice.js`：登入狀態含 `role`（SUPER_ADMIN/OPERATOR）；localStorage key 加 `admin` 前綴與玩家端區隔。
+  - `src/App.jsx`：`AdminPrivateRoute` 守未登入、`SuperAdminRoute` 守 GM 發幣；SPA 路由不用 `/admin` 前綴（該前綴是 API 路徑，dev proxy 轉發 gateway 8080）。
+  - `src/components/AdminLayout.jsx`：側邊欄導航，GM 發幣入口僅 SUPER_ADMIN 顯示（後端 `@PreAuthorize` 仍是最終防線）。
+  - 頁面：`Login`（可用）＋ `Dashboard/Players/PlayerDetail/CoinFlowReport/RtpReport/GmGrant/DiamondCards/ShopItems`（stub，標明待串 API）。
+
+### Why
+- admin-service 後端 API（T-050~T-055、T-105/T-106、商城目錄）已全部完成，但前端完全沒有管理介面。
+- 選擇獨立專案而非併入 `frontend/`：後端本來就是獨立 `ADMIN_JWT_SECRET` ＋獨立角色的邊界，前端對齊此切分；後台可獨立部署於內網，管理端路由/API 形狀不進玩家 bundle。
+- dev 走 vite proxy（`/admin` → 8080）＝同源請求，免動 gateway 的 `CORS_ALLOWED_ORIGINS`。
+
+### Verified
+- `npm run lint` 乾淨；`npm run build` 成功（各頁正確 code-split）。
+- 登入流程待啟動 admin-service 後手動驗證（本次僅骨架，無單元測試——頁面實作時比照玩家端補 vitest）。
+
+## [feat] -- 2026-07-06 -- 前端三遊戲沉浸感升級：程序化 BGM 大改版＋環境音＋視覺打磨
 
 ### Added
 - `frontend/src/casino-fx/sound/musicTheory.js`：MIDI→頻率、音階（宮調五聲/五聲小調/自然小調）、和弦品質與度數換算。純函式，可獨立測試。

@@ -70,6 +70,7 @@
 - 套件根 `com.luckystar`、Java 21、Spring Boot 3.3.5、JJWT 0.12.6
 - DB：PostgreSQL（帳務寫庫）+ MySQL（查詢讀庫）CQRS；Redis（token/session/排行）；Kafka（事件）
 - Port：gateway 8080 / member 8081 / wallet 8082 / game 8083 / rank 8084 / admin 8086 / notification 8087；MySQL **3307** / PostgreSQL **5433** / Redis 6379 / Kafka 9092 / Kafka UI 8085
+- 前端兩個獨立專案：玩家端 `frontend/`（5173）、管理後台 `frontend-admin/`（5174，ADMIN JWT 與玩家 JWT 是兩套 secret 不可混用；dev 走 vite proxy `/admin`→8080 免碰 CORS 白名單，SPA 自身路由勿用 `/admin` 前綴）
 
 ### Git / 提交
 - 分支：`feature/名字-功能描述` → PR → `develop`；`main` 受保護，不直接 commit

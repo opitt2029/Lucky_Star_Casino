@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 後台走簡潔工具風，不沿用玩家端的娛樂視覺 */
+body {
+  @apply bg-slate-100 text-slate-800 antialiased;
+}
