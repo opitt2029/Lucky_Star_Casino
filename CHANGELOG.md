@@ -1,3 +1,27 @@
+## [feat] -- 2026-07-07 -- AUDIT_REPORT 附錄 A 自動盤點：tools/audit/ 依證據清單重生進度表（Phase 8）
+
+### 背景
+- 附錄 A 靠人記得去盤點，長期落後程式碼（AGENTS.md §1 的 T-027/T-028 誤報案例），且手工統計表與逐項表互相矛盾（統計記 25 ❌、逐項表僅 T-096 一項 ❌）。本次把逐項表與統計改為工具產生：每次執行對「當下工作樹 + git log」即時判定。
+
+### Added
+- `tools/audit/`（Node ESM、零外部依賴，比照 tools/ 慣例；需 Node 22+ 的 `fs.globSync`）：
+  - `tasks.json`：85 個任務（T-000~T-114）的證據清單，首版由附錄 A 手工轉換——每筆 `{ id, title, owner?, priority?, evidence: { files: [glob...], commitGrep }, override?, note? }`；`commitGrep` 選填（早期任務 commit 沒帶 T-0xx 記號者只靠檔案證據）；`override` 僅限證據判不了的人工判定（T-084 端對端待驗收、T-089 RWD、T-090 壓測 gate、T-093 全鏈路 E2E、T-110 腳本已被容器化取代）。
+  - `generate-audit-snapshot.mjs`：判定＝證據檔案全在＋`git log --grep` 有 commit→✅、部分→⚠️、全無→❌、無證據→❓；輸出與附錄 A 同格式表格＋自動統計，寫入 AUDIT_REPORT.md 的 `<!-- AUDIT:BEGIN/END -->` 標記區塊（標記外人工敘述不動），另存 `docs/report/audit-snapshot-YYYYMMDD.md`（含 git HEAD）。`--check` 模式只比對、有落差退出碼 1（日後可掛 CI，本次不強制）。
+- `docs/report/audit-snapshot-20260707.md`：首跑快照。
+
+### Changed
+- `AUDIT_REPORT.md`：附錄 A 的 A.1~A.12 手工表格與 A.13 統計改為標記區塊（工具產生）；首跑結果 **80 ✅ / 3 ⚠️ / 1 ❌ / 1 ❓**——T-083/T-087 等過時 ⚠️ 依證據（檔案＋T-0xx commit）轉 ✅，並修正統計與逐項表不一致；變動紀錄以下的人工敘述保留。
+- `AGENTS.md` §1：註記附錄 A 自動化——更新進度改 `tools/audit/tasks.json` 再重跑工具、勿手改標記區塊；`--check` 可驗漂移。
+
+### Why
+- 「手動快照會漂移」是結構性問題，靠告示提醒治標；把盤點變成可重跑的程式，漂移就變成一條指令可修復、可驗證（`--check`）的狀態。
+- 保留 `override`：壓測 gate、RWD 這類完成與否不由檔案存在決定的任務，仍需人工判定，但理由被迫寫進 tasks.json、隨表格輸出，不再是口耳相傳。
+
+### 如何驗證
+- `node tools/audit/generate-audit-snapshot.mjs` 後逐項比對附錄 A 與現況一致（T-027/T-028 類誤報已轉 ✅；證據型任務無缺檔誤報）。
+- `node tools/audit/generate-audit-snapshot.mjs --check` 退出碼 0；手動改壞表格一格後退出碼 1、重跑工具復原。
+- `node --test tests/infra/*.test.js` 142 全綠（不受影響）。
+
 ## [security] -- 2026-07-07 -- Secret 管理：範本全佔位符化、CI 密鑰 run 內生成、輪替 SOP（Phase 7）
 
 ### 背景
