@@ -1,5 +1,36 @@
-feature/weiyu-admin-console
-﻿## [fix] -- 2026-07-07 -- MySQL 初始化腳本補 SET NAMES utf8mb4：中文種子資料匯入即亂碼
+## [feat] -- 2026-07-07 -- T-054 補完：告警查詢/處理 API + Dashboard 未處理告警列表
+
+### Added
+- `backend/admin-service/.../controller/AdminAlertController.java`：`GET /admin/alerts`（分頁、alertType/resolved 可選篩選、id DESC 新到舊）+ `PATCH /admin/alerts/{id}/resolve`（冪等，404=不存在）。
+- `backend/admin-service/.../service/AdminAlertService.java`：查詢分流（衍生查詢三組合 + findAll）與標記已處理，掛 `postgresTransactionManager`（雙資料源，admin_alerts 在 Postgres）。
+- `backend/admin-service/.../dto/AlertView.java`、`AdminAlertRepository` 衍生查詢、`AdminAlert.markResolved()`（單向、不提供退回）。
+- `backend/admin-service/.../service/AdminAlertServiceTest.java`：篩選分流 4 例 + resolve 3 例（含冪等）。
+- `frontend-admin`：`adminApi.listAlerts/resolveAlert`；Dashboard 新增「未處理異常告警」區塊（獨立 useFetch、標記已處理只重載告警不重抓報表、玩家 ID 連到詳情頁）。
+
+### Why
+- T-054 規則引擎只有寫入端：偵測到異常後管理員只能收 Kafka 推播，後台翻不到歷史告警——功能斷在半路。查詢用衍生方法列舉篩選組合而非 null 參數 JPQL，避開 Postgres null 綁定參數的型別推斷雷。
+
+### Verified
+- `mvn -pl backend/admin-service test` 綠燈；frontend-admin `npm test`（14 tests）/ `lint` / `build` 全過。
+
+## [feat] -- 2026-07-07 -- T-051 補完：玩家停用狀態持久化到 members.status（member 內部 API）
+
+### Added
+- `backend/member-service/.../controller/InternalMemberController.java`：`PATCH /internal/members/{id}/status`（body `{enabled}`→ ACTIVE/DISABLED），由既有 `InternalSecretFilter`（X-Internal-Secret）守門、不經 gateway；`PlayerService.updateStatus()`、`UpdateMemberStatusRequest`。
+- `backend/admin-service/.../client/MemberClient.java` + `config/MemberClientConfig.java`（RestClient 直連 member，比照 game→wallet 的 WalletClientConfig）；`MemberServiceException` → `AdminExceptionHandler` 轉 502。
+- `application.yml` 新增 `internal.member-service.base-url`（`MEMBER_SERVICE_URL`，預設 8081）與 secret（`INTERNAL_SECRET`）。
+
+### Changed
+- `AdminPlayerService.setStatus()`：先呼叫 member 內部 API 持久化 `members.status`（真相來源），成功後才寫 Redis 封鎖/解封。member 失敗整個操作失敗（502），不留「Redis 已封鎖但 DB 仍 ACTIVE」半套狀態；反向不一致由登入時的 DB status 檢查兜底。
+- `AUDIT_REPORT.md`：T-051 移除「跨組待辦」註記、T-054 補查詢端點說明。
+
+### Why
+- 原本停用只寫 Redis `disabled:player:{id}`，Redis 資料清空（重啟/淘汰）後停用玩家即可重新登入。member 登入本就同時檢查 `members.status=DISABLED` 與 Redis（2026-06 修過），補上 DB 持久化後兩層防線才完整。
+
+### Verified
+- `mvn -pl backend/admin-service,backend/member-service test` 綠燈（新增 admin setStatus 4 例改版含 member 失敗不動 Redis、member updateStatus 3 例）。
+
+## [fix] -- 2026-07-07 -- MySQL 初始化腳本補 SET NAMES utf8mb4：中文種子資料匯入即亂碼
 
 ### Fixed
 - `database/mysql/init.sql`、`database/mysql/seed_test_data.sql`：檔頭加 `SET NAMES utf8mb4;`。
