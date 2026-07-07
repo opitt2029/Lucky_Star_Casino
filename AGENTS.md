@@ -34,7 +34,7 @@
 
 1. **沒有 `mvnw`**：用系統 `mvn`，不要用 `./mvnw`。
 2. **本機跑後端前要先把 `.env` 載入 shell**：`JWT_SECRET`、`INTERNAL_SECRET`、`CORS_ALLOWED_ORIGINS` 是「缺了就啟動失敗」的必填變數（無預設值）。詳見 DEPLOY.md §4。
-3. **測試一律用 H2 記憶體 DB**：`@SpringBootTest`（contextLoads）不連外部 DB。新服務寫測試比照 member/wallet：加 H2（test scope）、測試用 `application.yml` 提供 H2 資料源；wallet 另用 surefire `jpa.ddl-auto=create`（雙資料源）。否則 CI 跑不起來。
+3. **測試一律用 H2 記憶體 DB**：`@SpringBootTest`（contextLoads）不連外部 DB。新服務寫測試比照 member/wallet：加 H2（test scope）、測試用 `application.yml` 提供 H2 資料源；wallet 另用 surefire `jpa.ddl-auto=create`（雙資料源）。否則 CI 跑不起來。**唯一例外（ADR-007）**：wallet-service 另有 `@Tag("containers")` 的 Testcontainers 真 DB 測試（`containers/` 套件，postgres:16+mysql:8.4 套真 schema、`ddl-auto=validate`），surefire 預設排除、`mvn -pl backend/wallet-service test -Pcontainers-test` 才跑（本機需 Docker，Windows 另需 `$env:DOCKER_HOST='npipe:////./pipe/dockerDesktopLinuxEngine'`，見 ADR-007；CI 已有獨立 step）。日常 `mvn test` 的零依賴約定不變；新增此類測試必須標 `@Tag("containers")` 並繼承 `AbstractDualDatasourceContainerTest`，否則會破壞零依賴。
 4. **Spring Boot 3.2+ 禁止同名 `@Bean` 方法**（`enforceUniqueMethods`）：重複會讓服務啟動丟 `BeanDefinitionParsingException` 直接掛。
 5. **wallet-service 是雙資料源（ADR-001）**：`spring.jpa.*` 無效，EntityManagerFactory 在 `DataSourceConfig` 手動建立；別套用單資料源的假設。
 6. **`wallet.credit` 是「事件」、`wallet.credit.request` 才是「指令」（ADR-002）**：member 發指令、wallet 消費入帳後發事件給 rank。**wallet-service 內任何消費 `wallet.credit`/`wallet.debit`（事件）的 listener 都不可重呼 `WalletService.credit()`/`debit()`**（會無限迴圈）。例外：`WalletReadSyncListener`（`kafka/WalletReadSyncListener.java:45,80`）確實消費這兩個事件，但只寫 MySQL 讀視圖（CQRS read-sync，T-025）、對 `WalletTransactionViewRepository` 做 `existsById` 冪等檢查，從不呼叫 `credit()/debit()`，故不會迴圈——這是唯一安全的例外模式，新增消費者比照此例，**絕不能**在消費者內再呼叫入帳/扣款方法。rank-service 要消費的是 `wallet.credit`/`wallet.debit`（事件）。
