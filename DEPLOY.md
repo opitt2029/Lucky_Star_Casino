@@ -48,7 +48,8 @@
 
 | 服務 | Port | 網址 |
 |------|:---:|------|
-| frontend（React + Vite） | 5173 | http://localhost:5173 |
+| frontend（玩家端，React + Vite） | 5173 | http://localhost:5173 |
+| frontend-admin（管理後台，React + Vite） | 5174 | http://localhost:5174 |
 
 ---
 
@@ -195,15 +196,16 @@ docker compose up -d       # 重新建立 Volume → 自動重跑 init.sql
 
 ---
 
-## 7. 目前已知狀況（2026-06-10）
+## 7. 目前已知狀況（2026-07-07）
 
-> 這段反映**當前開發進度**，會隨專案演進變動；完整逐項進度見 [AUDIT_REPORT.md](AUDIT_REPORT.md) 附錄 A 與 [CHANGELOG.md](CHANGELOG.md)。
+> 這段反映**當前開發進度**，會隨專案演進變動；完整逐項進度見 [AUDIT_REPORT.md](AUDIT_REPORT.md) 附錄 A 與 [CHANGELOG.md](CHANGELOG.md)（查進度務必以程式碼交叉驗證，見 AGENTS.md §1）。
 
-- ✅ **可正常運作**：基礎設施、member-service、gateway-service、wallet-service（餘額/扣款/入帳）、前端登入/註冊主線。
-- ✅ **game-service 已實作**：老虎機（`POST /api/v1/game/slot/spin`）與百家樂（`/api/v1/game/baccarat/bet` → `/{roundId}/result`）；下注會呼叫 wallet-service 真實扣款/派彩，需 wallet + Redis + Kafka 同時在線。前端遊戲頁已串真實 API。
-- ✅ **rank-service 已實作排行榜**（`/api/v1/rank/*`）；惟前端排行榜目前仍走 mock、尚未串接，故可不啟動。
-- ✅ **簽到/新手禮入帳已串通**（ADR-002）：member 發 `wallet.credit.request` 指令 → wallet 消費入帳。需 Kafka 正常運作；wallet-service 須啟動才會實際加餘額。
-- ⚪ **admin / notification 仍未實作**：admin-service 為空殼（無業務 API）；notification-service 尚未建立。屬正常現況，非部署錯誤。
+- ✅ **後端 7 服務全部容器化且可正常運作**：`docker compose up -d --build` 啟動的 5 個基礎設施 + 7 個後端服務均通過 healthcheck；前端登入/註冊主線正常。
+- ✅ **game-service 已實作三款遊戲**：老虎機（`POST /api/v1/game/slot/spin`）、百家樂（`/api/v1/game/baccarat/bet` → `/{roundId}/result`）、捕魚機（buy-in + 批次結算，PixiJS 前端，ADR-003/004）；下注均呼叫 wallet-service 真實扣款/派彩。
+- ✅ **rank-service 已完成排行榜核心**（T-040~T-044：總榜/週榜重置/每日快照/好友榜，`/api/v1/rank/*`）。
+- ✅ **admin-service 已完成後台**（T-050~T-055、T-105~T-106：認證/玩家管理/流通量報表/RTP 監控/異常偵測/GM 發幣），搭配管理後台前端 `frontend-admin/`（5174）。
+- ✅ **notification-service 已完成推播**（T-070~T-073：STOMP `/ws` + JWT 鑑權，消費 `notification.push`/`game.result`/`rank.update`）。
+- ✅ **簽到/新手禮入帳已串通**（ADR-002）、**鑽石系統**（T-100~T-107）與**禮品商城**（ADR-006）已完成。
 
 ---
 

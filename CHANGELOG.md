@@ -1,4 +1,28 @@
-feature/weiyu-saga-compensation-and-contracts
+## [chore] -- 2026-07-07 -- PR #172 容器化收尾：補 .dockerignore、刪殘留 stop-backend.bat、修正 mock 旗標誤植、同步過期文件
+
+### Added
+- `.dockerignore`（白名單式：只放行根 `pom.xml` 與 `backend/`，並排除 `backend/**/target`）。七個 Dockerfile 的 build context 都是 repo 根目錄，之前每次 build 會把 `.git`、`frontend*/node_modules`、`docs` 等整包送進 Docker daemon（×7 個 image），且本機 IDE 編譯的 `target/` 會讓 `COPY backend` 的 layer cache 頻繁失效。
+
+### Fixed
+- `frontend/.env.development`：`VITE_USE_MOCK_API` 由 `true` 改回 `false`。`20d582d`（捕魚機 PR）誤把個人測試設定推入版控，與同檔註解「dev 預設串真實後端」、根目錄 `.env.example` 及 DEPLOY.md §4 說明全部矛盾——後果是照 DEPLOY.md SOP 起完全部後端後，前端冒煙測試（§5 第 3 步）其實打的是 mock，後端全掛也會「通過」。個人要離線 mock 請照註解用 `frontend/.env.local` 覆蓋。
+
+### Removed
+- `stop-backend.bat`：PR #172 刪除四個原生啟動/停止腳本時漏掉它；其內容是委派給已被刪除的 `stop-all.ps1`，執行必失敗，屬死碼。
+
+### Changed（過期文件同步至容器化後的現況）
+- `README.md` 快速開始：Step 2 改為 `docker compose up -d --build` 一鍵啟動（原本只起 infra）、刪除教人跑 `./mvnw spring-boot:run` 的 Step 4（專案沒有 mvnw，AGENTS.md 雷區 1）。
+- `DEPLOY.md`：§1 前端表補 `frontend-admin`（5174）；§7「目前已知狀況」由 2026-06-10 更新至今——admin/notification/捕魚機/鑽石/商城均已完成，移除「admin 空殼、notification 未建立」等與同檔 §1 矛盾的過期描述。
+- `docs/ENV_SETUP_GUIDE.md`：§4 補 `--build` 與後端容器化說明、`docker compose ps` 範例移除 zookeeper（KRaft 後早已不存在）並補 7 後端；§6.4 標明為 IDE 除錯用、`./mvnw` 改 `mvn`。
+- `AUDIT_REPORT.md` T-110：標註 `✅（已除役）`——腳本歷史上完成過，容器化後移除。
+- `docs/performance/T-090-load-test-report.md`：Execution 第 1 步移除「services are not containerized」的過期前提。
+
+### Why
+- 詳細檢查 docker 環境與 PR #172 時發現的缺漏：核心部署健全（12 容器 healthy、gateway 冒煙通過），但殘留死腳本、缺 build context 過濾、以及五處文件與現況矛盾（正是 AGENTS.md §1 警告的「文件落後程式碼」模式，會誤導新成員照舊流程操作）。
+
+### 如何驗證
+- `node --test tests/infra/*.test.js`：142 tests 全綠。
+- 加上 `.dockerignore` 後 `docker compose build member-service` 成功，build context 由整個 repo 縮為 root pom + backend/。
+- `curl -X POST http://localhost:8080/api/v1/auth/register ...` 經 gateway 註冊回 `success:true`（容器拓撲端到端正常）。
 ## [refactor] -- 2026-07-07 -- 玩法契約單一來源化：repo 根 contracts/*.json + ContractParityTest 守門（Phase 5）
 
 ### 背景
@@ -45,7 +69,6 @@ feature/weiyu-saga-compensation-and-contracts
 ### 如何驗證
 - `mvn -pl backend/game-service test` 綠燈（176 tests，含新增 10 個補償測試與 3 個失敗路徑測試）。
 - 手動：kill wallet → 打一局 slot（命中）→ 重啟 wallet → 30 秒內補償入帳；`pending_wallet_credits` 標 DONE、`wallet_transactions.idempotency_key` 與補償單一致；`node tools/reconciliation/reconcile-game-wallet.mjs` 對帳通過。
-
 ## [fix] -- 2026-07-07 -- postgres init.sql 補上 cashback_records 表，修復全新環境 docker compose 啟動失敗
 
 ### Fixed
@@ -139,8 +162,6 @@ develop
 - `mvn -pl backend/wallet-service test`：161 tests 全綠（containers 測試被排除，行為不變）。
 - `mvn -pl backend/wallet-service test -Pcontainers-test`（本機 Docker Desktop）：8 個容器測試全綠。
 
-﻿## [fix] -- 2026-07-07 -- MySQL 初始化腳本補 SET NAMES utf8mb4：中文種子資料匯入即亂碼
-=======
 ## [feat] -- 2026-07-07 -- T-054 補完：告警查詢/處理 API + Dashboard 未處理告警列表
 
 ### Added

@@ -492,7 +492,7 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 |---|---|:--:|---|
 | T-108 | 停用玩家即時封鎖（Redis 封鎖 + token min-iat）| ✅ | admin `PlayerBanService` 寫 `disabled:player:` + `token:min-iat:`；gateway filter 新增 min-iat 驗證；member 登入加查封鎖標記（CHANGELOG 2026-06-16）|
 | T-109 | Gateway 補 `/api/v1/friends/**` 路由 | ✅ | `gateway-service/application.yml` 新增 `member-friends` route（CHANGELOG 2026-06-16）|
-| T-110 | Windows 一鍵啟動腳本（start-all.bat） | ✅ | `start-all.bat` / `stop-all.bat` 建立（CHANGELOG 2026-06-16）|
+| T-110 | Windows 一鍵啟動腳本（start-all.bat） | ✅（已除役） | 曾建立 `start-all.bat` / `stop-all.bat`（CHANGELOG 2026-06-16）；後端容器化（PR #172）後原生啟動腳本全數移除，改由 `docker compose up -d --build` 取代（CHANGELOG 2026-07-07）|
 | T-111 | 捕魚機遊戲（game-service fishing）| ✅ | `frontend/src/pages/Fishing.jsx` 存在；後端捕魚機邏輯（依 AGENTS.md T-038）|
 | T-112 | CasinoShop 頁面 | ✅ | `frontend/src/pages/CasinoShop.jsx` 存在 |
 | T-113 | CheckIn 頁面 | ✅ | `frontend/src/pages/CheckIn.jsx` 存在 |

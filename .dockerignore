@@ -1,0 +1,9 @@
+# 七個後端 Dockerfile 的 build context 都是 repo 根目錄（context: .），
+# 但實際只需要根 pom.xml 與 backend/。用白名單寫法：先全排除、再放行需要的，
+# 避免把 .git / frontend node_modules / docs 等整包送進 Docker daemon（×7 次）。
+*
+!pom.xml
+!backend
+# 本機 IDE 編譯產物不進 context：jar 由 build stage 內的 mvn package 產生，
+# 放進來只會讓 COPY backend 的 layer cache 隨本機編譯頻繁失效。
+backend/**/target
