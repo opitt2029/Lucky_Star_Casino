@@ -3,6 +3,7 @@ package com.luckystar.game.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.luckystar.game.client.WalletClient;
 import com.luckystar.game.client.dto.WalletCreditResponse;
+import com.luckystar.game.compensation.WalletCompensationService;
 import com.luckystar.game.client.dto.WalletDebitResponse;
 import com.luckystar.game.dto.FishingEndResponse;
 import com.luckystar.game.dto.FishingSessionView;
@@ -102,6 +103,7 @@ public class FishingService {
     private final GameResultEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
     private final RiskControlService riskControlService;
+    private final WalletCompensationService compensationService;
 
     /**
      * 開場（或續玩）：已有進行中場次時直接回傳原場次（resumed=true，不重複扣款）；
@@ -167,9 +169,11 @@ public class FishingService {
                 walletClient.credit(playerId, buyIn, "REFUND", "fishing-buyin-refund-" + sessionId, sessionId);
                 log.info("fishing buy-in refunded playerId={} sessionId={} amount={}", playerId, sessionId, buyIn);
             } catch (RuntimeException refundEx) {
-                // 退款本身又失敗：記為需人工對帳的嚴重事件（冪等鍵已落地，可日後重放補償）
-                log.error("fishing buy-in REFUND FAILED playerId={} sessionId={} amount={} (需人工對帳)",
+                // 退款本身又失敗：落補償單（同一冪等鍵），排程 30 秒內自動補退（ADR-009）
+                log.error("fishing buy-in REFUND FAILED playerId={} sessionId={} amount={}",
                         playerId, sessionId, buyIn, refundEx);
+                compensationService.recordPending(GAME_TYPE, sessionId, playerId, buyIn,
+                        "REFUND", "fishing-buyin-refund-" + sessionId, refundEx);
             }
             throw ex;
         }
@@ -424,7 +428,10 @@ public class FishingService {
             try {
                 walletClient.credit(playerId, amount, "REFUND", "fishing-topup-refund-" + sessionId + "-" + requestId, sessionId);
             } catch (RuntimeException refundEx) {
+                // 退款本身又失敗：落補償單（同一冪等鍵），排程 30 秒內自動補退（ADR-009）
                 log.error("fishing top-up REFUND FAILED playerId={} sessionId={} amount={}", playerId, sessionId, amount, refundEx);
+                compensationService.recordPending(GAME_TYPE, sessionId, playerId, amount,
+                        "REFUND", "fishing-topup-refund-" + sessionId + "-" + requestId, refundEx);
             }
             throw ex;
         }
@@ -681,8 +688,18 @@ public class FishingService {
         if (credited > 0) {
             // 結算返還的是「剩餘局內餘額」（未消耗的 buy-in + 局內累積派彩的混合），不是單純中獎；
             // 用 REFUND 而非 WIN，避免 rank-service 把本金返還誤計入「今日贏幣榜」（Bug 5）。
-            WalletCreditResponse credit = walletClient.credit(
-                    playerId, credited, "REFUND", "fishing-end-" + sessionId, sessionId);
+            WalletCreditResponse credit;
+            try {
+                credit = walletClient.credit(
+                        playerId, credited, "REFUND", "fishing-end-" + sessionId, sessionId);
+            } catch (RuntimeException ex) {
+                // 結算返還送不進 wallet（ADR-009）：落補償單（同一冪等鍵）後把原例外拋回。
+                // Session 仍在（未 delete），玩家重試 end 或閒置排程都會用同一冪等鍵再結一次，
+                // 與補償排程並發也安全——wallet 端同 key 只會入帳一次。
+                compensationService.recordPending(GAME_TYPE, sessionId, playerId, credited,
+                        "REFUND", "fishing-end-" + sessionId, ex);
+                throw ex;
+            }
             balanceAfter = credit.balanceAfter();
             wallet = WalletView.builder()
                     .balance(credit.balanceAfter())

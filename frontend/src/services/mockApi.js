@@ -1,47 +1,54 @@
-﻿const DB_KEY = 'lucky-star-mock-db-v1'
+﻿// 玩法契約單一來源（Phase 5）：表格數值一律 import repo 根 contracts/*.json，與後端 enum/常數的
+// 相等性由 game-service 的 ContractParityTest 守門（漂移＝CI 紅燈）。演算「邏輯」（補牌流程、
+// pCapture 反推、兩階賠付評估）仍鏡像後端程式碼（AGENTS 雷區 14）。
+import slotPaytableContract from '../../../contracts/slot-paytable.json'
+import baccaratRulesContract from '../../../contracts/baccarat-rules.json'
+import fishingSpeciesContract from '../../../contracts/fishing-species.json'
+import fishingCombatContract from '../../../contracts/fishing-combat.json'
+import shopCatalogContract from '../../../contracts/shop-catalog.json'
+
+const DB_KEY = 'lucky-star-mock-db-v1'
 const SESSION_KEY = 'lucky-star-session-v1'
 
-// 老虎機賠付表（與後端 SlotSymbol 對齊：權重 + 兩階倍率，權重總和 103）。
+// 老虎機賠付表（contracts/slot-paytable.json ↔ 後端 SlotSymbol：權重 + 兩階倍率，權重總和 103）。
 // 中線由左到右兩階賠付：三連（三格同符號）派 tripleMultiplier 大獎；
 // 左二同（左二格同、第三格不同）派 pairMultiplier 小獎；右二格相同不賠。
-// 理論 RTP ≈ 93.8%、命中率 ≈ 30.7%（pᵢ = 權重ᵢ / 103）。改本表務必同步後端與測試。
-const SLOT_PAYTABLE = [
-  { symbol: '🍒', weight: 45, pairMultiplier: 1, tripleMultiplier: 5 },
-  { symbol: '🍋', weight: 30, pairMultiplier: 1, tripleMultiplier: 8 },
-  { symbol: '🔔', weight: 16, pairMultiplier: 2, tripleMultiplier: 18 },
-  { symbol: '⭐', weight: 7, pairMultiplier: 3, tripleMultiplier: 50 },
-  { symbol: '7️⃣', weight: 5, pairMultiplier: 5, tripleMultiplier: 70 },
-]
+// 理論 RTP ≈ 93.8%、命中率 ≈ 30.7%（pᵢ = 權重ᵢ / 103）。
+const SLOT_PAYTABLE = slotPaytableContract.symbols.map(
+  ({ display, weight, pairMultiplier, tripleMultiplier }) => ({
+    symbol: display,
+    weight,
+    pairMultiplier,
+    tripleMultiplier,
+  }),
+)
 const SLOT_TOTAL_WEIGHT = SLOT_PAYTABLE.reduce((sum, entry) => sum + entry.weight, 0)
 const SLOT_PAYTABLE_BY_SYMBOL = Object.fromEntries(SLOT_PAYTABLE.map((entry) => [entry.symbol, entry]))
 
-// 捕魚機魚種表（血量/傷害模型，鏡像後端 FishSpecies / FishingCombat，ADR-003 / ADR-004）。
-// 重要：此檔是「預設玩家實際體驗」（前端預設走 mock），改後端規則時務必同步此處（AGENTS 雷區 14）。
-const FISHING_TARGET_RTP = 0.96
+// 捕魚機（血量/傷害模型，ADR-003 / ADR-004）：數值來自 contracts/fishing-combat.json 與
+// contracts/fishing-species.json（↔ 後端 FishingCombat / FishSpecies，ContractParityTest 守門）。
+const FISHING_TARGET_RTP = fishingCombatContract.targetRtp
 // 殘血部分回收率（受傷未死的魚在結算時退還的子彈成本比例＝體感 RTP 地板，ADR-004）
-const FISHING_RECOVERY_RATE = 0.7
-const FISHING_MONEY_TREE_MIN = 10
-const FISHING_MONEY_TREE_MAX = 50
-// HP = multiplier × 此值（對齊後端 FishSpecies.HP_PER_MULTIPLIER）
-const FISHING_HP_PER_MULT = 10
-// 暴擊（對齊後端 FishingCombat）
-const FISHING_CRIT_CHANCE = 0.2
-const FISHING_CRIT_MULT = 2
-// 各砲台單發基礎傷害（索引 0 不用；銅/銀/金，對齊後端 CANNON_DAMAGE = {1:14,2:22,3:32}）
-const FISHING_CANNON_DAMAGE = [0, 14, 22, 32]
-const FISH_SPECIES = [
-  { code: 'KOI', name: '錦鯉', assetId: 'fish-koi', multiplier: 2, tier: 'SMALL', spawnWeight: 100 },
-  { code: 'GOLDFISH', name: '金魚', assetId: 'fish-goldfish', multiplier: 3, tier: 'SMALL', spawnWeight: 90 },
-  { code: 'LANTERN', name: '燈籠魚', assetId: 'fish-lantern', multiplier: 5, tier: 'SMALL', spawnWeight: 70 },
-  { code: 'PUFFER', name: '河豚', assetId: 'fish-puffer', multiplier: 8, tier: 'MEDIUM', spawnWeight: 50 },
-  { code: 'ANGELFISH', name: '神仙魚', assetId: 'fish-angelfish', multiplier: 15, tier: 'MEDIUM', spawnWeight: 35 },
-  { code: 'DEVIL_RAY', name: '魔鬼魚', assetId: 'fish-devil-ray', multiplier: 25, tier: 'MEDIUM', spawnWeight: 22 },
-  { code: 'GOLD_DRAGON', name: '金龍', assetId: 'fish-gold-dragon', multiplier: 60, tier: 'HIGH', spawnWeight: 12 },
-  { code: 'PIXIU', name: '貔貅', assetId: 'fish-pixiu', multiplier: 88, tier: 'HIGH', spawnWeight: 7 },
-  { code: 'CAISHEN', name: '財神爺', assetId: 'fish-caishen', multiplier: 100, tier: 'HIGH', spawnWeight: 6 },
-  { code: 'DRAGON_KING', name: '龍王', assetId: 'fish-dragon-king', multiplier: 200, tier: 'BOSS', spawnWeight: 2 },
-  { code: 'MONEY_TREE', name: '搖錢樹', assetId: 'fish-money-tree', multiplier: 30, tier: 'SPECIAL', spawnWeight: 5 },
-]
+const FISHING_RECOVERY_RATE = fishingCombatContract.recoveryRate
+const FISHING_MONEY_TREE_MIN = fishingSpeciesContract.moneyTreeMultiplier.min
+const FISHING_MONEY_TREE_MAX = fishingSpeciesContract.moneyTreeMultiplier.max
+// HP = multiplier × 此值（後端 FishSpecies.HP_PER_MULTIPLIER）
+const FISHING_HP_PER_MULT = fishingSpeciesContract.hpPerMultiplier
+// 暴擊（後端 FishingCombat）
+const FISHING_CRIT_CHANCE = fishingCombatContract.critChance
+const FISHING_CRIT_MULT = fishingCombatContract.critMultiplier
+// 各砲台單發基礎傷害（索引 0 不用；銅/銀/金，後端 FishingCombat.CANNON_DAMAGE）
+const FISHING_CANNON_DAMAGE = fishingCombatContract.cannonDamage
+const FISH_SPECIES = fishingSpeciesContract.species.map(
+  ({ code, displayName, assetId, multiplier, tier, spawnWeight }) => ({
+    code,
+    name: displayName,
+    assetId,
+    multiplier,
+    tier,
+    spawnWeight,
+  }),
+)
 
 function isFishingBlocker(fishType) {
   return ['BLOCKER_OCTOPUS', 'BLOCKER_STARFISH', 'BLOCKER_TURTLE'].includes(String(fishType || '').toUpperCase())
@@ -126,13 +133,9 @@ const MONTHLY_REWARD_MILESTONES = [
   { days: 28, reward: 12000 },
 ]
 
-// 禮品商城目錄（鏡像後端 shop_items seed / database/mysql/init.sql，ADR-006）。
-// 後端後台可改目錄；mock 為預設玩家體驗，改後端 seed 時同步此處。
-const SHOP_CATALOG = [
-  { itemCode: 'vip-ticket', name: 'VIP 入場券', caption: '可兌換活動或限時桌台資格', cost: 12000, assetKey: 'shopPrizeA' },
-  { itemCode: 'avatar-frame', name: '會員頭像框', caption: '讓會員頭像更有辨識度', cost: 8000, assetKey: 'shopPrizeB' },
-  { itemCode: 'bonus-box', name: '幸運禮盒', caption: '適合兌換活動獎勵或驚喜禮品', cost: 20000, assetKey: 'shopPrizeC' },
-]
+// 禮品商城目錄（contracts/shop-catalog.json；正式目錄的單一真相在 MySQL shop_items——ADR-006、
+// AGENTS 雷區 20）。改 database/mysql/init.sql 的 seed 時同步契約檔。
+const SHOP_CATALOG = shopCatalogContract.items
 
 const MOCK_TEST_STAR_COIN_BALANCE = 999999999
 
@@ -363,39 +366,28 @@ function randomCard() {
   return baccaratValues[Math.floor(Math.random() * baccaratValues.length)]
 }
 
-// 莊家補牌規則（鏡像後端 BaccaratGameService.bankerDraws）。
-// playerThirdValue 為 null 代表閒家未補牌：莊家比照閒家 0~5 補、6~7 停。
+// 百家樂表格數值（contracts/baccarat-rules.json ↔ 後端 BaccaratGameService，ContractParityTest 守門）
+const BACCARAT_TIE_PAYOUT_RATIO = baccaratRulesContract.tiePayoutRatio
+const BACCARAT_BANKER_COMMISSION_RATE = baccaratRulesContract.bankerCommissionRate
+const BANKER_DRAW_TABLE = baccaratRulesContract.bankerDraws
+
+// 莊家補牌（查契約檔補牌表；判定邏輯鏡像後端 BaccaratGameService.bankerDraws）。
+// playerThirdValue 為 null 代表閒家未補牌：莊點 ≤ whenPlayerStandsDrawOnMax（5）即補。
 function bankerDrawsMock(bankerScore, playerThirdValue) {
-  if (playerThirdValue === null) return bankerScore <= 5
-  const p3 = playerThirdValue
-  switch (bankerScore) {
-    case 0:
-    case 1:
-    case 2:
-      return true
-    case 3:
-      return p3 !== 8
-    case 4:
-      return p3 >= 2 && p3 <= 7
-    case 5:
-      return p3 >= 4 && p3 <= 7
-    case 6:
-      return p3 >= 6 && p3 <= 7
-    default:
-      return false // 7（含理論上不會到的 >7）
-  }
+  if (playerThirdValue === null) return bankerScore <= BANKER_DRAW_TABLE.whenPlayerStandsDrawOnMax
+  return (BANKER_DRAW_TABLE.byBankerScore[String(bankerScore)] || []).includes(playerThirdValue)
 }
 
 // 單一押注區派彩（含本金，鏡像後端 BaccaratGameService.payoutFor）。
-// 和局：押中和賠 8:1（本金+8 倍）、押莊/閒退回本金（push）；非和局押錯為 0；
-// 押中莊扣 5% 傭金、押中閒 1:1。
+// 和局：押中和賠 tiePayoutRatio:1（8:1，本金+8 倍）、押莊/閒退回本金（push）；非和局押錯為 0；
+// 押中莊扣 bankerCommissionRate（5%）傭金、押中閒 1:1。
 function baccaratPayout(area, winner, amount) {
   if (winner === 'tie') {
-    if (area === 'tie') return amount * 9
+    if (area === 'tie') return amount * (1 + BACCARAT_TIE_PAYOUT_RATIO)
     return amount // 押莊/閒：和局退回本金（push）
   }
   if (area !== winner) return 0
-  if (area === 'banker') return amount * 2 - Math.floor(amount * 0.05)
+  if (area === 'banker') return amount * 2 - Math.floor(amount * BACCARAT_BANKER_COMMISSION_RATE)
   return amount * 2 // player 1:1
 }
 

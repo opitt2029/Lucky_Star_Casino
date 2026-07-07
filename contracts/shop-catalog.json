@@ -1,0 +1,8 @@
+{
+  "$comment": "禮品商城 mock 目錄（Phase 5，ADR-006）。注意：此檔僅供前端 mock（mockApi.SHOP_CATALOG）；正式目錄的單一真相在 MySQL shop_items（admin 後台 CRUD，AGENTS 雷區 20），後端不讀本檔、ContractParityTest 也不守門。改 database/mysql/init.sql 的 shop_items seed 時同步本檔。",
+  "items": [
+    { "itemCode": "vip-ticket", "name": "VIP 入場券", "caption": "可兌換活動或限時桌台資格", "cost": 12000, "assetKey": "shopPrizeA" },
+    { "itemCode": "avatar-frame", "name": "會員頭像框", "caption": "讓會員頭像更有辨識度", "cost": 8000, "assetKey": "shopPrizeB" },
+    { "itemCode": "bonus-box", "name": "幸運禮盒", "caption": "適合兌換活動獎勵或驚喜禮品", "cost": 20000, "assetKey": "shopPrizeC" }
+  ]
+}

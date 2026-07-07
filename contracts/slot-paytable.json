@@ -1,0 +1,11 @@
+{
+  "$comment": "老虎機賠付表單一來源（Phase 5）。執行期權威仍是後端 SlotSymbol enum；本檔由 ContractParityTest 逐欄守門（漂移＝CI 紅燈），前端 mockApi.js 直接 import。改權重/倍率：先改 SlotSymbol，再同步本檔，並依 AGENTS 雷區 15 更新測試與 Javadoc 理論 RTP。",
+  "totalWeight": 103,
+  "symbols": [
+    { "code": "CHERRY", "display": "🍒", "weight": 45, "pairMultiplier": 1, "tripleMultiplier": 5 },
+    { "code": "LEMON", "display": "🍋", "weight": 30, "pairMultiplier": 1, "tripleMultiplier": 8 },
+    { "code": "BELL", "display": "🔔", "weight": 16, "pairMultiplier": 2, "tripleMultiplier": 18 },
+    { "code": "STAR", "display": "⭐", "weight": 7, "pairMultiplier": 3, "tripleMultiplier": 50 },
+    { "code": "SEVEN", "display": "7️⃣", "weight": 5, "pairMultiplier": 5, "tripleMultiplier": 70 }
+  ]
+}

@@ -25,6 +25,7 @@ import com.luckystar.game.dto.BaccaratResultResponse;
 import com.luckystar.game.entity.GameRound;
 import com.luckystar.game.exception.InsufficientBalanceException;
 import com.luckystar.game.exception.RoundNotFoundException;
+import com.luckystar.game.exception.WalletUnavailableException;
 import com.luckystar.game.kafka.GameResultEventPublisher;
 import com.luckystar.game.repository.GameRoundRepository;
 import com.luckystar.game.rng.ProvablyFairRng;
@@ -57,6 +58,8 @@ class BaccaratServiceTest {
             org.mockito.Mockito.mock(com.luckystar.game.session.GameSessionService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final RiskControlService riskControlService = org.mockito.Mockito.mock(RiskControlService.class);
+    private final com.luckystar.game.compensation.WalletCompensationService compensationService =
+            org.mockito.Mockito.mock(com.luckystar.game.compensation.WalletCompensationService.class);
 
     private BaccaratService service;
 
@@ -86,7 +89,7 @@ class BaccaratServiceTest {
     @BeforeEach
     void setUp() {
         service = new BaccaratService(rng, baccaratGame, walletClient, roundRepository,
-                publisher, sessionService, objectMapper, riskControlService);
+                publisher, sessionService, objectMapper, riskControlService, compensationService);
         // 預設：風控不攔截
         when(riskControlService.shouldIntercept(anyLong(), anyString())).thenReturn(false);
         when(rng.generateServerSeed()).thenReturn("srv");
@@ -205,6 +208,30 @@ class BaccaratServiceTest {
         verify(walletClient).credit(eq(PLAYER_ID), eq(1L), eq("bac-win-" + ROUND_ID), eq(ROUND_ID));
         verify(roundRepository).save(any());
         verify(sessionService).markSettled(PLAYER_ID, ROUND_ID, "srv", 0L);
+    }
+
+    @Test
+    @DisplayName("settle：credit 失敗 → 落補償單（同一冪等鍵、subType=WIN）並拋回原例外，不寫對局、不揭露")
+    void settle_creditFails_recordsCompensationAndRethrows() {
+        when(sessionService.find(PLAYER_ID, ROUND_ID))
+                .thenReturn(Optional.of(startedSession(0L, 100L, 0L)));
+        BaccaratOutcome outcome = bankerWinOutcome();
+        when(baccaratGame.deal(any())).thenReturn(outcome);
+        Map<BaccaratResult, Long> payouts = new EnumMap<>(BaccaratResult.class);
+        payouts.put(BaccaratResult.BANKER, 195L);
+        when(baccaratGame.settle(eq(outcome), anyMap()))
+                .thenReturn(new BaccaratSettlement(BaccaratResult.BANKER, 100L, 195L, payouts));
+        when(walletClient.credit(eq(PLAYER_ID), eq(196L), anyString(), anyString()))
+                .thenThrow(new WalletUnavailableException("wallet down"));
+
+        assertThrows(WalletUnavailableException.class, () -> service.settle(PLAYER_ID, ROUND_ID));
+
+        // 補償單冪等鍵必須＝剛剛失敗的 credit 冪等鍵 bac-win-<roundId>，金額含反水（195+1）
+        verify(compensationService).recordPending(eq("BACCARAT"), eq(ROUND_ID), eq(PLAYER_ID), eq(196L),
+                eq("WIN"), eq("bac-win-" + ROUND_ID), any(WalletUnavailableException.class));
+        // 主流程中止：Session 仍為 STARTED（可重試 /result）、對局未落地
+        verify(roundRepository, never()).save(any());
+        verify(sessionService, never()).markSettled(anyLong(), anyString(), any(), any());
     }
 
     @Test
