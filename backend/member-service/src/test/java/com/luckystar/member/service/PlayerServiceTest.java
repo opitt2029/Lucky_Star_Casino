@@ -140,4 +140,38 @@ class PlayerServiceTest {
                 .isInstanceOf(MemberNotFoundException.class)
                 .hasMessageContaining("99");
     }
+
+    @Test
+    void updateStatus_disable_persistsDisabled() {
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+        when(memberRepository.save(any(Member.class))).thenReturn(sampleMember);
+
+        String result = playerService.updateStatus(1L, false);
+
+        assertThat(result).isEqualTo("DISABLED");
+        assertThat(sampleMember.getStatus()).isEqualTo("DISABLED");
+        verify(memberRepository, times(1)).save(sampleMember);
+    }
+
+    @Test
+    void updateStatus_enable_persistsActive() {
+        sampleMember.setStatus("DISABLED");
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+        when(memberRepository.save(any(Member.class))).thenReturn(sampleMember);
+
+        String result = playerService.updateStatus(1L, true);
+
+        assertThat(result).isEqualTo("ACTIVE");
+        assertThat(sampleMember.getStatus()).isEqualTo("ACTIVE");
+    }
+
+    @Test
+    void updateStatus_memberNotFound() {
+        when(memberRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> playerService.updateStatus(99L, false))
+                .isInstanceOf(MemberNotFoundException.class)
+                .hasMessageContaining("99");
+        verify(memberRepository, never()).save(any(Member.class));
+    }
 }
