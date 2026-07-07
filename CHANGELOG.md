@@ -1,4 +1,17 @@
-﻿## [feat] -- 2026-07-07 -- 管理後台 8 個功能頁完成 API 串接（脫離 stub）
+﻿## [fix] -- 2026-07-07 -- MySQL 初始化腳本補 SET NAMES utf8mb4：中文種子資料匯入即亂碼
+
+### Fixed
+- `database/mysql/init.sql`、`database/mysql/seed_test_data.sql`：檔頭加 `SET NAMES utf8mb4;`。
+
+### Why
+- MySQL 容器 entrypoint 用容器內建 `mysql` client 執行 `/docker-entrypoint-initdb.d/*.sql`，容器內無 `LANG`（POSIX locale）時 client 預設編碼是 **latin1**，UTF-8 的中文被當 latin1 讀入再轉存 utf8mb4 → 雙重編碼亂碼（`測試員一` 變 `æ¸¬è©¦å“¡ä¸€`）。受影響：`members.nickname`、`shop_items.name/caption`；英數資料不受影響（ASCII 與 latin1 相容）。
+- 既有壞資料以重建 volume 修復（`docker compose down -v && up -d`），本機測試資料一併重置。
+
+### Verified
+- 重建後查 `members.nickname` = 測試員一/二/三、`shop_items` 中文正常；Postgres 錢包種子（1001~1003 各 10000）與 Kafka topics（kafka-init）自動重建。
+- ⚠️ 注意：volume 重建後 `admin_users` 為空，`AdminUserSeeder` 是啟動期 CommandLineRunner，須**重啟 admin-service** 讓種子帳號重新寫入才能登入後台。
+
+## [feat] -- 2026-07-07 -- 管理後台 8 個功能頁完成 API 串接（脫離 stub）
 
 ### Added
 - `frontend-admin/src/hooks/useFetch.js`：頁面資料抓取共用 hook（loading/error/reload 樣板＋競態守門：只採用最後一次請求的結果）。頁面資料「進頁抓、離頁丟」無跨頁共享，故不進 redux（auth 除外）。
