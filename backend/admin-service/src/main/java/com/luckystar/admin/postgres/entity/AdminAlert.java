@@ -56,6 +56,11 @@ public class AdminAlert {
         }
     }
 
+    /** 標記為已處理（單向：告警一經處理不提供退回未處理，故不做 setter）。 */
+    public void markResolved() {
+        this.resolved = true;
+    }
+
     public Long getId() {
         return id;
     }
