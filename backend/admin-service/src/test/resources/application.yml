@@ -24,6 +24,12 @@ spring:
     listener:
       auto-startup: false
 
+# 內部服務呼叫（測試不真的連 member-service，MemberClient 在單元測試中被 mock）
+internal:
+  member-service:
+    base-url: http://localhost:8081
+    secret: test-internal-secret
+
 # 後台 JWT / 播種（測試固定值）
 admin:
   jwt:

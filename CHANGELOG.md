@@ -18,7 +18,64 @@
 - `node --test tests/infra/*.test.js` 全綠；`docker compose config --profile observability` 解析通過；七模組 `mvn test` 全綠（見 PR）。
 
 feature/weiyu-admin-console
+## [test] -- 2026-07-07 -- wallet-service 新增 Testcontainers 真實資料庫測試（ADR-007）
+
+### Added
+- 根 `pom.xml`：dependencyManagement 匯入 `testcontainers-bom:1.21.3`。
+- `backend/wallet-service/pom.xml`：test 依賴 `testcontainers-{junit-jupiter,postgresql,mysql}`；surefire 預設 `excludedGroups=containers`；新 profile **`containers-test`**（只跑 `@Tag("containers")`，並把 system property 切成 `jpa.ddl-auto=validate` + 真方言——`DataSourceConfig` 讀的是 system property，故必須在 surefire 層切）。
+- `backend/wallet-service/src/test/java/com/luckystar/wallet/containers/`：
+  - `AbstractDualDatasourceContainerTest`：singleton postgres:16 + mysql:8.4（版本對齊 compose），套 `database/` 真 schema（PG＝init.sql＋migration 依數字版號重放；MySQL＝僅 init.sql，因其 migration 不冪等且 init.sql 已是累積最新版），`ddl-auto=validate` 讓 context 啟動即斷言 entity↔schema 無漂移。
+  - `WalletCheckConstraintContainerTest`：非法 sub_type 在 PG/MySQL 撞 `chk_wt_sub_type`（H2 create 模式根本沒有這條約束）；白名單最新子型 SHOP_PURCHASE 可寫（兼驗 migration 重放順序）。
+  - `WalletOptimisticLockContainerTest`：真 PG 樂觀鎖——stale version 存檔被拒、雙併發 800 扣款於餘額 1000 恰一方成功、不超扣、流水恰一筆。
+  - `DualDatasourceTxSemanticsContainerTest`：postgres/mysql 兩 TransactionManager 各自 commit/rollback 互不帶動（雷區 5/20 的根源語意）。
+- `.github/workflows/ci.yml`：backend-test job 新增 step `mvn -pl backend/wallet-service test -Pcontainers-test`（ubuntu-latest 內建 Docker）。
+- `docs/adr/ADR-007.md`：決策全文（為何只加 wallet、為何不取代 H2、兩端 schema 初始化策略差異）。
+
+### Changed
+- `AGENTS.md` 雷區 3：補「唯一例外（ADR-007）」說明與新增此類測試的規範。
+
+### Why
+- H2 測試由 entity 反向建表，永遠測不到「entity ↔ 真 schema 漂移」「DB 層 CHECK 約束」「真 PG 鎖語意」三類問題；wallet-service 是唯一雙資料源＋帳務核心，H2 假象風險最高。只新增、不取代，保住 CI/本機 `mvn test` 零外部依賴的既有約定（雷區 3）。
+
+### Verified
+- `mvn -pl backend/wallet-service test`：161 tests 全綠（containers 測試被排除，行為不變）。
+- `mvn -pl backend/wallet-service test -Pcontainers-test`（本機 Docker Desktop）：8 個容器測試全綠。
+
 ﻿## [fix] -- 2026-07-07 -- MySQL 初始化腳本補 SET NAMES utf8mb4：中文種子資料匯入即亂碼
+=======
+## [feat] -- 2026-07-07 -- T-054 補完：告警查詢/處理 API + Dashboard 未處理告警列表
+
+### Added
+- `backend/admin-service/.../controller/AdminAlertController.java`：`GET /admin/alerts`（分頁、alertType/resolved 可選篩選、id DESC 新到舊）+ `PATCH /admin/alerts/{id}/resolve`（冪等，404=不存在）。
+- `backend/admin-service/.../service/AdminAlertService.java`：查詢分流（衍生查詢三組合 + findAll）與標記已處理，掛 `postgresTransactionManager`（雙資料源，admin_alerts 在 Postgres）。
+- `backend/admin-service/.../dto/AlertView.java`、`AdminAlertRepository` 衍生查詢、`AdminAlert.markResolved()`（單向、不提供退回）。
+- `backend/admin-service/.../service/AdminAlertServiceTest.java`：篩選分流 4 例 + resolve 3 例（含冪等）。
+- `frontend-admin`：`adminApi.listAlerts/resolveAlert`；Dashboard 新增「未處理異常告警」區塊（獨立 useFetch、標記已處理只重載告警不重抓報表、玩家 ID 連到詳情頁）。
+
+### Why
+- T-054 規則引擎只有寫入端：偵測到異常後管理員只能收 Kafka 推播，後台翻不到歷史告警——功能斷在半路。查詢用衍生方法列舉篩選組合而非 null 參數 JPQL，避開 Postgres null 綁定參數的型別推斷雷。
+
+### Verified
+- `mvn -pl backend/admin-service test` 綠燈；frontend-admin `npm test`（14 tests）/ `lint` / `build` 全過。
+
+## [feat] -- 2026-07-07 -- T-051 補完：玩家停用狀態持久化到 members.status（member 內部 API）
+
+### Added
+- `backend/member-service/.../controller/InternalMemberController.java`：`PATCH /internal/members/{id}/status`（body `{enabled}`→ ACTIVE/DISABLED），由既有 `InternalSecretFilter`（X-Internal-Secret）守門、不經 gateway；`PlayerService.updateStatus()`、`UpdateMemberStatusRequest`。
+- `backend/admin-service/.../client/MemberClient.java` + `config/MemberClientConfig.java`（RestClient 直連 member，比照 game→wallet 的 WalletClientConfig）；`MemberServiceException` → `AdminExceptionHandler` 轉 502。
+- `application.yml` 新增 `internal.member-service.base-url`（`MEMBER_SERVICE_URL`，預設 8081）與 secret（`INTERNAL_SECRET`）。
+
+### Changed
+- `AdminPlayerService.setStatus()`：先呼叫 member 內部 API 持久化 `members.status`（真相來源），成功後才寫 Redis 封鎖/解封。member 失敗整個操作失敗（502），不留「Redis 已封鎖但 DB 仍 ACTIVE」半套狀態；反向不一致由登入時的 DB status 檢查兜底。
+- `AUDIT_REPORT.md`：T-051 移除「跨組待辦」註記、T-054 補查詢端點說明。
+
+### Why
+- 原本停用只寫 Redis `disabled:player:{id}`，Redis 資料清空（重啟/淘汰）後停用玩家即可重新登入。member 登入本就同時檢查 `members.status=DISABLED` 與 Redis（2026-06 修過），補上 DB 持久化後兩層防線才完整。
+
+### Verified
+- `mvn -pl backend/admin-service,backend/member-service test` 綠燈（新增 admin setStatus 4 例改版含 member 失敗不動 Redis、member updateStatus 3 例）。
+
+## [fix] -- 2026-07-07 -- MySQL 初始化腳本補 SET NAMES utf8mb4：中文種子資料匯入即亂碼
 
 ### Fixed
 - `database/mysql/init.sql`、`database/mysql/seed_test_data.sql`：檔頭加 `SET NAMES utf8mb4;`。
