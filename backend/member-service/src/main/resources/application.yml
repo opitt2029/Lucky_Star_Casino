@@ -61,10 +61,15 @@ jwt:
   refresh-token-expiry-ms: ${JWT_REFRESH_TOKEN_EXPIRY_MS:604800000}
 
 management:
+  metrics:
+    distribution:
+      percentiles-histogram:
+        # P99 直方圖（T-090 觀測性）：供 Prometheus histogram_quantile 計算延遲分位數
+        "[http.server.requests]": true
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: always

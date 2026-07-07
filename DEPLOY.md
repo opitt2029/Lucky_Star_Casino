@@ -98,6 +98,19 @@ docker compose ps
 - `database/mysql/init.sql` 與 `database/postgres/init.sql` **只在資料 Volume 第一次建立時自動執行**。
 - 之後再 `docker compose up` 不會重跑。若你改了 schema 想重新初始化，請見 §7「重置資料庫」。
 
+### 選配：啟動觀測性（Prometheus + Grafana）
+
+壓測（T-090）或想看服務指標時，改用 profile 啟動（預設 `docker compose up` **不會**啟動監控容器，SOP 不變）：
+
+```bash
+docker compose --profile observability up -d
+```
+
+- Prometheus：http://localhost:9090 （Status → Targets 應看到 7 個服務；後端服務要先啟動才會轉綠）
+- Grafana：http://localhost:3000 （匿名 Admin 免登入，內建「Lucky Star — 服務總覽」儀表板：HTTP P99 / 吞吐 / 5xx / Resilience4j 熔斷 / JVM Heap / CPU）
+- 各服務指標端點：`http://localhost:808x/actuator/prometheus`
+- 設定檔在 `observability/`（Prometheus scrape 用 `host.docker.internal` 抓宿主機上的後端；若日後全容器化要改成服務名）。
+
 ---
 
 ## 4. 啟動後端服務
