@@ -1,0 +1,174 @@
+{
+  "_comment": [
+    "AUDIT_REPORT.md 附錄 A 的證據清單（首版 2026-07-07 由附錄 A 手工轉換）。",
+    "每個任務：{ id, title, owner?, priority?, evidence: { files?, commitGrep? }, override?, note? }",
+    "- evidence.files：glob 陣列（相對 repo 根），每個 glob 至少命中一檔才算存在",
+    "- evidence.commitGrep：git log --grep 的 pattern；早期任務 commit 沒帶 T-0xx 記號者設 null",
+    "- override：{ status, reason } 人工判定（僅限證據判不了的項目，如 RWD/壓測 gate），優先於 evidence",
+    "- note：附註，串在盤點依據欄之後",
+    "判定規則與用法見 generate-audit-snapshot.mjs 檔頭。改完本檔請重跑該工具。"
+  ],
+  "stats": { "id": "A.13", "title": "進度統計（自動計算）" },
+  "sections": [
+    {
+      "id": "A.1",
+      "title": "全域 / 基礎建設（S0-W1）",
+      "ownerColumn": true,
+      "tasks": [
+        { "id": "T-000", "title": "GitHub Repo 與分支策略", "owner": "組長A", "priority": "P0", "evidence": { "files": ["README.md", "CONTRIBUTING.md", ".github/pull_request_template.md"], "commitGrep": null } },
+        { "id": "T-001", "title": "架構圖與 ADR", "owner": "組長A", "priority": "P0", "evidence": { "files": ["docs/architecture.md", "docs/adr/ADR-001.md"], "commitGrep": "T-001" } },
+        { "id": "T-002", "title": "Docker Compose 環境", "owner": "組員D", "priority": "P0", "evidence": { "files": ["docker-compose.yml"], "commitGrep": "T-002" } },
+        { "id": "T-003", "title": "各 Service Spring Boot 初始化", "owner": "組員D", "priority": "P0", "evidence": { "files": ["backend/gateway-service/src/main/java/com/luckystar/gateway/GatewayServiceApplication.java", "backend/member-service/src/main/java/com/luckystar/member/MemberServiceApplication.java", "backend/wallet-service/src/main/java/com/luckystar/wallet/WalletServiceApplication.java", "backend/game-service/src/main/java/com/luckystar/game/GameServiceApplication.java", "backend/rank-service/src/main/java/com/luckystar/rank/RankServiceApplication.java", "backend/admin-service/src/main/java/com/luckystar/admin/AdminServiceApplication.java", "backend/notification-service/src/main/java/com/luckystar/notification/NotificationServiceApplication.java"], "commitGrep": null } },
+        { "id": "T-004", "title": "React 前端初始化", "owner": "組員E", "priority": "P0", "evidence": { "files": ["frontend/package.json", "frontend/vite.config.js", "frontend/src/store/index.js"], "commitGrep": null } },
+        { "id": "T-005", "title": "Kafka Topic 規劃", "owner": "組長A", "priority": "P0", "evidence": { "files": ["kafka/kafka-init.sh"], "commitGrep": "T-005" } },
+        { "id": "T-006", "title": "DB Schema 與 DDL", "owner": "全員", "priority": "P0", "evidence": { "files": ["database/mysql/init.sql", "database/postgres/init.sql"], "commitGrep": "T-006" } }
+      ]
+    },
+    {
+      "id": "A.2",
+      "title": "Member Service（組長A）",
+      "tasks": [
+        { "id": "T-010", "title": "會員註冊 API", "priority": "P0", "evidence": { "files": ["backend/member-service/src/main/java/com/luckystar/member/controller/AuthController.java"], "commitGrep": "T-010" } },
+        { "id": "T-011", "title": "JWT 登入/登出 API", "priority": "P0", "evidence": { "files": ["backend/member-service/src/main/java/com/luckystar/member/controller/AuthController.java", "backend/member-service/src/main/java/com/luckystar/member/security/JwtTokenProvider.java"], "commitGrep": "T-011" } },
+        { "id": "T-012", "title": "JWT Token 刷新", "priority": "P0", "evidence": { "files": ["backend/member-service/src/main/java/com/luckystar/member/service/AuthService.java"], "commitGrep": "T-012" } },
+        { "id": "T-013", "title": "Spring Security 過濾器鏈", "priority": "P0", "evidence": { "files": ["backend/member-service/src/main/java/com/luckystar/member/config/SecurityConfig.java", "backend/member-service/src/main/java/com/luckystar/member/config/JwtFilterConfig.java"], "commitGrep": "T-013" } },
+        { "id": "T-014", "title": "玩家個人資料 CRUD", "priority": "P0", "evidence": { "files": ["backend/member-service/src/main/java/com/luckystar/member/controller/PlayerController.java", "backend/member-service/src/main/java/com/luckystar/member/service/PlayerService.java"], "commitGrep": "T-014" } },
+        { "id": "T-015", "title": "好友系統 API", "priority": "P1", "evidence": { "files": ["backend/member-service/src/main/java/com/luckystar/member/controller/FriendshipController.java", "backend/member-service/src/main/java/com/luckystar/member/service/FriendshipService.java"], "commitGrep": "T-015" } },
+        { "id": "T-016", "title": "任務系統資料結構", "priority": "P1", "evidence": { "files": ["backend/member-service/src/main/java/com/luckystar/member/entity/TaskDefinition.java", "backend/member-service/src/main/java/com/luckystar/member/entity/PlayerTask.java", "backend/member-service/src/main/java/com/luckystar/member/entity/TaskType.java"], "commitGrep": null } },
+        { "id": "T-017", "title": "每日簽到 API", "priority": "P1", "evidence": { "files": ["backend/member-service/src/main/java/com/luckystar/member/controller/CheckinController.java", "backend/member-service/src/main/java/com/luckystar/member/service/CheckinService.java", "backend/member-service/src/main/java/com/luckystar/member/entity/DailyCheckin.java"], "commitGrep": "T-017" } },
+        { "id": "T-018", "title": "新手禮包自動發放", "priority": "P1", "evidence": { "files": ["backend/member-service/src/main/java/com/luckystar/member/consumer/MemberRegisteredConsumer.java", "backend/member-service/src/main/java/com/luckystar/member/service/NewGiftService.java"], "commitGrep": "T-018" } }
+      ]
+    },
+    {
+      "id": "A.3",
+      "title": "Wallet Service（組員C）",
+      "tasks": [
+        { "id": "T-020", "title": "Wallet 初始化（開戶）", "priority": "P0", "evidence": { "files": ["backend/wallet-service/src/main/java/com/luckystar/wallet/kafka/MemberEventListener.java"], "commitGrep": "T-020" } },
+        { "id": "T-021", "title": "查詢星幣餘額 API", "priority": "P0", "evidence": { "files": ["backend/wallet-service/src/main/java/com/luckystar/wallet/controller/WalletController.java"], "commitGrep": "T-021" } },
+        { "id": "T-022", "title": "下注扣款 API", "priority": "P0", "evidence": { "files": ["backend/wallet-service/src/main/java/com/luckystar/wallet/controller/InternalWalletController.java", "backend/wallet-service/src/main/java/com/luckystar/wallet/service/WalletService.java"], "commitGrep": "T-022" } },
+        { "id": "T-023", "title": "派彩入帳 API", "priority": "P0", "evidence": { "files": ["backend/wallet-service/src/main/java/com/luckystar/wallet/controller/InternalWalletController.java", "backend/wallet-service/src/main/java/com/luckystar/wallet/service/WalletService.java"], "commitGrep": "T-023" } },
+        { "id": "T-024", "title": "冪等性防重複", "priority": "P0", "evidence": { "files": ["backend/wallet-service/src/main/java/com/luckystar/wallet/postgres/entity/WalletTransaction.java"], "commitGrep": "T-024" } },
+        { "id": "T-025", "title": "帳務流水查詢 API", "priority": "P0", "evidence": { "files": ["backend/wallet-service/src/main/java/com/luckystar/wallet/service/WalletQueryService.java", "backend/wallet-service/src/main/java/com/luckystar/wallet/kafka/WalletReadSyncListener.java"], "commitGrep": "T-025" } },
+        { "id": "T-026", "title": "好友星幣贈送 API", "priority": "P1", "evidence": { "files": ["backend/wallet-service/src/main/java/com/luckystar/wallet/service/GiftService.java"], "commitGrep": "T-026" } },
+        { "id": "T-027", "title": "破產補助 API", "priority": "P1", "evidence": { "files": ["backend/wallet-service/src/main/java/com/luckystar/wallet/service/BankruptcyAidService.java"], "commitGrep": "T-027" } },
+        { "id": "T-028", "title": "Kafka DLT 處理", "priority": "P2", "evidence": { "files": ["backend/wallet-service/src/main/java/com/luckystar/wallet/controller/AdminDeadLetterController.java", "backend/wallet-service/src/main/java/com/luckystar/wallet/service/DeadLetterService.java"], "commitGrep": "T-028" } }
+      ]
+    },
+    {
+      "id": "A.4",
+      "title": "RNG Game Service（組員B）",
+      "tasks": [
+        { "id": "T-030", "title": "Provably Fair RNG 引擎", "priority": "P0", "evidence": { "files": ["backend/game-service/src/main/java/com/luckystar/game/rng/ProvablyFairRng.java", "backend/game-service/src/main/java/com/luckystar/game/rng/RandomStream.java"], "commitGrep": "T-030" } },
+        { "id": "T-031", "title": "老虎機遊戲邏輯", "priority": "P0", "evidence": { "files": ["backend/game-service/src/main/java/com/luckystar/game/slot/SlotMachine.java", "backend/game-service/src/main/java/com/luckystar/game/slot/SlotSymbol.java"], "commitGrep": "T-031" } },
+        { "id": "T-032", "title": "老虎機遊戲 API", "priority": "P0", "evidence": { "files": ["backend/game-service/src/main/java/com/luckystar/game/controller/SlotController.java", "backend/game-service/src/main/java/com/luckystar/game/service/SlotService.java", "backend/game-service/src/main/java/com/luckystar/game/client/WalletClient.java"], "commitGrep": "T-032" } },
+        { "id": "T-033", "title": "Redis 遊戲 Session 管理", "priority": "P0", "evidence": { "files": ["backend/game-service/src/main/java/com/luckystar/game/session/GameSessionService.java"], "commitGrep": "T-033" } },
+        { "id": "T-034", "title": "百家樂遊戲邏輯", "priority": "P1", "evidence": { "files": ["backend/game-service/src/main/java/com/luckystar/game/baccarat/BaccaratGameService.java"], "commitGrep": "T-034" } },
+        { "id": "T-035", "title": "百家樂遊戲 API", "priority": "P1", "evidence": { "files": ["backend/game-service/src/main/java/com/luckystar/game/controller/BaccaratController.java", "backend/game-service/src/main/java/com/luckystar/game/service/BaccaratService.java"], "commitGrep": "T-035" } },
+        { "id": "T-036", "title": "RNG 公平性驗證 API", "priority": "P1", "evidence": { "files": ["backend/game-service/src/main/java/com/luckystar/game/controller/VerificationController.java", "backend/game-service/src/main/java/com/luckystar/game/service/VerificationService.java"], "commitGrep": "T-036" } },
+        { "id": "T-037", "title": "遊戲 RTP 統計", "priority": "P2", "evidence": { "files": ["backend/game-service/src/main/java/com/luckystar/game/controller/RtpController.java", "backend/game-service/src/main/java/com/luckystar/game/service/RtpStatsService.java", "backend/game-service/src/main/java/com/luckystar/game/entity/GameRtpStat.java"], "commitGrep": "T-037" } }
+      ]
+    },
+    {
+      "id": "A.5",
+      "title": "Rank Service（組員D）",
+      "tasks": [
+        { "id": "T-040", "title": "Redis ZSet 全服排行榜", "priority": "P0", "evidence": { "files": ["backend/rank-service/src/main/java/com/luckystar/rank/service/RankService.java", "backend/rank-service/src/main/java/com/luckystar/rank/kafka/WalletBalanceChangedConsumer.java"], "commitGrep": null } },
+        { "id": "T-041", "title": "好友排行榜", "priority": "P0", "evidence": { "files": ["backend/rank-service/src/main/java/com/luckystar/rank/kafka/FriendRelationshipUpdatedConsumer.java"], "commitGrep": "T-041" } },
+        { "id": "T-042", "title": "排行榜查詢 API", "priority": "P0", "evidence": { "files": ["backend/rank-service/src/main/java/com/luckystar/rank/controller/RankController.java"], "commitGrep": "T-042" }, "note": "頭像欄位待 member 端發布頭像後補（跨組待辦）" },
+        { "id": "T-043", "title": "每週排行榜重置排程", "priority": "P1", "evidence": { "files": ["backend/rank-service/src/main/java/com/luckystar/rank/scheduler/WeeklyRankResetScheduler.java", "backend/rank-service/src/main/java/com/luckystar/rank/service/WeeklyRankResetService.java", "backend/rank-service/src/main/java/com/luckystar/rank/entity/RankHistory.java"], "commitGrep": null } },
+        { "id": "T-044", "title": "每日持幣快照任務", "priority": "P1", "evidence": { "files": ["backend/rank-service/src/main/java/com/luckystar/rank/scheduler/DailyRankSnapshotScheduler.java", "backend/rank-service/src/main/java/com/luckystar/rank/service/DailyRankSnapshotService.java", "backend/rank-service/src/main/java/com/luckystar/rank/entity/RankDailySnapshot.java"], "commitGrep": null } },
+        { "id": "T-045", "title": "今日贏幣王排行榜", "priority": "P2", "evidence": { "files": ["backend/rank-service/src/main/java/com/luckystar/rank/scheduler/DailyWinningsResetScheduler.java"], "commitGrep": "T-045" } }
+      ]
+    },
+    {
+      "id": "A.6",
+      "title": "Admin Service（組員D）",
+      "tasks": [
+        { "id": "T-050", "title": "Admin JWT 認證（角色區分）", "priority": "P1", "evidence": { "files": ["backend/admin-service/src/main/java/com/luckystar/admin/controller/AdminAuthController.java", "backend/admin-service/src/main/java/com/luckystar/admin/security/AdminJwtUtil.java", "backend/admin-service/src/main/java/com/luckystar/admin/config/SecurityConfig.java"], "commitGrep": "T-050" } },
+        { "id": "T-051", "title": "玩家帳號管理 API", "priority": "P1", "evidence": { "files": ["backend/admin-service/src/main/java/com/luckystar/admin/controller/AdminPlayerController.java", "backend/admin-service/src/main/java/com/luckystar/admin/service/AdminPlayerService.java", "backend/member-service/src/main/java/com/luckystar/member/controller/InternalMemberController.java"], "commitGrep": "T-051" } },
+        { "id": "T-052", "title": "星幣流通量報表 API", "priority": "P1", "evidence": { "files": ["backend/admin-service/src/main/java/com/luckystar/admin/controller/AdminReportController.java", "backend/admin-service/src/main/java/com/luckystar/admin/service/CoinFlowReportService.java"], "commitGrep": "T-052" } },
+        { "id": "T-053", "title": "遊戲 RTP 監控儀表板 API", "priority": "P1", "evidence": { "files": ["backend/admin-service/src/main/java/com/luckystar/admin/service/RtpReportService.java"], "commitGrep": "T-053" } },
+        { "id": "T-054", "title": "異常玩家偵測機制", "priority": "P2", "evidence": { "files": ["backend/admin-service/src/main/java/com/luckystar/admin/service/AlertRuleEngine.java", "backend/admin-service/src/main/java/com/luckystar/admin/controller/AdminAlertController.java", "backend/admin-service/src/main/java/com/luckystar/admin/postgres/entity/AdminAlert.java"], "commitGrep": "T-054" } },
+        { "id": "T-055", "title": "手動發放星幣 API（GM 工具）", "priority": "P2", "evidence": { "files": ["backend/admin-service/src/main/java/com/luckystar/admin/controller/GmController.java", "backend/admin-service/src/main/java/com/luckystar/admin/service/GmRewardService.java"], "commitGrep": "T-055" } }
+      ]
+    },
+    {
+      "id": "A.7",
+      "title": "Gateway（組長A）",
+      "tasks": [
+        { "id": "T-060", "title": "Spring Cloud Gateway 路由", "priority": "P0", "evidence": { "files": ["backend/gateway-service/src/main/resources/application.yml"], "commitGrep": null } },
+        { "id": "T-061", "title": "Gateway JWT 驗證過濾器", "priority": "P0", "evidence": { "files": ["backend/gateway-service/src/main/java/com/luckystar/gateway/filter/JwtAuthenticationGlobalFilter.java"], "commitGrep": "T-061" } },
+        { "id": "T-062", "title": "每玩家速率限制", "priority": "P0", "evidence": { "files": ["backend/gateway-service/src/main/java/com/luckystar/gateway/filter/PlayerRateLimitGlobalFilter.java", "backend/gateway-service/src/main/java/com/luckystar/gateway/config/RateLimitConfig.java"], "commitGrep": "T-062" } },
+        { "id": "T-063", "title": "Circuit Breaker 熔斷", "priority": "P1", "evidence": { "files": ["backend/gateway-service/src/main/java/com/luckystar/gateway/controller/FallbackController.java"], "commitGrep": "T-063" } }
+      ]
+    },
+    {
+      "id": "A.8",
+      "title": "Notification Service（組員D）",
+      "tasks": [
+        { "id": "T-070", "title": "WebSocket STOMP Server", "priority": "P1", "evidence": { "files": ["backend/notification-service/src/main/java/com/luckystar/notification/config/WebSocketConfig.java", "backend/notification-service/src/main/java/com/luckystar/notification/security/StompAuthChannelInterceptor.java"], "commitGrep": "T-070" } },
+        { "id": "T-071", "title": "Kafka → WebSocket 推播橋接", "priority": "P1", "evidence": { "files": ["backend/notification-service/src/main/java/com/luckystar/notification/kafka/NotificationConsumer.java"], "commitGrep": "T-071" } },
+        { "id": "T-072", "title": "遊戲結果推播", "priority": "P1", "evidence": { "files": ["backend/notification-service/src/main/java/com/luckystar/notification/kafka/GameResultConsumer.java"], "commitGrep": "T-072" } },
+        { "id": "T-073", "title": "排行榜變動廣播", "priority": "P2", "evidence": { "files": ["backend/notification-service/src/main/java/com/luckystar/notification/kafka/RankUpdateConsumer.java"], "commitGrep": "T-073" } }
+      ]
+    },
+    {
+      "id": "A.9",
+      "title": "前端（組員E）",
+      "tasks": [
+        { "id": "T-080", "title": "登入/註冊頁面", "priority": "P0", "evidence": { "files": ["frontend/src/pages/Login.jsx", "frontend/src/pages/Register.jsx", "frontend/src/store/slices/authSlice.js"], "commitGrep": null } },
+        { "id": "T-081", "title": "Redux Toolkit 全域狀態", "priority": "P0", "evidence": { "files": ["frontend/src/store/index.js", "frontend/src/store/slices/authSlice.js", "frontend/src/store/slices/walletSlice.js", "frontend/src/store/slices/gameSlice.js", "frontend/src/store/slices/rankSlice.js"], "commitGrep": null } },
+        { "id": "T-082", "title": "遊戲大廳頁面", "priority": "P0", "evidence": { "files": ["frontend/src/pages/Lobby.jsx"], "commitGrep": null } },
+        { "id": "T-083", "title": "老虎機遊戲頁面", "priority": "P0", "evidence": { "files": ["frontend/src/pages/SlotGame.jsx", "frontend/src/services/gameApi.js"], "commitGrep": "T-083" } },
+        { "id": "T-084", "title": "WebSocket 連線管理", "priority": "P0", "evidence": { "files": ["frontend/src/hooks/useWebSocket.js", "frontend/src/components/RealtimeBridge.jsx"], "commitGrep": null }, "override": { "status": "⚠️", "reason": "檔案齊備（useWebSocket.js/RealtimeBridge.jsx）且 notification-service 已完成，但端對端驗收未留存紀錄、dev 預設 VITE_ENABLE_WS=false；實測通過後移除本 override 改回自動判定" } },
+        { "id": "T-085", "title": "排行榜頁面", "priority": "P1", "evidence": { "files": ["frontend/src/pages/Rank.jsx", "frontend/src/services/rankApi.js"], "commitGrep": "T-085" } },
+        { "id": "T-086", "title": "帳務明細頁面", "priority": "P1", "evidence": { "files": ["frontend/src/pages/Transactions.jsx", "frontend/src/services/walletApi.js"], "commitGrep": "T-086" } },
+        { "id": "T-087", "title": "百家樂遊戲頁面", "priority": "P1", "evidence": { "files": ["frontend/src/pages/Baccarat.jsx", "frontend/src/components/BaccaratTable.jsx"], "commitGrep": "T-087" } },
+        { "id": "T-088", "title": "個人資料/好友管理頁面", "priority": "P1", "evidence": { "files": ["frontend/src/pages/Profile.jsx", "frontend/src/components/FriendFloatingPanel.jsx"], "commitGrep": null } },
+        { "id": "T-089", "title": "RWD 響應式優化", "priority": "P2", "evidence": null, "override": { "status": "❓", "reason": "無法由檔案結構直接判定，需實機檢視三斷點" } }
+      ]
+    },
+    {
+      "id": "A.10",
+      "title": "測試 / DevOps / 收尾（組員D + 組長A）",
+      "tasks": [
+        { "id": "T-090", "title": "JMeter 高併發壓測腳本", "priority": "P0", "evidence": { "files": ["tests/performance/slot-1000-players.jmx", "tests/performance/run-slot-load-test.ps1", "docs/performance/T-090-load-test-report.md"], "commitGrep": "T-090" }, "override": { "status": "⚠️", "reason": "腳本/報告/1,000 玩家 provisioning 齊備，但 1,000 併發 P99≈2.5s 且大量 5xx，效能 gate 未達標（docs/performance/T-090-load-test-report.md）；gate 通過後移除本 override" } },
+        { "id": "T-091", "title": "帳務一致性對帳腳本", "priority": "P0", "evidence": { "files": ["tests/performance/accounting-reconciliation.sql", "tests/performance/run-accounting-reconciliation.ps1"], "commitGrep": "T-091" } },
+        { "id": "T-092", "title": "Swagger UI API 文件", "priority": "P1", "evidence": { "files": ["tests/infra/swagger.test.js"], "commitGrep": "T-092" } },
+        { "id": "T-093", "title": "End-to-End 整合測試", "priority": "P0", "evidence": { "files": ["playwright.config.js"], "commitGrep": "T-093" }, "override": { "status": "⚠️", "reason": "後端已實作、Playwright E2E 已存在（playwright.config.js），但尚未涵蓋跨服務全鏈路（下注→帳務→排行→通知）整合驗證；補齊後移除本 override" } },
+        { "id": "T-094", "title": "README 與部署文件", "priority": "P0", "evidence": { "files": ["README.md", "DEPLOY.md"], "commitGrep": "T-094" } },
+        { "id": "T-095", "title": "ADR 整理（ADR-001~005）", "priority": "P0", "evidence": { "files": ["docs/adr/ADR-001.md", "docs/adr/ADR-002.md", "docs/adr/ADR-003.md", "docs/adr/ADR-004.md", "docs/adr/ADR-005.md"], "commitGrep": "T-095" } },
+        { "id": "T-096", "title": "結業簡報", "priority": "P0", "evidence": { "files": ["docs/**/*簡報*"], "commitGrep": null } }
+      ]
+    },
+    {
+      "id": "A.11",
+      "title": "鑽石點數卡系統（T-100~T-107，後續新增需求）",
+      "ownerColumn": true,
+      "tasks": [
+        { "id": "T-100", "title": "鑽石相關資料表", "owner": "組員D", "priority": "P0", "evidence": { "files": ["database/mysql/migration/V5__add_diamond_cards.sql", "database/postgres/migration/V2__add_diamond_wallets.sql"], "commitGrep": "T-100" } },
+        { "id": "T-101", "title": "鑽石錢包初始化", "owner": "組員C", "priority": "P0", "evidence": { "files": ["backend/wallet-service/src/main/java/com/luckystar/wallet/service/DiamondWalletService.java"], "commitGrep": "T-101" } },
+        { "id": "T-102", "title": "點數卡序號兌換鑽石 API", "owner": "組員C", "priority": "P0", "evidence": { "files": ["backend/wallet-service/src/main/java/com/luckystar/wallet/controller/DiamondController.java", "backend/wallet-service/src/main/java/com/luckystar/wallet/service/DiamondRedeemService.java"], "commitGrep": "T-102" } },
+        { "id": "T-103", "title": "鑽石兌換星幣 API", "owner": "組員C", "priority": "P0", "evidence": { "files": ["backend/wallet-service/src/main/java/com/luckystar/wallet/service/DiamondExchangeService.java"], "commitGrep": "T-103" } },
+        { "id": "T-104", "title": "查詢鑽石餘額 API", "owner": "組員C", "priority": "P0", "evidence": { "files": ["backend/wallet-service/src/main/java/com/luckystar/wallet/service/DiamondWalletService.java"], "commitGrep": "T-104" } },
+        { "id": "T-105", "title": "批量生成點數卡序號 API", "owner": "組員D", "priority": "P1", "evidence": { "files": ["backend/admin-service/src/main/java/com/luckystar/admin/controller/AdminDiamondController.java", "backend/admin-service/src/main/java/com/luckystar/admin/service/DiamondCardService.java"], "commitGrep": "T-105" } },
+        { "id": "T-106", "title": "查詢點數卡列表 API", "owner": "組員D", "priority": "P1", "evidence": { "files": ["backend/admin-service/src/main/java/com/luckystar/admin/controller/AdminDiamondController.java"], "commitGrep": "T-106" } },
+        { "id": "T-107", "title": "鑽石錢包頁面（前端）", "owner": "組員E", "priority": "P1", "evidence": { "files": ["frontend/src/pages/Diamond.jsx", "frontend/src/store/slices/diamondSlice.js", "frontend/src/services/diamondApi.js"], "commitGrep": "T-107" } }
+      ]
+    },
+    {
+      "id": "A.12",
+      "title": "新增任務（T-108~T-114）",
+      "priorityColumn": false,
+      "tasks": [
+        { "id": "T-108", "title": "停用玩家即時封鎖（Redis 封鎖 + token min-iat）", "evidence": { "files": ["backend/admin-service/src/main/java/com/luckystar/admin/service/PlayerBanService.java", "backend/gateway-service/src/main/java/com/luckystar/gateway/filter/JwtAuthenticationGlobalFilter.java"], "commitGrep": "T-108" } },
+        { "id": "T-109", "title": "Gateway 補 /api/v1/friends/** 路由", "evidence": { "files": ["backend/gateway-service/src/main/resources/application.yml"], "commitGrep": null } },
+        { "id": "T-110", "title": "Windows 一鍵啟動腳本（start-all.bat）", "evidence": null, "override": { "status": "✅", "reason": "已完成後由後端容器化取代（docker compose up -d --build，CHANGELOG 2026-07-07），原生腳本已移除；歷史 commit 見 git log --grep start-all" } },
+        { "id": "T-111", "title": "捕魚機遊戲（game-service fishing）", "evidence": { "files": ["frontend/src/pages/Fishing.jsx", "frontend/src/components/fishingEngine.js", "backend/game-service/src/main/java/com/luckystar/game/service/FishingService.java", "backend/game-service/src/main/java/com/luckystar/game/fishing/FishingCombat.java"], "commitGrep": null } },
+        { "id": "T-112", "title": "CasinoShop 頁面", "evidence": { "files": ["frontend/src/pages/CasinoShop.jsx"], "commitGrep": null } },
+        { "id": "T-113", "title": "CheckIn 頁面", "evidence": { "files": ["frontend/src/pages/CheckIn.jsx"], "commitGrep": null } },
+        { "id": "T-114", "title": "統一客服入口（SupportModal / uiSlice）", "evidence": { "files": ["frontend/src/components/SupportModal.jsx", "frontend/src/store/slices/uiSlice.js"], "commitGrep": "T-114" } }
+      ]
+    }
+  ]
+}

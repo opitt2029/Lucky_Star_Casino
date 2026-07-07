@@ -1,0 +1,6 @@
+{
+  "name": "audit-snapshot-tool",
+  "private": true,
+  "type": "module",
+  "description": "AUDIT_REPORT.md 附錄 A 自動盤點：讀 tasks.json 證據清單，判檔案存在 + git log commit，重生標記區塊（零外部依賴，需 Node 22+ 的 fs.globSync）"
+}

@@ -47,17 +47,27 @@ jobs:
     name: 後端服務測試
     runs-on: ubuntu-latest
 
-    # contextLoads 需要這些「必填、無預設值」的環境變數（否則 Spring 啟動即失敗）。
-    # 這裡的值僅供 CI 測試使用，並非真實密鑰。
+    # contextLoads 需要「必填、無預設值」的環境變數（否則 Spring 啟動即失敗）。
+    # 密鑰類變數改在下方 step 於每次 run 內即時生成（見「產生本次 run 專用測試密鑰」），
+    # 這裡只留非密鑰設定。
     env:
-      JWT_SECRET: ci-test-jwt-secret-key-please-change-in-production-0123456789abcdef
-      INTERNAL_SECRET: ci-test-internal-secret
-      INTERNAL_SERVICE_SECRET: ci-test-internal-secret
       CORS_ALLOWED_ORIGINS: http://localhost:5173
 
     steps:
       - name: Checkout 程式碼
         uses: actions/checkout@v4
+
+      # 為什麼不用 GitHub Secrets？本專案走 fork/PR 工作流，fork 來的 PR 拿不到
+      # repo secrets，一用 CI 就直接紅。測試密鑰只活在單一 run 內、不需持久，
+      # 每次 run 隨機生成即可（也順便保證沒有任何寫死在 repo 裡的可用密鑰）。
+      - name: 產生本次 run 專用測試密鑰
+        run: |
+          {
+            echo "JWT_SECRET=$(openssl rand -base64 48)"
+            internal_secret="$(openssl rand -base64 32)"
+            echo "INTERNAL_SECRET=${internal_secret}"
+            echo "INTERNAL_SERVICE_SECRET=${internal_secret}"
+          } >> "$GITHUB_ENV"
 
       - name: 安裝 JDK 21
         uses: actions/setup-java@v4

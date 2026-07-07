@@ -69,8 +69,16 @@ cp .env.example .env
 Copy-Item .env.example .env
 ```
 
-`.env` 已內建一組可直接用於本機開發的預設值（含開發用 `JWT_SECRET`、`INTERNAL_SECRET`）。
-**本機開發不需修改即可啟動**；正式環境務必更換所有 `*_SECRET`。
+⚠️ **複製完必須先填密鑰才能啟動**（2026-07-07 起）：`.env.example` 的密鑰值全部是 `CHANGE_ME` 佔位符，
+直接啟動會 fail-fast（HS256 密鑰長度不足）。把每個 `CHANGE_ME` 換成自己生成的隨機值：
+
+```bash
+# 每個變數各生成一個（INTERNAL_SECRET 與 INTERNAL_SERVICE_SECRET 填同一個值）
+openssl rand -base64 48
+```
+
+各密鑰的用途、影響面與輪替步驟見 **[docs/security/secret-rotation.md](docs/security/secret-rotation.md)**。
+若你的 `.env` 是 2026-07-07 前建立的，裡面的密鑰視同已洩漏，請照該文件重生一輪。
 
 ---
 
