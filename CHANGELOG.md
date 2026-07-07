@@ -1,4 +1,30 @@
-﻿## [fix] -- 2026-07-07 -- gateway 放行 /admin/**：後台 API 先前整條被 gateway 401 擋死
+﻿## [feat] -- 2026-07-07 -- 管理後台 8 個功能頁完成 API 串接（脫離 stub）
+
+### Added
+- `frontend-admin/src/hooks/useFetch.js`：頁面資料抓取共用 hook（loading/error/reload 樣板＋競態守門：只採用最後一次請求的結果）。頁面資料「進頁抓、離頁丟」無跨頁共享，故不進 redux（auth 除外）。
+- `frontend-admin/src/utils/format.js`：千分位金額、LocalDateTime 裁切顯示（不經 Date 解析避免時區位移）、RTP 百分比、本地時區 `YYYY-MM-DD`。
+- `frontend-admin/src/components/ui.jsx`：共用展示元件（Loading/Error/Empty、Table/Td、Badge、Pagination（吃 Spring Data Page）、PageHeader、StatCard）。
+
+### Changed
+- 8 個頁面由 PageStub 換成實作，串接 adminApi 全部端點：
+  - `Dashboard`：近 7 日 coin-flow + RTP 平行抓取，RTP 異常置頂告警（admin_alerts 查詢端點後端尚未提供，待補後加告警列表）。
+  - `Players` / `PlayerDetail`（T-051）：分頁列表＋送出制關鍵字搜尋；詳情含餘額/凍結、近期帳務/對局、停用/啟用兩段式確認（不用 window.confirm——原生對話框阻塞事件圈且不可控樣式），狀態以 reload 後端結果為準不做前端翻轉。
+  - `CoinFlowReport`（T-052）/ `RtpReport`（T-053）:「編輯中 vs 已查詢」條件分離（按查詢才打 API）；RTP 頁標示含本金口徑與偏差門檻。
+  - `GmGrant`（T-055）：兩段式確認（改任一欄位即退出確認態），成功顯示 QUEUED＋冪等鍵並清空表單防重複發放。
+  - `DiamondCards`（T-105/T-106）：生成表單（1~1000 張）＋序號 textarea/一鍵複製（序號僅生成當下完整可見）＋狀態篩選列表。
+  - `ShopItems`（ADR-006）：收合式新增表單（409=item_code 重複由 extractError 帶出）＋列內編輯（改價/上下架/排序），頁頂提醒同步玩家端 `mockApi.SHOP_CATALOG`（雷區 14/20）。
+
+### Removed
+- `frontend-admin/src/components/PageStub.jsx`：所有頁面已實作，佔位元件無使用處。
+
+### Why
+- 骨架期只有登入可用、7 個功能頁全是佔位，後台實際無法運營；admin-service 後端 API 早已全部完成（T-050~T-055、T-105/T-106、商城目錄），本次純前端串接、未動任何後端。
+
+### Verified
+- `npm run lint` 乾淨；`npm run build` 成功（各頁 code-split 正常，最大頁 ShopItems 6.7 kB）。
+- 端到端需啟動 gateway + admin-service 後以 seeder 帳號登入手動驗證（依 DEPLOY.md）。
+
+## [fix] -- 2026-07-07 -- gateway 放行 /admin/**：後台 API 先前整條被 gateway 401 擋死
 
 ### Fixed
 - `backend/gateway-service/src/main/resources/application.yml`：`jwt.whitelist` 新增 `/admin/`。
