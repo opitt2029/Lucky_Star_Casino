@@ -1,4 +1,37 @@
-feature/huang-gateway-timelimiter
+ feature/huang-t090-1000-rerun
+## [docs] -- 2026-07-08 -- T-090 效能調校藍圖：P99/5xx/失敗樣本的分階段施工計畫
+
+### Added
+- `docs/plans/02-T-090-效能調校藍圖.md`：把 1,000 併發重跑後的「下一輪效能調校」從一句話變成 8 個可施工項（A1–A4 風控查詢移出熱路徑／B1 wallet debit 剖析／C1 gateway 併發上限／C2 起跑 401／D1 驗收環境拍板），含進度表、施工順序與統一驗證流程。
+
+### Why
+- 效能 gate（P99 < 500 ms、5xx = 0、失敗 = 0）不過即不能上線，但先前僅有方向性描述、無計畫。讀碼定位出主因：`SlotService.settleInternal` 每局在請求路徑內跑 `GameRoundRepository.aggregateRecent`（近 500 局排序聚合）＋ `aggregatePlayerToday` 兩次 DB 查詢，且 `game_rounds` 缺複合索引——修法是把統計改為事件驅動維護、熱路徑只讀快取（O(N) 聚合移出 O(1) 路徑），而非調快查詢。
+- 帳務 gate 為不可回歸硬底線已寫入計畫的統一驗證流程。
+
+### 如何驗證
+- 純文件新增，無行為變更；各 Phase 落地時依計畫內驗證流程重跑 T-090/T-091 並回填進度表。
+
+## [test] -- 2026-07-08 -- T-090 1,000 併發完整重跑（TimeLimiter 修正後驗證）
+
+### 背景
+- gateway TimeLimiter 修正（見下一條目）先前僅在 150 併發驗證（5xx 78% → 0）；規格級 1,000 併發的修正後完整重跑尚未執行。本次同拓撲補跑到底，驗證修正在真實規格併發下的效果。
+
+### Added
+- `docs/performance/T-090-load-test-report.md`：新增「2026-07-08 gateway TimeLimiter 修正驗證（1,000 併發完整重跑）」節——12,530 樣本、P99 5,291 ms、失敗 8,582（68.5%），失敗組成拆解為 503 3,870（30.9%，較修正前 13,709 減 72%）／client 5s SocketTimeout 4,369（34.9%）／401 343（2.7%，起跑尖峰 12 秒內 JWT filter Redis fail-closed 所致）；idempotency/overdraw 全程 0。
+- 壓測產物：`tests/performance/results/20260708-103916/`（JTL/HTML/acceptance-report）、`tests/performance/results/accounting-20260708-104156/`（T-091 對帳 CSV，本機無 psql 改以 `docker exec lucky-star-postgres psql` 執行同一 SQL）。
+
+### Changed
+- `docs/performance/T-090-load-test-report.md`、`CHANGELOG.md`：順手清除 merge commit `166b179` 遺留的 conflict 標記殘骸（branch 名稱與 `=======`）。
+- `docs/plans/01-八項架構改進施工藍圖.md`：P2b 狀態註記補上「TimeLimiter 修正後 1,000 併發重跑完成」。
+
+### Why
+- 150 併發的驗證不能外推到 1,000 併發（修正前兩者失敗形態就不同）；且 AGENTS.md 明定無實測不得填數字，規格級併發必須實跑。
+- 結論：**熔斷「誤判環節」在 1,000 併發下確認消除**（Prometheus 佐證：CB `kind="failed"` calls 全服務歸零（修正前 game≈1,172/wallet≈424）、wallet CB not_permitted 由 ≈10,028 歸零、game not_permitted 由 ≈9,861 降至 ≈4,047 且全由 slow-call rate 合法觸發）；**帳務 gate 維持全 PASS**；效能 gate（P99<500ms/5xx=0）仍 FAIL，瓶頸移轉到 spin 路徑本身延遲（成功呼叫平均 4.42 s：風控 Redis 並發閘＋DB 聚合、注單稽核高併發變重），屬下一輪效能調校課題、超出本修正範圍。
+
+### 如何驗證
+- `tests/performance/results/20260708-103916/acceptance-report.md`、`results/accounting-20260708-104156/accounting-reconciliation.csv`；Prometheus range query（`increase(...[90s])`，窗口迄 10:40:24）可複驗，PromQL 見報告內嵌。
+- 迴歸自查：`node --test tests/infra/*.test.js` 綠燈（本次未動任何程式碼/設定，僅文件與測試產物）。
+
 ## [fix] -- 2026-07-08 -- gateway 補 Resilience4j TimeLimiter 設定，解決 T-090 thundering herd 熔斷
 
 ### 背景
@@ -14,7 +47,7 @@ feature/huang-gateway-timelimiter
 ### 如何驗證
 - 150 併發（`tests/performance/results/20260708-101629/acceptance-report.md`）：HTTP 5xx 由修正前 13,563（78.0%）降至 **0**；失敗樣本由 13,563 降至 4（0.05%）；idempotency/overdraw 全程 0。
 - P99（2,667 ms）仍未達 < 500 ms 門檻——歸類為下一輪效能調校的獨立課題（風控聚合/注單稽核在高併發下變重），不在本次修正範圍。
-=======
+
 ## [test] -- 2026-07-08 -- T-090 壓測完整重跑（Phase 2b 完成）：根因鏈確認、帳務對帳 PASS
 
 ### 背景
@@ -35,9 +68,26 @@ feature/huang-gateway-timelimiter
 ### 如何驗證
 - `tests/performance/results/20260708-100306/acceptance-report.md`（150 併發）、`tests/performance/results/20260708-100442/acceptance-report.md`（1000 併發）、`tests/performance/results/accounting-20260708-100542/accounting-reconciliation.csv`。
 - Prometheus range query（`increase(...[90s])` at test-window timestamp）可重跑複驗，見報告內嵌 PromQL。
- main
 
-feature/weiyu-saga-compensation-and-contracts
+## [fix] -- 2026-07-08 -- 後台 RTP 監控：無下注樣本改標 NO_DATA，不再誤報 ABNORMAL
+
+### 背景
+- 以 50 帳號模擬玩老虎機/百家樂/捕魚後查後台，發現剛玩完 RTP 報表把 SLOT（該時段快照尚無資料）標成 ABNORMAL。根因：`RtpReportService` 對 `totalBet=0` 的遊戲以 `actual=0` 硬比設計值，deviation 必達 `-design`（如 -0.95）而永遠超門檻。commit `4639c3f` 補了 FISHING 設計值 0.96，反而讓無資料的 FISHING 也會落入同一誤報。此為 T-053 的既有缺陷修正。
+
+### Fixed
+- `backend/admin-service/.../service/RtpReportService.java`：新增 `STATUS_NO_DATA`；`totalBet <= 0`（本時段快照無下注樣本，如剛過整點）時回 `NO_DATA`、deviation=0，跳過偏差判定，不再誤報 ABNORMAL。有資料的遊戲行為不變（NORMAL/ABNORMAL 判定不動）。
+
+### Changed
+- `frontend-admin/src/pages/RtpReport.jsx`、`Dashboard.jsx`：狀態徽章由二態改三態——`NO_DATA` 顯示中性灰「無資料」（不再誤顯綠色「正常」）；置頂 RTP 異常告警的 `abnormal` filter 僅收 `ABNORMAL`，NO_DATA 天然不觸發紅色告警。
+
+### 為什麼
+- 「沒有資料」與「RTP 真的異常」是兩件事，混為一談會讓營運每逢整點後、或新遊戲上線初期看到假紅燈而失去對告警的信任。獨立 NO_DATA 狀態把「未知」與「異常」分開，比硬塞 NORMAL 更誠實（無資料不等於健康）。
+
+### 如何驗證
+- `mvn -pl backend/admin-service test`：92 全綠（含新增回歸 `RtpReportServiceTest.noBetSample_isNoData_notAbnormal`）。
+- 重啟 admin-service 後查 `GET /admin/reports/rtp`：SLOT/FISHING（當前快照無資料）status=`NO_DATA`、deviation=0；BACCARAT（有 24 局資料）維持 `NORMAL`。
+develop
+
 ## [feat] -- 2026-07-07 -- AUDIT_REPORT 附錄 A 自動盤點：tools/audit/ 依證據清單重生進度表（Phase 8）
 
 ### 背景
@@ -110,7 +160,7 @@ feature/weiyu-saga-compensation-and-contracts
 - `node --test tests/infra/*.test.js`：142 tests 全綠。
 - 加上 `.dockerignore` 後 `docker compose build member-service` 成功，build context 由整個 repo 縮為 root pom + backend/。
 - `curl -X POST http://localhost:8080/api/v1/auth/register ...` 經 gateway 註冊回 `success:true`（容器拓撲端到端正常）。
-develop
+
 ## [refactor] -- 2026-07-07 -- 玩法契約單一來源化：repo 根 contracts/*.json + ContractParityTest 守門（Phase 5）
 
 ### 背景
@@ -168,7 +218,6 @@ develop
 ### 如何驗證
 - 乾淨 docker volume 下 `docker compose up -d --build`：12 個容器（5 infra + 7 後端）全數 `healthy`。
 - 透過 gateway（8080）完成註冊 -> 登入 -> 查餘額冒煙測試，皆回傳 200/201。
-develop
 
 ## [feat] -- 2026-07-07 -- 後端服務全面容器化：docker compose up -d --build 一鍵啟動 7 服務（取代多視窗手動啟動）
 
