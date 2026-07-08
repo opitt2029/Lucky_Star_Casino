@@ -8,7 +8,29 @@
 
 > ⚠️ The P99 < 500 ms / 5xx = 0 gates were defined for a properly resourced multi-host deployment. On this single host, the dominant factor is that Spring Cloud Gateway's CircuitBreaker has no explicit `timelimiter` configured, so Resilience4j defaults to a **1-second** call timeout — well below the ~0.9–3.6 s latencies seen under concurrent load once risk-control and bet-audit logic were added to the spin path (2026-06-22/24). See "2026-07-08 完整重跑最終結果" for the full Prometheus-backed evidence chain.
 
+ feature/huang-gateway-timelimiter
+## 2026-07-08 gateway TimeLimiter 修正驗證
+
+2026-07-08 完整重跑（見另一份 CHANGELOG 條目與 PR #182）把 78–89% 5xx 的根因鏈定位到：Spring Cloud Gateway 的 Resilience4j CircuitBreaker 未顯式設定 `timelimiter`，Resilience4j 預設**逾時 1 秒**——遠低於 `slow-call-duration-threshold: 3s`，導致高併發排隊下的正常慢呼叫在真正完成前就被腰斬判 failed，觸發熔斷開路 → half-open 少量放行 → 關路瞬間 thundering herd 再次推爆延遲 → 反覆開闔。
+
+修正：`backend/gateway-service/src/main/resources/application.yml` 新增 `resilience4j.timelimiter.instances.<service>.timeout-duration: 6s`（略高於既有 `slow-call-duration-threshold: 3s`，讓慢呼叫有機會真正完成、交由 CircuitBreaker 的 slow-call 統計判定而非被 TimeLimiter 提前腰斬）。
+
+**驗證（150 併發，`results/20260708-101629/`，200 名重新 provision 的玩家）**：
+
+| 指標 | 修正前（2026-07-08 完整重跑） | 修正後 |
+|---|---:|---:|
+| 樣本數 | 17,395 | 7,841 |
+| HTTP 5xx | 13,563（78.0%） | **0** |
+| 失敗樣本 | 13,563 | **4**（0.05%，疑似瞬斷） |
+| P99 | 1,164 ms | 2,667 ms |
+| idempotency / overdraw | 0 / 0 | 0 / 0 |
+
+Thundering herd 熔斷完全消失（5xx 13,563 → 0）。P99 仍高於 500 ms 門檻，但這是排隊延遲本身的問題（風控 Redis 並發閘 + DB 聚合、注單稽核在高併發下變重），不再是 TimeLimiter 誤判——歸類為下一輪效能調校（例如非同步化風控聚合、拆分注單稽核）的獨立課題，超出本次 TimeLimiter 修正範圍。
+
+## 2026-07-07 再驗證進度（進行中，Phase 2b）
+=======
 ## 2026-07-08 完整重跑最終結果（Phase 2b 完成）
+main
 
 同拓撲（後端宿主機 `mvn spring-boot:run` 起 7 服務、Docker infra + observability 監控棧）完整重跑，取代 2026-07-07 的中途進度節。**測試對象 commit：`902d744`**（gateway/game/wallet 三服務程式碼與 origin/develop 最新 `65915c5` 之間無差異，落後的 7 個 commit 皆為 docs/admin-service 變更，不影響本次結果有效性）。
 

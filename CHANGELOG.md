@@ -1,3 +1,20 @@
+feature/huang-gateway-timelimiter
+## [fix] -- 2026-07-08 -- gateway 補 Resilience4j TimeLimiter 設定，解決 T-090 thundering herd 熔斷
+
+### 背景
+- T-090 完整重跑（PR #182）把 150/1000 併發下 78–89% HTTP 5xx 的根因鏈定位到：gateway 的 Spring Cloud CircuitBreaker 未顯式設定 `timelimiter`，Resilience4j 因此套用**預設 1 秒逾時**——遠低於既有 `slow-call-duration-threshold: 3s`，導致高併發排隊下的正常慢呼叫在真正完成前就被腰斬判 failed，觸發熔斷開路 → half-open 少量放行 → 關路瞬間 thundering herd 再次推爆延遲 → 反覆開闔（self-sustaining flapping）。
+
+### Changed
+- `backend/gateway-service/src/main/resources/application.yml`：`resilience4j` 下新增 `timelimiter.instances`，為 member/wallet/game/rank/admin 五個服務各設 `timeout-duration: 6s`（略高於 `slow-call-duration-threshold: 3s`，讓慢呼叫有機會真正完成、交由 CircuitBreaker 的 slow-call 統計判定而非被 TimeLimiter 提前腰斬）。
+- `docs/performance/T-090-load-test-report.md`：新增「2026-07-08 gateway TimeLimiter 修正驗證」節，記錄修正前後 150 併發對照。
+
+### Why
+- TimeLimiter 逾時應該「保護系統不被真正掛住的呼叫拖垮」，而不是比 CircuitBreaker 自己的慢呼叫門檻還嚴格——後者才是本專案定義的「多慢算異常」的權威判準。逾時設得比 slow-call-duration-threshold 短，等於讓一個沒人特意設定的預設值（1s）搶先於明確設計過的熔斷邏輯（3s）介入，是這次回歸的根本原因。
+
+### 如何驗證
+- 150 併發（`tests/performance/results/20260708-101629/acceptance-report.md`）：HTTP 5xx 由修正前 13,563（78.0%）降至 **0**；失敗樣本由 13,563 降至 4（0.05%）；idempotency/overdraw 全程 0。
+- P99（2,667 ms）仍未達 < 500 ms 門檻——歸類為下一輪效能調校的獨立課題（風控聚合/注單稽核在高併發下變重），不在本次修正範圍。
+=======
 ## [test] -- 2026-07-08 -- T-090 壓測完整重跑（Phase 2b 完成）：根因鏈確認、帳務對帳 PASS
 
 ### 背景
@@ -18,6 +35,7 @@
 ### 如何驗證
 - `tests/performance/results/20260708-100306/acceptance-report.md`（150 併發）、`tests/performance/results/20260708-100442/acceptance-report.md`（1000 併發）、`tests/performance/results/accounting-20260708-100542/accounting-reconciliation.csv`。
 - Prometheus range query（`increase(...[90s])` at test-window timestamp）可重跑複驗，見報告內嵌 PromQL。
+ main
 
 feature/weiyu-saga-compensation-and-contracts
 ## [feat] -- 2026-07-07 -- AUDIT_REPORT 附錄 A 自動盤點：tools/audit/ 依證據清單重生進度表（Phase 8）
