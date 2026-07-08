@@ -1,3 +1,4 @@
+ feature/huang-t090-1000-rerun
 ## [docs] -- 2026-07-08 -- T-090 效能調校藍圖：P99/5xx/失敗樣本的分階段施工計畫
 
 ### Added
@@ -67,6 +68,25 @@
 ### 如何驗證
 - `tests/performance/results/20260708-100306/acceptance-report.md`（150 併發）、`tests/performance/results/20260708-100442/acceptance-report.md`（1000 併發）、`tests/performance/results/accounting-20260708-100542/accounting-reconciliation.csv`。
 - Prometheus range query（`increase(...[90s])` at test-window timestamp）可重跑複驗，見報告內嵌 PromQL。
+
+## [fix] -- 2026-07-08 -- 後台 RTP 監控：無下注樣本改標 NO_DATA，不再誤報 ABNORMAL
+
+### 背景
+- 以 50 帳號模擬玩老虎機/百家樂/捕魚後查後台，發現剛玩完 RTP 報表把 SLOT（該時段快照尚無資料）標成 ABNORMAL。根因：`RtpReportService` 對 `totalBet=0` 的遊戲以 `actual=0` 硬比設計值，deviation 必達 `-design`（如 -0.95）而永遠超門檻。commit `4639c3f` 補了 FISHING 設計值 0.96，反而讓無資料的 FISHING 也會落入同一誤報。此為 T-053 的既有缺陷修正。
+
+### Fixed
+- `backend/admin-service/.../service/RtpReportService.java`：新增 `STATUS_NO_DATA`；`totalBet <= 0`（本時段快照無下注樣本，如剛過整點）時回 `NO_DATA`、deviation=0，跳過偏差判定，不再誤報 ABNORMAL。有資料的遊戲行為不變（NORMAL/ABNORMAL 判定不動）。
+
+### Changed
+- `frontend-admin/src/pages/RtpReport.jsx`、`Dashboard.jsx`：狀態徽章由二態改三態——`NO_DATA` 顯示中性灰「無資料」（不再誤顯綠色「正常」）；置頂 RTP 異常告警的 `abnormal` filter 僅收 `ABNORMAL`，NO_DATA 天然不觸發紅色告警。
+
+### 為什麼
+- 「沒有資料」與「RTP 真的異常」是兩件事，混為一談會讓營運每逢整點後、或新遊戲上線初期看到假紅燈而失去對告警的信任。獨立 NO_DATA 狀態把「未知」與「異常」分開，比硬塞 NORMAL 更誠實（無資料不等於健康）。
+
+### 如何驗證
+- `mvn -pl backend/admin-service test`：92 全綠（含新增回歸 `RtpReportServiceTest.noBetSample_isNoData_notAbnormal`）。
+- 重啟 admin-service 後查 `GET /admin/reports/rtp`：SLOT/FISHING（當前快照無資料）status=`NO_DATA`、deviation=0；BACCARAT（有 24 局資料）維持 `NORMAL`。
+develop
 
 ## [feat] -- 2026-07-07 -- AUDIT_REPORT 附錄 A 自動盤點：tools/audit/ 依證據清單重生進度表（Phase 8）
 
@@ -140,7 +160,7 @@
 - `node --test tests/infra/*.test.js`：142 tests 全綠。
 - 加上 `.dockerignore` 後 `docker compose build member-service` 成功，build context 由整個 repo 縮為 root pom + backend/。
 - `curl -X POST http://localhost:8080/api/v1/auth/register ...` 經 gateway 註冊回 `success:true`（容器拓撲端到端正常）。
-develop
+
 ## [refactor] -- 2026-07-07 -- 玩法契約單一來源化：repo 根 contracts/*.json + ContractParityTest 守門（Phase 5）
 
 ### 背景
@@ -198,7 +218,6 @@ develop
 ### 如何驗證
 - 乾淨 docker volume 下 `docker compose up -d --build`：12 個容器（5 infra + 7 後端）全數 `healthy`。
 - 透過 gateway（8080）完成註冊 -> 登入 -> 查餘額冒煙測試，皆回傳 200/201。
-develop
 
 ## [feat] -- 2026-07-07 -- 後端服務全面容器化：docker compose up -d --build 一鍵啟動 7 服務（取代多視窗手動啟動）
 

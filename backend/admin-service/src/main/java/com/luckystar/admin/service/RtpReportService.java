@@ -25,6 +25,8 @@ public class RtpReportService {
 
     public static final String STATUS_NORMAL = "NORMAL";
     public static final String STATUS_ABNORMAL = "ABNORMAL";
+    /** 本時段快照無下注樣本，無法判定 RTP（既非正常也非異常，避免誤報）。 */
+    public static final String STATUS_NO_DATA = "NO_DATA";
 
     private final GameRtpStatReadRepository rtpStatRepository;
     private final double slotDesignRtp;
@@ -65,8 +67,15 @@ public class RtpReportService {
             long totalBet = e.getValue()[0];
             long totalWin = e.getValue()[1];
             long roundCount = e.getValue()[2];
-            double actual = totalBet > 0 ? (double) totalWin / totalBet : 0.0;
             double design = designRtpFor(e.getKey());
+            // 無下注樣本（快照尚未涵蓋本時段，如剛過整點）→ 無法判定 RTP。
+            // 若照 actual=0 硬比設計值，deviation 必達 -design（如 -0.95）而永遠誤報 ABNORMAL；改標 NO_DATA。
+            if (totalBet <= 0) {
+                items.add(new RtpReport.Item(
+                        e.getKey(), design, 0.0, totalBet, totalWin, roundCount, 0.0, STATUS_NO_DATA));
+                continue;
+            }
+            double actual = (double) totalWin / totalBet;
             double deviation = actual - design;
             // 用 epsilon 容忍浮點誤差：剛好等於門檻(5%)視為 NORMAL，嚴格大於才 ABNORMAL
             String status = (Math.abs(deviation) - deviationThreshold > 1e-9)
