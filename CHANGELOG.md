@@ -1,3 +1,23 @@
+## [perf] -- 2026-07-08 -- T-090 C1：gateway 遊戲路徑全局併發上限（超限 429 快速卸載）＋驗收 gate 語意拍板
+
+### Added
+- `backend/gateway-service/.../filter/GameConcurrencyLimitGlobalFilter.java`：`/api/v1/game/**` 維護單機記憶體在途計數（AtomicInteger，非 Redis——上限本質是 per-instance 容量，拒絕路徑 O(1) 零 I/O），超過 `concurrency-limit.game.max-in-flight`（預設 200，env `GAME_CONCURRENCY_LIMIT`）立即 429＋`Retry-After: 1`。order=-150 **在 JWT 驗證之前**卸載：被拒請求連 3 次 Redis 撤銷查詢都不做，直接縮小 1,000 併發下 fail-closed 401 雪崩的暴露面。`doFinally` 歸還名額（涵蓋完成/錯誤/取消）。
+- `.../config/ConcurrencyLimitProperties.java` ＋ application.yml `concurrency-limit.game.max-in-flight`（200 的依據：150 併發實測在途 ≈ 100，容量內不誤傷；1,000 併發時後端承壓封頂 ~200）。
+- `GameConcurrencyLimitGlobalFilterTest`：6 測試（未滿轉發／滿載 429+Retry-After 不轉發／完成釋放／錯誤釋放／非遊戲路徑不受限／被拒不漏名額）。
+
+### Changed
+- `tests/performance/analyze-jtl.mjs`：依 D1 拍板語意改判——429 獨立為 shed 桶不計失敗，P99/5xx/失敗樣本以「被接受樣本」為母體；新增 gate「429 佔比 ≤ `MAX_429_RATIO`（預設 0.40）」防「全拒絕也算過」；報告明示此為語意修正。
+- `tests/performance/run-slot-load-test.ps1`：新增 `-Max429Ratio` 參數（150 迴歸基準傳 0 = 容量內不准卸載）。
+- `docs/plans/02-T-090-效能調校藍圖.md`：C1 標記已落地、D1 記錄拍板（429 語意已決，驗收拓樸仍開放）。
+
+### Why
+- 1,000 併發實測證明「全收排隊」的結局：成功率 6.8%、成功者平均 5.2s、5xx/timeout/401 三桶輪流當失敗主角。負載卸載把它改成「明確拒絕少數、保障多數」：被拒者拿到毫秒級 429＋重試指引（無帳務風險——請求根本沒進結算路徑），被接受者維持低延遲。429 語意（「我沒壞，請稍後再來」）與 5xx（故障）在 HTTP 層本就不同類。
+- gate 配套堵漏：429 佔比上限讓「拒絕」有代價；150 併發（容量內）要求 429=0，防止把容量問題藏進卸載。原始「1,000 併發全收且 P99<500ms」目標不消失，歸 D1 容量/拓樸問題。
+
+### 如何驗證
+- `mvn -pl backend/gateway-service test` 全綠（40 tests，含新 6 個）。
+- 實測效果（C1+C2 疊加）待重跑 T-090 150/1,000 對照後回填報告。
+
 ## [perf] -- 2026-07-08 -- T-090 C2：gateway JWT filter Redis 撤銷檢查加瞬時錯誤短重試（fail-closed 語意不變）
 
 ### Changed
