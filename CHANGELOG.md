@@ -1,4 +1,17 @@
- feature/weiyu-admin-audit-fixes
+## [perf] -- 2026-07-08 -- T-090 C2：gateway JWT filter Redis 撤銷檢查加瞬時錯誤短重試（fail-closed 語意不變）
+
+### Changed
+- `backend/gateway-service/.../filter/JwtAuthenticationGlobalFilter.java`：三項 Redis 撤銷檢查（黑名單/停用/min-iat 的 `Mono.zip`）在落入 fail-closed 前先 `retryWhen(Retry.backoff(1, 50ms))`——瞬時錯誤（尖峰逾時、連線抖動）重試一次，重試＝重新訂閱、三項檢查整包重查不會拿到殘缺結果；重試耗盡仍拒絕（401），**fail-closed 語意不變、不可改 fail-open**。
+- `CHANGELOG.md`：順手移除檔首殘留的分支名字串。
+
+### Why
+- T-090 壓測的 401 桶＝Redis 撤銷檢查在負載尖峰下逾時觸發 fail-closed（前次 1,000 併發起跑尖峰 343 筆；Phase A 對照重跑時已擴大為全程 5,315 筆——單機 CPU 飽和使 Redis 往返間歇超過 gateway `spring.data.redis.timeout: 2000ms`）。短重試可吸收「瞬時」抖動；全程持續的飽和延遲非重試能解，屬 C1（併發上限卸載）/D1（拓樸拍板）範疇，藍圖已註記。
+- Lettuce 連線模型檢視結論：`ReactiveStringRedisTemplate` 預設單一多工連線＋pipeline 是 Lettuce 正規用法，非本案瓶頸（Redis 本身無 eviction/rejected，慢在宿主機資源競爭），故不引入連線池、不加大 timeout（加大只會把 401 換成更深的排隊）。
+
+### 如何驗證
+- `mvn -pl backend/gateway-service test` 全綠；`JwtAuthenticationGlobalFilterTest` 新增 2 測試：`redisTransientError_recoversOnRetry_isForwarded`（第一次訂閱失敗、重試成功 → 放行且確認真的重試過）、`redisPersistentError_retriesThenStillFailsClosedWith401`（持續故障 → 重試耗盡仍 401 且不轉發，鎖住 fail-closed 不回歸）。
+- 實測效果待下一輪 T-090 重跑對照 401 桶（藍圖統一驗證流程）。
+
 ## [fix] -- 2026-07-08 -- 修補玩家停用的稽核破口：Redis 封鎖改 best-effort，不再因 Redis 失敗回滾稽核
 
 ### 背景
