@@ -13,6 +13,8 @@ public record AlertView(
         String alertType,
         String detail,
         boolean resolved,
+        String resolvedBy,
+        LocalDateTime resolvedAt,
         LocalDateTime createdAt) {
 
     public static AlertView from(AdminAlert alert) {
@@ -22,6 +24,8 @@ public record AlertView(
                 alert.getAlertType(),
                 alert.getDetail(),
                 alert.isResolved(),
+                alert.getResolvedBy(),
+                alert.getResolvedAt(),
                 alert.getCreatedAt());
     }
 }

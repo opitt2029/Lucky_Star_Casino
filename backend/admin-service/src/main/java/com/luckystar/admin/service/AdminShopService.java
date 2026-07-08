@@ -21,8 +21,11 @@ import org.springframework.web.server.ResponseStatusException;
  * 禮品商城目錄後台管理（ADR-006）。寫入 MySQL {@code shop_items}（admin 的 @Primary 源），
  * 每次變更另落一筆 {@code admin_action_logs}（PostgreSQL）稽核——operator/動作/標的/金額。
  *
- * <p>稽核紀錄為 best-effort：稽核寫入失敗不應讓商品變更回滾（兩者跨資料源、各自交易），
- * 失敗僅記 WARN。商品變更本身的原子性由 mysqlTransactionManager 保證。
+ * <p>稽核為<b>強一致</b>（非 best-effort）：商品（MySQL）與稽核（PostgreSQL）跨資料源、無 2PC，
+ * 但稽核在 mysql 交易 commit <b>之前</b>寫入，故稽核寫入失敗會拋出、連同商品變更一起 rollback
+ * ——「稽核寫不進去就不改目錄」，與 DiamondCardService 一致。殘留邊界：稽核先 commit 後 mysql
+ * commit 才失敗的窄窗會留下孤兒稽核（過度記錄，安全方向），此為雙資料源無分散式交易的先天限制。
+ * 取捨：目錄編輯屬低風險操作，代價是稽核庫短暫不可用時目錄也改不了，換取稽核政策全後台一致。
  */
 @Service
 public class AdminShopService {
@@ -99,15 +102,10 @@ public class AdminShopService {
         return shopItemRepository.findAll(pageable).map(ShopItemView::from);
     }
 
-    /** 稽核：寫一筆 admin_action_logs（PostgreSQL）。best-effort，失敗只記 WARN，不影響商品變更。 */
+    /** 稽核：寫一筆 admin_action_logs（PostgreSQL）。與商品變更強一致，寫入失敗直接拋（觸發 mysql rollback），不再 best-effort。 */
     private void writeAudit(String operator, String actionType, Long amount, String reason) {
-        try {
-            String idempotencyKey = "shop-" + actionType + "-" + UUID.randomUUID();
-            actionLogRepository.save(new AdminActionLog(
-                    operator, actionType, null, amount, reason, idempotencyKey));
-        } catch (RuntimeException e) {
-            log.warn("Failed to write admin_action_logs for {} by {}: {}",
-                    actionType, operator, e.getMessage());
-        }
+        String idempotencyKey = "shop-" + actionType + "-" + UUID.randomUUID();
+        actionLogRepository.save(new AdminActionLog(
+                operator, actionType, null, amount, reason, idempotencyKey));
     }
 }

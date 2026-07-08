@@ -1,3 +1,80 @@
+ feature/weiyu-admin-audit-fixes
+## [fix] -- 2026-07-08 -- 修補玩家停用的稽核破口：Redis 封鎖改 best-effort，不再因 Redis 失敗回滾稽核
+
+### 背景
+- 承前一批把 `AdminPlayerService.setStatus` 收斂為 audit-first 同交易（稽核 → member → Redis 全包在 `@Transactional(postgresTransactionManager)`）。盤點時發現一個與該筆宣稱的「有停用就一定有稽核」相矛盾的窄窗：**第 3 步 Redis `ban/unban` 若丟例外，會連同已 write-ahead 的稽核一起 rollback**，但第 2 步 member DB status 已由 HTTP 改成功且不可回滾 → 結果是「玩家已停用、但稽核被清掉、也沒查得到誰做的」，正是原本要杜絕的稽核破口。
+
+### Changed
+- `backend/admin-service/.../service/AdminPlayerService.java`：第 3 步 Redis 封鎖/解封改為 **best-effort**，用 try/catch 包住 `playerBanService.ban/unban`，失敗只記 WARN、**不外拋**。走到這步時稽核＋member 已成立，Redis 失敗不得反過來 rollback 稽核。遺漏的 Redis 封鎖沿用既有設計、由登入時 DB status 檢查兜底。加回 best-effort WARN 用的 `Logger` 欄位與 slf4j import；同步修正 Javadoc（第 1、2 步仍強一致 audit-first，第 3 步 best-effort）。
+- `backend/admin-service/.../service/AdminPlayerServiceTest.java`：新增 `setStatus_redisFails_stillSucceedsAndKeepsAuditAndMemberChange`——Redis 丟例外時仍回成功、稽核與 member 呼叫皆保留。
+
+### 為什麼
+- **分清哪一步「不可失敗」、哪一步「可失敗且自癒」**：稽核與 member 狀態變更是稽核完整性的核心，必須強一致（前一批已做到）；但 Redis 即時封鎖只是「讓既有 token 提早失效」的最佳化，失敗本就可由登入 DB status 兜底、重按即補齊——把這個「可失敗且自癒」的步驟放進「不可失敗」的稽核交易裡，等於賦予它 rollback 稽核的權力，方向錯了。修法是把 Redis 移出強一致保護（best-effort），讓稽核＋member 這對強一致組合不被 Redis 抖動連累。
+
+### 如何驗證
+- `mvn -pl backend/admin-service test`：94 全綠（`AdminPlayerServiceTest` 10 項，含新增的 Redis best-effort 案例）。
+
+## [changed] -- 2026-07-08 -- 後台稽核全面收斂為強一致：鑽石卡生成 + 商城目錄變更由 best-effort 改硬失敗
+
+### 背景
+- 承前一筆把 AdminPlayerService 封鎖稽核收斂後，後台僅剩兩處稽核仍是 best-effort（失敗只記 WARN）：`DiamondCardService.generateCards`（生成即印可兌換星幣的價值）與 `AdminShopService.create/update`（目錄變更）。為讓「會改狀態/印價值的後台操作一律留痕」政策全面一致，一併收斂。
+
+### Changed
+- `backend/admin-service/.../service/DiamondCardService.java`：`writeAudit` 移除 try/catch，寫入失敗直接拋。因稽核（PostgreSQL 獨立交易）在卡片 `saveAll`（MySQL）**commit 之前**呼叫，例外會讓 `@Transactional(mysqlTransactionManager)` rollback → 卡片不生成。移除只用於 best-effort WARN 的 `Logger` 欄位與 slf4j import。
+- `backend/admin-service/.../service/AdminShopService.java`：`writeAudit` 同上移除 try/catch，稽核失敗→拋→商品變更 rollback。`Logger` 保留（`create`/`update` 的 `log.info` 仍在用）。
+- `backend/admin-service/.../service/DiamondCardServiceTest.java`：`generateCards_auditWriteFails_stillReturnsCards` → `..._throwsAndRollsBack`（稽核失敗改斷言整筆拋）。
+- `backend/admin-service/.../service/AdminShopServiceTest.java`：新增 `create_auditWriteFails_throwsAndRollsBack`。
+
+### 為什麼
+- 這兩處與 admin 的告警/GM 發幣不同——卡片/商品在 **MySQL**、稽核在 **PostgreSQL**，跨資料源、專案無 2PC，**做不到真原子**。能達到的最強保證＝稽核在 mysql commit 前寫入：稽核寫不進去就拋、連同 MySQL 寫入一起 rollback（「稽核寫不進去就不印卡/不改目錄」）。殘留的窄窗＝稽核已 commit 但 mysql commit 才失敗 → 孤兒稽核（有稽核無實體），屬「過度記錄」的安全方向，為雙資料源先天限制、已在 Javadoc 點明。
+- 取捨：商城目錄編輯屬低風險操作，強一致的代價是「稽核庫短暫不可用時目錄也改不了」；仍照收，換取後台稽核政策全面一致（值錢的鑽石卡更該如此）。
+- mock 測試無法觀察真實交易 rollback（repo 被 mock），故失敗案例只斷言例外向上傳播、rollback 由 `@Transactional` 於真實交易保證（比照玩家封鎖那筆的處理）。
+
+### 如何驗證
+- `mvn -pl backend/admin-service test`：93 全綠（`AdminShopServiceTest` 5 項含新增、`DiamondCardServiceTest` 6 項含改寫）。
+
+## [changed] -- 2026-07-08 -- 後台告警「已處理」分頁 + 玩家封鎖稽核由 best-effort 收斂為同交易強一致
+
+### 背景
+- 承前一筆（告警補 `resolved_by`/`resolved_at`）的兩個後續：① 後端已回傳處理者，但後台 Dashboard 只列「未處理」告警（`resolved:false`），沒有地方查「誰、何時」把告警按掉；② 前一筆刻意點名 AdminPlayerService 封鎖玩家的稽核仍是 best-effort（失敗只記 WARN），標為「既有設計未一併收斂」——本次一併收斂。
+
+### Changed
+- `frontend-admin/src/pages/Dashboard.jsx`：告警區塊加「未處理 / 已處理」分頁（`alertTab` 狀態，切換時 `fetchAlerts` 依賴改變→`useFetch` 自動重抓 `resolved=true/false`）。已處理分頁改顯示「處理者 / 處理時間」兩欄（讀 `resolvedBy` / `resolvedAt`）、拿掉「標記已處理」按鈕；空狀態文案依分頁切換。純前端，後端 `AlertView` 已具備欄位。
+- `backend/admin-service/.../service/AdminPlayerService.java`：`setStatus` 標 `@Transactional("postgresTransactionManager")`，稽核（`admin_action_logs`）與狀態變更放進**同一 postgres 交易**、改為 **audit-first**（順序：稽核 → member 內部 API 持久化 status → Redis 封鎖/解封）。`writeAudit` 移除 try/catch，寫入失敗直接拋（→ 500）、連同狀態變更 rollback，**不再** best-effort。同步移除只用於 best-effort WARN 的 `Logger` 欄位與 slf4j import。
+- `backend/admin-service/.../service/AdminPlayerServiceTest.java`：`setStatus_auditWriteFails_stillReturnsSuccessResponse` → `setStatus_auditWriteFails_throwsAndSkipsStateChange`（稽核失敗→整筆拋、member 與 Redis 皆不執行）；`setStatus_memberServiceDown_throwsAndSkipsRedis` 移除 `actionLog never().save()` 斷言（audit-first 下 save 已被呼叫，rollback 由 `@Transactional` 於真實交易保證，mock 不觀察 rollback）。
+
+### 為什麼
+- **強一致的先天邊界**：告警那筆能真「同交易」是因狀態與稽核都在 admin 的 PostgreSQL；玩家停用的真相狀態在 member-service（HTTP）＋ Redis，**無法真的加入 postgres 交易**，三者不可能原子一致。本次能做到的最強保證＝比照 `GmRewardService` 的 audit-first：稽核先寫（交易內未 commit），後續 member 失敗會連稽核一起 rollback——即「**沒稽核就不停用、稽核寫不進去就整筆失敗**」，杜絕「封鎖了卻查不到誰做的」的稽核破口。殘留反向半套（member 已改、Redis 未寫）沿用既有設計、由登入時 DB status 兜底重按即補齊。
+- 代價：`memberClient` 的 HTTP 呼叫落在 postgres 交易內會於呼叫期間佔用連線（與 GM 在交易內送 Kafka 同類取捨）。後台封鎖為低頻操作，連線池壓力可忽略，換取稽核不可遺失，值得。
+- 註：`DiamondCardService` 的稽核仍為 best-effort（本次未動，另有其取捨），非本次範圍。
+
+### 如何驗證
+- `mvn -pl backend/admin-service test`：92 全綠（`AdminPlayerServiceTest` 9 項含改寫後兩項）。
+- `cd frontend-admin && npx vite build`：綠燈，產出 `dist/assets/Dashboard-*.js`。
+
+## [fix] -- 2026-07-08 -- 後台告警「標記已處理」補稽核：記錄處理者 resolved_by + 落 admin_action_logs
+
+### 背景
+- 盤點 admin-service 稽核覆蓋率時發現：後台唯一「會改狀態卻完全不留痕」的操作是告警處理（`PATCH /admin/alerts/{id}/resolve`）。對照 GM 發幣 / 玩家封鎖 / 鑽石卡 / 商城全都記 operator + 稽核，只有告警漏掉——連 `admin_alerts` 自己都沒有欄位可記「誰、何時」把一筆風控告警按掉。風控告警盯的正是大額中獎/高頻下注/異常帳務，處理者不可追溯是稽核破口。
+
+### Added
+- `database/postgres/migration/V15__add_alert_resolution_audit.sql`：`admin_alerts` 補 `resolved_by VARCHAR(50)`、`resolved_at TIMESTAMP`（`ADD COLUMN IF NOT EXISTS`，既有環境可重跑）。
+
+### Changed
+- `database/postgres/init.sql`：`admin_alerts` 建表同步補 `resolved_by` / `resolved_at`（新環境與 migration 一致）。
+- `backend/admin-service/.../entity/AdminAlert.java`：新增 `resolvedBy` / `resolvedAt` 欄位；`markResolved()` → `markResolved(String operator)`，一併寫入處理者與 `LocalDateTime.now()`。
+- `backend/admin-service/.../dto/AlertView.java`：回應多帶 `resolvedBy` / `resolvedAt`（API 形狀擴充，供後台顯示處理者）。
+- `backend/admin-service/.../service/AdminAlertService.java`：`resolve(alertId)` → `resolve(alertId, operator)`；在**同一個 postgres 交易內**記處理者並落一筆 `admin_action_logs`（`action_type=ALERT_RESOLVE`、`target_player_id`=告警玩家、`idempotency_key=alert-resolve-<id>` 確定性去重）。稽核與狀態變更同交易、稽核寫不進去則整筆 rollback（比照 GM 發幣，**不採** AdminPlayerService 的 best-effort）。冪等強化：已處理再標一次仍回 200，但不覆寫原處理者、不重複寫稽核。
+- `backend/admin-service/.../controller/AdminAlertController.java`：`resolveAlert` 帶入 `Authentication`，以 `authentication.getName()` 作為處理者。
+- `backend/admin-service/.../service/AdminAlertServiceTest.java`：建構子補 `AdminActionLogRepository` mock；`resolve` 測試改斷言「記 operator + 落稽核（捕捉 AdminActionLog 驗欄位）」、「已處理不覆寫/不重複稽核」、「不存在不寫任何庫」。
+
+### 為什麼
+- 稽核放進**同一交易**而非 best-effort：告警處理是低頻但敏感的追責點，寧可「處理失敗」也不要「處理成功卻查不到誰做的」。這與 AdminPlayerService 封鎖玩家的 best-effort 立場不同——後者以「狀態變更優先、稽核可事後補」取捨，兩者差異已在程式碼註解點明，屬既有設計未一併收斂（可另立 issue 統一）。
+- 冪等不覆寫：保留「第一位處理者」才是稽核想要的答案；後續重按不該把責任轉移給最後一個點的人。
+
+### 如何驗證
+- `mvn -pl backend/admin-service test`：92 全綠（含改寫後的 `AdminAlertServiceTest`，7 項）。
+=======
 ## [perf] -- 2026-07-08 -- T-090 效能調校 Phase A（A1–A4）：風控統計移出熱路徑
 
 ### Added
@@ -92,7 +169,7 @@
 
 ### 如何驗證
 - `tests/performance/results/20260708-100306/acceptance-report.md`（150 併發）、`tests/performance/results/20260708-100442/acceptance-report.md`（1000 併發）、`tests/performance/results/accounting-20260708-100542/accounting-reconciliation.csv`。
-- Prometheus range query（`increase(...[90s])` at test-window timestamp）可重跑複驗，見報告內嵌 PromQL。
+- Prometheus range query（`increase(...[90s])` at test-window timestamp）可重跑複驗，見報告內嵌 PromQL。 develop
 
 ## [fix] -- 2026-07-08 -- 後台 RTP 監控：無下注樣本改標 NO_DATA，不再誤報 ABNORMAL
 

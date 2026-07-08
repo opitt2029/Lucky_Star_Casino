@@ -1,6 +1,7 @@
 package com.luckystar.admin.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -70,14 +71,15 @@ class DiamondCardServiceTest {
     }
 
     @Test
-    void generateCards_auditWriteFails_stillReturnsCards() {
-        // 稽核為 best-effort：失敗不可讓卡片生成本身跟著失敗
+    void generateCards_auditWriteFails_throwsAndRollsBack() {
+        // 稽核不再 best-effort：與卡片生成強一致，寫不進去則整筆失敗（→ 500）。
+        // saveAll 雖已被呼叫，但真實 mysql 交易會隨此例外 rollback（@Transactional 保證，mock 不觀察 rollback）。
         when(diamondCardRepository.existsByCardCode(any())).thenReturn(false);
         when(actionLogRepository.save(any())).thenThrow(new RuntimeException("db down"));
 
-        GenerateCardsResponse response = service.generateCards("admin1", 2, 100L);
-
-        assertThat(response.cardCodes()).hasSize(2);
+        assertThatThrownBy(() -> service.generateCards("admin1", 2, 100L))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("db down");
     }
 
     @Test

@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -47,10 +48,12 @@ public class AdminAlertController {
         return adminAlertService.list(alertType, resolved, pageable);
     }
 
-    @Operation(summary = "標記告警已處理", description = "冪等；告警不存在回 404。")
+    @Operation(summary = "標記告警已處理",
+            description = "冪等；記錄處理者（resolved_by）並落稽核；告警不存在回 404。")
     @PatchMapping("/{alertId}/resolve")
-    public ResponseEntity<AlertView> resolveAlert(@PathVariable Long alertId) {
-        return adminAlertService.resolve(alertId)
+    public ResponseEntity<AlertView> resolveAlert(
+            @PathVariable Long alertId, Authentication authentication) {
+        return adminAlertService.resolve(alertId, authentication.getName())
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }

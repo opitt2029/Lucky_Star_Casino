@@ -35,6 +35,12 @@ public class AdminAlert {
     @Column(name = "is_resolved", nullable = false)
     private boolean resolved = false;
 
+    @Column(name = "resolved_by", length = 50)
+    private String resolvedBy;
+
+    @Column(name = "resolved_at")
+    private LocalDateTime resolvedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -56,9 +62,14 @@ public class AdminAlert {
         }
     }
 
-    /** 標記為已處理（單向：告警一經處理不提供退回未處理，故不做 setter）。 */
-    public void markResolved() {
+    /**
+     * 標記為已處理（單向：告警一經處理不提供退回未處理，故不做 setter）。
+     * 同時記錄處理者與處理時間，供事後追溯（T-054 稽核）。
+     */
+    public void markResolved(String operator) {
         this.resolved = true;
+        this.resolvedBy = operator;
+        this.resolvedAt = LocalDateTime.now();
     }
 
     public Long getId() {
@@ -79,6 +90,14 @@ public class AdminAlert {
 
     public boolean isResolved() {
         return resolved;
+    }
+
+    public String getResolvedBy() {
+        return resolvedBy;
+    }
+
+    public LocalDateTime getResolvedAt() {
+        return resolvedAt;
     }
 
     public LocalDateTime getCreatedAt() {

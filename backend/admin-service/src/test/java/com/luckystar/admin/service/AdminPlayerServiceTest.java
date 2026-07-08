@@ -156,7 +156,7 @@ class AdminPlayerServiceTest {
 
     @Test
     void setStatus_memberServiceDown_throwsAndSkipsRedis() {
-        // DB 持久化失敗就整個操作失敗（→ 502），不可留下「Redis 已封鎖但 DB 仍 ACTIVE」的半套狀態
+        // member 持久化失敗就整個操作失敗（→ 502），不可留下「Redis 已封鎖但 DB 仍 ACTIVE」的半套狀態
         when(memberRepository.existsById(1L)).thenReturn(true);
         doThrow(new MemberServiceException("down")).when(memberClient).updateStatus(1L, false);
 
@@ -164,18 +164,37 @@ class AdminPlayerServiceTest {
                 .isInstanceOf(MemberServiceException.class);
         verify(playerBanService, never()).ban(any());
         verify(playerBanService, never()).unban(any());
-        verify(actionLogRepository, never()).save(any());
+        // 稽核先於 member 寫入（audit-first），故 save() 已被呼叫；真實 postgres 交易會隨 member 失敗
+        // 一起 rollback（mock 不會真的 rollback，rollback 由 @Transactional 保證，此處不對 actionLog 斷言）
     }
 
     @Test
-    void setStatus_auditWriteFails_stillReturnsSuccessResponse() {
-        // 稽核寫入為 best-effort：失敗不可讓停用/啟用本身跟著失敗
+    void setStatus_redisFails_stillSucceedsAndKeepsAuditAndMemberChange() {
+        // Redis 封鎖為 best-effort：走到這步時稽核＋member 已成立（狀態確實變更）。
+        // Redis 失敗絕不可反過來 rollback 稽核——否則會留下「已停用卻查不到誰做的」稽核破口。
+        // 故 Redis 例外只記 WARN、不外拋；操作仍回成功，稽核與 member 呼叫都保留。
         when(memberRepository.existsById(1L)).thenReturn(true);
-        when(actionLogRepository.save(any())).thenThrow(new RuntimeException("db down"));
+        doThrow(new RuntimeException("redis down")).when(playerBanService).ban(1L);
 
         Optional<PlayerStatusResponse> result = service.setStatus("admin1", 1L, false);
 
         assertThat(result).contains(new PlayerStatusResponse(1L, true));
+        verify(actionLogRepository).save(any(AdminActionLog.class));
+        verify(memberClient).updateStatus(1L, false);
         verify(playerBanService).ban(1L);
+    }
+
+    @Test
+    void setStatus_auditWriteFails_throwsAndSkipsStateChange() {
+        // 稽核不再 best-effort：與狀態變更同交易，寫不進去則整筆失敗（→ 500）。
+        // 且因 audit-first，member 持久化與 Redis 封鎖都不會發生——沒稽核就不停用。
+        when(memberRepository.existsById(1L)).thenReturn(true);
+        when(actionLogRepository.save(any())).thenThrow(new RuntimeException("db down"));
+
+        assertThatThrownBy(() -> service.setStatus("admin1", 1L, false))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("db down");
+        verify(memberClient, never()).updateStatus(anyLong(), anyBoolean());
+        verify(playerBanService, never()).ban(any());
     }
 }

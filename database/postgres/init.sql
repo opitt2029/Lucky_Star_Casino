@@ -254,6 +254,8 @@ CREATE TABLE IF NOT EXISTS admin_alerts (
     alert_type   VARCHAR(30)  NOT NULL,   -- BIG_WIN / HIGH_FREQUENCY / ABNORMAL_TRANSFER
     detail       TEXT,
     is_resolved  BOOLEAN      NOT NULL DEFAULT FALSE,
+    resolved_by  VARCHAR(50),                            -- 標記已處理的後台操作者（未處理為 NULL）
+    resolved_at  TIMESTAMP,                              -- 標記已處理的時間（未處理為 NULL）
     created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_admin_alerts PRIMARY KEY (id),
     CONSTRAINT chk_alert_type  CHECK (alert_type IN ('BIG_WIN', 'HIGH_FREQUENCY', 'ABNORMAL_TRANSFER'))
