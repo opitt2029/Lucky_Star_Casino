@@ -1,4 +1,24 @@
-feature/huang-gateway-timelimiter
+## [test] -- 2026-07-08 -- T-090 1,000 併發完整重跑（TimeLimiter 修正後驗證）
+
+### 背景
+- gateway TimeLimiter 修正（見下一條目）先前僅在 150 併發驗證（5xx 78% → 0）；規格級 1,000 併發的修正後完整重跑尚未執行。本次同拓撲補跑到底，驗證修正在真實規格併發下的效果。
+
+### Added
+- `docs/performance/T-090-load-test-report.md`：新增「2026-07-08 gateway TimeLimiter 修正驗證（1,000 併發完整重跑）」節——12,530 樣本、P99 5,291 ms、失敗 8,582（68.5%），失敗組成拆解為 503 3,870（30.9%，較修正前 13,709 減 72%）／client 5s SocketTimeout 4,369（34.9%）／401 343（2.7%，起跑尖峰 12 秒內 JWT filter Redis fail-closed 所致）；idempotency/overdraw 全程 0。
+- 壓測產物：`tests/performance/results/20260708-103916/`（JTL/HTML/acceptance-report）、`tests/performance/results/accounting-20260708-104156/`（T-091 對帳 CSV，本機無 psql 改以 `docker exec lucky-star-postgres psql` 執行同一 SQL）。
+
+### Changed
+- `docs/performance/T-090-load-test-report.md`、`CHANGELOG.md`：順手清除 merge commit `166b179` 遺留的 conflict 標記殘骸（branch 名稱與 `=======`）。
+- `docs/plans/01-八項架構改進施工藍圖.md`：P2b 狀態註記補上「TimeLimiter 修正後 1,000 併發重跑完成」。
+
+### Why
+- 150 併發的驗證不能外推到 1,000 併發（修正前兩者失敗形態就不同）；且 AGENTS.md 明定無實測不得填數字，規格級併發必須實跑。
+- 結論：**熔斷「誤判環節」在 1,000 併發下確認消除**（Prometheus 佐證：CB `kind="failed"` calls 全服務歸零（修正前 game≈1,172/wallet≈424）、wallet CB not_permitted 由 ≈10,028 歸零、game not_permitted 由 ≈9,861 降至 ≈4,047 且全由 slow-call rate 合法觸發）；**帳務 gate 維持全 PASS**；效能 gate（P99<500ms/5xx=0）仍 FAIL，瓶頸移轉到 spin 路徑本身延遲（成功呼叫平均 4.42 s：風控 Redis 並發閘＋DB 聚合、注單稽核高併發變重），屬下一輪效能調校課題、超出本修正範圍。
+
+### 如何驗證
+- `tests/performance/results/20260708-103916/acceptance-report.md`、`results/accounting-20260708-104156/accounting-reconciliation.csv`；Prometheus range query（`increase(...[90s])`，窗口迄 10:40:24）可複驗，PromQL 見報告內嵌。
+- 迴歸自查：`node --test tests/infra/*.test.js` 綠燈（本次未動任何程式碼/設定，僅文件與測試產物）。
+
 ## [fix] -- 2026-07-08 -- gateway 補 Resilience4j TimeLimiter 設定，解決 T-090 thundering herd 熔斷
 
 ### 背景
@@ -14,7 +34,7 @@ feature/huang-gateway-timelimiter
 ### 如何驗證
 - 150 併發（`tests/performance/results/20260708-101629/acceptance-report.md`）：HTTP 5xx 由修正前 13,563（78.0%）降至 **0**；失敗樣本由 13,563 降至 4（0.05%）；idempotency/overdraw 全程 0。
 - P99（2,667 ms）仍未達 < 500 ms 門檻——歸類為下一輪效能調校的獨立課題（風控聚合/注單稽核在高併發下變重），不在本次修正範圍。
-=======
+
 ## [test] -- 2026-07-08 -- T-090 壓測完整重跑（Phase 2b 完成）：根因鏈確認、帳務對帳 PASS
 
 ### 背景
@@ -35,9 +55,7 @@ feature/huang-gateway-timelimiter
 ### 如何驗證
 - `tests/performance/results/20260708-100306/acceptance-report.md`（150 併發）、`tests/performance/results/20260708-100442/acceptance-report.md`（1000 併發）、`tests/performance/results/accounting-20260708-100542/accounting-reconciliation.csv`。
 - Prometheus range query（`increase(...[90s])` at test-window timestamp）可重跑複驗，見報告內嵌 PromQL。
- main
 
-feature/weiyu-saga-compensation-and-contracts
 ## [feat] -- 2026-07-07 -- AUDIT_REPORT 附錄 A 自動盤點：tools/audit/ 依證據清單重生進度表（Phase 8）
 
 ### 背景
