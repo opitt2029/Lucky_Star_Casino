@@ -204,6 +204,31 @@ class RiskControlServiceTest {
     }
 
     @Test
+    @DisplayName("玩家日水位 hash 殘缺（只有 bet 欄） → 視同 miss、退回 DB 重算")
+    void shouldIntercept_playerDayCachePartial_fallsBackToDb() {
+        // 殘缺 hash 若被信任，netWin = 0 - bet 恆為負 → 上限實質停用；必須退回 DB。
+        when(hashOps.multiGet(eq(playerDayKey(PLAYER_ID, GAME_TYPE)), anyList()))
+                .thenReturn(Arrays.asList("20000", null));
+        // DB：netWin=60000 >= 50000 → 攔截（證明確實走到 DB）
+        when(roundRepository.aggregatePlayerToday(eq(PLAYER_ID), eq(GAME_TYPE), any()))
+                .thenReturn(List.<Object[]>of(new Object[]{20000L, 80000L, 10L}));
+
+        assertTrue(service.shouldIntercept(PLAYER_ID, GAME_TYPE));
+    }
+
+    @Test
+    @DisplayName("releaseRiskSlot：以 Lua 釋放（DECR 歸零即刪 key），Redis 故障不拋例外")
+    void releaseRiskSlot_usesLuaAndSwallowsErrors() {
+        service.releaseRiskSlot(PLAYER_ID);
+        verify(redisTemplate).execute(
+                Mockito.<RedisScript<Long>>any(), eq(List.of("risk:inflight:" + PLAYER_ID)));
+
+        Mockito.when(redisTemplate.execute(Mockito.<RedisScript<Long>>any(), anyList()))
+                .thenThrow(new RuntimeException("redis down"));
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> service.releaseRiskSlot(PLAYER_ID));
+    }
+
+    @Test
     @DisplayName("玩家日水位快取 miss → 退回 DB 聚合並以 HSETNX 回填")
     void shouldIntercept_playerDayCacheMiss_backfillsFromDb() {
         when(roundRepository.aggregatePlayerToday(eq(PLAYER_ID), eq(GAME_TYPE), any()))

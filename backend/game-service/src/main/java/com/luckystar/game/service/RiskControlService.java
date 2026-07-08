@@ -74,6 +74,20 @@ public class RiskControlService {
             return c
             """, Long.class);
 
+    /**
+     * 並發閘釋放：DECR 後歸零（或因 stale release 變負）即刪 key。
+     * 若僅裸 DECR：請求耗時超過 TTL（或 Redis 重啟）使 key 先過期時，補釋放會把 key 重建為 -1
+     * 且無 TTL——取號 Lua 只在 0→1 時設 TTL，計數器從負值起跳將永遠達不到 &gt;1，
+     * 並發閘對該玩家靜默失效且不會自癒。刪 key 讓下次取號回到乾淨的 0→1 路徑。
+     */
+    private static final RedisScript<Long> INFLIGHT_RELEASE_SCRIPT = new DefaultRedisScript<>("""
+            local c = redis.call('DECR', KEYS[1])
+            if c <= 0 then
+                redis.call('DEL', KEYS[1])
+            end
+            return c
+            """, Long.class);
+
     /** 玩家日水位累加（Phase A2）：HINCRBY bet/win＋PEXPIRE 合併為單一往返。 */
     private static final RedisScript<Long> PLAYER_DAY_RECORD_SCRIPT = new DefaultRedisScript<>("""
             redis.call('HINCRBY', KEYS[1], 'bet', ARGV[1])
@@ -127,7 +141,8 @@ public class RiskControlService {
      */
     public void releaseRiskSlot(long playerId) {
         try {
-            redisTemplate.opsForValue().decrement("risk:inflight:" + playerId);
+            redisTemplate.execute(INFLIGHT_RELEASE_SCRIPT,
+                    List.of("risk:inflight:" + playerId));
         } catch (Exception e) {
             log.warn("[風控] releaseRiskSlot 失敗 playerId={}: {}", playerId, e.toString());
         }
@@ -174,13 +189,19 @@ public class RiskControlService {
      *
      * <p>先讀 Redis 日水位 hash（Phase A2）；miss（尚無 key 或 Redis 故障）時退回 DB 聚合，
      * 並以 HSETNX 回填（不覆蓋並發中的 HINCRBY 累加，避免把別局剛加上的量蓋掉）。
+     *
+     * <p><b>已知取捨</b>：hash 兩欄一旦存在即被信任、當日不再對 DB 重驗。極窄窗口（讀取時
+     * Redis 例外且回填失敗、累加時 Redis 已恢復；或 Redis 從舊快照還原）可能低估當日水位、
+     * 欠攔到隔日——方向是欠攔非誤攔，且單一真相仍在 game_rounds，可由對帳發現，故接受。
      */
     private boolean isPlayerOverLimit(long playerId, String gameType) {
         String key = playerDayKey(playerId, gameType);
         try {
             List<Object> vals = redisTemplate.opsForHash()
                     .multiGet(key, List.of("bet", "win"));
-            if (vals != null && (vals.get(0) != null || vals.get(1) != null)) {
+            // 兩欄皆存在才信任快取：回填非原子，若只寫入一欄就中斷，殘缺 hash 會讓水位恆為負
+            // （上限實質停用）——部分缺欄一律視同 miss、退回 DB 重算。
+            if (vals != null && vals.get(0) != null && vals.get(1) != null) {
                 long netWin = parseLong(vals.get(1)) - parseLong(vals.get(0));
                 return netWin >= riskProperties.getPlayerWinLimit();
             }

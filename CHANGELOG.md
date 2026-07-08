@@ -9,7 +9,8 @@
 - `RiskControlService`：
   - `isGlobalRtpOverLimit`（A1）改先讀 Redis 快取，miss（排程未跑過/Redis 故障/格式異常）退回直查 DB——只改「數據怎麼來」，不改「怎麼判」（per-game 門檻與含本金口徑不動，雷區 17）。
   - `isPlayerOverLimit`（A2）改先讀日水位 hash，miss 退回 DB 聚合並以 HSETNX 回填（不覆蓋並發中的 HINCRBY，避免蓋掉別局剛累加的量）。
-  - 並發閘（A4）：`INCR`+`EXPIRE` 兩次往返合併為單一 Lua，且僅在計數器 0→1 首次取號時 PEXPIRE——修掉「每次 INCR 都續命 TTL」的語意問題；`DECR` 釋放不變。
+  - 並發閘（A4）：`INCR`+`EXPIRE` 兩次往返合併為單一 Lua，且僅在計數器 0→1 首次取號時 PEXPIRE——修掉「每次 INCR 都續命 TTL」的語意問題；釋放端亦改 Lua（DECR 歸零即刪 key）——code review 抓出裸 DECR 在 key 先過期（請求超過 30s TTL / Redis 重啟）時會把計數器重建為無 TTL 的負值、並發閘對該玩家永久失效。
+  - `isPlayerOverLimit` 命中條件改「bet/win 兩欄皆存在」才信任快取，殘缺 hash（回填只寫入一欄即中斷）視同 miss 退回 DB——否則 netWin 恆為負、上限實質停用（code review 發現）。
 - `backend/game-service/src/main/resources/application.yml`：`risk.rtp-cache-refresh-ms: 2000`。
 - `docs/plans/02-T-090-效能調校藍圖.md`：進度表 A1–A4 標記已落地。
 - `CHANGELOG.md`：順手移除檔首殘留的分支名字串。
