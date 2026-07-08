@@ -126,6 +126,16 @@ CREATE TABLE IF NOT EXISTS game_rounds (
 CREATE INDEX IF NOT EXISTS idx_game_rounds_player_id  ON game_rounds (player_id);
 CREATE INDEX IF NOT EXISTS idx_game_rounds_created_at ON game_rounds (created_at);
 
+-- 風控聚合查詢的複合索引（V15，T-090 Phase A3）：兩者皆只掃已結算對局，用 partial index 縮小體積。
+-- idx_game_rounds_type_created         → aggregateRecent（近 N 局全局 RTP）
+-- idx_game_rounds_player_type_settled  → aggregatePlayerToday（玩家今日水位）
+CREATE INDEX IF NOT EXISTS idx_game_rounds_type_created
+    ON game_rounds (game_type, created_at DESC)
+    WHERE status = 'SETTLED';
+CREATE INDEX IF NOT EXISTS idx_game_rounds_player_type_settled
+    ON game_rounds (player_id, game_type, settled_at)
+    WHERE status = 'SETTLED';
+
 -- -------------------------------------------------------
 -- pending_wallet_credits：game→wallet 補償單（ADR-009，Saga 補償）
 -- credit（派彩/退款）失敗時落地為「待送出的 wallet credit」，

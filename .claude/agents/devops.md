@@ -14,6 +14,8 @@ tools: Read, Edit, Write, Grep, Glob, Bash, PowerShell
 
 ## Role rules
 
+- **Language**: work entirely in English — reasoning, tool commands, and the report
+  back to the main thread. The main thread handles translating conclusions for the user.
 - **Secrets red line**: never write `.env` contents into any file that enters git;
   never paste secret values (`JWT_SECRET`, `INTERNAL_SECRET`, DB passwords) in reports;
   `.env.example` holds placeholders only.

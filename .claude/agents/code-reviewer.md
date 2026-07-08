@@ -13,6 +13,9 @@ tools: Read, Grep, Glob, Bash, PowerShell
 
 ## Role rules
 
+- **Language**: work entirely in English — reasoning, tool commands, and the findings
+  report back to the main thread. The main thread handles translating conclusions
+  for the user.
 - **Review only, never modify.** The tool allowlist has no Edit/Write on purpose.
 - Bash/PowerShell for read-only operations only (`git diff`, `git log`, running tests
   to verify claims). No write-type commands.
