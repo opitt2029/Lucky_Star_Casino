@@ -8,6 +8,24 @@
 
 > ⚠️ The P99 < 500 ms / 5xx = 0 gates were defined for a properly resourced multi-host deployment. Running 5 service JVMs + JMeter + 6 infra containers on one laptop is itself the bottleneck — the 503s are gateway circuit-breaker load-shedding under host CPU saturation, not application accounting defects. See "Measured Results" for the full breakdown.
 
+## 2026-07-08 gateway TimeLimiter 修正驗證
+
+2026-07-08 完整重跑（見另一份 CHANGELOG 條目與 PR #182）把 78–89% 5xx 的根因鏈定位到：Spring Cloud Gateway 的 Resilience4j CircuitBreaker 未顯式設定 `timelimiter`，Resilience4j 預設**逾時 1 秒**——遠低於 `slow-call-duration-threshold: 3s`，導致高併發排隊下的正常慢呼叫在真正完成前就被腰斬判 failed，觸發熔斷開路 → half-open 少量放行 → 關路瞬間 thundering herd 再次推爆延遲 → 反覆開闔。
+
+修正：`backend/gateway-service/src/main/resources/application.yml` 新增 `resilience4j.timelimiter.instances.<service>.timeout-duration: 6s`（略高於既有 `slow-call-duration-threshold: 3s`，讓慢呼叫有機會真正完成、交由 CircuitBreaker 的 slow-call 統計判定而非被 TimeLimiter 提前腰斬）。
+
+**驗證（150 併發，`results/20260708-101629/`，200 名重新 provision 的玩家）**：
+
+| 指標 | 修正前（2026-07-08 完整重跑） | 修正後 |
+|---|---:|---:|
+| 樣本數 | 17,395 | 7,841 |
+| HTTP 5xx | 13,563（78.0%） | **0** |
+| 失敗樣本 | 13,563 | **4**（0.05%，疑似瞬斷） |
+| P99 | 1,164 ms | 2,667 ms |
+| idempotency / overdraw | 0 / 0 | 0 / 0 |
+
+Thundering herd 熔斷完全消失（5xx 13,563 → 0）。P99 仍高於 500 ms 門檻，但這是排隊延遲本身的問題（風控 Redis 並發閘 + DB 聚合、注單稽核在高併發下變重），不再是 TimeLimiter 誤判——歸類為下一輪效能調校（例如非同步化風控聚合、拆分注單稽核）的獨立課題，超出本次 TimeLimiter 修正範圍。
+
 ## 2026-07-07 再驗證進度（進行中，Phase 2b）
 
 同拓撲（後端宿主機 mvn 起、Docker infra + observability 監控棧）重跑，**本節為中途進度、非最終結論**；完整重跑與指標佐證待後續補齊。目前實測：
