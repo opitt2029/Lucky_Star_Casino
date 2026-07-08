@@ -4,22 +4,32 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.luckystar.game.config.RiskProperties;
 import com.luckystar.game.repository.GameRoundRepository;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
+import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.script.RedisScript;
 
 /** {@link RiskControlService} 單元測試。 */
 class RiskControlServiceTest {
@@ -27,17 +37,32 @@ class RiskControlServiceTest {
     private static final long PLAYER_ID = 1L;
     private static final String GAME_TYPE = "SLOT";
 
-    private final GameRoundRepository roundRepository = org.mockito.Mockito.mock(GameRoundRepository.class);
+    private final GameRoundRepository roundRepository = Mockito.mock(GameRoundRepository.class);
     @SuppressWarnings("unchecked")
-    private final ValueOperations<String, String> valueOps = org.mockito.Mockito.mock(ValueOperations.class);
-    private final StringRedisTemplate redisTemplate = org.mockito.Mockito.mock(StringRedisTemplate.class);
+    private final ValueOperations<String, String> valueOps = Mockito.mock(ValueOperations.class);
+    @SuppressWarnings("unchecked")
+    private final HashOperations<String, Object, Object> hashOps = Mockito.mock(HashOperations.class);
+    private final StringRedisTemplate redisTemplate = Mockito.mock(StringRedisTemplate.class);
     private RiskControlService service;
+
+    /** 今日玩家日水位 hash key（與被測程式的組法一致）。 */
+    private static String playerDayKey(long playerId, String gameType) {
+        return "risk:player-day:" + playerId + ":"
+                + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd")) + ":" + gameType;
+    }
 
     @BeforeEach
     void setUp() {
         Mockito.when(redisTemplate.opsForValue()).thenReturn(valueOps);
-        // 預設：並發閘回傳 1（無並發，正常通過）
-        Mockito.when(valueOps.increment(Mockito.anyString(), Mockito.anyLong())).thenReturn(1L);
+        Mockito.when(redisTemplate.opsForHash()).thenReturn(hashOps);
+        // 預設：並發閘 Lua 回傳 1（無並發，正常通過）
+        Mockito.when(redisTemplate.execute(
+                        Mockito.<RedisScript<Long>>any(), anyList(), Mockito.<Object>any()))
+                .thenReturn(1L);
+        // 預設：玩家日水位快取 miss（退回 DB 聚合）、全局 RTP 快取 miss（退回直查 DB）
+        Mockito.when(hashOps.multiGet(anyString(), anyList()))
+                .thenReturn(Arrays.asList(null, null));
+        Mockito.when(valueOps.get(anyString())).thenReturn(null);
 
         RiskProperties riskProperties = new RiskProperties();
         riskProperties.setPlayerWinLimit(50000L);
@@ -137,5 +162,135 @@ class RiskControlServiceTest {
                 .thenReturn(List.of());
 
         assertFalse(service.shouldIntercept(PLAYER_ID, GAME_TYPE));
+    }
+
+    // ---- Phase A4：並發閘（Lua 取號） ----
+
+    @Test
+    @DisplayName("並發閘：同玩家已有進行中請求（Lua 回傳 2） → 保守攔截，不再查統計")
+    void shouldIntercept_concurrentRequest_returnsTrue() {
+        Mockito.when(redisTemplate.execute(
+                        Mockito.<RedisScript<Long>>any(), anyList(), Mockito.<Object>any()))
+                .thenReturn(2L);
+
+        assertTrue(service.shouldIntercept(PLAYER_ID, GAME_TYPE));
+        verify(roundRepository, never()).aggregatePlayerToday(anyLong(), anyString(), any());
+        verify(roundRepository, never()).aggregateRecent(anyString(), anyInt());
+    }
+
+    @Test
+    @DisplayName("並發閘：Redis 故障 → 降級直查統計，不誤攔")
+    void shouldIntercept_gateRedisDown_fallsBackToDb() {
+        Mockito.when(redisTemplate.execute(
+                        Mockito.<RedisScript<Long>>any(), anyList(), Mockito.<Object>any()))
+                .thenThrow(new RuntimeException("redis down"));
+        when(roundRepository.aggregatePlayerToday(anyLong(), anyString(), any()))
+                .thenReturn(List.<Object[]>of(new Object[]{10000L, 10000L, 5L}));
+
+        assertFalse(service.shouldIntercept(PLAYER_ID, GAME_TYPE));
+    }
+
+    // ---- Phase A2：玩家日水位計數器 ----
+
+    @Test
+    @DisplayName("玩家日水位快取命中且超限 → 攔截，且不查 DB 聚合")
+    void shouldIntercept_playerDayCacheHitOverLimit_skipsDb() {
+        // hash 命中：bet=20000, win=80000 → netWin=60000 >= 50000
+        when(hashOps.multiGet(eq(playerDayKey(PLAYER_ID, GAME_TYPE)), anyList()))
+                .thenReturn(Arrays.asList("20000", "80000"));
+
+        assertTrue(service.shouldIntercept(PLAYER_ID, GAME_TYPE));
+        verify(roundRepository, never()).aggregatePlayerToday(anyLong(), anyString(), any());
+    }
+
+    @Test
+    @DisplayName("玩家日水位快取 miss → 退回 DB 聚合並以 HSETNX 回填")
+    void shouldIntercept_playerDayCacheMiss_backfillsFromDb() {
+        when(roundRepository.aggregatePlayerToday(eq(PLAYER_ID), eq(GAME_TYPE), any()))
+                .thenReturn(List.<Object[]>of(new Object[]{20000L, 60000L, 10L}));
+
+        assertFalse(service.shouldIntercept(PLAYER_ID, GAME_TYPE));
+
+        String key = playerDayKey(PLAYER_ID, GAME_TYPE);
+        verify(hashOps).putIfAbsent(key, "bet", "20000");
+        verify(hashOps).putIfAbsent(key, "win", "60000");
+        verify(redisTemplate).expire(eq(key), any(Duration.class));
+    }
+
+    @Test
+    @DisplayName("recordRoundSettled：以 Lua 對日水位 key 累加 bet/win（單一往返）")
+    void recordRoundSettled_incrementsPlayerDayHash() {
+        service.recordRoundSettled(PLAYER_ID, GAME_TYPE, 1000L, 700L);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<String>> keysCaptor = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<Object[]> argsCaptor = ArgumentCaptor.forClass(Object[].class);
+        verify(redisTemplate).execute(
+                Mockito.<RedisScript<Long>>any(), keysCaptor.capture(), argsCaptor.capture());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                List.of(playerDayKey(PLAYER_ID, GAME_TYPE)), keysCaptor.getValue());
+        Object[] args = argsCaptor.getValue();
+        org.junit.jupiter.api.Assertions.assertEquals("1000", args[0]);
+        org.junit.jupiter.api.Assertions.assertEquals("700", args[1]);
+    }
+
+    @Test
+    @DisplayName("recordRoundSettled：Redis 故障僅 log，不拋例外（best-effort）")
+    void recordRoundSettled_redisDown_doesNotThrow() {
+        Mockito.when(redisTemplate.execute(
+                        Mockito.<RedisScript<Long>>any(), anyList(), Mockito.<Object>any()))
+                .thenThrow(new RuntimeException("redis down"));
+
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(
+                () -> service.recordRoundSettled(PLAYER_ID, GAME_TYPE, 1000L, 700L));
+    }
+
+    // ---- Phase A1：全局 RTP 快取 ----
+
+    @Test
+    @DisplayName("全局 RTP 快取命中且超限 → 攔截，且不查 DB 聚合")
+    void shouldIntercept_rtpCacheHitOverLimit_skipsDb() {
+        when(roundRepository.aggregatePlayerToday(anyLong(), anyString(), any()))
+                .thenReturn(List.<Object[]>of(new Object[]{10000L, 10000L, 5L}));
+        // 快取命中：bet=100, win=96 → RTP=0.96 >= 0.95
+        when(valueOps.get("risk:rtp:" + GAME_TYPE)).thenReturn("100:96");
+
+        assertTrue(service.shouldIntercept(PLAYER_ID, GAME_TYPE));
+        verify(roundRepository, never()).aggregateRecent(anyString(), anyInt());
+    }
+
+    @Test
+    @DisplayName("全局 RTP 快取命中且正常 → 不攔截，且不查 DB 聚合")
+    void shouldIntercept_rtpCacheHitUnderLimit_skipsDb() {
+        when(roundRepository.aggregatePlayerToday(anyLong(), anyString(), any()))
+                .thenReturn(List.<Object[]>of(new Object[]{10000L, 10000L, 5L}));
+        when(valueOps.get("risk:rtp:" + GAME_TYPE)).thenReturn("100000:50000");
+
+        assertFalse(service.shouldIntercept(PLAYER_ID, GAME_TYPE));
+        verify(roundRepository, never()).aggregateRecent(anyString(), anyInt());
+    }
+
+    @Test
+    @DisplayName("全局 RTP 快取格式異常 → 降級直查 DB（行為同舊版）")
+    void shouldIntercept_rtpCacheMalformed_fallsBackToDb() {
+        when(roundRepository.aggregatePlayerToday(anyLong(), anyString(), any()))
+                .thenReturn(List.<Object[]>of(new Object[]{10000L, 10000L, 5L}));
+        when(valueOps.get("risk:rtp:" + GAME_TYPE)).thenReturn("not-a-number");
+        // DB：RTP=0.96 >= 0.95 → 攔截（證明確實走到 DB）
+        when(roundRepository.aggregateRecent(eq(GAME_TYPE), anyInt()))
+                .thenReturn(List.<Object[]>of(new Object[]{100L, 96L, 10L}));
+
+        assertTrue(service.shouldIntercept(PLAYER_ID, GAME_TYPE));
+    }
+
+    @Test
+    @DisplayName("refreshGlobalRtpCache：聚合結果以 totalBet:totalWin 寫入快取（含 TTL）")
+    void refreshGlobalRtpCache_writesAggregateToRedis() {
+        when(roundRepository.aggregateRecent(eq(GAME_TYPE), eq(500)))
+                .thenReturn(List.<Object[]>of(new Object[]{100000L, 93800L, 500L}));
+
+        service.refreshGlobalRtpCache(GAME_TYPE);
+
+        verify(valueOps).set(eq("risk:rtp:" + GAME_TYPE), eq("100000:93800"), any(Duration.class));
     }
 }

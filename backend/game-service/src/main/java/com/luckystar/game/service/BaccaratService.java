@@ -216,6 +216,9 @@ public class BaccaratService {
                 GameRound round = buildRound(session, outcome, settlement, actualNonce, credit.balanceAfter());
                 round.setWinAmount(settlement.totalPayout() + rebate);
                 roundRepository.save(round);
+                // 風控日水位計數器累加（Phase A2，best-effort）：僅在首次落地時累加，與 DB 口徑一致。
+                riskControlService.recordRoundSettled(
+                        playerId, GAME_TYPE, round.getBetAmount(), round.getWinAmount());
                 eventPublisher.publishBaccaratResult(round, outcome);
             } catch (DataIntegrityViolationException e) {
                 // 並發結算同時通過去重檢查，unique 約束擋下第二筆 → 視同已結算，不讓重試者收到 500
