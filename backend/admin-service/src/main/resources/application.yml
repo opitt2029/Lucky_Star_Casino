@@ -93,8 +93,10 @@ admin:
   jwt:
     secret: ${ADMIN_JWT_SECRET}
     expiry-ms: ${ADMIN_JWT_EXPIRY_MS:3600000}   # 1 小時
-  # 預設管理員播種（首次啟動建立可登入的 SUPER_ADMIN）
+  # 預設管理員播種（首次啟動建立可登入的 SUPER_ADMIN）。
+  # 預設 enabled=false：沒設 ADMIN_SEED_ENABLED 就不會用版控裡公開的預設密碼播種帳號；
+  # 本機開發由 .env 明確設 ADMIN_SEED_ENABLED=true 開啟。
   seed:
-    enabled: ${ADMIN_SEED_ENABLED:true}
+    enabled: ${ADMIN_SEED_ENABLED:false}
     username: ${ADMIN_SEED_USERNAME:superadmin}
     password: ${ADMIN_SEED_PASSWORD:ChangeMe!SuperAdmin123}

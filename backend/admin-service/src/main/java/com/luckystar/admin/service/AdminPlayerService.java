@@ -8,12 +8,17 @@ import com.luckystar.admin.mysql.entity.MemberRead;
 import com.luckystar.admin.mysql.entity.WalletTransactionRead;
 import com.luckystar.admin.mysql.repository.MemberReadRepository;
 import com.luckystar.admin.mysql.repository.WalletTransactionReadRepository;
+import com.luckystar.admin.postgres.entity.AdminActionLog;
 import com.luckystar.admin.postgres.entity.GameRoundRead;
 import com.luckystar.admin.postgres.entity.WalletRead;
+import com.luckystar.admin.postgres.repository.AdminActionLogRepository;
 import com.luckystar.admin.postgres.repository.GameRoundReadRepository;
 import com.luckystar.admin.postgres.repository.WalletReadRepository;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -30,25 +35,30 @@ import org.springframework.util.StringUtils;
 @Service
 public class AdminPlayerService {
 
+    private static final Logger log = LoggerFactory.getLogger(AdminPlayerService.class);
+
     private final MemberReadRepository memberRepository;
     private final WalletReadRepository walletRepository;
     private final WalletTransactionReadRepository transactionRepository;
     private final GameRoundReadRepository gameRoundRepository;
     private final PlayerBanService playerBanService;
     private final MemberClient memberClient;
+    private final AdminActionLogRepository actionLogRepository;
 
     public AdminPlayerService(MemberReadRepository memberRepository,
                               WalletReadRepository walletRepository,
                               WalletTransactionReadRepository transactionRepository,
                               GameRoundReadRepository gameRoundRepository,
                               PlayerBanService playerBanService,
-                              MemberClient memberClient) {
+                              MemberClient memberClient,
+                              AdminActionLogRepository actionLogRepository) {
         this.memberRepository = memberRepository;
         this.walletRepository = walletRepository;
         this.transactionRepository = transactionRepository;
         this.gameRoundRepository = gameRoundRepository;
         this.playerBanService = playerBanService;
         this.memberClient = memberClient;
+        this.actionLogRepository = actionLogRepository;
     }
 
     public Page<PlayerSummary> listPlayers(String keyword, Pageable pageable) {
@@ -92,12 +102,13 @@ public class AdminPlayerService {
 
     /**
      * 停用/啟用玩家：先經 member 內部 API 持久化 members.status（真相來源），
-     * 成功後才寫 Redis 封鎖/解封（既有 token 即時失效）。
+     * 成功後才寫 Redis 封鎖/解封（既有 token 即時失效），最後落一筆
+     * {@code admin_action_logs}（PLAYER_BAN/PLAYER_UNBAN，best-effort，比照 AdminShopService）。
      * member 呼叫失敗直接拋出（→ 502），避免留下「Redis 已封鎖但 DB 仍 ACTIVE」的半套狀態；
      * 反向（DB 已改、Redis 未寫）由登入時的 DB status 檢查兜底，重按一次即可補齊。
      * 玩家不存在回 {@link Optional#empty()}（→ 404）。
      */
-    public Optional<PlayerStatusResponse> setStatus(Long playerId, boolean enabled) {
+    public Optional<PlayerStatusResponse> setStatus(String operator, Long playerId, boolean enabled) {
         if (!memberRepository.existsById(playerId)) {
             return Optional.empty();
         }
@@ -107,7 +118,20 @@ public class AdminPlayerService {
         } else {
             playerBanService.ban(playerId);
         }
+        writeAudit(operator, enabled ? "PLAYER_UNBAN" : "PLAYER_BAN", playerId);
         return Optional.of(new PlayerStatusResponse(playerId, !enabled));
+    }
+
+    /** 稽核：寫一筆 admin_action_logs（PostgreSQL）。best-effort，失敗只記 WARN，不影響狀態變更。 */
+    private void writeAudit(String operator, String actionType, Long playerId) {
+        try {
+            String idempotencyKey = "player-status-" + actionType + "-" + UUID.randomUUID();
+            actionLogRepository.save(new AdminActionLog(
+                    operator, actionType, playerId, null, null, idempotencyKey));
+        } catch (RuntimeException e) {
+            log.warn("Failed to write admin_action_logs for {} by {}: {}",
+                    actionType, operator, e.getMessage());
+        }
     }
 
     private PlayerSummary toSummary(MemberRead member) {
