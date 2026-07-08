@@ -131,7 +131,9 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
                                 signal.failure().getMessage())))
                 // Redis 故障 → fail-closed：拒絕請求而非放行，避免黑名單/封鎖失效導致已撤銷的 token 復活
                 .onErrorResume(err -> {
-                    log.warn("Redis revocation check failed, denying request: {}", err.getMessage());
+                    // 重試耗盡時 err 是 RetryExhaustedException 包裝，取 cause 才是真正的 Redis 錯因
+                    Throwable rootCause = err.getCause() != null ? err.getCause() : err;
+                    log.warn("Redis revocation check failed, denying request: {}", rootCause.getMessage());
                     return Mono.just(Boolean.TRUE);
                 })
                 .flatMap(blocked -> {
