@@ -1,5 +1,6 @@
 // TODO: replace this frontend display config with a backend fishing settings endpoint when available.
-export const JACKPOT_FISH_KING_ASSET = '/images/fishing/rainbow-jackpot-fish-king.svg?v=20260704-no-mouth'
+export const JACKPOT_FISH_KING_ASSET =
+  '/images/fishing/jackpot-fish-king-reference.png?v=20260707-reference-transparent'
 
 export const FISHING_FISH_INFO = [
   {
@@ -51,22 +52,22 @@ export const FISHING_FISH_INFO = [
     tier: 'boss',
     spawnRate: 0.02,
     hp: 2000,
-    asset: '/images/game/fishing/fish-boss-whale.svg',
+    asset: '/images/fishing/gold-star-fish-king-reference.png?v=20260707-reference-transparent',
     description: 'Boss 級魚王，後端仍沿用 DRAGON_KING 合約結算，適合高階砲台集中輸出。',
   },
   {
     id: 'jackpot-fish-king',
     code: 'DRAGON_KING',
     name: '彩金魚王',
-    reward: 5000,
-    multiplier: '500x',
+    reward: 2000,
+    multiplier: '200x 合約 / 彩金外觀',
     rarity: '傳奇',
     tier: 'legendary',
     spawnRate: 0.01,
     hp: 2000,
     catchDifficulty: 'boss',
     asset: JACKPOT_FISH_KING_ASSET,
-    description: '傳奇魚王，彩金外觀與最大體型，捕獲時以 500 倍星幣價值呈現，結算合約沿用 DRAGON_KING。',
+    description: '傳奇魚王，彩金外觀與最大體型；實際捕獲派彩以後端 DRAGON_KING 回傳 payout 為準。',
   },
   {
     id: 'blocker-octopus',
@@ -79,7 +80,7 @@ export const FISHING_FISH_INFO = [
     tier: 'blocker',
     spawnRate: 0.04,
     hp: 5,
-    asset: '/images/fishing/blocker-octopus.svg?v=20260705-evil-size',
+    asset: '/images/fishing/blocker-octopus-reference.png?v=20260707-paeth-fix',
     description: '大型章魚障礙物，5 發擊破後會噴墨遮蔽漁場視野 2 秒。',
   },
   {
@@ -93,7 +94,7 @@ export const FISHING_FISH_INFO = [
     tier: 'blocker',
     spawnRate: 0.04,
     hp: 5,
-    asset: '/images/fishing/blocker-starfish.svg?v=20260705-evil-size',
+    asset: '/images/fishing/blocker-starfish-reference.png?v=20260707-paeth-fix',
     description: '大型海星障礙物，5 發擊破後會讓目前魚群加速 2 秒。',
   },
   {
@@ -107,8 +108,9 @@ export const FISHING_FISH_INFO = [
     tier: 'blocker',
     spawnRate: 0.04,
     hp: 10,
-    asset: '/images/fishing/blocker-turtle.svg?v=20260705-evil-size',
-    description: '海龜保留小 / 中 / 大尺寸與 5 / 10 / 17 發擊破次數，但整體體型更大、遮擋範圍更明顯。',
+    asset: '/images/fishing/blocker-turtle-reference.png?v=20260707-paeth-fix',
+    description:
+      '海龜保留小 / 中 / 大尺寸與 5 / 10 / 17 發擊破次數，但整體體型更大、遮擋範圍更明顯。',
   },
 ]
 
@@ -130,7 +132,7 @@ export function decorateFishingFishTable(fishTable = []) {
         visualKey: 'jackpot-fish-king',
         name: '彩金魚王',
         assetId: 'fish-rainbow-jackpot-fish-king',
-        multiplier: 500,
+        visualMultiplier: 500,
         spawnWeight: 1,
         tier: 'BOSS',
       },

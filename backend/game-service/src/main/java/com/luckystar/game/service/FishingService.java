@@ -255,10 +255,8 @@ public class FishingService {
             lastShotSeq = shot.getShotSeq();
 
             String instanceId = shot.getFishInstanceId();
-            int cannonLevel = shot.getCannonLevel() == null ? session.getCannonLevel() : shot.getCannonLevel();
+            int cannonLevel = session.getCannonLevel();
             if (isMissShotType(shot.getFishType())) {
-                session.setCannonLevel(cannonLevel);
-                session.setBetPerShot(shot.getBetPerShot());
                 results.add(FishingShotsResponse.ShotResult.builder()
                         .shotSeq(shot.getShotSeq())
                         .accepted(true)
@@ -275,8 +273,6 @@ public class FishingService {
             }
 
             if (isBlockerFishType(shot.getFishType())) {
-                session.setCannonLevel(cannonLevel);
-                session.setBetPerShot(shot.getBetPerShot());
                 results.add(FishingShotsResponse.ShotResult.builder()
                         .shotSeq(shot.getShotSeq())
                         .accepted(true)
@@ -325,8 +321,6 @@ public class FishingService {
                 balance += payout;
                 totalPayout += payout;
             }
-            session.setCannonLevel(cannonLevel);
-            session.setBetPerShot(shot.getBetPerShot());
 
             results.add(FishingShotsResponse.ShotResult.builder()
                     .shotSeq(shot.getShotSeq())
@@ -592,9 +586,15 @@ public class FishingService {
             if (shot.getBetPerShot() == null || shot.getBetPerShot() < MIN_BET || shot.getBetPerShot() > MAX_BET) {
                 throw new IllegalArgumentException("betPerShot must be between " + MIN_BET + " and " + MAX_BET);
             }
+            if (session.getBetPerShot() != null && !shot.getBetPerShot().equals(session.getBetPerShot())) {
+                throw new IllegalArgumentException("betPerShot must equal the session betPerShot");
+            }
             Integer cannonLevel = shot.getCannonLevel();
             if (cannonLevel != null && (cannonLevel < 1 || cannonLevel > 3)) {
                 throw new IllegalArgumentException("cannonLevel must be between 1 and 3");
+            }
+            if (cannonLevel != null && session.getCannonLevel() != null && !cannonLevel.equals(session.getCannonLevel())) {
+                throw new IllegalArgumentException("cannonLevel must equal the session cannonLevel");
             }
             if (shot.getShotSeq() <= previousSeq) {
                 throw new IllegalArgumentException(
