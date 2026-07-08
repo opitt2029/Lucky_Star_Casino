@@ -8,6 +8,48 @@
 
 > ⚠️ The P99 < 500 ms / 5xx = 0 gates were defined for a properly resourced multi-host deployment. On this single host, the dominant factor is that Spring Cloud Gateway's CircuitBreaker has no explicit `timelimiter` configured, so Resilience4j defaults to a **1-second** call timeout — well below the ~0.9–3.6 s latencies seen under concurrent load once risk-control and bet-audit logic were added to the spin path (2026-06-22/24). See "2026-07-08 完整重跑最終結果" for the full Prometheus-backed evidence chain.
 
+## 2026-07-08 C1+C2（gateway 併發上限卸載＋JWT Redis 短重試）效果對照重跑
+
+C1（`GameConcurrencyLimitGlobalFilter`：`/api/v1/game/**` 在途上限 200、JWT 之前卸載、超限 429+`Retry-After`）與 C2（JWT filter Redis 撤銷檢查 `retryWhen(Retry.backoff(1, 50ms))`，fail-closed 不變）疊加落地後重跑。**本輪起適用 D1 拍板的新 gate 語意**（429=卸載不計失敗、P99/5xx/失敗以被接受樣本為母體、429 佔比上限 40% 暫定、150 併發要求 429=0）——這是語意修正非放寬條件，`analyze-jtl.mjs` 同步改判。gateway 以 C1+C2 程式碼重啟；依 Phase A 輪學到的 SOP：先跑一輪暖機棄置（`20260708-153345`）、間隔 2 分鐘再跑正式輪。
+
+### 150 併發正式輪（`20260708-153718`）——當日最乾淨的一輪
+
+| Gate | 門檻 | 實測 | 判定 |
+|---|---:|---:|---|
+| Accepted P99 | < 500 ms | 2,753 ms | ❌ |
+| HTTP 5xx | 0 | **0** | ✅ |
+| 429 佔比（容量內要求 0） | 0% | **0%** | ✅ |
+| 失敗樣本 | 0 | **0**（5,208 樣本） | ✅ |
+| idempotency / overdraw | 0 / 0 | 0 / 0 | ✅ |
+
+**5,208 樣本全程 0 失敗**（含起跑段）——上限 200 在容量內完全不誤傷（429=0），Phase A 輪 2 還有 1 筆瞬斷、本輪連這個都沒有。距中繼目標（150 併發全綠）只剩 P99 一項，且其主體是 wallet debit（B1）＋單機資源競爭（D1）。
+
+### 1,000 併發（`20260708-154603`）——與前兩輪同日對照
+
+| 指標 | Phase A 前（`103916`） | Phase A 後（`150649`） | **C1+C2 後（`154603`）** |
+|---|---:|---:|---:|
+| 樣本數 | 12,530 | 9,587 | 11,474（吞吐 177.5/s，最高） |
+| **429 shed（新增桶）** | — | — | **5,300（46.2%）** |
+| HTTP 200（成功） | 3,948 | 653 | **1,477（+126% vs 前輪）** |
+| HTTP 401 | 343 | 5,315 | **1,988（−63%）** |
+| HTTP 5xx | 3,870 | 362 | **227** |
+| client SocketTimeout | 4,369 | 2,934 | 2,124 |
+| HttpHostConnectException | 0 | 323 | 358 |
+| Accepted P99 | 5,291 ms | 5,604 ms | 5,625 ms |
+| idempotency / overdraw | 0 / 0 | 0 / 0 | **0 / 0** |
+
+**Prometheus 佐證（80s range query，窗口迄 15:47:09）**：成功 spin 平均 **5.21 s → 2.65 s（腰斬）**、wallet debit 平均 **1,070 → 581 ms**——後端承壓被封頂在 ~200 在途後，被接受請求的實際處理速度確實顯著回升；`not_permitted`（game CB）≈ 242，繼續縮小。
+
+**殘餘失敗的組成已再次換位置——集中到「未受 C1 保護的 wallet 路徑」**：1,988 筆 401 中 1,305 筆、2,124 筆 SocketTimeout 中 1,079 筆都在 balance 檢查 sampler（`/api/v1/wallet/**`，無併發上限）。機制：429 卸載是毫秒級回覆，1,000 個執行緒循環變快、對錢包路徑的打擊頻率反而升高（總樣本 9,587→11,474），wallet＋JWT Redis 檢查在該路徑上照樣飽和。**C1 只保護了遊戲路徑；瓶頸沒有消失，是被擠到沒設上限的地方**。
+
+**429 佔比 46.2% > 暫定上限 40%——誠實判 FAIL，不調數字**。本質：1,000 執行緒 × 1s pacing 的需求速率遠超單機實測容量（~180/s），無論上限設多少，「需求−容量」的差額都得變成 429。這不是 C1 的缺陷，是 D1 未拍板的容量問題（多機拓樸或降低驗收併發）。上限要不要修訂，等 D1 一併決定。
+
+### 結論與下一步
+
+1. **C1+C2 機制驗證有效**：成功數 +126%、401 −63%、5xx −37%、成功 spin 延遲腰斬、帳務 gate 照舊全 PASS；150 併發達成 0 失敗/0 5xx/0 誤傷。
+2. **三個明確的殘餘課題**：① wallet 路徑無上限保護（是否把 `/api/v1/wallet/**` 納入 C1 或做 per-route 上限——建議與 B1 一起處理，先剖析再決定）；② accepted P99 仍高（在途 200 的排隊深度＋單機飽和，B1/D1）；③ 429 佔比上限與最終驗收拓樸（D1，待拍板）。
+3. 中繼目標（150 併發全綠）只差 P99 一項——**下一步就是 B1**（wallet debit 剖析，實證數據已備：96→547→581 ms 隨表增長與負載劣化）。
+
 ## 2026-07-08 gateway TimeLimiter 修正驗證
 
 2026-07-08 完整重跑（見另一份 CHANGELOG 條目與 PR #182）把 78–89% 5xx 的根因鏈定位到：Spring Cloud Gateway 的 Resilience4j CircuitBreaker 未顯式設定 `timelimiter`，Resilience4j 預設**逾時 1 秒**——遠低於 `slow-call-duration-threshold: 3s`，導致高併發排隊下的正常慢呼叫在真正完成前就被腰斬判 failed，觸發熔斷開路 → half-open 少量放行 → 關路瞬間 thundering herd 再次推爆延遲 → 反覆開闔。

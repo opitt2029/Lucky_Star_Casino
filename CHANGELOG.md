@@ -1,4 +1,50 @@
- feature/weiyu-admin-audit-fixes
+## [test] -- 2026-07-08 -- T-090 C1+C2 效果對照重跑：成功數 +126%、401 −63%、spin 延遲腰斬；殘餘失敗移位到未受保護的 wallet 路徑
+
+### Added
+- `docs/performance/T-090-load-test-report.md` 新增「C1+C2 效果對照重跑」節：150 併發正式輪（`results/20260708-153718`，**5,208 樣本 0 失敗、0 5xx、429 誤傷 0**——當日最乾淨一輪，距中繼目標只剩 P99 2,753ms）＋ 1,000 併發（`results/20260708-154603`，新 gate 語意首度適用）完整數據與 Prometheus 佐證。
+
+### Why / 結果摘要
+- 1,000 併發：429 卸載 5,300（46.2%）、成功 653→1,477（+126%）、401 5,315→1,988（−63%）、5xx 362→227；成功 spin 平均 5.21→2.65 s、wallet debit 1,070→581 ms（承壓封頂奏效）。帳務 gate 照舊全 PASS。
+- 誠實記錄兩個 FAIL：① 429 佔比 46.2% 超過暫定 40% 上限——1,000 執行緒需求遠超單機容量（~180/s），屬 D1 容量問題，不調數字；② accepted P99 仍 5.6s——殘餘 401/timeout 六成六集中在**未受 C1 保護的 `/api/v1/wallet/**` 路徑**（卸載使執行緒循環變快、錢包路徑打擊頻率反升），下一步＝B1 剖析＋評估 wallet 路徑納入上限。
+- 依 Phase A 輪 SOP 執行：gateway 重啟後先暖機一輪棄置、輪距 2 分鐘。
+
+### 如何驗證
+- 全數字出自 `results/20260708-15*` JTL 與 Prometheus range query（窗口迄 epoch 1783496829）；對帳 `docker exec psql` 九項僅既有 player 1001–1003 髒資料，照例排除。
+
+## [perf] -- 2026-07-08 -- T-090 C1：gateway 遊戲路徑全局併發上限（超限 429 快速卸載）＋驗收 gate 語意拍板
+
+### Added
+- `backend/gateway-service/.../filter/GameConcurrencyLimitGlobalFilter.java`：`/api/v1/game/**` 維護單機記憶體在途計數（AtomicInteger，非 Redis——上限本質是 per-instance 容量，拒絕路徑 O(1) 零 I/O），超過 `concurrency-limit.game.max-in-flight`（預設 200，env `GAME_CONCURRENCY_LIMIT`）立即 429＋`Retry-After: 1`。order=-150 **在 JWT 驗證之前**卸載：被拒請求連 3 次 Redis 撤銷查詢都不做，直接縮小 1,000 併發下 fail-closed 401 雪崩的暴露面。`doFinally` 歸還名額（涵蓋完成/錯誤/取消）。
+- `.../config/ConcurrencyLimitProperties.java` ＋ application.yml `concurrency-limit.game.max-in-flight`（200 的依據：150 併發實測在途 ≈ 100，容量內不誤傷；1,000 併發時後端承壓封頂 ~200）。
+- `GameConcurrencyLimitGlobalFilterTest`：6 測試（未滿轉發／滿載 429+Retry-After 不轉發／完成釋放／錯誤釋放／非遊戲路徑不受限／被拒不漏名額）。
+
+### Changed
+- `tests/performance/analyze-jtl.mjs`：依 D1 拍板語意改判——429 獨立為 shed 桶不計失敗，P99/5xx/失敗樣本以「被接受樣本」為母體；新增 gate「429 佔比 ≤ `MAX_429_RATIO`（預設 0.40）」防「全拒絕也算過」；報告明示此為語意修正。
+- `tests/performance/run-slot-load-test.ps1`：新增 `-Max429Ratio` 參數（150 迴歸基準傳 0 = 容量內不准卸載）。
+- `docs/plans/02-T-090-效能調校藍圖.md`：C1 標記已落地、D1 記錄拍板（429 語意已決，驗收拓樸仍開放）。
+
+### Why
+- 1,000 併發實測證明「全收排隊」的結局：成功率 6.8%、成功者平均 5.2s、5xx/timeout/401 三桶輪流當失敗主角。負載卸載把它改成「明確拒絕少數、保障多數」：被拒者拿到毫秒級 429＋重試指引（無帳務風險——請求根本沒進結算路徑），被接受者維持低延遲。429 語意（「我沒壞，請稍後再來」）與 5xx（故障）在 HTTP 層本就不同類。
+- gate 配套堵漏：429 佔比上限讓「拒絕」有代價；150 併發（容量內）要求 429=0，防止把容量問題藏進卸載。原始「1,000 併發全收且 P99<500ms」目標不消失，歸 D1 容量/拓樸問題。
+
+### 如何驗證
+- `mvn -pl backend/gateway-service test` 全綠（40 tests，含新 6 個）。
+- 實測效果（C1+C2 疊加）待重跑 T-090 150/1,000 對照後回填報告。
+
+## [perf] -- 2026-07-08 -- T-090 C2：gateway JWT filter Redis 撤銷檢查加瞬時錯誤短重試（fail-closed 語意不變）
+
+### Changed
+- `backend/gateway-service/.../filter/JwtAuthenticationGlobalFilter.java`：三項 Redis 撤銷檢查（黑名單/停用/min-iat 的 `Mono.zip`）在落入 fail-closed 前先 `retryWhen(Retry.backoff(1, 50ms))`——瞬時錯誤（尖峰逾時、連線抖動）重試一次，重試＝重新訂閱、三項檢查整包重查不會拿到殘缺結果；重試耗盡仍拒絕（401），**fail-closed 語意不變、不可改 fail-open**。
+- `CHANGELOG.md`：順手移除檔首殘留的分支名字串。
+
+### Why
+- T-090 壓測的 401 桶＝Redis 撤銷檢查在負載尖峰下逾時觸發 fail-closed（前次 1,000 併發起跑尖峰 343 筆；Phase A 對照重跑時已擴大為全程 5,315 筆——單機 CPU 飽和使 Redis 往返間歇超過 gateway `spring.data.redis.timeout: 2000ms`）。短重試可吸收「瞬時」抖動；全程持續的飽和延遲非重試能解，屬 C1（併發上限卸載）/D1（拓樸拍板）範疇，藍圖已註記。
+- Lettuce 連線模型檢視結論：`ReactiveStringRedisTemplate` 預設單一多工連線＋pipeline 是 Lettuce 正規用法，非本案瓶頸（Redis 本身無 eviction/rejected，慢在宿主機資源競爭），故不引入連線池、不加大 timeout（加大只會把 401 換成更深的排隊）。
+
+### 如何驗證
+- `mvn -pl backend/gateway-service test` 全綠；`JwtAuthenticationGlobalFilterTest` 新增 2 測試：`redisTransientError_recoversOnRetry_isForwarded`（第一次訂閱失敗、重試成功 → 放行且確認真的重試過）、`redisPersistentError_retriesThenStillFailsClosedWith401`（持續故障 → 重試耗盡仍 401 且不轉發，鎖住 fail-closed 不回歸）。
+- 實測效果待下一輪 T-090 重跑對照 401 桶（藍圖統一驗證流程）。
+
 ## [fix] -- 2026-07-08 -- 修補玩家停用的稽核破口：Redis 封鎖改 best-effort，不再因 Redis 失敗回滾稽核
 
 ### 背景

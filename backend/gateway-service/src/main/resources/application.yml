@@ -201,6 +201,15 @@ spring:
           predicates:
             - Path=/ws,/ws/**
 
+# 遊戲路徑全局併發上限（GameConcurrencyLimitGlobalFilter，T-090 C1）：
+# 超過在途上限的請求立即 429 + Retry-After 卸載，不進 JWT/Redis/後端。
+# 200 的依據：150 併發（單機迴歸基準）實測在途 ≈ 吞吐 145/s × 平均 0.7s ≈ 100，
+# 上限 200 保證容量內（150 併發）不誤傷（gate 要求 429=0），1,000 併發時把後端
+# 承壓封頂在 ~200 在途、其餘快速拒絕。多機部署時此值 = 單一 gateway 實例身後的容量。
+concurrency-limit:
+  game:
+    max-in-flight: ${GAME_CONCURRENCY_LIMIT:200}
+
 # 每玩家限流設定（PlayerRateLimitGlobalFilter 使用）
 rate-limit:
   player:
