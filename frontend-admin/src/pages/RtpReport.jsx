@@ -117,6 +117,8 @@ export default function RtpReport() {
                   <Td>
                     {item.status === 'ABNORMAL' ? (
                       <Badge color="red">異常</Badge>
+                    ) : item.status === 'NO_DATA' ? (
+                      <Badge color="slate">無資料</Badge>
                     ) : (
                       <Badge color="green">正常</Badge>
                     )}
