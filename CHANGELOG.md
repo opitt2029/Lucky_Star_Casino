@@ -1,3 +1,4 @@
+feature/huang-gateway-timelimiter
 ## [fix] -- 2026-07-08 -- gateway 補 Resilience4j TimeLimiter 設定，解決 T-090 thundering herd 熔斷
 
 ### 背景
@@ -13,6 +14,28 @@
 ### 如何驗證
 - 150 併發（`tests/performance/results/20260708-101629/acceptance-report.md`）：HTTP 5xx 由修正前 13,563（78.0%）降至 **0**；失敗樣本由 13,563 降至 4（0.05%）；idempotency/overdraw 全程 0。
 - P99（2,667 ms）仍未達 < 500 ms 門檻——歸類為下一輪效能調校的獨立課題（風控聚合/注單稽核在高併發下變重），不在本次修正範圍。
+=======
+## [test] -- 2026-07-08 -- T-090 壓測完整重跑（Phase 2b 完成）：根因鏈確認、帳務對帳 PASS
+
+### 背景
+- 2026-07-07 已定位「gateway CircuitBreaker 未設 TimeLimiter（預設 1 秒逾時）× spin 路徑變重 × thundering herd」根因鏈，但當時只是中途進度，未跑完 1000 併發主測與正式對帳。本次同拓撲（Docker infra+observability、7 服務宿主機 mvn 起）完整重跑到底。
+
+### Changed
+- `docs/performance/T-090-load-test-report.md`：以「2026-07-08 完整重跑最終結果」取代原「2026-07-07 中途進度」節，並更新頂部 Status/Headline。記錄：
+  - 150 併發基線：17,395 樣本、P99 1,164 ms、5xx 13,563（77.97% 錯誤率）、idempotency=0、overdraw=0。
+  - 1000 併發主測：15,922 樣本、P99 5,055 ms、失敗 14,221（5xx 13,709，89.3% 錯誤率）、idempotency=0、overdraw=0。
+  - Prometheus 90 秒測試窗證據：`not_permitted` game-service≈9,861／wallet-service≈10,028；CB `failed` calls game-service≈1,172／wallet-service≈424；成功 spin 平均延遲≈3.63 s、wallet debit 平均延遲≈896 ms（皆遠高於 1s TimeLimiter 門檻）。
+  - T-091 帳務對帳：本輪測試玩家（1,031 名，`player_id>=90000`）0 違規；額外揪出 3 筆歷史違規（`player_id` 1001–1003），查證交易時間戳全在 2026-06-16，為前一輪測試殘留於 Postgres volume 的舊資料，與本輪無關，已排除在 gate 判定外。
+  - 測試對象 commit：`902d744`（與 origin/develop 最新 `65915c5` 相比落後 7 個 commit，皆為 docs/admin-service 變更，gateway/game/wallet 無差異，不影響結果有效性）。
+
+### Why
+- AGENTS.md §地雷 12：無真實量測不得捏造 P99，必須把「中途進度」與「完整結論」分開記錄，避免下一個人誤把未跑完的數字當最終結果引用。
+- 效能 gate FAIL 但帳務 gate 全程 PASS，證明本次回歸是「gateway 熔斷設定缺陷」而非「帳務邏輯在高併發下出錯」，範圍明確才能決定調 TimeLimiter/R4j 參數的獨立 PR 怎麼改。
+
+### 如何驗證
+- `tests/performance/results/20260708-100306/acceptance-report.md`（150 併發）、`tests/performance/results/20260708-100442/acceptance-report.md`（1000 併發）、`tests/performance/results/accounting-20260708-100542/accounting-reconciliation.csv`。
+- Prometheus range query（`increase(...[90s])` at test-window timestamp）可重跑複驗，見報告內嵌 PromQL。
+ main
 
 feature/weiyu-saga-compensation-and-contracts
 ## [feat] -- 2026-07-07 -- AUDIT_REPORT 附錄 A 自動盤點：tools/audit/ 依證據清單重生進度表（Phase 8）
