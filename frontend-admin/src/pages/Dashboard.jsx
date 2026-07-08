@@ -179,7 +179,7 @@ export default function Dashboard() {
               </Td>
               <Td className="tabular-nums">{fmtInt(item.roundCount)}</Td>
               <Td>
-                {item.status === 'ABNORMAL' ? <Badge color="red">異常</Badge> : <Badge color="green">正常</Badge>}
+                {item.status === 'ABNORMAL' ? <Badge color="red">異常</Badge> : item.status === 'NO_DATA' ? <Badge color="slate">無資料</Badge> : <Badge color="green">正常</Badge>}
               </Td>
             </tr>
           ))}

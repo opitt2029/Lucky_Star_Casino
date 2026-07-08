@@ -96,6 +96,21 @@ class RtpReportServiceTest {
     }
 
     @Test
+    void noBetSample_isNoData_notAbnormal() {
+        // 快照存在但本時段無下注（totalBet=0）→ 無法判定 RTP，應標 NO_DATA，
+        // 不可拿 actual=0 硬比設計 0.95 而誤報 ABNORMAL（回歸：Dashboard 剛過整點必紅）。
+        GameRtpStatRead empty = stat("SLOT", 0, 0);
+        ReflectionTestUtils.setField(empty, "roundCount", 0);
+        when(rtpStatRepository.findByCalculatedAtBetween(any(), any())).thenReturn(List.of(empty));
+
+        RtpReport report = service.getRtpReport(null, LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 1));
+
+        RtpReport.Item slot = report.items().get(0);
+        assertThat(slot.status()).isEqualTo(RtpReportService.STATUS_NO_DATA);
+        assertThat(slot.deviation()).isEqualTo(0.0);
+    }
+
+    @Test
     void gameFilter_usesGameTypeQuery() {
         when(rtpStatRepository.findByGameTypeAndCalculatedAtBetween(eq("SLOT"), any(), any()))
                 .thenReturn(List.of(stat("SLOT", 100, 95)));
