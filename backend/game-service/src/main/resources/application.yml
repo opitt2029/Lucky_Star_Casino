@@ -75,6 +75,7 @@ management:
 risk:
   player-win-limit: 50000    # 單玩家今日淨贏上限（星幣），超過即攔截
   rtp-sample-size: 500       # 計算全局 RTP 的近 N 局樣本數
+  rtp-cache-refresh-ms: 2000 # 全局 RTP 快取排程間隔（Phase A1）：排程聚合寫 Redis，熱路徑只讀快取
   # 全局 RTP 上限（含本金口徑）— per-game：門檻須訂在「該遊戲結構性 RTP 之上」，
   # 風控才只在實際出現異常莊家虧損（玩家集體大贏）時觸發，而非每局正常派彩都誤判超限。
   # 結構性含本金 RTP 參考：老虎機 ≈ 0.94、百家樂 ≈ 0.99（+反水）、捕魚機設計 RTP 0.96（含殘血回收，ADR-004）。

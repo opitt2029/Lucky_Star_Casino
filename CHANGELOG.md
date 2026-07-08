@@ -1,4 +1,29 @@
- feature/huang-t090-1000-rerun
+## [perf] -- 2026-07-08 -- T-090 效能調校 Phase A（A1–A4）：風控統計移出熱路徑
+
+### Added
+- `backend/game-service/.../scheduler/GlobalRtpCacheScheduler.java`（A1）：每 2 秒（`risk.rtp-cache-refresh-ms`）對 SLOT/BACCARAT/FISHING 各跑一次既有 `aggregateRecent` 聚合，寫入 Redis `risk:rtp:{gameType}`（value=`totalBet:totalWin`、TTL 10 秒）；單一遊戲刷新失敗不中斷其他遊戲。
+- `database/postgres/migration/V15__add_game_rounds_risk_indexes.sql` ＋ `database/postgres/init.sql`（A3）：`game_rounds` 補兩個 partial 複合索引 `idx_game_rounds_type_created (game_type, created_at DESC)` 與 `idx_game_rounds_player_type_settled (player_id, game_type, settled_at)`（皆 `WHERE status='SETTLED'`），服務排程聚合與 cache-miss 回填。
+- `RiskControlService.recordRoundSettled()`（A2）：每局結算落地後以單一 Lua（HINCRBY bet/win + PEXPIRE）累加 `risk:player-day:{playerId}:{yyyyMMdd}:{gameType}`（TTL 48h，日期入 key 天然跨日歸零）；best-effort，Redis 故障僅 log 不影響結算。三個遊戲（`SlotService`/`BaccaratService`/`FishingService`）皆於 `roundRepository.save` 首次落地成功後呼叫，口徑＝`game_rounds.bet_amount/win_amount`（含本金，與 `aggregatePlayerToday` 一致）。
+
+### Changed
+- `RiskControlService`：
+  - `isGlobalRtpOverLimit`（A1）改先讀 Redis 快取，miss（排程未跑過/Redis 故障/格式異常）退回直查 DB——只改「數據怎麼來」，不改「怎麼判」（per-game 門檻與含本金口徑不動，雷區 17）。
+  - `isPlayerOverLimit`（A2）改先讀日水位 hash，miss 退回 DB 聚合並以 HSETNX 回填（不覆蓋並發中的 HINCRBY，避免蓋掉別局剛累加的量）。
+  - 並發閘（A4）：`INCR`+`EXPIRE` 兩次往返合併為單一 Lua，且僅在計數器 0→1 首次取號時 PEXPIRE——修掉「每次 INCR 都續命 TTL」的語意問題；釋放端亦改 Lua（DECR 歸零即刪 key）——code review 抓出裸 DECR 在 key 先過期（請求超過 30s TTL / Redis 重啟）時會把計數器重建為無 TTL 的負值、並發閘對該玩家永久失效。
+  - `isPlayerOverLimit` 命中條件改「bet/win 兩欄皆存在」才信任快取，殘缺 hash（回填只寫入一欄即中斷）視同 miss 退回 DB——否則 netWin 恆為負、上限實質停用（code review 發現）。
+- `backend/game-service/src/main/resources/application.yml`：`risk.rtp-cache-refresh-ms: 2000`。
+- `docs/plans/02-T-090-效能調校藍圖.md`：進度表 A1–A4 標記已落地。
+- `CHANGELOG.md`：順手移除檔首殘留的分支名字串。
+
+### Why
+- 1,000 併發實測（2026-07-08）P99 5,291 ms 的主因是風控統計在請求熱路徑上即時重算：每局一次「近 500 局排序聚合」＋一次 per-player DB 聚合，1,000 個併發請求各自重算同一個全域答案、互相爭搶。修法＝統計改事件驅動維護（排程/計數器）、熱路徑只讀 Redis O(1)，DB 聚合退居 miss 回填與對帳基準（單一真相仍在 `game_rounds`）。
+- 可接受 2 秒舊資料：全局 RTP 攔截是統計性水位警報，非帳務正確性機制（帳務由 wallet 冪等鍵＋樂觀鎖守，雷區 8）；風險上限與 `rtp-sample-size: 500` 的統計慣性同量級。
+- 計數器累加放在對局落地之後且 best-effort：寧可水位少計一局（下次 miss 由 DB 回填補正），不可因 Redis 故障讓結算失敗。
+
+### 如何驗證
+- `mvn -pl backend/game-service test`：190 tests 全綠（含 `RiskControlServiceTest` 新增 9 個 A1/A2/A4 測試：快取命中不查 DB、miss 降級直查、HSETNX 回填、Lua 並發閘、best-effort 不拋例外）。
+- 效能對照（150 併發迴歸基準 + 1,000 併發趨勢）待重跑 T-090/T-091 後回填報告——依藍圖統一驗證流程，帳務 gate 為不可回歸硬底線。
+
 ## [docs] -- 2026-07-08 -- T-090 效能調校藍圖：P99/5xx/失敗樣本的分階段施工計畫
 
 ### Added
