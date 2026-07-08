@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 /**
@@ -101,37 +102,48 @@ public class AdminPlayerService {
     }
 
     /**
-     * 停用/啟用玩家：先經 member 內部 API 持久化 members.status（真相來源），
-     * 成功後才寫 Redis 封鎖/解封（既有 token 即時失效），最後落一筆
-     * {@code admin_action_logs}（PLAYER_BAN/PLAYER_UNBAN，best-effort，比照 AdminShopService）。
-     * member 呼叫失敗直接拋出（→ 502），避免留下「Redis 已封鎖但 DB 仍 ACTIVE」的半套狀態；
-     * 反向（DB 已改、Redis 未寫）由登入時的 DB status 檢查兜底，重按一次即可補齊。
-     * 玩家不存在回 {@link Optional#empty()}（→ 404）。
+     * 停用/啟用玩家：稽核（{@code admin_action_logs}，PostgreSQL）與 member 狀態變更放進<b>同一個
+     * postgres 交易</b>，比照 {@link GmRewardService} 的 audit-first——稽核寫不進去則整筆失敗、
+     * 什麼都不動（<b>不再</b> best-effort）。順序：<b>稽核 → member 內部 API 持久化 members.status
+     * （真相來源）→ Redis 封鎖/解封</b>。稽核先寫（交易內尚未 commit），後續 member 呼叫失敗（→ 502）
+     * 會連同稽核一起 rollback，保證「沒實際停用就不留稽核、稽核寫不進去就不停用」。
+     *
+     * <p>跨系統的先天限制：member（HTTP）與 Redis 無法真的加入 postgres 交易，故無法做到三者
+     * 原子一致。第 3 步 Redis 封鎖/解封為 <b>best-effort</b>：走到這步時稽核＋member 已成立（狀態
+     * 確實變更），Redis 失敗<b>絕不可</b>反過來 rollback 稽核——否則會留下「玩家已停用卻查不到誰做的」
+     * 稽核破口。故 Redis 例外只記 WARN 不外拋。殘留的反向半套——member 已改、Redis 未寫——由登入時的
+     * DB status 檢查兜底、重按一次即補齊（沿用既有設計，可接受）。玩家不存在回 {@link Optional#empty()}（→ 404）。
      */
+    @Transactional("postgresTransactionManager")
     public Optional<PlayerStatusResponse> setStatus(String operator, Long playerId, boolean enabled) {
         if (!memberRepository.existsById(playerId)) {
             return Optional.empty();
         }
-        memberClient.updateStatus(playerId, enabled);
-        if (enabled) {
-            playerBanService.unban(playerId);
-        } else {
-            playerBanService.ban(playerId);
-        }
+        // 1) 先落稽核（交易內；後續任一步失敗則連同稽核 rollback）
         writeAudit(operator, enabled ? "PLAYER_UNBAN" : "PLAYER_BAN", playerId);
+        // 2) member 內部 API 持久化 status（真相來源）；失敗直接拋 → rollback 稽核、Redis 不動
+        memberClient.updateStatus(playerId, enabled);
+        // 3) Redis 即時封鎖/解封：best-effort。此時稽核＋member 已成立（狀態確實變更），
+        //    Redis 失敗絕不可反過來 rollback 稽核（否則變成「停用了卻查不到誰做的」稽核破口）。
+        //    失敗僅記 WARN，遺漏的 Redis 封鎖由登入時的 DB status 檢查兜底、重按一次即補齊。
+        try {
+            if (enabled) {
+                playerBanService.unban(playerId);
+            } else {
+                playerBanService.ban(playerId);
+            }
+        } catch (RuntimeException e) {
+            log.warn("玩家狀態已變更（playerId={}, enabled={}）且稽核已記錄，但 Redis 封鎖/解封失敗：{}。"
+                    + "依賴登入時 DB status 兜底，重按一次即補齊。", playerId, enabled, e.getMessage());
+        }
         return Optional.of(new PlayerStatusResponse(playerId, !enabled));
     }
 
-    /** 稽核：寫一筆 admin_action_logs（PostgreSQL）。best-effort，失敗只記 WARN，不影響狀態變更。 */
+    /** 稽核：寫一筆 admin_action_logs（PostgreSQL）。與狀態變更同交易，寫入失敗直接拋（rollback），不再 best-effort。 */
     private void writeAudit(String operator, String actionType, Long playerId) {
-        try {
-            String idempotencyKey = "player-status-" + actionType + "-" + UUID.randomUUID();
-            actionLogRepository.save(new AdminActionLog(
-                    operator, actionType, playerId, null, null, idempotencyKey));
-        } catch (RuntimeException e) {
-            log.warn("Failed to write admin_action_logs for {} by {}: {}",
-                    actionType, operator, e.getMessage());
-        }
+        String idempotencyKey = "player-status-" + actionType + "-" + UUID.randomUUID();
+        actionLogRepository.save(new AdminActionLog(
+                operator, actionType, playerId, null, null, idempotencyKey));
     }
 
     private PlayerSummary toSummary(MemberRead member) {

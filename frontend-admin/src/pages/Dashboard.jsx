@@ -35,8 +35,14 @@ export default function Dashboard() {
   }, [])
   const { data, loading, error, reload } = useFetch(fetchOverview)
 
+  // 告警分頁：未處理 / 已處理。切換時 fetchAlerts 引用改變 → useFetch 自動重抓對應清單。
+  const [alertTab, setAlertTab] = useState('unresolved')
+  const showResolved = alertTab === 'resolved'
   // 告警獨立抓取：標記已處理後只重載告警區塊，不重抓整頁報表
-  const fetchAlerts = useCallback(() => adminApi.listAlerts({ size: 10, resolved: false }), [])
+  const fetchAlerts = useCallback(
+    () => adminApi.listAlerts({ size: 10, resolved: showResolved }),
+    [showResolved],
+  )
   const {
     data: alerts,
     loading: alertsLoading,
@@ -86,11 +92,34 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* 未處理異常告警（T-054）：置於報表之前，異常要第一眼看到 */}
+      {/* 異常告警（T-054）：未處理 / 已處理 分頁，置於報表之前，異常要第一眼看到 */}
       <div className="mb-2 flex items-baseline justify-between">
-        <h2 className="text-lg font-semibold">未處理異常告警</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-semibold">異常告警</h2>
+          <div className="flex gap-0.5 rounded-lg bg-slate-100 p-0.5 text-xs">
+            {[
+              ['unresolved', '未處理'],
+              ['resolved', '已處理'],
+            ].map(([key, text]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setAlertTab(key)}
+                className={`rounded-md px-3 py-1 font-medium ${
+                  alertTab === key
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {text}
+              </button>
+            ))}
+          </div>
+        </div>
         {alerts && alerts.totalElements > 0 && (
-          <span className="text-xs text-slate-500">共 {alerts.totalElements} 筆未處理</span>
+          <span className="text-xs text-slate-500">
+            共 {alerts.totalElements} 筆{showResolved ? '已處理' : '未處理'}
+          </span>
         )}
       </div>
       {resolveError && (
@@ -104,7 +133,31 @@ export default function Dashboard() {
         ) : alertsError ? (
           <ErrorBlock message={alertsError} onRetry={reloadAlerts} />
         ) : !alerts || alerts.content.length === 0 ? (
-          <EmptyBlock text="目前沒有未處理的告警" />
+          <EmptyBlock text={showResolved ? '目前沒有已處理的告警' : '目前沒有未處理的告警'} />
+        ) : showResolved ? (
+          <Table head={['時間', '玩家 ID', '類型', '詳情', '處理者', '處理時間']}>
+            {alerts.content.map((alert) => {
+              const label = ALERT_TYPE_LABELS[alert.alertType] || { text: alert.alertType, color: 'slate' }
+              return (
+                <tr key={alert.id}>
+                  <Td className="tabular-nums text-slate-500">{fmtDateTime(alert.createdAt)}</Td>
+                  <Td>
+                    <Link to={`/players/${alert.playerId}`} className="font-medium text-blue-600 hover:underline">
+                      {alert.playerId}
+                    </Link>
+                  </Td>
+                  <Td>
+                    <Badge color={label.color}>{label.text}</Badge>
+                  </Td>
+                  <Td className="max-w-md truncate text-slate-500" title={alert.detail}>
+                    {alert.detail}
+                  </Td>
+                  <Td className="font-medium">{alert.resolvedBy || '-'}</Td>
+                  <Td className="tabular-nums text-slate-500">{fmtDateTime(alert.resolvedAt)}</Td>
+                </tr>
+              )
+            })}
+          </Table>
         ) : (
           <Table head={['時間', '玩家 ID', '類型', '詳情', '操作']}>
             {alerts.content.map((alert) => {

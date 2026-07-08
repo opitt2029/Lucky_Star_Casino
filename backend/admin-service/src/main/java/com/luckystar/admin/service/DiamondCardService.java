@@ -12,8 +12,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -21,13 +19,16 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 鑽石點數卡產生與查詢（T-105 / T-106）。寫入 MySQL {@code diamond_cards}（admin 的 @Primary 源）。
- * 每次生成另落一筆 {@code admin_action_logs}（PostgreSQL，best-effort，比照 AdminShopService）——
- * 生成即等同印出可兌換星幣的價值，須留稽核痕跡。
+ * 每次生成另落一筆 {@code admin_action_logs}（PostgreSQL）稽核——生成即等同印出可兌換星幣的價值，
+ * 不可無痕生成。
+ *
+ * <p>稽核為<b>強一致</b>（非 best-effort）：卡片（MySQL）與稽核（PostgreSQL）跨資料源、無 2PC，
+ * 但稽核在 mysql 交易 commit <b>之前</b>寫入，故稽核寫入失敗會拋出、連同卡片生成一起 rollback
+ * ——「稽核寫不進去就不印卡」。殘留邊界：稽核先 commit 後 mysql commit 才失敗的窄窗，會留下
+ * 「稽核有、卡片無」的孤兒稽核（過度記錄，安全方向），此為雙資料源無分散式交易的先天限制。
  */
 @Service
 public class DiamondCardService {
-
-    private static final Logger log = LoggerFactory.getLogger(DiamondCardService.class);
 
     private final DiamondCardRepository diamondCardRepository;
     private final AdminActionLogRepository actionLogRepository;
@@ -57,21 +58,17 @@ public class DiamondCardService {
                 .toList();
         diamondCardRepository.saveAll(cards);
 
+        // 稽核在 mysql commit 前寫入：寫入失敗會拋出 → mysql 交易 rollback → 卡片不生成（強一致，非 best-effort）
         writeAudit(operator, count, faceValue);
         return new GenerateCardsResponse(count, faceValue, new ArrayList<>(codes));
     }
 
-    /** 稽核：寫一筆 admin_action_logs（PostgreSQL）。best-effort，失敗只記 WARN，不影響卡片生成。 */
+    /** 稽核：寫一筆 admin_action_logs（PostgreSQL）。與卡片生成強一致，寫入失敗直接拋（觸發 mysql rollback），不再 best-effort。 */
     private void writeAudit(String operator, int count, long faceValue) {
-        try {
-            String idempotencyKey = "diamond-card-generate-" + UUID.randomUUID();
-            actionLogRepository.save(new AdminActionLog(
-                    operator, "DIAMOND_CARD_GENERATE", null, faceValue * count,
-                    "generate " + count + " card(s) @ " + faceValue, idempotencyKey));
-        } catch (RuntimeException e) {
-            log.warn("Failed to write admin_action_logs for DIAMOND_CARD_GENERATE by {}: {}",
-                    operator, e.getMessage());
-        }
+        String idempotencyKey = "diamond-card-generate-" + UUID.randomUUID();
+        actionLogRepository.save(new AdminActionLog(
+                operator, "DIAMOND_CARD_GENERATE", null, faceValue * count,
+                "generate " + count + " card(s) @ " + faceValue, idempotencyKey));
     }
 
     @Transactional(transactionManager = "mysqlTransactionManager", readOnly = true)
