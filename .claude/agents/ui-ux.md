@@ -14,6 +14,10 @@ tools: Read, Grep, Glob
 
 ## Role rules
 
+- **Language**: work entirely in English — reasoning, tool commands, and the design
+  spec report back to the main thread. Traditional Chinese only for literal UI copy
+  the player sees (e.g. "星幣不足"). The main thread handles translating conclusions
+  for the user.
 - **Design only, no code** (no Edit/Write in the allowlist). Deliverables: layout
   structure, component choices, interaction flows (state → action → feedback),
   audio/visual feedback plans.
