@@ -29,8 +29,8 @@ class RtpReportServiceTest {
 
     @BeforeEach
     void setUp() {
-        // design slot=0.95, baccarat=0.98, threshold=0.05
-        service = new RtpReportService(rtpStatRepository, 0.95, 0.98, 0.05);
+        // design slot=0.95, baccarat=0.98, fishing=0.96, threshold=0.05
+        service = new RtpReportService(rtpStatRepository, 0.95, 0.98, 0.96, 0.05);
     }
 
     private GameRtpStatRead stat(String game, long bet, long win) {
@@ -80,6 +80,19 @@ class RtpReportServiceTest {
         assertThat(baccarat.totalWin()).isEqualTo(196);
         assertThat(baccarat.actualRtp()).isEqualTo(0.98);
         assertThat(baccarat.status()).isEqualTo(RtpReportService.STATUS_NORMAL);
+    }
+
+    @Test
+    void fishing_actualNearDesignRtp_isNormal() {
+        // FISHING 設計 0.96，實際 0.97 → 偏差 0.01（<5%）→ NORMAL（回歸：曾因無 FISHING 設計值而永遠判 ABNORMAL）
+        when(rtpStatRepository.findByCalculatedAtBetween(any(), any()))
+                .thenReturn(List.of(stat("FISHING", 100, 97)));
+
+        RtpReport report = service.getRtpReport(null, LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 1));
+
+        RtpReport.Item fishing = report.items().get(0);
+        assertThat(fishing.designRtp()).isEqualTo(0.96);
+        assertThat(fishing.status()).isEqualTo(RtpReportService.STATUS_NORMAL);
     }
 
     @Test

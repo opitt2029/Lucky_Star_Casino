@@ -211,6 +211,30 @@ develop
 - `mvn -pl backend/wallet-service test`：161 tests 全綠（containers 測試被排除，行為不變）。
 - `mvn -pl backend/wallet-service test -Pcontainers-test`（本機 Docker Desktop）：8 個容器測試全綠。
 
+## [fix] -- 2026-07-08 -- admin-service 補稽核紀錄、鑽石點數卡權限收斂、捕魚機 RTP 誤判、預設種子密碼收斂
+
+### Added
+- `backend/admin-service/.../service/AdminPlayerService.java`：`setStatus()` 停用/啟用玩家後 best-effort 寫入 `admin_action_logs`（`PLAYER_BAN`/`PLAYER_UNBAN`），寫法比照 `AdminShopService`（catch `RuntimeException` 只記 WARN，不讓稽核失敗擋住主流程）。
+- `backend/admin-service/.../service/DiamondCardService.java`：`generateCards()` 生成後 best-effort 寫入 `admin_action_logs`（`DIAMOND_CARD_GENERATE`，含面額×張數與說明）。
+
+### Changed
+- `backend/admin-service/.../controller/AdminPlayerController.java`：`setStatus` 端點改吃 `Authentication`，把 `authentication.getName()` 當作 operator 傳入 service。
+- `backend/admin-service/.../controller/AdminDiamondController.java`：`generate()` 權限由 `hasRole('ADMIN')` 收緊為 `hasRole('SUPER_ADMIN')`（比照 GM 發幣），同樣改吃 `Authentication` 傳入 operator。
+- `backend/admin-service/.../service/RtpReportService.java`：新增 `admin.rtp.design.fishing`（預設 0.96，依 ADR-004）與 `designRtpFor()` 的 `FISHING` case。
+- `backend/admin-service/src/main/resources/application.yml`：`admin.rtp.design.fishing` 補設定項；`admin.seed.enabled` 預設由 `true` 改為 `false`（`ADMIN_SEED_ENABLED` 未設時不再自動播種明文密碼的 SUPER_ADMIN）。
+- `backend/admin-service/.../config/AdminUserSeeder.java`：`@Value` 預設值同步改 `false`，補充 Javadoc 說明理由。
+- `frontend-admin/src/pages/DiamondCards.jsx`：依 Redux `adminAuth.role` 判斷，非 `SUPER_ADMIN` 不顯示生成表單（改顯示唯讀提示），避免 OPERATOR 送出必 403 的請求。
+
+### Why
+- 玩家停用/啟用與鑽石點數卡生成都是有爭議追溯需求的敏感操作，先前完全沒有稽核紀錄，出事無法回答「誰、何時、為何」。
+- 鑽石點數卡生成等同「印出可兌換星幣的價值」，風險與 GM 發幣相同，卻只要求 `ADMIN` 而非 `SUPER_ADMIN`，權限範圍過寬。
+- 捕魚機自 Phase 1/2 上線後 RTP 報表沒有對照設計值，`deviation` 永遠拿實際 RTP 減 0 比對，Dashboard 永遠紅字異常，形同狼來了，會讓真正的異常被忽略。
+- `admin.seed.enabled` 預設 `true` 搭配版控內明文密碼，任何忘記覆蓋環境變數的環境都會自動長出一個可登入的 SUPER_ADMIN，是不必要的預設風險；`.env.example`／測試設定都已明確覆蓋為 `true`，改預設不影響既有本機開發與測試流程。
+
+### Verified
+- `mvn -pl backend/admin-service test`：91 tests 全過（含新增的 `AdminPlayerServiceTest`/`DiamondCardServiceTest` 稽核 best-effort 案例、`RtpReportServiceTest` 的 FISHING 正常判定案例、`AdminSecurityIntegrationTest` 新增的 OPERATOR 403 / SUPER_ADMIN 201 端到端案例）。
+- `frontend-admin`：`npm run lint` 無錯誤；`npm test -- --run` 2 個測試檔、14 tests 全過。
+
 ## [feat] -- 2026-07-07 -- T-054 補完：告警查詢/處理 API + Dashboard 未處理告警列表
 
 ### Added

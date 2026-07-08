@@ -12,6 +12,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -59,8 +60,9 @@ public class AdminPlayerController {
     @PatchMapping("/{playerId}/status")
     public ResponseEntity<PlayerStatusResponse> setStatus(
             @PathVariable Long playerId,
-            @Valid @RequestBody PlayerStatusRequest request) {
-        return adminPlayerService.setStatus(playerId, request.enabled())
+            @Valid @RequestBody PlayerStatusRequest request,
+            Authentication authentication) {
+        return adminPlayerService.setStatus(authentication.getName(), playerId, request.enabled())
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }

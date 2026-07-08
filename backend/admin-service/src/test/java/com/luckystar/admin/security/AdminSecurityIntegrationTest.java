@@ -10,12 +10,15 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.luckystar.admin.dto.GenerateCardsResponse;
 import com.luckystar.admin.dto.GmGrantRequest;
 import com.luckystar.admin.dto.GmGrantResponse;
+import com.luckystar.admin.service.DiamondCardService;
 import com.luckystar.admin.service.GmRewardService;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import javax.crypto.SecretKey;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,6 +43,9 @@ class AdminSecurityIntegrationTest {
 
     @MockBean
     GmRewardService gmRewardService;
+
+    @MockBean
+    DiamondCardService diamondCardService;
 
     private String bearer(String token) {
         return "Bearer " + token;
@@ -143,5 +149,32 @@ class AdminSecurityIntegrationTest {
                 .andExpect(status().isBadRequest());
 
         verify(gmRewardService, never()).grant(anyString(), any(GmGrantRequest.class));
+    }
+
+    // ── 鑽石點數卡生成：僅 SUPER_ADMIN（等同印鈔，比照 GM 發幣）───────────────
+
+    @Test
+    void operatorToken_cannotGenerateDiamondCards_returns403() throws Exception {
+        String token = adminJwtUtil.generateToken(2L, "operator", AdminRole.OPERATOR);
+        mockMvc.perform(post("/admin/diamond/cards")
+                        .header("Authorization", bearer(token))
+                        .contentType("application/json")
+                        .content("{\"count\":1,\"faceValue\":100}"))
+                .andExpect(status().isForbidden());
+
+        verify(diamondCardService, never()).generateCards(anyString(), any(Integer.class), any(Long.class));
+    }
+
+    @Test
+    void superAdminToken_canGenerateDiamondCards_returns201() throws Exception {
+        when(diamondCardService.generateCards(anyString(), any(Integer.class), any(Long.class)))
+                .thenReturn(new GenerateCardsResponse(1, 100L, List.of("AAAA-BBBB-CCCC-DDDD")));
+
+        String token = adminJwtUtil.generateToken(1L, "superadmin", AdminRole.SUPER_ADMIN);
+        mockMvc.perform(post("/admin/diamond/cards")
+                        .header("Authorization", bearer(token))
+                        .contentType("application/json")
+                        .content("{\"count\":1,\"faceValue\":100}"))
+                .andExpect(status().isCreated());
     }
 }

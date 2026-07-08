@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { useSelector } from 'react-redux'
 import { adminApi, extractError } from '../services/adminApi'
 import { useFetch } from '../hooks/useFetch'
 import { fmtDateTime, fmtInt } from '../utils/format'
@@ -21,6 +22,10 @@ const STATUS_OPTIONS = [
 
 // 鑽石點數卡（T-105 生成 / T-106 列表）。
 export default function DiamondCards() {
+  // 生成等同印出可兌換星幣的價值，後端僅 SUPER_ADMIN 可呼叫（403）；OPERATOR 只能看列表。
+  const role = useSelector((state) => state.adminAuth.role)
+  const canGenerate = role === 'SUPER_ADMIN'
+
   // ── 列表 ──
   const [status, setStatus] = useState('all')
   const [page, setPage] = useState(0)
@@ -77,45 +82,51 @@ export default function DiamondCards() {
     <div>
       <PageHeader title="鑽石點數卡" description="批次生成序號與兌換狀態查詢（T-105/T-106）。" />
 
-      {/* 生成區 */}
-      <form
-        onSubmit={handleGenerate}
-        className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4"
-      >
-        <label className="block text-sm">
-          <span className="mb-1 block text-xs text-slate-500">張數（1~1000）</span>
-          <input
-            type="number"
-            min="1"
-            max="1000"
-            value={genForm.count}
-            onChange={(e) => setGenForm({ ...genForm, count: e.target.value })}
-            className={`${inputCls} w-32`}
-          />
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block text-xs text-slate-500">面額（鑽石）</span>
-          <input
-            type="number"
-            min="1"
-            value={genForm.faceValue}
-            onChange={(e) => setGenForm({ ...genForm, faceValue: e.target.value })}
-            className={`${inputCls} w-32`}
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={!genValid || generating}
-          className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+      {/* 生成區：僅 SUPER_ADMIN，OPERATOR 顯示唯讀提示（後端一律 403） */}
+      {canGenerate ? (
+        <form
+          onSubmit={handleGenerate}
+          className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4"
         >
-          {generating ? '生成中...' : '生成點數卡'}
-        </button>
-        {genError && (
-          <p className="w-full text-sm text-red-600" role="alert">
-            {genError}
-          </p>
-        )}
-      </form>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs text-slate-500">張數（1~1000）</span>
+            <input
+              type="number"
+              min="1"
+              max="1000"
+              value={genForm.count}
+              onChange={(e) => setGenForm({ ...genForm, count: e.target.value })}
+              className={`${inputCls} w-32`}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs text-slate-500">面額（鑽石）</span>
+            <input
+              type="number"
+              min="1"
+              value={genForm.faceValue}
+              onChange={(e) => setGenForm({ ...genForm, faceValue: e.target.value })}
+              className={`${inputCls} w-32`}
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={!genValid || generating}
+            className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {generating ? '生成中...' : '生成點數卡'}
+          </button>
+          {genError && (
+            <p className="w-full text-sm text-red-600" role="alert">
+              {genError}
+            </p>
+          )}
+        </form>
+      ) : (
+        <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+          生成點數卡僅限 SUPER_ADMIN 操作。
+        </div>
+      )}
 
       {/* 生成結果：序號只在這裡完整show一次，供匯出保存 */}
       {genResult && (

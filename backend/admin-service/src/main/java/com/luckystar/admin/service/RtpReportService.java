@@ -29,16 +29,19 @@ public class RtpReportService {
     private final GameRtpStatReadRepository rtpStatRepository;
     private final double slotDesignRtp;
     private final double baccaratDesignRtp;
+    private final double fishingDesignRtp;
     private final double deviationThreshold;
 
     public RtpReportService(
             GameRtpStatReadRepository rtpStatRepository,
             @Value("${admin.rtp.design.slot:0.95}") double slotDesignRtp,
             @Value("${admin.rtp.design.baccarat:0.98}") double baccaratDesignRtp,
+            @Value("${admin.rtp.design.fishing:0.96}") double fishingDesignRtp,
             @Value("${admin.rtp.deviation-threshold:0.05}") double deviationThreshold) {
         this.rtpStatRepository = rtpStatRepository;
         this.slotDesignRtp = slotDesignRtp;
         this.baccaratDesignRtp = baccaratDesignRtp;
+        this.fishingDesignRtp = fishingDesignRtp;
         this.deviationThreshold = deviationThreshold;
     }
 
@@ -80,6 +83,7 @@ public class RtpReportService {
         return switch (gameType == null ? "" : gameType) {
             case "SLOT" -> slotDesignRtp;
             case "BACCARAT" -> baccaratDesignRtp;
+            case "FISHING" -> fishingDesignRtp;
             default -> 0.0;
         };
     }
