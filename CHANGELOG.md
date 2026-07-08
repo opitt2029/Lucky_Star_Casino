@@ -1,3 +1,98 @@
+## [test] -- 2026-07-08 -- T-090 壓測完整重跑（Phase 2b 完成）：根因鏈確認、帳務對帳 PASS
+
+### 背景
+- 2026-07-07 已定位「gateway CircuitBreaker 未設 TimeLimiter（預設 1 秒逾時）× spin 路徑變重 × thundering herd」根因鏈，但當時只是中途進度，未跑完 1000 併發主測與正式對帳。本次同拓撲（Docker infra+observability、7 服務宿主機 mvn 起）完整重跑到底。
+
+### Changed
+- `docs/performance/T-090-load-test-report.md`：以「2026-07-08 完整重跑最終結果」取代原「2026-07-07 中途進度」節，並更新頂部 Status/Headline。記錄：
+  - 150 併發基線：17,395 樣本、P99 1,164 ms、5xx 13,563（77.97% 錯誤率）、idempotency=0、overdraw=0。
+  - 1000 併發主測：15,922 樣本、P99 5,055 ms、失敗 14,221（5xx 13,709，89.3% 錯誤率）、idempotency=0、overdraw=0。
+  - Prometheus 90 秒測試窗證據：`not_permitted` game-service≈9,861／wallet-service≈10,028；CB `failed` calls game-service≈1,172／wallet-service≈424；成功 spin 平均延遲≈3.63 s、wallet debit 平均延遲≈896 ms（皆遠高於 1s TimeLimiter 門檻）。
+  - T-091 帳務對帳：本輪測試玩家（1,031 名，`player_id>=90000`）0 違規；額外揪出 3 筆歷史違規（`player_id` 1001–1003），查證交易時間戳全在 2026-06-16，為前一輪測試殘留於 Postgres volume 的舊資料，與本輪無關，已排除在 gate 判定外。
+  - 測試對象 commit：`902d744`（與 origin/develop 最新 `65915c5` 相比落後 7 個 commit，皆為 docs/admin-service 變更，gateway/game/wallet 無差異，不影響結果有效性）。
+
+### Why
+- AGENTS.md §地雷 12：無真實量測不得捏造 P99，必須把「中途進度」與「完整結論」分開記錄，避免下一個人誤把未跑完的數字當最終結果引用。
+- 效能 gate FAIL 但帳務 gate 全程 PASS，證明本次回歸是「gateway 熔斷設定缺陷」而非「帳務邏輯在高併發下出錯」，範圍明確才能決定調 TimeLimiter/R4j 參數的獨立 PR 怎麼改。
+
+### 如何驗證
+- `tests/performance/results/20260708-100306/acceptance-report.md`（150 併發）、`tests/performance/results/20260708-100442/acceptance-report.md`（1000 併發）、`tests/performance/results/accounting-20260708-100542/accounting-reconciliation.csv`。
+- Prometheus range query（`increase(...[90s])` at test-window timestamp）可重跑複驗，見報告內嵌 PromQL。
+
+feature/weiyu-saga-compensation-and-contracts
+## [feat] -- 2026-07-07 -- AUDIT_REPORT 附錄 A 自動盤點：tools/audit/ 依證據清單重生進度表（Phase 8）
+
+### 背景
+- 附錄 A 靠人記得去盤點，長期落後程式碼（AGENTS.md §1 的 T-027/T-028 誤報案例），且手工統計表與逐項表互相矛盾（統計記 25 ❌、逐項表僅 T-096 一項 ❌）。本次把逐項表與統計改為工具產生：每次執行對「當下工作樹 + git log」即時判定。
+
+### Added
+- `tools/audit/`（Node ESM、零外部依賴，比照 tools/ 慣例；需 Node 22+ 的 `fs.globSync`）：
+  - `tasks.json`：85 個任務（T-000~T-114）的證據清單，首版由附錄 A 手工轉換——每筆 `{ id, title, owner?, priority?, evidence: { files: [glob...], commitGrep }, override?, note? }`；`commitGrep` 選填（早期任務 commit 沒帶 T-0xx 記號者只靠檔案證據）；`override` 僅限證據判不了的人工判定（T-084 端對端待驗收、T-089 RWD、T-090 壓測 gate、T-093 全鏈路 E2E、T-110 腳本已被容器化取代）。
+  - `generate-audit-snapshot.mjs`：判定＝證據檔案全在＋`git log --grep` 有 commit→✅、部分→⚠️、全無→❌、無證據→❓；輸出與附錄 A 同格式表格＋自動統計，寫入 AUDIT_REPORT.md 的 `<!-- AUDIT:BEGIN/END -->` 標記區塊（標記外人工敘述不動），另存 `docs/report/audit-snapshot-YYYYMMDD.md`（含 git HEAD）。`--check` 模式只比對、有落差退出碼 1（日後可掛 CI，本次不強制）。
+- `docs/report/audit-snapshot-20260707.md`：首跑快照。
+
+### Changed
+- `AUDIT_REPORT.md`：附錄 A 的 A.1~A.12 手工表格與 A.13 統計改為標記區塊（工具產生）；首跑結果 **80 ✅ / 3 ⚠️ / 1 ❌ / 1 ❓**——T-083/T-087 等過時 ⚠️ 依證據（檔案＋T-0xx commit）轉 ✅，並修正統計與逐項表不一致；變動紀錄以下的人工敘述保留。
+- `AGENTS.md` §1：註記附錄 A 自動化——更新進度改 `tools/audit/tasks.json` 再重跑工具、勿手改標記區塊；`--check` 可驗漂移。
+
+### Why
+- 「手動快照會漂移」是結構性問題，靠告示提醒治標；把盤點變成可重跑的程式，漂移就變成一條指令可修復、可驗證（`--check`）的狀態。
+- 保留 `override`：壓測 gate、RWD 這類完成與否不由檔案存在決定的任務，仍需人工判定，但理由被迫寫進 tasks.json、隨表格輸出，不再是口耳相傳。
+
+### 如何驗證
+- `node tools/audit/generate-audit-snapshot.mjs` 後逐項比對附錄 A 與現況一致（T-027/T-028 類誤報已轉 ✅；證據型任務無缺檔誤報）。
+- `node tools/audit/generate-audit-snapshot.mjs --check` 退出碼 0；手動改壞表格一格後退出碼 1、重跑工具復原。
+- `node --test tests/infra/*.test.js` 142 全綠（不受影響）。
+
+## [security] -- 2026-07-07 -- Secret 管理：範本全佔位符化、CI 密鑰 run 內生成、輪替 SOP（Phase 7）
+
+### 背景
+- `.env.example` 與 `ci.yml` 內含可直接使用的密鑰值且進了版控——拿得到 repo 就等於拿到密鑰。本次把「可用值」全數趕出版控：範本只留佔位符、CI 測試密鑰改每次 run 隨機生成，並補上輪替 SOP。
+
+### Added
+- `docs/security/secret-rotation.md`：密鑰清單（各變數用途/誰在用/輪替影響面——`INTERNAL_SECRET` 改了 **7 服務要同步重啟**、`JWT_SECRET` 改了**全部玩家 token 立即失效**且 member/gateway/notification 三服務要一起換）、生成指令（openssl / PowerShell）、本機輪替步驟（JWT 類/內部密鑰/DB 密碼三條 SOP）、CI 密鑰策略說明。明列**既有本機 `.env` 值視同已洩漏，施工後全員重生一輪**。
+
+### Changed
+- `.env.example`：`JWT_SECRET`/`ADMIN_JWT_SECRET`/`ADMIN_SEED_PASSWORD`/`INTERNAL_SECRET`/`INTERNAL_SERVICE_SECRET`/`MYSQL_ROOT_PASSWORD`/`MYSQL_PASSWORD`/`POSTGRES_PASSWORD` 全部換成 `CHANGE_ME` 佔位符＋檔頭生成指引。佔位符刻意短於 HS256 的 32 bytes，拿範本值直接啟動會 fail-fast（`WeakKeyException`），不會靜默用弱密鑰跑起來；佔位符為非空字串，`tests/infra/env.test.js` 的非空斷言不受影響。
+- `.github/workflows/ci.yml`：`backend-test` job 的靜態測試密鑰（`JWT_SECRET`/`INTERNAL_SECRET`/`INTERNAL_SERVICE_SECRET`）移除，改為第一個 step 以 `openssl rand -base64` 於 run 內生成並寫入 `$GITHUB_ENV`；`CORS_ALLOWED_ORIGINS` 非密鑰、留在 job env。
+- `DEPLOY.md` §2：改寫「複製即可啟動」段——現在複製後**必須先生成密鑰**，並連結 `docs/security/secret-rotation.md`。
+
+### Why
+- **CI 不用 GitHub Secrets**：本專案走 fork/PR 工作流，fork PR 拿不到 repo secrets，一依賴就整條 CI 紅；測試密鑰只活在單一 run 內、無持久價值，run 內生成同時消滅了「repo 裡寫死可用密鑰」這件事。
+- 範本值曾進版控＝已洩漏，所以文件明訂全員重生一輪，而不是只改範本。
+
+### 如何驗證
+- `node --test tests/infra/*.test.js` 全綠（env.test.js 對密碼變數只斷言非空，佔位符通過）。
+- CI 綠：觀察下一個 fork PR 的 run——「產生本次 run 專用測試密鑰」step 成功、backend-test 兩個 mvn step 照常通過。
+- 依新 `.env.example` 重建 `.env`（填入生成值）後 `docker compose up -d --build`，12 容器 healthy、註冊/登入 smoke 正常。
+
+
+## [chore] -- 2026-07-07 -- PR #172 容器化收尾：補 .dockerignore、刪殘留 stop-backend.bat、修正 mock 旗標誤植、同步過期文件
+
+### Added
+- `.dockerignore`（白名單式：只放行根 `pom.xml` 與 `backend/`，並排除 `backend/**/target`）。七個 Dockerfile 的 build context 都是 repo 根目錄，之前每次 build 會把 `.git`、`frontend*/node_modules`、`docs` 等整包送進 Docker daemon（×7 個 image），且本機 IDE 編譯的 `target/` 會讓 `COPY backend` 的 layer cache 頻繁失效。
+
+### Fixed
+- `frontend/.env.development`：`VITE_USE_MOCK_API` 由 `true` 改回 `false`。`20d582d`（捕魚機 PR）誤把個人測試設定推入版控，與同檔註解「dev 預設串真實後端」、根目錄 `.env.example` 及 DEPLOY.md §4 說明全部矛盾——後果是照 DEPLOY.md SOP 起完全部後端後，前端冒煙測試（§5 第 3 步）其實打的是 mock，後端全掛也會「通過」。個人要離線 mock 請照註解用 `frontend/.env.local` 覆蓋。
+
+### Removed
+- `stop-backend.bat`：PR #172 刪除四個原生啟動/停止腳本時漏掉它；其內容是委派給已被刪除的 `stop-all.ps1`，執行必失敗，屬死碼。
+
+### Changed（過期文件同步至容器化後的現況）
+- `README.md` 快速開始：Step 2 改為 `docker compose up -d --build` 一鍵啟動（原本只起 infra）、刪除教人跑 `./mvnw spring-boot:run` 的 Step 4（專案沒有 mvnw，AGENTS.md 雷區 1）。
+- `DEPLOY.md`：§1 前端表補 `frontend-admin`（5174）；§7「目前已知狀況」由 2026-06-10 更新至今——admin/notification/捕魚機/鑽石/商城均已完成，移除「admin 空殼、notification 未建立」等與同檔 §1 矛盾的過期描述。
+- `docs/ENV_SETUP_GUIDE.md`：§4 補 `--build` 與後端容器化說明、`docker compose ps` 範例移除 zookeeper（KRaft 後早已不存在）並補 7 後端；§6.4 標明為 IDE 除錯用、`./mvnw` 改 `mvn`。
+- `AUDIT_REPORT.md` T-110：標註 `✅（已除役）`——腳本歷史上完成過，容器化後移除。
+- `docs/performance/T-090-load-test-report.md`：Execution 第 1 步移除「services are not containerized」的過期前提。
+
+### Why
+- 詳細檢查 docker 環境與 PR #172 時發現的缺漏：核心部署健全（12 容器 healthy、gateway 冒煙通過），但殘留死腳本、缺 build context 過濾、以及五處文件與現況矛盾（正是 AGENTS.md §1 警告的「文件落後程式碼」模式，會誤導新成員照舊流程操作）。
+
+### 如何驗證
+- `node --test tests/infra/*.test.js`：142 tests 全綠。
+- 加上 `.dockerignore` 後 `docker compose build member-service` 成功，build context 由整個 repo 縮為 root pom + backend/。
+- `curl -X POST http://localhost:8080/api/v1/auth/register ...` 經 gateway 註冊回 `success:true`（容器拓撲端到端正常）。
+develop
 ## [refactor] -- 2026-07-07 -- 玩法契約單一來源化：repo 根 contracts/*.json + ContractParityTest 守門（Phase 5）
 
 ### 背景
@@ -44,6 +139,18 @@
 ### 如何驗證
 - `mvn -pl backend/game-service test` 綠燈（176 tests，含新增 10 個補償測試與 3 個失敗路徑測試）。
 - 手動：kill wallet → 打一局 slot（命中）→ 重啟 wallet → 30 秒內補償入帳；`pending_wallet_credits` 標 DONE、`wallet_transactions.idempotency_key` 與補償單一致；`node tools/reconciliation/reconcile-game-wallet.mjs` 對帳通過。
+## [fix] -- 2026-07-07 -- postgres init.sql 補上 cashback_records 表，修復全新環境 docker compose 啟動失敗
+
+### Fixed
+- `database/postgres/init.sql`：新增 `cashback_records` 表（+ 索引），內容對應既有的 `database/postgres/migration/V9__add_cashback_records.sql`。
+
+### Why
+- 實測驗證 PR #172（後端容器化）時發現：全新 docker volume 跑 `docker compose up -d --build`，`game-service` 因 Hibernate schema-validation 找不到 `cashback_records` 表而啟動失敗（`Schema-validation: missing table [cashback_records]`），卡住 `gateway-service` 的 `depends_on` 健康鏈。根因是 6/23 新增 cashback 功能時只補了 Flyway migration 檔（`V9`），沒有同步把表結構加進 `init.sql`（全新安裝的權威 schema 來源，migration 不會自動套用進全新 volume，見 AGENTS.md 雷區 3/README 對應章節）。
+
+### 如何驗證
+- 乾淨 docker volume 下 `docker compose up -d --build`：12 個容器（5 infra + 7 後端）全數 `healthy`。
+- 透過 gateway（8080）完成註冊 -> 登入 -> 查餘額冒煙測試，皆回傳 200/201。
+develop
 
 ## [feat] -- 2026-07-07 -- 後端服務全面容器化：docker compose up -d --build 一鍵啟動 7 服務（取代多視窗手動啟動）
 
@@ -125,8 +232,30 @@
 - `mvn -pl backend/wallet-service test`：161 tests 全綠（containers 測試被排除，行為不變）。
 - `mvn -pl backend/wallet-service test -Pcontainers-test`（本機 Docker Desktop）：8 個容器測試全綠。
 
-﻿## [fix] -- 2026-07-07 -- MySQL 初始化腳本補 SET NAMES utf8mb4：中文種子資料匯入即亂碼
-=======
+## [fix] -- 2026-07-08 -- admin-service 補稽核紀錄、鑽石點數卡權限收斂、捕魚機 RTP 誤判、預設種子密碼收斂
+
+### Added
+- `backend/admin-service/.../service/AdminPlayerService.java`：`setStatus()` 停用/啟用玩家後 best-effort 寫入 `admin_action_logs`（`PLAYER_BAN`/`PLAYER_UNBAN`），寫法比照 `AdminShopService`（catch `RuntimeException` 只記 WARN，不讓稽核失敗擋住主流程）。
+- `backend/admin-service/.../service/DiamondCardService.java`：`generateCards()` 生成後 best-effort 寫入 `admin_action_logs`（`DIAMOND_CARD_GENERATE`，含面額×張數與說明）。
+
+### Changed
+- `backend/admin-service/.../controller/AdminPlayerController.java`：`setStatus` 端點改吃 `Authentication`，把 `authentication.getName()` 當作 operator 傳入 service。
+- `backend/admin-service/.../controller/AdminDiamondController.java`：`generate()` 權限由 `hasRole('ADMIN')` 收緊為 `hasRole('SUPER_ADMIN')`（比照 GM 發幣），同樣改吃 `Authentication` 傳入 operator。
+- `backend/admin-service/.../service/RtpReportService.java`：新增 `admin.rtp.design.fishing`（預設 0.96，依 ADR-004）與 `designRtpFor()` 的 `FISHING` case。
+- `backend/admin-service/src/main/resources/application.yml`：`admin.rtp.design.fishing` 補設定項；`admin.seed.enabled` 預設由 `true` 改為 `false`（`ADMIN_SEED_ENABLED` 未設時不再自動播種明文密碼的 SUPER_ADMIN）。
+- `backend/admin-service/.../config/AdminUserSeeder.java`：`@Value` 預設值同步改 `false`，補充 Javadoc 說明理由。
+- `frontend-admin/src/pages/DiamondCards.jsx`：依 Redux `adminAuth.role` 判斷，非 `SUPER_ADMIN` 不顯示生成表單（改顯示唯讀提示），避免 OPERATOR 送出必 403 的請求。
+
+### Why
+- 玩家停用/啟用與鑽石點數卡生成都是有爭議追溯需求的敏感操作，先前完全沒有稽核紀錄，出事無法回答「誰、何時、為何」。
+- 鑽石點數卡生成等同「印出可兌換星幣的價值」，風險與 GM 發幣相同，卻只要求 `ADMIN` 而非 `SUPER_ADMIN`，權限範圍過寬。
+- 捕魚機自 Phase 1/2 上線後 RTP 報表沒有對照設計值，`deviation` 永遠拿實際 RTP 減 0 比對，Dashboard 永遠紅字異常，形同狼來了，會讓真正的異常被忽略。
+- `admin.seed.enabled` 預設 `true` 搭配版控內明文密碼，任何忘記覆蓋環境變數的環境都會自動長出一個可登入的 SUPER_ADMIN，是不必要的預設風險；`.env.example`／測試設定都已明確覆蓋為 `true`，改預設不影響既有本機開發與測試流程。
+
+### Verified
+- `mvn -pl backend/admin-service test`：91 tests 全過（含新增的 `AdminPlayerServiceTest`/`DiamondCardServiceTest` 稽核 best-effort 案例、`RtpReportServiceTest` 的 FISHING 正常判定案例、`AdminSecurityIntegrationTest` 新增的 OPERATOR 403 / SUPER_ADMIN 201 端到端案例）。
+- `frontend-admin`：`npm run lint` 無錯誤；`npm test -- --run` 2 個測試檔、14 tests 全過。
+
 ## [feat] -- 2026-07-07 -- T-054 補完：告警查詢/處理 API + Dashboard 未處理告警列表
 
 ### Added

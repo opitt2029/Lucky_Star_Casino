@@ -16,7 +16,9 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * 僅在 {@code admin.seed.enabled=true} 且該帳號尚未存在時建立；密碼由
  * {@code admin.seed.password} 提供並以 BCrypt 雜湊（不在 schema 硬編雜湊）。
- * 正式環境請以環境變數覆蓋帳密，並於首登後立即更換。
+ * 預設值 {@code enabled=false}——沒設 {@code ADMIN_SEED_ENABLED} 就不會用版控裡公開的
+ * 預設密碼播種帳號；本機開發由 {@code .env} 明確設 {@code ADMIN_SEED_ENABLED=true} 開啟。
+ * 正式環境如需播種，請以環境變數覆蓋帳密，並於首登後立即更換。
  */
 @Component
 public class AdminUserSeeder implements CommandLineRunner {
@@ -31,7 +33,7 @@ public class AdminUserSeeder implements CommandLineRunner {
 
     public AdminUserSeeder(AdminUserRepository adminUserRepository,
                            PasswordEncoder passwordEncoder,
-                           @Value("${admin.seed.enabled:true}") boolean enabled,
+                           @Value("${admin.seed.enabled:false}") boolean enabled,
                            @Value("${admin.seed.username:superadmin}") String username,
                            @Value("${admin.seed.password:ChangeMe!SuperAdmin123}") String password) {
         this.adminUserRepository = adminUserRepository;

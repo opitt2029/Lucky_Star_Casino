@@ -10,6 +10,8 @@ import com.luckystar.admin.dto.CardStatusFilter;
 import com.luckystar.admin.dto.GenerateCardsResponse;
 import com.luckystar.admin.mysql.entity.DiamondCard;
 import com.luckystar.admin.mysql.repository.DiamondCardRepository;
+import com.luckystar.admin.postgres.entity.AdminActionLog;
+import com.luckystar.admin.postgres.repository.AdminActionLogRepository;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,12 +29,14 @@ class DiamondCardServiceTest {
 
     @Mock
     DiamondCardRepository diamondCardRepository;
+    @Mock
+    AdminActionLogRepository actionLogRepository;
 
     DiamondCardService service;
 
     @BeforeEach
     void setUp() {
-        service = new DiamondCardService(diamondCardRepository);
+        service = new DiamondCardService(diamondCardRepository, actionLogRepository);
     }
 
     @Test
@@ -40,7 +44,7 @@ class DiamondCardServiceTest {
     void generateCards_producesRequestedCountOfUniqueFormattedCodes() {
         when(diamondCardRepository.existsByCardCode(any())).thenReturn(false);
 
-        GenerateCardsResponse response = service.generateCards(5, 100L);
+        GenerateCardsResponse response = service.generateCards("admin1", 5, 100L);
 
         assertThat(response.count()).isEqualTo(5);
         assertThat(response.faceValue()).isEqualTo(100L);
@@ -52,6 +56,7 @@ class DiamondCardServiceTest {
         verify(diamondCardRepository).saveAll(captor.capture());
         assertThat((List<DiamondCard>) captor.getValue()).hasSize(5)
                 .allSatisfy(card -> assertThat(card.getFaceValue()).isEqualTo(100L));
+        verify(actionLogRepository).save(any(AdminActionLog.class));
     }
 
     @Test
@@ -59,9 +64,20 @@ class DiamondCardServiceTest {
         // 第一個候選碼撞號（已存在）→ 應重產，最終仍得 1 張
         when(diamondCardRepository.existsByCardCode(any())).thenReturn(true, false);
 
-        GenerateCardsResponse response = service.generateCards(1, 50L);
+        GenerateCardsResponse response = service.generateCards("admin1", 1, 50L);
 
         assertThat(response.cardCodes()).hasSize(1);
+    }
+
+    @Test
+    void generateCards_auditWriteFails_stillReturnsCards() {
+        // 稽核為 best-effort：失敗不可讓卡片生成本身跟著失敗
+        when(diamondCardRepository.existsByCardCode(any())).thenReturn(false);
+        when(actionLogRepository.save(any())).thenThrow(new RuntimeException("db down"));
+
+        GenerateCardsResponse response = service.generateCards("admin1", 2, 100L);
+
+        assertThat(response.cardCodes()).hasSize(2);
     }
 
     @Test

@@ -20,6 +20,8 @@ import com.luckystar.admin.dto.PlayerSummary;
 import com.luckystar.admin.mysql.entity.MemberRead;
 import com.luckystar.admin.mysql.repository.MemberReadRepository;
 import com.luckystar.admin.mysql.repository.WalletTransactionReadRepository;
+import com.luckystar.admin.postgres.entity.AdminActionLog;
+import com.luckystar.admin.postgres.repository.AdminActionLogRepository;
 import com.luckystar.admin.postgres.repository.GameRoundReadRepository;
 import com.luckystar.admin.postgres.repository.WalletReadRepository;
 import java.util.List;
@@ -44,13 +46,15 @@ class AdminPlayerServiceTest {
     @Mock GameRoundReadRepository gameRoundRepository;
     @Mock PlayerBanService playerBanService;
     @Mock MemberClient memberClient;
+    @Mock AdminActionLogRepository actionLogRepository;
 
     AdminPlayerService service;
 
     @BeforeEach
     void setUp() {
         service = new AdminPlayerService(memberRepository, walletRepository,
-                transactionRepository, gameRoundRepository, playerBanService, memberClient);
+                transactionRepository, gameRoundRepository, playerBanService, memberClient,
+                actionLogRepository);
     }
 
     private MemberRead member(long id, String username, String nickname) {
@@ -119,32 +123,35 @@ class AdminPlayerServiceTest {
     void setStatus_disable_persistsThenBans() {
         when(memberRepository.existsById(1L)).thenReturn(true);
 
-        Optional<PlayerStatusResponse> result = service.setStatus(1L, false);
+        Optional<PlayerStatusResponse> result = service.setStatus("admin1", 1L, false);
 
         assertThat(result).contains(new PlayerStatusResponse(1L, true));
         verify(memberClient).updateStatus(1L, false);
         verify(playerBanService).ban(1L);
         verify(playerBanService, never()).unban(eq(1L));
+        verify(actionLogRepository).save(any(AdminActionLog.class));
     }
 
     @Test
     void setStatus_enable_persistsThenUnbans() {
         when(memberRepository.existsById(1L)).thenReturn(true);
 
-        Optional<PlayerStatusResponse> result = service.setStatus(1L, true);
+        Optional<PlayerStatusResponse> result = service.setStatus("admin1", 1L, true);
 
         assertThat(result).contains(new PlayerStatusResponse(1L, false));
         verify(memberClient).updateStatus(1L, true);
         verify(playerBanService).unban(1L);
+        verify(actionLogRepository).save(any(AdminActionLog.class));
     }
 
     @Test
     void setStatus_unknownPlayer_returnsEmpty() {
         when(memberRepository.existsById(99L)).thenReturn(false);
 
-        assertThat(service.setStatus(99L, false)).isEmpty();
+        assertThat(service.setStatus("admin1", 99L, false)).isEmpty();
         verify(memberClient, never()).updateStatus(anyLong(), anyBoolean());
         verify(playerBanService, never()).ban(any());
+        verify(actionLogRepository, never()).save(any());
     }
 
     @Test
@@ -153,9 +160,22 @@ class AdminPlayerServiceTest {
         when(memberRepository.existsById(1L)).thenReturn(true);
         doThrow(new MemberServiceException("down")).when(memberClient).updateStatus(1L, false);
 
-        assertThatThrownBy(() -> service.setStatus(1L, false))
+        assertThatThrownBy(() -> service.setStatus("admin1", 1L, false))
                 .isInstanceOf(MemberServiceException.class);
         verify(playerBanService, never()).ban(any());
         verify(playerBanService, never()).unban(any());
+        verify(actionLogRepository, never()).save(any());
+    }
+
+    @Test
+    void setStatus_auditWriteFails_stillReturnsSuccessResponse() {
+        // 稽核寫入為 best-effort：失敗不可讓停用/啟用本身跟著失敗
+        when(memberRepository.existsById(1L)).thenReturn(true);
+        when(actionLogRepository.save(any())).thenThrow(new RuntimeException("db down"));
+
+        Optional<PlayerStatusResponse> result = service.setStatus("admin1", 1L, false);
+
+        assertThat(result).contains(new PlayerStatusResponse(1L, true));
+        verify(playerBanService).ban(1L);
     }
 }

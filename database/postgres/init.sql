@@ -127,6 +127,7 @@ CREATE INDEX IF NOT EXISTS idx_game_rounds_player_id  ON game_rounds (player_id)
 CREATE INDEX IF NOT EXISTS idx_game_rounds_created_at ON game_rounds (created_at);
 
 -- -------------------------------------------------------
+feature/weiyu-saga-compensation-and-contracts
 -- pending_wallet_credits：game→wallet 補償單（ADR-009，Saga 補償）
 -- credit（派彩/退款）失敗時落地為「待送出的 wallet credit」，
 -- 排程帶同一冪等鍵重試；wallet 端 idempotency_key UNIQUE 保證不重複入帳。
@@ -156,6 +157,34 @@ CREATE TABLE IF NOT EXISTS pending_wallet_credits (
 -- 重試排程的撈單條件：status='PENDING' AND next_retry_at <= now
 CREATE INDEX IF NOT EXISTS idx_pwc_status_retry ON pending_wallet_credits (status, next_retry_at);
 CREATE INDEX IF NOT EXISTS idx_pwc_player_id    ON pending_wallet_credits (player_id);
+
+-- cashback_records：每日/每週虧損返利記錄（去重 + 稽核，防排程重複發放）
+-- 對應 database/postgres/migration/V9__add_cashback_records.sql
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS cashback_records (
+    id                BIGSERIAL     NOT NULL,
+    player_id         BIGINT        NOT NULL,
+    period_type       VARCHAR(10)   NOT NULL,   -- DAILY / WEEKLY
+    period_start      DATE          NOT NULL,   -- 計算的期間起始日（日返=昨日、週返=上週一）
+    loss_amount       BIGINT        NOT NULL,   -- 該期間淨虧損金額
+    cashback_rate     NUMERIC(5,4)  NOT NULL,   -- 套用返利率（e.g. 0.0500）
+    cashback_amount   BIGINT        NOT NULL,   -- 實際入帳金額（floor(loss * rate)）
+    idempotency_key   VARCHAR(100)  NOT NULL,   -- wallet.credit.request 冪等鍵
+    status            VARCHAR(20)   NOT NULL DEFAULT 'PENDING',
+    created_at        TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    credited_at       TIMESTAMP,
+    CONSTRAINT pk_cashback_records          PRIMARY KEY (id),
+    CONSTRAINT uq_cashback_idem_key         UNIQUE (idempotency_key),
+    CONSTRAINT uq_cashback_player_period    UNIQUE (player_id, period_type, period_start),
+    CONSTRAINT chk_cashback_period_type     CHECK (period_type IN ('DAILY', 'WEEKLY')),
+    CONSTRAINT chk_cashback_status          CHECK (status IN ('PENDING', 'CREDITED', 'FAILED')),
+    CONSTRAINT chk_cashback_loss_positive   CHECK (loss_amount > 0),
+    CONSTRAINT chk_cashback_amount_positive CHECK (cashback_amount > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cashback_player_id ON cashback_records (player_id);
+CREATE INDEX IF NOT EXISTS idx_cashback_period    ON cashback_records (period_type, period_start);
+develop
 
 -- -------------------------------------------------------
 -- rank_history：週排行榜歷史快照

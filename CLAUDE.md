@@ -61,6 +61,12 @@ Define success criteria. Verify before declaring done.
   executing.
 * **Upgrade later**: Once I reach the testing chapter of my plan (JUnit / TDD),
   upgrade this section to "write tests first, then make them pass".
+* **Track plan status**: When a feature or a plan item is finished (or a
+  plan item is explicitly dropped/blocked), update its status in the
+  corresponding checklist inside `docs/plans/`（例如 `docs/plans/01-八項架構改進施工藍圖.md`
+  的進度總覽表）— mark it done (✅) or not-done (⬜/🔶 進行中) right after the work
+  lands, not in a separate later pass. If the plan file has no status table yet,
+  add one rather than skipping this step.
 
 ---
 
