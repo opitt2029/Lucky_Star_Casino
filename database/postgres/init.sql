@@ -127,7 +127,6 @@ CREATE INDEX IF NOT EXISTS idx_game_rounds_player_id  ON game_rounds (player_id)
 CREATE INDEX IF NOT EXISTS idx_game_rounds_created_at ON game_rounds (created_at);
 
 -- -------------------------------------------------------
-feature/weiyu-saga-compensation-and-contracts
 -- pending_wallet_credits：game→wallet 補償單（ADR-009，Saga 補償）
 -- credit（派彩/退款）失敗時落地為「待送出的 wallet credit」，
 -- 排程帶同一冪等鍵重試；wallet 端 idempotency_key UNIQUE 保證不重複入帳。
@@ -184,7 +183,6 @@ CREATE TABLE IF NOT EXISTS cashback_records (
 
 CREATE INDEX IF NOT EXISTS idx_cashback_player_id ON cashback_records (player_id);
 CREATE INDEX IF NOT EXISTS idx_cashback_period    ON cashback_records (period_type, period_start);
-develop
 
 -- -------------------------------------------------------
 -- rank_history：週排行榜歷史快照
