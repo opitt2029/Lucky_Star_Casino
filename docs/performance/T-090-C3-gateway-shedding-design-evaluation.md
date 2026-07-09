@@ -1,6 +1,8 @@
 # T-090 C3（設計評估）— gateway 卸載機制：固定在途上限 vs 動態令牌桶
 
-> 日期：2026-07-09。狀態：**設計評估，未實作**——依約定先給你拍板再寫程式。
+> 日期：2026-07-09。狀態：**已拍板＝方案 D（動態在途上限）＋ §3.3 wallet 路徑納管，已實作**
+> （分支 `feature/huang-c3-adaptive-concurrency-limit`，`RouteConcurrencyLimitGlobalFilter`
+> ＋ `AdaptiveInFlightLimiter`，13 個單元測試綠燈；對照壓測重跑待執行）。
 > 前置閱讀：`GameConcurrencyLimitGlobalFilter.java`（C1 現況）、藍圖 C1/D1 節、
 > B1 剖析報告（`T-090-B1-wallet-debit-analysis.md`，後端延遲波動的實證來源）。
 

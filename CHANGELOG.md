@@ -1,3 +1,21 @@
+## [perf] -- 2026-07-09 -- T-090 C3：gateway 併發上限動態化（AIMD 在途上限）＋ wallet 路徑納管
+
+### Added
+- `backend/gateway-service/.../filter/AdaptiveInFlightLimiter.java`：單一路徑前綴的動態在途限流器——Little's Law 即時層（在途上限固定的瞬間，延遲惡化自動壓低放行速率）＋ AIMD 回饋層（窗內 P95 超標 ×0.8 收緊、達標 +2 放寬、floor/ceiling 夾住、無流量不動）。延遲觀測是 per-instance 記憶體 ring buffer（tumbling window，容量 2048），熱路徑零同步、拒絕路徑維持零 I/O。
+- `application.yml` 的 `concurrency-limit` 改為 route 清單並新增 `/api/v1/wallet/` 路徑（B1：1,000 併發殘餘失敗六成六集中於未受保護的 wallet 路徑）；每條 route 有獨立 env 覆寫（`*_CONCURRENCY_LIMIT/FLOOR/CEILING/LATENCY_TARGET_MS`、`CONCURRENCY_ADJUST_INTERVAL_MS`）。
+
+### Changed
+- `GameConcurrencyLimitGlobalFilter` 一般化為 `RouteConcurrencyLimitGlobalFilter`：卸載機制（429 + Retry-After、JWT 之前執行、doFinally 歸還名額）不變，改為依設定的路徑前綴各持獨立 `AdaptiveInFlightLimiter`（game 寫路徑與 wallet 讀路徑容量特性不同，共用一個桶會互相污染回饋訊號）；新增 `@Scheduled`（預設每 5 秒）AIMD 調整迴圈，`GatewayServiceApplication` 加 `@EnableScheduling`。
+- `ConcurrencyLimitProperties` 從單一 `game` record 改為 `List<Route>`（pathPrefix/maxInFlight/floor/ceiling/latencyTargetMs）；`FilterOrder.GAME_CONCURRENCY_LIMIT` 更名 `CONCURRENCY_LIMIT`（值 -150 不變）。
+
+### Why
+- C3 設計評估（`docs/performance/T-090-C3-gateway-shedding-design-evaluation.md`）五選項拍板＝方案 D：動態令牌桶（方案 C）調的是速率、要保護的卻是在途，延遲驟變時要等一個觀測窗才反應；動態在途上限保留 Little's Law 零延遲的第一層保護，AIMD 只負責把上限收斂到機器真容量，回饋失效時退化成 C1 固定上限仍安全。同時收編 B1 改善方向第 4 項（上游承壓封頂）：wallet 路徑納管不會讓 debit 變快（瓶頸＝本機 Postgres 交易容量 ≈550-600 筆/秒），但防止超量流量把排隊時間堆到失控。
+- 150 併發迴歸基準不受影響：實測在途 ≈100 遠低於 target 下的任何 max，AIMD 只在 P95 超標時收緊；floor=50 保底不絕流。
+
+### 如何驗證
+- `mvn -pl backend/gateway-service test`：41/41 綠（`RouteConcurrencyLimitGlobalFilterTest` 13 個：原 C1 六個語意全保留＋wallet 獨立計數＋AIMD 收緊/放寬/floor-ceiling 夾住/無流量不調/窗歸零/收緊低於在途時計數不毀）。
+- 對照壓測（150/1,000 併發，照 C1 SOP）待跑，跑完補充至 `T-090-load-test-report.md`。
+
 ## [fix] -- 2026-07-09 -- T-090 B1：wallet-service HikariCP maximum-pool-size 巢狀 key 失效（實際一直跑預設 10，非宣稱的 15/10）＋剖析報告
 
 ### Fixed
