@@ -1,3 +1,18 @@
+## [test] -- 2026-07-09 -- T-090 C3+B1 效果對照重跑（150/1,000 併發）：wallet 路徑保護生效、401 歸零、成功 +430%
+
+### Added
+- `docs/performance/T-090-load-test-report.md`：新增「2026-07-09 C3（自適應在途上限）+ B1（Hikari 修正）效果對照重跑」章節——150 正式輪（`20260709-161414`）與 1,000 輪（`20260709-162358`）完整數據、對 C1 輪逐項對照表、Prometheus 佐證、T-091 對帳結果、CB/AIMD 閾值協調課題。
+- `tests/performance/results/20260709-{160905,161414,162358}/`：暖機輪（棄置）、150 正式輪、1,000 輪的 JTL/acceptance-report/HTML dashboard（不入版控，僅本機）。
+
+### Changed
+- `docs/plans/02-T-090-效能調校藍圖.md`：C3 列狀態由「對照壓測重跑待執行」改為「對照重跑已完成（2026-07-09）」附重點數據。
+
+### Why
+- C3（AIMD per-route 在途上限，首次收編 `/api/v1/wallet/**`）落地後需照 C1 SOP 對照重跑驗證機制效果。結果：150 併發 10,258 樣本 0 失敗/0 卸載、P99 2,753→1,423 ms；1,000 併發成功 1,477→7,829（+430%）、401 1,988→0、SocketTimeout −94%、wallet sampler 0 失敗（C1 殘餘課題①關閉）；429 佔比 65.3%>40% 誠實 FAIL（需求−容量差額，D1 課題）；殘餘失敗收斂為 game CB 503（2,024 筆 ≈ CB not_permitted 2,079）。帳務 gate 全 PASS（0 超扣/0 重複扣款；對帳 3 筆差異＝已知 2026-06-16 歷史髒資料）。⚠️ 歸因：本輪同時含 B1 Hikari pool 修正，debit 延遲改善（581→492 ms）主要歸 B1，報告內有明示聲明。
+
+### 如何驗證
+- 暖機（棄置）→ 2.5 分鐘輪距 → `run-slot-load-test.ps1 -Threads 150 -Max429Ratio 0` → 重新 provision 1,000 名（兼輪距）→ `-Threads 1000`；對帳 `accounting-reconciliation.sql` 經 `docker exec lucky-star-postgres psql` 執行，9 項檢查除歷史髒資料外全 0。
+
 ## [docs] -- 2026-07-09 -- interview-prep：新增 13-壓測與效能調校（T-090 戰役）＋既有筆記對齊 7 月現況
 
 ### Added
