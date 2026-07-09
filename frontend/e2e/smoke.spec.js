@@ -44,8 +44,8 @@ test.describe('player site smoke', () => {
     await expect(page).toHaveURL(/\/diamond$/)
     await expect(page.getByRole('heading', { name: '鑽石錢包' })).toBeVisible()
 
-    await page.getByRole('link', { name: '遊戲紀錄' }).click()
-    await expect(page).toHaveURL(/\/game-history$/)
-    await expect(page.getByRole('heading', { name: '遊戲紀錄' })).toBeVisible()
+    await page.getByRole('link', { name: '交易/遊戲紀錄' }).click()
+    await expect(page).toHaveURL(/\/records$/)
+    await expect(page.getByRole('heading', { name: '交易/遊戲紀錄' })).toBeVisible()
   })
 })
