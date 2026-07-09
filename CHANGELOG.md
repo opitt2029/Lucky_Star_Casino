@@ -1,3 +1,18 @@
+## [fix] -- 2026-07-09 -- T-090 B1：wallet-service HikariCP maximum-pool-size 巢狀 key 失效（實際一直跑預設 10，非宣稱的 15/10）＋剖析報告
+
+### Fixed
+- `backend/wallet-service/src/main/resources/application.yml`：`spring.datasource.hikari.maximum-pool-size`／`spring.datasource-mysql.hikari.maximum-pool-size` 這兩個 key 拿掉多餘的巢狀 `hikari:` 層，改為攤平的 `spring.datasource.maximum-pool-size` 等。
+
+### Why
+- `DataSourceConfig.java` 的 `postgresDataSource()`/`mysqlDataSource()` 是手動 `@Bean` + `@ConfigurationProperties(prefix = "spring.datasource"/"spring.datasource-mysql")` **直接綁在 `HikariDataSource` 物件上**，只認得該物件攤平的 setter（`maximumPoolSize`／`minimumIdle`／`connectionTimeout`），沒有巢狀 `hikari` 屬性可綁——這和 Spring Boot 自動配置認得的 `spring.datasource.hikari.*` 是兩回事（那條路徑只在 Spring Boot 自己組裝 DataSource 時才生效，本服務是手動組裝）。結果是設定檔寫的 `maximum-pool-size: 15`（postgres）從未生效，實際一直跑 HikariCP 內建預設值 10（mysql 端因為預設本來就是 10，巧合沒被發現）。
+- 於 T-090 B1（wallet debit 路徑剖析）量測時，用 `/actuator/prometheus` 的 `hikaricp_connections_max` 直接量到 `max=10`，兩邊設定值都對不上，才揪出這個靜默失效的 key。
+
+### 如何驗證
+- 修正前後對照：`curl localhost:8082/actuator/prometheus | grep hikaricp_connections_max` 從 `HikariPool-1{max=10}` 變成 `HikariPool-1{max=15}`（postgres），mysql 端 `HikariPool-2` 維持 `max=10`（本來就等於預設值，行為不變，只是現在是「設定生效後剛好等於 10」而非「設定沒生效落回預設 10」）。
+- `mvn -pl backend/wallet-service test`：161/161 全綠。
+- **重要**：A/B 量測（150 併發、隔離直打 wallet-service debit，繞開 game-service/gateway）顯示 pool size 從 10 提升到 15、甚至實驗值 60，延遲量級都沒有顯著改善（avg 一直落在 280~430ms、p99 420~860ms），且穩態下連線池未被打滿——**這個修正單獨不會讓 debit 變快**，純粹是讓設定檔說的話算數，為後續調校建立正確的基準線。完整分析與尚未解開的瓶頸（初步指向單機 CPU/執行緒競爭）見 `docs/performance/T-090-B1-wallet-debit-analysis.md`。
+- code-reviewer 審查 PASS（範圍窄：僅連線池容量設定，未動帳務/冪等/樂觀鎖邏輯）。
+
 ## [test] -- 2026-07-08 -- T-090 C1+C2 效果對照重跑：成功數 +126%、401 −63%、spin 延遲腰斬；殘餘失敗移位到未受保護的 wallet 路徑
 
 ### Added
