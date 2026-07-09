@@ -17,10 +17,10 @@
 4. **純 wallet-service 隔離測試在 150 併發下已重現歷史數字量級**（avg 279~314ms、p99 500~800ms，
    對照歷史全鏈路「547ms 平均」）——代表 wallet debit **自身的處理成本**（不是連線排隊）就是全鏈路
    debit 延遲的大宗來源。
-5. **可能的真正瓶頸：單機 CPU/執行緒排程競爭**。壓測期間 wallet-service 進程持續消耗約 4 顆核心
-   （機器共 12 邏輯核心，còn要跟 postgres/mysql/kafka/zookeeper/load generator 搶）。這與
-   D1 拍板紀錄已知的「單機拓樸無法乾淨隔離瓶頸」問題一致，需要更細的 profiling（JFR/async-profiler）
-   或多機拓樸才能繼續往下鑿。
+5. ~~可能的真正瓶頸：單機 CPU/執行緒排程競爭~~（此為初版猜測，已由同日下午的 JFR
+   對照剖析推翻並取代——見下方「JFR 定位（續篇）」節）。**最終定位：瓶頸是 DB 端交易
+   容量（本機 Postgres ≈550–600 筆 debit 交易/秒），連線池大小只決定「隊伍排在應用內
+   （Hikari）還是資料庫內（Postgres）」，總延遲不變。**
 
 ## 附帶發現：測試環境有 migration 落後
 
@@ -75,7 +75,61 @@ DLT group）常駐消費，壓測期間也在即時消費新產生的 debit/cred
 | HikariCP pool 太小造成排隊 | 高（且發現真實 bug：15 從未生效，實際跑 10） | **部分成立、部分推翻**：bug 真實存在且已修正，但即使加大到 60，延遲量級不變 → 不是 150 併發下的主要瓶頸 |
 | `wallets` 表 MVCC 膨脹拖慢 point update | 中 | **證據不支持**：目前只有 8.57% dead tuple，表僅 664kB，不足以解釋數倍延遲 |
 | 每筆 debit 同步寫入數過多（wallet+transaction+索引維護） | 低 | 未見異常；`wallet_transactions` insert-only 無 bloat，多索引維護成本量測不出顯著影響 |
-| （新增）單機 CPU/執行緒競爭 | 未列入原始假說 | **最新首要嫌疑**：壓測期間穩定消耗 ~1/3 機器算力，且與 D1 已知「單機拓樸無法乾淨量測」的結構性問題吻合 |
+| （新增）單機 CPU/執行緒競爭 | 未列入原始假說 | ~~一度列為首要嫌疑~~ → JFR 續篇推翻：hot-methods 極度平坦（最高 0.91%），CPU 不是瓶頸，執行緒絕大多數時間在**等待** |
+| （最終定案）DB 端交易容量 | 未列入原始假說 | **JFR 對照證實**：pool=15 時等待發生在 Hikari `ConcurrentBag.borrow`；pool=60 時同樣的時間轉移到 Socket Read（等 Postgres 回應），吞吐兩輪都 ≈550/s——瓶頸是本機 Postgres 的交易處理容量，見下方續篇 |
+
+## JFR 定位（續篇，2026-07-09 下午）——瓶頸最終定案
+
+上表「單機 CPU 競爭」假說用 JFR（`settings=profile`，90 秒錄製窗涵蓋整輪 150 併發
+×30,000 筆負載）做了兩輪對照驗證，結果推翻了 CPU 假說、也把「pool 大小不是瓶頸」的
+早前結論精緻化成更準確的版本。
+
+### 兩輪對照設定
+
+- **輪 A（pool=15）**：即已 commit 的修正後設定。錄製檔 `debit-150c.jfr`。
+- **輪 B（pool=60）**：以 JVM system property `-Dspring.datasource.maximum-pool-size=60`
+  臨時覆寫（不動 yml），`hikaricp_connections_max` 驗證生效。錄製檔 `debit-150c-pool60.jfr`。
+- 兩輪皆先暖機 400 筆棄置；負載相同（150 併發、30,000 筆、200 玩家輪替）。
+
+### 關鍵數據對照
+
+| 指標 | 輪 A（pool=15） | 輪 B（pool=60） |
+|---|---:|---:|
+| 壓測結果 avg / p99 | 250ms / 584ms | 276ms / 510ms |
+| 吞吐 | 598/s | 543/s |
+| hot-methods 最大單一方法佔比 | 0.91%（極度平坦，CPU 無熱點） | 同樣平坦 |
+| tomcat-worker 停放在 **Hikari 連線等待**（`ConcurrentBag.borrow` → `SynchronousQueue.poll`，JDK 21 底層為 `LinkedTransferQueue$DualNode.await`） | **6,079 秒 / 29,707 次**（≈每請求一次、平均 205ms ≈ 82% 的請求延遲） | 429 秒 / 2,849 次（−93%） |
+| Socket Read（等 DB 回應，JFR 有門檻只錄慢事件） | 48 秒 / 3,375 次 | **467 秒 / 30,219 次**（平均 15.5ms） |
+
+### 解讀（教學點：排隊不會消失，只會搬家）
+
+1. **CPU 假說死刑**：兩輪 hot-methods 都極度平坦（沒有任何方法超過 1%），執行緒
+   時間幾乎全在停放等待，不在計算。早上看到的「吃 4 顆核」是 150 條 Tomcat 執行緒
+   ＋7 個 Kafka listener 的排程/等待開銷總和，不是計算熱點。
+2. **pool=15 時，請求延遲的 82% 是「等一條連線可用」**——JFR 停放堆疊直指
+   `HikariPool.getConnection`。這推翻了早前用 0.5 秒輪詢 gauge 得出的「連線池沒被
+   打滿」觀察（gauge 取樣太疏，抓不到高頻短暫的 borrow 等待；JFR 是全事件記錄）。
+3. **但把 pool 加到 60，等待時間原封不動轉移到 Socket Read**：連線立刻拿得到了，
+   換成 60 個併發交易在 Postgres 裡互相爭搶，單一查詢從快變慢（Socket Read 事件
+   從 3,375 次暴增到 30,219 次超過記錄門檻）。總延遲、總吞吐兩輪幾乎一樣。
+4. **結論：本機 Postgres 的 debit 交易容量 ≈550–600 筆/秒，是硬上限**。每筆 debit
+   交易含 4 次往返（冪等查詢、載入錢包、UPDATE、INSERT）＋commit（同步 WAL fsync）；
+   吞吐由「DB 能同時消化多少交易」決定，與應用端開幾條連線無關。連線池大小唯一決定
+   的是**排隊的地點**——這正是 HikariCP 官方「pool sizing」文件主張「小池勝大池」
+   的原因：隊伍排在應用端（毫秒級可觀測、可卸載）比排在 DB 內（放大鎖競爭與 context
+   switch）更健康。**故 pool=15 不必調大，維持現值。**
+
+### 真正能改善 debit 延遲的方向（依效益排序，供後續拍板）
+
+1. **減少每筆交易的 DB 往返數**（應用層優化，效益直接）：例如冪等檢查與錢包載入
+   合併為單一查詢、或用 `INSERT ... ON CONFLICT DO NOTHING RETURNING` 讓冪等寫入
+   一次往返完成。**動這裡＝動帳務核心（雷區 8），需 issue＋review＋Testcontainers 全套**。
+2. **降低 commit 成本**：Postgres `synchronous_commit=off` 可大幅提升交易吞吐，但
+   **帳務庫不可接受**（crash 掉尾端已確認的交易）；僅可作為壓測環境隔離變因的實驗工具。
+3. **DB 端擴容/搬家**：把 Postgres 移到獨立機器（不與 7 個 JVM＋JMeter 搶資源）——
+   這就是 D1 的多機拓樸議題，單機環境已量到天花板。
+4. **上游承壓封頂**：C1/C3 的 gateway 併發上限（wallet 路徑納管）——不會讓 debit
+   變快，但能防止超過 ~550/s 的流量把排隊時間堆到失控（回頭呼應 C3 設計文件 §3.3）。
 
 ## 建議下一步（先給你拍板，不逕自動刀）
 
@@ -90,10 +144,8 @@ DLT group）常駐消費，壓測期間也在即時消費新產生的 debit/cred
    但這只修了我這台機器的 volume；其他人／CI 若用舊 volume 一樣會撞到）。建議之後找機會
    把「啟動時自動檢查/套用 migration」排進待辦（目前是純手動流程，AGENTS.md 雷區已提醒但
    沒有自動化保護網）。
-3. **若要繼續往下鑿真正瓶頸**：建議上 JFR（Java Flight Recorder）或 async-profiler 對
-   wallet-service 在 150 併發下抓 CPU 火焰圖，直接看時間花在哪一段程式碼／哪個框架層
-   （Jackson 序列化？Hibernate flush？Tomcat NIO？GC？），比繼續猜測更有效率。這需要
-   額外一輪量測，尚未執行。
+3. ~~若要繼續往下鑿真正瓶頸：建議上 JFR~~ **已完成（見上方「JFR 定位（續篇）」節）**：
+   瓶頸定案為 DB 端交易容量，改善方向四選項已列出待拍板。
 4. **gateway `/api/v1/wallet/**` 併發上限**（原任務 1 附帶項）：本次未觸及，需等瓶頸定位
    更清楚後再評估是否需要與任務 2（動態令牌桶）一起設計。
 
@@ -106,3 +158,9 @@ wallet-service 正規 `credit(subType=REFUND)` API 全額退回（`idempotencyKe
 淨額驗證為 0（`SUM(debit) - SUM(credit) = 0`）。**未刪除任何流水列**——測試扣款與退款
 都誠實留在 `wallet_transactions`，可由 `reference_id LIKE 'lt-%' OR reference_id =
 'b1-loadtest-cleanup'` 篩選識別／排除，供後續對帳參考。
+
+**JFR 續篇加測（同日下午）**：兩輪各 30,400 筆（`lt2-`/`lt3-` 前綴），同樣以
+`credit(REFUND)` 全額退回（`idempotencyKey` 前綴 `b1-loadtest-cleanup2-refund-{playerId}`、
+`referenceId=b1-loadtest-cleanup2`），淨額驗證為 0。合計本日 B1 剖析在 `wallet_transactions`
+留下約 12.4 萬筆可識別的測試流水（`reference_id ~ '^lt[0-9]*-' OR reference_id LIKE
+'b1-loadtest-cleanup%'`），全部平帳。
