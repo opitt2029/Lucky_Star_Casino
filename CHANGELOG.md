@@ -1,3 +1,4 @@
+ feature/weiyu-admin-audit-fixes
 ## [fix] -- 2026-07-08 -- 修補玩家停用的稽核破口：Redis 封鎖改 best-effort，不再因 Redis 失敗回滾稽核
 
 ### 背景
@@ -73,6 +74,102 @@
 
 ### 如何驗證
 - `mvn -pl backend/admin-service test`：92 全綠（含改寫後的 `AdminAlertServiceTest`，7 項）。
+=======
+## [perf] -- 2026-07-08 -- T-090 效能調校 Phase A（A1–A4）：風控統計移出熱路徑
+
+### Added
+- `backend/game-service/.../scheduler/GlobalRtpCacheScheduler.java`（A1）：每 2 秒（`risk.rtp-cache-refresh-ms`）對 SLOT/BACCARAT/FISHING 各跑一次既有 `aggregateRecent` 聚合，寫入 Redis `risk:rtp:{gameType}`（value=`totalBet:totalWin`、TTL 10 秒）；單一遊戲刷新失敗不中斷其他遊戲。
+- `database/postgres/migration/V15__add_game_rounds_risk_indexes.sql` ＋ `database/postgres/init.sql`（A3）：`game_rounds` 補兩個 partial 複合索引 `idx_game_rounds_type_created (game_type, created_at DESC)` 與 `idx_game_rounds_player_type_settled (player_id, game_type, settled_at)`（皆 `WHERE status='SETTLED'`），服務排程聚合與 cache-miss 回填。
+- `RiskControlService.recordRoundSettled()`（A2）：每局結算落地後以單一 Lua（HINCRBY bet/win + PEXPIRE）累加 `risk:player-day:{playerId}:{yyyyMMdd}:{gameType}`（TTL 48h，日期入 key 天然跨日歸零）；best-effort，Redis 故障僅 log 不影響結算。三個遊戲（`SlotService`/`BaccaratService`/`FishingService`）皆於 `roundRepository.save` 首次落地成功後呼叫，口徑＝`game_rounds.bet_amount/win_amount`（含本金，與 `aggregatePlayerToday` 一致）。
+
+### Changed
+- `RiskControlService`：
+  - `isGlobalRtpOverLimit`（A1）改先讀 Redis 快取，miss（排程未跑過/Redis 故障/格式異常）退回直查 DB——只改「數據怎麼來」，不改「怎麼判」（per-game 門檻與含本金口徑不動，雷區 17）。
+  - `isPlayerOverLimit`（A2）改先讀日水位 hash，miss 退回 DB 聚合並以 HSETNX 回填（不覆蓋並發中的 HINCRBY，避免蓋掉別局剛累加的量）。
+  - 並發閘（A4）：`INCR`+`EXPIRE` 兩次往返合併為單一 Lua，且僅在計數器 0→1 首次取號時 PEXPIRE——修掉「每次 INCR 都續命 TTL」的語意問題；釋放端亦改 Lua（DECR 歸零即刪 key）——code review 抓出裸 DECR 在 key 先過期（請求超過 30s TTL / Redis 重啟）時會把計數器重建為無 TTL 的負值、並發閘對該玩家永久失效。
+  - `isPlayerOverLimit` 命中條件改「bet/win 兩欄皆存在」才信任快取，殘缺 hash（回填只寫入一欄即中斷）視同 miss 退回 DB——否則 netWin 恆為負、上限實質停用（code review 發現）。
+- `backend/game-service/src/main/resources/application.yml`：`risk.rtp-cache-refresh-ms: 2000`。
+- `docs/plans/02-T-090-效能調校藍圖.md`：進度表 A1–A4 標記已落地。
+- `CHANGELOG.md`：順手移除檔首殘留的分支名字串。
+
+### Why
+- 1,000 併發實測（2026-07-08）P99 5,291 ms 的主因是風控統計在請求熱路徑上即時重算：每局一次「近 500 局排序聚合」＋一次 per-player DB 聚合，1,000 個併發請求各自重算同一個全域答案、互相爭搶。修法＝統計改事件驅動維護（排程/計數器）、熱路徑只讀 Redis O(1)，DB 聚合退居 miss 回填與對帳基準（單一真相仍在 `game_rounds`）。
+- 可接受 2 秒舊資料：全局 RTP 攔截是統計性水位警報，非帳務正確性機制（帳務由 wallet 冪等鍵＋樂觀鎖守，雷區 8）；風險上限與 `rtp-sample-size: 500` 的統計慣性同量級。
+- 計數器累加放在對局落地之後且 best-effort：寧可水位少計一局（下次 miss 由 DB 回填補正），不可因 Redis 故障讓結算失敗。
+
+### 如何驗證
+- `mvn -pl backend/game-service test`：190 tests 全綠（含 `RiskControlServiceTest` 新增 9 個 A1/A2/A4 測試：快取命中不查 DB、miss 降級直查、HSETNX 回填、Lua 並發閘、best-effort 不拋例外）。
+- 效能對照（150 併發迴歸基準 + 1,000 併發趨勢）待重跑 T-090/T-091 後回填報告——依藍圖統一驗證流程，帳務 gate 為不可回歸硬底線。
+
+## [docs] -- 2026-07-08 -- T-090 效能調校藍圖：P99/5xx/失敗樣本的分階段施工計畫
+
+### Added
+- `docs/plans/02-T-090-效能調校藍圖.md`：把 1,000 併發重跑後的「下一輪效能調校」從一句話變成 8 個可施工項（A1–A4 風控查詢移出熱路徑／B1 wallet debit 剖析／C1 gateway 併發上限／C2 起跑 401／D1 驗收環境拍板），含進度表、施工順序與統一驗證流程。
+
+### Why
+- 效能 gate（P99 < 500 ms、5xx = 0、失敗 = 0）不過即不能上線，但先前僅有方向性描述、無計畫。讀碼定位出主因：`SlotService.settleInternal` 每局在請求路徑內跑 `GameRoundRepository.aggregateRecent`（近 500 局排序聚合）＋ `aggregatePlayerToday` 兩次 DB 查詢，且 `game_rounds` 缺複合索引——修法是把統計改為事件驅動維護、熱路徑只讀快取（O(N) 聚合移出 O(1) 路徑），而非調快查詢。
+- 帳務 gate 為不可回歸硬底線已寫入計畫的統一驗證流程。
+
+### 如何驗證
+- 純文件新增，無行為變更；各 Phase 落地時依計畫內驗證流程重跑 T-090/T-091 並回填進度表。
+
+## [test] -- 2026-07-08 -- T-090 1,000 併發完整重跑（TimeLimiter 修正後驗證）
+
+### 背景
+- gateway TimeLimiter 修正（見下一條目）先前僅在 150 併發驗證（5xx 78% → 0）；規格級 1,000 併發的修正後完整重跑尚未執行。本次同拓撲補跑到底，驗證修正在真實規格併發下的效果。
+
+### Added
+- `docs/performance/T-090-load-test-report.md`：新增「2026-07-08 gateway TimeLimiter 修正驗證（1,000 併發完整重跑）」節——12,530 樣本、P99 5,291 ms、失敗 8,582（68.5%），失敗組成拆解為 503 3,870（30.9%，較修正前 13,709 減 72%）／client 5s SocketTimeout 4,369（34.9%）／401 343（2.7%，起跑尖峰 12 秒內 JWT filter Redis fail-closed 所致）；idempotency/overdraw 全程 0。
+- 壓測產物：`tests/performance/results/20260708-103916/`（JTL/HTML/acceptance-report）、`tests/performance/results/accounting-20260708-104156/`（T-091 對帳 CSV，本機無 psql 改以 `docker exec lucky-star-postgres psql` 執行同一 SQL）。
+
+### Changed
+- `docs/performance/T-090-load-test-report.md`、`CHANGELOG.md`：順手清除 merge commit `166b179` 遺留的 conflict 標記殘骸（branch 名稱與 `=======`）。
+- `docs/plans/01-八項架構改進施工藍圖.md`：P2b 狀態註記補上「TimeLimiter 修正後 1,000 併發重跑完成」。
+
+### Why
+- 150 併發的驗證不能外推到 1,000 併發（修正前兩者失敗形態就不同）；且 AGENTS.md 明定無實測不得填數字，規格級併發必須實跑。
+- 結論：**熔斷「誤判環節」在 1,000 併發下確認消除**（Prometheus 佐證：CB `kind="failed"` calls 全服務歸零（修正前 game≈1,172/wallet≈424）、wallet CB not_permitted 由 ≈10,028 歸零、game not_permitted 由 ≈9,861 降至 ≈4,047 且全由 slow-call rate 合法觸發）；**帳務 gate 維持全 PASS**；效能 gate（P99<500ms/5xx=0）仍 FAIL，瓶頸移轉到 spin 路徑本身延遲（成功呼叫平均 4.42 s：風控 Redis 並發閘＋DB 聚合、注單稽核高併發變重），屬下一輪效能調校課題、超出本修正範圍。
+
+### 如何驗證
+- `tests/performance/results/20260708-103916/acceptance-report.md`、`results/accounting-20260708-104156/accounting-reconciliation.csv`；Prometheus range query（`increase(...[90s])`，窗口迄 10:40:24）可複驗，PromQL 見報告內嵌。
+- 迴歸自查：`node --test tests/infra/*.test.js` 綠燈（本次未動任何程式碼/設定，僅文件與測試產物）。
+
+## [fix] -- 2026-07-08 -- gateway 補 Resilience4j TimeLimiter 設定，解決 T-090 thundering herd 熔斷
+
+### 背景
+- T-090 完整重跑（PR #182）把 150/1000 併發下 78–89% HTTP 5xx 的根因鏈定位到：gateway 的 Spring Cloud CircuitBreaker 未顯式設定 `timelimiter`，Resilience4j 因此套用**預設 1 秒逾時**——遠低於既有 `slow-call-duration-threshold: 3s`，導致高併發排隊下的正常慢呼叫在真正完成前就被腰斬判 failed，觸發熔斷開路 → half-open 少量放行 → 關路瞬間 thundering herd 再次推爆延遲 → 反覆開闔（self-sustaining flapping）。
+
+### Changed
+- `backend/gateway-service/src/main/resources/application.yml`：`resilience4j` 下新增 `timelimiter.instances`，為 member/wallet/game/rank/admin 五個服務各設 `timeout-duration: 6s`（略高於 `slow-call-duration-threshold: 3s`，讓慢呼叫有機會真正完成、交由 CircuitBreaker 的 slow-call 統計判定而非被 TimeLimiter 提前腰斬）。
+- `docs/performance/T-090-load-test-report.md`：新增「2026-07-08 gateway TimeLimiter 修正驗證」節，記錄修正前後 150 併發對照。
+
+### Why
+- TimeLimiter 逾時應該「保護系統不被真正掛住的呼叫拖垮」，而不是比 CircuitBreaker 自己的慢呼叫門檻還嚴格——後者才是本專案定義的「多慢算異常」的權威判準。逾時設得比 slow-call-duration-threshold 短，等於讓一個沒人特意設定的預設值（1s）搶先於明確設計過的熔斷邏輯（3s）介入，是這次回歸的根本原因。
+
+### 如何驗證
+- 150 併發（`tests/performance/results/20260708-101629/acceptance-report.md`）：HTTP 5xx 由修正前 13,563（78.0%）降至 **0**；失敗樣本由 13,563 降至 4（0.05%）；idempotency/overdraw 全程 0。
+- P99（2,667 ms）仍未達 < 500 ms 門檻——歸類為下一輪效能調校的獨立課題（風控聚合/注單稽核在高併發下變重），不在本次修正範圍。
+
+## [test] -- 2026-07-08 -- T-090 壓測完整重跑（Phase 2b 完成）：根因鏈確認、帳務對帳 PASS
+
+### 背景
+- 2026-07-07 已定位「gateway CircuitBreaker 未設 TimeLimiter（預設 1 秒逾時）× spin 路徑變重 × thundering herd」根因鏈，但當時只是中途進度，未跑完 1000 併發主測與正式對帳。本次同拓撲（Docker infra+observability、7 服務宿主機 mvn 起）完整重跑到底。
+
+### Changed
+- `docs/performance/T-090-load-test-report.md`：以「2026-07-08 完整重跑最終結果」取代原「2026-07-07 中途進度」節，並更新頂部 Status/Headline。記錄：
+  - 150 併發基線：17,395 樣本、P99 1,164 ms、5xx 13,563（77.97% 錯誤率）、idempotency=0、overdraw=0。
+  - 1000 併發主測：15,922 樣本、P99 5,055 ms、失敗 14,221（5xx 13,709，89.3% 錯誤率）、idempotency=0、overdraw=0。
+  - Prometheus 90 秒測試窗證據：`not_permitted` game-service≈9,861／wallet-service≈10,028；CB `failed` calls game-service≈1,172／wallet-service≈424；成功 spin 平均延遲≈3.63 s、wallet debit 平均延遲≈896 ms（皆遠高於 1s TimeLimiter 門檻）。
+  - T-091 帳務對帳：本輪測試玩家（1,031 名，`player_id>=90000`）0 違規；額外揪出 3 筆歷史違規（`player_id` 1001–1003），查證交易時間戳全在 2026-06-16，為前一輪測試殘留於 Postgres volume 的舊資料，與本輪無關，已排除在 gate 判定外。
+  - 測試對象 commit：`902d744`（與 origin/develop 最新 `65915c5` 相比落後 7 個 commit，皆為 docs/admin-service 變更，gateway/game/wallet 無差異，不影響結果有效性）。
+
+### Why
+- AGENTS.md §地雷 12：無真實量測不得捏造 P99，必須把「中途進度」與「完整結論」分開記錄，避免下一個人誤把未跑完的數字當最終結果引用。
+- 效能 gate FAIL 但帳務 gate 全程 PASS，證明本次回歸是「gateway 熔斷設定缺陷」而非「帳務邏輯在高併發下出錯」，範圍明確才能決定調 TimeLimiter/R4j 參數的獨立 PR 怎麼改。
+
+### 如何驗證
+- `tests/performance/results/20260708-100306/acceptance-report.md`（150 併發）、`tests/performance/results/20260708-100442/acceptance-report.md`（1000 併發）、`tests/performance/results/accounting-20260708-100542/accounting-reconciliation.csv`。
+- Prometheus range query（`increase(...[90s])` at test-window timestamp）可重跑複驗，見報告內嵌 PromQL。 develop
 
 ## [feat] -- 2026-07-08 -- 玩家端「交易紀錄」與「遊戲紀錄」統整為單一時間軸頁
 
@@ -114,6 +211,7 @@
 ### 如何驗證
 - `mvn -pl backend/admin-service test`：92 全綠（含新增回歸 `RtpReportServiceTest.noBetSample_isNoData_notAbnormal`）。
 - 重啟 admin-service 後查 `GET /admin/reports/rtp`：SLOT/FISHING（當前快照無資料）status=`NO_DATA`、deviation=0；BACCARAT（有 24 局資料）維持 `NORMAL`。
+develop
 
 ## [feat] -- 2026-07-07 -- AUDIT_REPORT 附錄 A 自動盤點：tools/audit/ 依證據清單重生進度表（Phase 8）
 

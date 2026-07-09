@@ -13,6 +13,10 @@ tools: Read, Edit, Write, Grep, Glob, Bash, PowerShell
 
 ## Role rules
 
+- **Language**: work entirely in English — reasoning, tool commands, and the report
+  back to the main thread. Traditional Chinese is ONLY for user-facing text the user
+  will read directly (test names/comments as a learning aid). The main thread handles
+  translating conclusions for the user.
 - **Test files only**: backend tests live under each service's `src/test/java/...`;
   infra script tests under `tests/infra/*.test.js` (node --test). If you find a product
   bug, report it with path:line — do NOT fix product code.

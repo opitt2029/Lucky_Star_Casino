@@ -264,6 +264,24 @@ resilience4j:
         wait-duration-in-open-state: 10s
         permitted-number-of-calls-in-half-open-state: 3
         automatic-transition-from-open-to-half-open-enabled: true
+  # 未顯式設定 timelimiter 時，Spring Cloud CircuitBreaker（Resilience4j）預設逾時為 1 秒——
+  # T-090 壓測（2026-07-08 完整重跑）證實這比 slow-call-duration-threshold（3s）短很多：
+  # 高併發排隊下，呼叫在真正判定為「慢」之前就被 TimeLimiter 攔腰砍斷判 failed，
+  # 觸發熔斷開路 → half-open 少量放行 → 關路瞬間 thundering herd 再次推爆延遲 → 反覆開闔。
+  # 這裡把逾時拉高到略大於 slow-call-duration-threshold，讓慢呼叫有機會真正完成、
+  # 交由 CircuitBreaker 的 slow-call 統計判定，而不是被 TimeLimiter 提前腰斬。
+  timelimiter:
+    instances:
+      member-service:
+        timeout-duration: 6s
+      wallet-service:
+        timeout-duration: 6s
+      game-service:
+        timeout-duration: 6s
+      rank-service:
+        timeout-duration: 6s
+      admin-service:
+        timeout-duration: 6s
 
 # JWT 設定 — secret 必須與 member-service 簽發端完全一致
 jwt:
