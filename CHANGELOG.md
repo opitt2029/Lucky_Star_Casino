@@ -1,3 +1,20 @@
+## [docs] -- 2026-07-09 -- interview-prep：新增 13-壓測與效能調校（T-090 戰役）＋既有筆記對齊 7 月現況
+
+### Added
+- `docs/interview-prep/13-壓測與效能調校.md`：T-090 完整戰役的面試版敘事——測試設計（雙 gate：效能/帳務分判）、TimeLimiter 根因鏈（5xx 78%→0，Prometheus CB failed-calls 歸零證據）、瓶頸換位三輪（Phase A→C2→C1，「瓶頸只會被擠到沒設上限的地方」）、B1 排除法剖析（Hikari 巢狀 key bug、pgstattuple、JFR 定位 Postgres 交易容量 ≈550–600 筆/秒）、C3 AIMD 選型（併發控制 vs 速率控制、Little's Law）、帳務不變量全程 0 違規、追問鏈與事實速查表。
+
+### Changed
+- `00-index.md`：導覽表/對照表補 `13`（壓測、限流設計、Saga 補償三題）、兩分鐘技術版加第 7 點壓測、數據速記卡加壓測關鍵數字。
+- `01-專案程式碼地圖.md`：gateway 補 `RouteConcurrencyLimitGlobalFilter`/`AdaptiveInFlightLimiter`（C3）；§5 CI 修正為「七服務全跑＋Testcontainers 獨立 step（ADR-007）」（原誤寫只跑 4 服務）；速查表補 gateway C3 與 game `WalletCompensationService`（ADR-009）兩列。
+- `02-設計決策與為什麼.md`：ADR 摘要表補 ADR-007/008（保留）/009；新增「決策 9：game→wallet 派彩失敗的最小 Saga 補償」（冪等鍵不可換、語意非退款、為何不用 Saga 框架）。
+- `09-開發流程與工程實踐.md`：地雷數 20→22（三處）；時間軸補 7/07（ADR-007、監控棧、admin 白名單雷、ADR-009、audit 自動化）與 7/08–09（T-090 重跑戰役）兩列；§3-⑥ 誠實量測段落更新為重跑後結論（原停在「5xx≈80% FAIL」的 6 月舊狀態）；ADR 表與追問表同步。
+
+### Why
+- interview-prep 大多凍結於 6/30，未涵蓋 7 月的高價值素材（T-090 壓測戰役、ADR-007/009、C3），且 `01` 的 CI 描述與 `.github/workflows/ci.yml` 現況不符、`09` 的壓測敘事停在 TimeLimiter 修正前的舊結論——面試若照舊稿講會與 repo 事實矛盾。所有新增數字均取自 `docs/performance/T-090-*.md` 實測報告，無捏造。
+
+### 如何驗證
+- 純文件變更，無程式行為影響。數字逐一對照 `docs/performance/T-090-load-test-report.md`（5xx 78%→0、−72%、成功 +126%、429 46.2%）、`T-090-B1-wallet-debit-analysis.md`（≈550–600 筆/秒、pool size A/B、dead tuple 8.57%）、`T-090-C3-gateway-shedding-design-evaluation.md`（方案 D 拍板）；ADR-007/009 存在於 `docs/adr/`；CI 範圍對照 `.github/workflows/ci.yml` 第 79–90 行；地雷 22 條對照 `AGENTS.md` §2。
+
 ## [perf] -- 2026-07-09 -- T-090 C3：gateway 併發上限動態化（AIMD 在途上限）＋ wallet 路徑納管
 
 ### Added

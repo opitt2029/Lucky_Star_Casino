@@ -278,6 +278,6 @@ public enum SlotSymbol {
 
 - **策略模式（Strategy）**：`RiskControlService` 的 `risk.global-rtp-limit` 是 per-game 的 map（雷區 17），概念上每個遊戲一套風控策略，只是目前用 config map 而非 class 多型實作——可以誠實講「現在是用資料驅動的方式做到策略模式的效果，沒有另外拆 class」。
 - **樣板方法模式（Template Method）**：見 §3.5 的延伸回答，`WalletCompensationRetryJob` 對所有遊戲統一的「失敗記單 → 排程重試」流程，就是樣板方法的精神（固定骨架、各遊戲填自己的派彩計算）。
-- **職責鏈/攔截器模式（Chain of Responsibility）**：gateway 的 filter 鏈（`JwtAuthenticationGlobalFilter` → `PlayerRateLimitGlobalFilter` → `GameConcurrencyLimitGlobalFilter`）依序處理請求，每個 filter 只管自己那一段，不通過就短路——這是 Spring Cloud Gateway 內建的職責鏈設計。
+- **職責鏈/攔截器模式（Chain of Responsibility）**：gateway 的 filter 鏈（依 `FilterOrder`：`RouteConcurrencyLimitGlobalFilter` → `JwtAuthenticationGlobalFilter` → `PlayerRateLimitGlobalFilter`）依序處理請求，每個 filter 只管自己那一段，不通過就短路——這是 Spring Cloud Gateway 內建的職責鏈設計。
 
 這段可以在被問完四大支柱後主動加一句：「如果要再往下延伸，我們 gateway 的 filter 鏈其實是職責鏈模式的實例……」展現你能舉一反三，不是死背名詞。
