@@ -1,3 +1,36 @@
+## [perf] -- 2026-07-09 -- T-090 C3：gateway 併發上限動態化（AIMD 在途上限）＋ wallet 路徑納管
+
+### Added
+- `backend/gateway-service/.../filter/AdaptiveInFlightLimiter.java`：單一路徑前綴的動態在途限流器——Little's Law 即時層（在途上限固定的瞬間，延遲惡化自動壓低放行速率）＋ AIMD 回饋層（窗內 P95 超標 ×0.8 收緊、達標 +2 放寬、floor/ceiling 夾住、無流量不動）。延遲觀測是 per-instance 記憶體 ring buffer（tumbling window，容量 2048），熱路徑零同步、拒絕路徑維持零 I/O。
+- `application.yml` 的 `concurrency-limit` 改為 route 清單並新增 `/api/v1/wallet/` 路徑（B1：1,000 併發殘餘失敗六成六集中於未受保護的 wallet 路徑）；每條 route 有獨立 env 覆寫（`*_CONCURRENCY_LIMIT/FLOOR/CEILING/LATENCY_TARGET_MS`、`CONCURRENCY_ADJUST_INTERVAL_MS`）。
+
+### Changed
+- `GameConcurrencyLimitGlobalFilter` 一般化為 `RouteConcurrencyLimitGlobalFilter`：卸載機制（429 + Retry-After、JWT 之前執行、doFinally 歸還名額）不變，改為依設定的路徑前綴各持獨立 `AdaptiveInFlightLimiter`（game 寫路徑與 wallet 讀路徑容量特性不同，共用一個桶會互相污染回饋訊號）；新增 `@Scheduled`（預設每 5 秒）AIMD 調整迴圈，`GatewayServiceApplication` 加 `@EnableScheduling`。
+- `ConcurrencyLimitProperties` 從單一 `game` record 改為 `List<Route>`（pathPrefix/maxInFlight/floor/ceiling/latencyTargetMs）；`FilterOrder.GAME_CONCURRENCY_LIMIT` 更名 `CONCURRENCY_LIMIT`（值 -150 不變）。
+
+### Why
+- C3 設計評估（`docs/performance/T-090-C3-gateway-shedding-design-evaluation.md`）五選項拍板＝方案 D：動態令牌桶（方案 C）調的是速率、要保護的卻是在途，延遲驟變時要等一個觀測窗才反應；動態在途上限保留 Little's Law 零延遲的第一層保護，AIMD 只負責把上限收斂到機器真容量，回饋失效時退化成 C1 固定上限仍安全。同時收編 B1 改善方向第 4 項（上游承壓封頂）：wallet 路徑納管不會讓 debit 變快（瓶頸＝本機 Postgres 交易容量 ≈550-600 筆/秒），但防止超量流量把排隊時間堆到失控。
+- 150 併發迴歸基準不受影響：實測在途 ≈100 遠低於 target 下的任何 max，AIMD 只在 P95 超標時收緊；floor=50 保底不絕流。
+
+### 如何驗證
+- `mvn -pl backend/gateway-service test`：41/41 綠（`RouteConcurrencyLimitGlobalFilterTest` 13 個：原 C1 六個語意全保留＋wallet 獨立計數＋AIMD 收緊/放寬/floor-ceiling 夾住/無流量不調/窗歸零/收緊低於在途時計數不毀）。
+- 對照壓測（150/1,000 併發，照 C1 SOP）待跑，跑完補充至 `T-090-load-test-report.md`。
+
+## [fix] -- 2026-07-09 -- T-090 B1：wallet-service HikariCP maximum-pool-size 巢狀 key 失效（實際一直跑預設 10，非宣稱的 15/10）＋剖析報告
+
+### Fixed
+- `backend/wallet-service/src/main/resources/application.yml`：`spring.datasource.hikari.maximum-pool-size`／`spring.datasource-mysql.hikari.maximum-pool-size` 這兩個 key 拿掉多餘的巢狀 `hikari:` 層，改為攤平的 `spring.datasource.maximum-pool-size` 等。
+
+### Why
+- `DataSourceConfig.java` 的 `postgresDataSource()`/`mysqlDataSource()` 是手動 `@Bean` + `@ConfigurationProperties(prefix = "spring.datasource"/"spring.datasource-mysql")` **直接綁在 `HikariDataSource` 物件上**，只認得該物件攤平的 setter（`maximumPoolSize`／`minimumIdle`／`connectionTimeout`），沒有巢狀 `hikari` 屬性可綁——這和 Spring Boot 自動配置認得的 `spring.datasource.hikari.*` 是兩回事（那條路徑只在 Spring Boot 自己組裝 DataSource 時才生效，本服務是手動組裝）。結果是設定檔寫的 `maximum-pool-size: 15`（postgres）從未生效，實際一直跑 HikariCP 內建預設值 10（mysql 端因為預設本來就是 10，巧合沒被發現）。
+- 於 T-090 B1（wallet debit 路徑剖析）量測時，用 `/actuator/prometheus` 的 `hikaricp_connections_max` 直接量到 `max=10`，兩邊設定值都對不上，才揪出這個靜默失效的 key。
+
+### 如何驗證
+- 修正前後對照：`curl localhost:8082/actuator/prometheus | grep hikaricp_connections_max` 從 `HikariPool-1{max=10}` 變成 `HikariPool-1{max=15}`（postgres），mysql 端 `HikariPool-2` 維持 `max=10`（本來就等於預設值，行為不變，只是現在是「設定生效後剛好等於 10」而非「設定沒生效落回預設 10」）。
+- `mvn -pl backend/wallet-service test`：161/161 全綠。
+- **重要**：A/B 量測（150 併發、隔離直打 wallet-service debit，繞開 game-service/gateway）顯示 pool size 從 10 提升到 15、甚至實驗值 60，延遲量級都沒有顯著改善（avg 一直落在 280~430ms、p99 420~860ms），且穩態下連線池未被打滿——**這個修正單獨不會讓 debit 變快**，純粹是讓設定檔說的話算數，為後續調校建立正確的基準線。完整分析與尚未解開的瓶頸（初步指向單機 CPU/執行緒競爭）見 `docs/performance/T-090-B1-wallet-debit-analysis.md`。
+- code-reviewer 審查 PASS（範圍窄：僅連線池容量設定，未動帳務/冪等/樂觀鎖邏輯）。
+
 ## [test] -- 2026-07-08 -- T-090 C1+C2 效果對照重跑：成功數 +126%、401 −63%、spin 延遲腰斬；殘餘失敗移位到未受保護的 wallet 路徑
 
 ### Added
