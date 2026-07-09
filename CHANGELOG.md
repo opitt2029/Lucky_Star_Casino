@@ -250,6 +250,29 @@
 - `tests/performance/results/20260708-100306/acceptance-report.md`（150 併發）、`tests/performance/results/20260708-100442/acceptance-report.md`（1000 併發）、`tests/performance/results/accounting-20260708-100542/accounting-reconciliation.csv`。
 - Prometheus range query（`increase(...[90s])` at test-window timestamp）可重跑複驗，見報告內嵌 PromQL。 develop
 
+## [feat] -- 2026-07-08 -- 玩家端「交易紀錄」與「遊戲紀錄」統整為單一時間軸頁
+
+### 背景
+- 原本前端有兩個獨立頁：`/transactions`（錢包帳務流水）與 `/game-history`（遊戲注單）。兩者其實大量重疊——一次老虎機在錢包會產生 `bet` + `payout` 兩筆交易、在遊戲服務再記一筆 round，是「同一經濟事件的兩種視角」。使用者要求把兩頁統整為一個。
+
+### Added
+- `frontend/src/pages/Records.jsx`：新增 `/records` 合併頁。各服務併發（`Promise.all`）抓最近 `FETCH_CAP=200` 筆 → 濾掉遊戲相關交易子型（`bet`/`payout`/`win`，涵蓋 mock 小寫與後端大寫 `BET`/`WIN`）→ 與遊戲 round 合併、依時間倒序 → 前端分頁（每頁 10 筆）。欄位：時間 / 來源 / 類型 / 金額 / 餘額；來源篩選（全部/交易/遊戲）。
+
+### Changed
+- `frontend/src/App.jsx`：新增 `/records` lazy route。
+- `frontend/src/components/AppShell.jsx`：導覽把「交易紀錄」「遊戲紀錄」兩項合併為單一「交易/遊戲紀錄」→ `/records`。
+- `frontend/e2e/smoke.spec.js`：導覽走查改點「交易/遊戲紀錄」並斷言 `/records`。
+
+### Removed
+- 刪除舊頁 `frontend/src/pages/Transactions.jsx`、`frontend/src/pages/GameHistory.jsx` 及 `App.jsx` 的 `/transactions`、`/game-history` 路由與 lazy import；`Records.jsx` 移除原本連向 `/game-history` 的明細入口。副作用：舊遊戲明細（局號、毫秒下注/派彩時間、投注前→派彩後餘額）不再有頁面可看。
+- 清除 `frontend/src/store/slices/walletSlice.js` 中因舊頁移除而變成 dead code 的交易相關部分：`fetchTransactions` thunk、`setTransactionFilters` / `setTransactionPage` reducer 與其 export、`fetchTransactions` 的 3 個 `extraReducers`，以及 initialState 的 `transactions` / `transactionTotal` / `transactionPage` / `transactionPageSize` / `filters` 欄位。合併頁改直接呼叫 `walletApi.getTransactions`，不再走 redux；`walletApi.getTransactions` 本身保留。
+
+### 為什麼
+- 直接把兩表原封不動混排，一次遊戲會冒出三列（下注 TX + 派彩 TX + 遊戲 round）、金額重複計。改以「遊戲每筆一列（顯示損益）+ 交易只保留非遊戲事件（簽到/任務/贈送/商城…）」讓每個事件只出現一次、金額不重複。餘額欄僅遊戲列有值（帳務流水不帶當下餘額），交易列顯示 `-`。跨頁排序正確性靠 bounded fetch（各抓一段視窗後在前端合併排序），而非「各取第 N 頁再合併」。
+
+### 如何驗證
+- `cd frontend && npx vite build`：綠燈，產出 `dist/assets/Records-*.js` chunk。
+
 ## [fix] -- 2026-07-08 -- 後台 RTP 監控：無下注樣本改標 NO_DATA，不再誤報 ABNORMAL
 
 ### 背景
