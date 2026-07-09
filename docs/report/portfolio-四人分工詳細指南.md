@@ -22,7 +22,7 @@
 | 主題 | 關鍵字 | 檔案路徑 |
 |---|---|---|
 | JWT 驗證/黑名單撤銷 | `JwtAuthenticationGlobalFilter` | `backend/gateway-service/.../filter/JwtAuthenticationGlobalFilter.java` |
-| 遊戲路徑併發限流(T-090 C1) | `GameConcurrencyLimitGlobalFilter`, 429 shed | `backend/gateway-service/.../filter/GameConcurrencyLimitGlobalFilter.java` |
+| 遊戲路徑併發限流(T-090 C1) | `PlayerRateLimitGlobalFilter`, `GAME_PATH_PREFIX`, `rate:game:{userId}`, 429 shed | `backend/gateway-service/.../filter/PlayerRateLimitGlobalFilter.java`（同一 filter 依路徑套不同 burst，非獨立檔案） |
 | 玩家級流量限制 | `PlayerRateLimitGlobalFilter` | `backend/gateway-service/.../filter/PlayerRateLimitGlobalFilter.java` |
 | 路由設定/白名單 | `jwt.whitelist`, `member-checkin` 路由 | `backend/gateway-service/src/main/resources/application.yml` |
 | 登入/註冊/token | `AuthController`, `AuthService` | `backend/member-service/.../controller/AuthController.java`, `.../service/AuthService.java` |
@@ -185,6 +185,141 @@ React+Redux 玩家端 UI、下注三鐵則（餘額守門/視覺鎖/音效）、
 - mock API 存在的目的？正式上線會怎麼切換？
 - 為什麼視覺鎖不能用固定 `setTimeout`？
 - 音效為何要統一走 `soundEngine` 而不是各元件自己播？
+
+---
+
+## E組專項（A組加報）：API / Docker / Kafka / Redis 跨服務架構總覽
+
+> A組除了自己的 gateway+member+wallet，額外總覽「串接怎麼打通」這塊，因為 gateway 是唯一同時知道全部路由的角色。以下四塊都附**實際檔案內容**，可直接拿去畫圖/貼投影片。
+
+### E1. API 串接架構（前端 → Gateway → 各服務）
+
+**流程**：前端 `frontend/src/services/*.js` 呼叫 `http://localhost:8080`（Gateway）→ Gateway 依 `Path` predicate 轉發到對應服務容器 → 服務內 Controller 處理。
+
+**Gateway 路由表**（`backend/gateway-service/src/main/resources/application.yml`）：
+
+| Route ID | Path | 轉發到 | 備註 |
+|---|---|---|---|
+| `openapi-*` | `/v3/api-docs/{service}` | 各服務 8081~8087 | Swagger 文件聚合(T-092)，`RewritePath` 改路徑，免 JWT |
+| `member-auth` | `/api/v1/auth/**` | member:8081 | 免 JWT，但套 `RequestRateLimiter`(IP-based, 5 req/s burst 10)防暴力破解 + CircuitBreaker |
+| `member-player` | `/api/v1/player/**` | member:8081 | 需 JWT |
+| `member-friends` | `/api/v1/friends/**` | member:8081 | 需 JWT |
+| `member-checkin` | `/api/v1/wallet/daily-checkin`, `/api/v1/wallet/checkin/**` | member:8081 | **必須排在 `wallet` route 之前**，否則被 catch-all 吃掉轉去 wallet-service 404（雷區19） |
+| `wallet` | `/api/v1/wallet/**` | wallet:8082 | catch-all，含禮品商城 `/shop/**`（雷區20，免另立路由） |
+| `game` | `/api/v1/game/**` | game:8083 | |
+| `rank` | `/api/v1/rank/**` | rank:8084 | |
+| `admin` | `/admin/**` | admin:8086 | ADMIN JWT 白名單直接放行（雷區21，認證由 admin-service 自己做） |
+| `notification-ws` | `/ws`, `/ws/**` | notification:8087 | STOMP over SockJS，Upgrade header 會被自動轉 `ws://`；JWT 驗證延後到 STOMP CONNECT 帧 |
+
+**每條業務路由都掛 `CircuitBreaker`**（Resilience4j），對應服務不可用時走 `forward:/fallback/{service}`（`FallbackController.java`）回傳統一格式錯誤，不讓前端收到裸連線逾時。
+
+**Gateway 內部 Filter 執行順序**（`FilterOrder.java`，數字越小越早跑）：
+```
+RATE_LIMIT (-200)          全站/IP 級限流，防暴力破解
+  ↓
+JWT_AUTHENTICATION (-100)  驗簽 + 查 Redis 黑名單 + 停用檢查，注入 X-User-Id/X-User-Role header
+  ↓
+PLAYER_RATE_LIMIT (-50)    依 X-User-Id 滑動視窗限流，遊戲路徑(/api/v1/game/**)套更嚴格 burst
+  ↓
+(Gateway 內建路由轉發，order ≥ 0)
+```
+關鍵字找檔案：`FilterOrder.java`、`JwtAuthenticationGlobalFilter.java`、`PlayerRateLimitGlobalFilter.java`、`RateLimitConfig.java`（IP KeyResolver）。
+
+**服務間內部呼叫**（不經 Gateway，直連容器名）：`game-service` → `wallet-service`（`WALLET_SERVICE_URL=http://wallet-service:8082`，派彩/扣款走 `WalletClient` + `INTERNAL_SECRET` 驗證）、`admin-service` → `member-service`（`MEMBER_SERVICE_URL`，玩家停用同步）。這類內部 API 帶 `INTERNAL_SECRET` header，由各服務的 `InternalSecretFilter` 驗證，不走玩家 JWT。
+
+---
+
+### E2. Docker 部署架構
+
+**編排檔**：根目錄 `docker-compose.yml`，單一 `lucky-network`(bridge) 讓所有容器互通，容器名即可互 resolve（如 `wallet-service` 內連 `postgres:5432`）。
+
+**容器清單**：
+
+| 容器 | Image | Port(host) | 角色 |
+|---|---|---|---|
+| `lucky-star-mysql` | mysql:8.4 | `${MYSQL_PORT}`→3306 | 讀庫(CQRS)，`database/mysql/init.sql` 建 schema |
+| `lucky-star-postgres` | postgres:16 | `${POSTGRES_PORT}`→5432 | 寫庫(帳務)，`database/postgres/init.sql` 建 schema |
+| `lucky-star-redis` | redis:7 | `${REDIS_PORT}`→6379 | token/限流/排行/session（見 E4） |
+| `lucky-star-kafka` | confluentinc/cp-kafka:7.6.1 | `${KAFKA_PORT}`→9092 | **KRaft 模式**（無 Zookeeper），broker+controller 合一單節點 |
+| `lucky-star-kafka-init` | 同上 image | — | one-shot 容器，跑 `kafka/kafka-init.sh` 建 topic 後結束，其他服務 `depends_on: kafka-init: condition: service_completed_successfully` |
+| `lucky-star-kafka-ui` | provectuslabs/kafka-ui | `${KAFKA_UI_PORT}`→8080(容器內) | 圖形化看 topic/訊息 |
+| `lucky-star-{service}` ×7 | 各自 `backend/{service}/Dockerfile` | 見下表 | 業務服務，全部 `restart: always` + `/actuator/health` healthcheck |
+| `prometheus` / `grafana` | — | 9090 / 3000 | **選配**，`--profile observability` 才啟動 |
+
+**7 個服務對外 Port**：gateway 8080 / member 8081 / wallet 8082 / game 8083 / rank 8084 / admin 8086 / notification 8087（**無 8085**，那是 kafka-ui 內部）。
+
+**啟動依賴鏈**（`depends_on` + `condition`）：
+```
+mysql/postgres/redis (healthy) → kafka (healthy) → kafka-init (completed)
+  → member-service (healthy) → wallet-service/rank-service (healthy，都依賴 redis+kafka-init)
+  → game-service (healthy，額外依賴 wallet-service healthy，因派彩要呼叫 wallet)
+  → admin-service (healthy，依賴 member-service healthy，內部封鎖同步)
+  → notification-service (healthy，只依賴 kafka-init)
+  → gateway-service (最後，依賴以上全部 healthy，因為要轉發流量給它們)
+```
+每個服務容器內用**環境變數**注入連線資訊（`MYSQL_HOST=mysql`、`REDIS_HOST=redis`、`KAFKA_BOOTSTRAP_SERVERS=lucky-star-kafka:29092` 等），值來自根目錄 `.env`（本機需先準備，見 DEPLOY.md，`JWT_SECRET`/`INTERNAL_SECRET`/`ADMIN_JWT_SECRET` 缺了會啟動失敗，雷區2）。
+
+**資料持久化**：4 個具名 volume（`lucky_mysql80_data`、`lucky_postgres_data`、`lucky_kafka_data`、`lucky_prometheus_data`/`lucky_grafana_data`），容器重建資料不丟；但 Kafka `CLUSTER_ID` 固定值寫死在 `.env`，避免重建 volume 後 cluster id 不一致啟動失敗。
+
+**一鍵啟動**：`docker compose up -d` 取代過去各服務各開視窗跑 `mvn spring-boot:run`。
+
+---
+
+### E3. Kafka 架構設計
+
+**Broker**：單節點 KRaft 模式（無 Zookeeper），`kafka/kafka-init.sh` 在服務啟動前建好全部 topic（3 partitions、replication-factor 1，本機開發用，非高可用配置）。
+
+**Topic 清單與語意**（來自 `kafka/kafka-init.sh` 註解 + ADR-002）：
+
+| Topic | 語意 | Producer | Consumer |
+|---|---|---|---|
+| `member.registered` | 事件：新會員完成註冊 | member-service | （視需求） |
+| `wallet.credit.request` | **指令**：請求入帳(尚未執行) | member-service(簽到/新手禮), game-service(派彩失敗補償走 HTTP 非此) | wallet-service `WalletCreditRequestListener` |
+| `wallet.credit` | **事件**：已完成入帳 | wallet-service | rank-service(計分)、`WalletReadSyncListener`(寫 MySQL 讀視圖) |
+| `wallet.debit` | **事件**：已完成扣款 | wallet-service | rank-service、`WalletReadSyncListener` |
+| `friend.relationship.updated` | 事件：好友關係變動後，雙方各發一則**完整好友清單**（非增量，雷區11） | member-service | rank-service(重建 `rank:friend:{playerId}`) |
+| `game.result` | 事件：一局遊戲結束含結果 | game-service | notification-service `GameResultConsumer` |
+| `rank.update` | 事件：玩家排名變動 | rank-service | notification-service `RankUpdateConsumer` |
+| `notification.push` | 事件：觸發一般推播 | 各服務 | notification-service `NotificationConsumer` |
+
+**DLT（死信佇列）**：`member.registered.DLT`、`wallet.debit.DLT`、`wallet.credit.DLT`、`wallet.credit.request.DLT`、`friend.relationship.updated.DLT`（重試耗盡的訊息落此，`AdminDeadLetterController`/`DeadLetterService` 後台查看，`DeadLetterListener` 消費）。**`game.result`/`rank.update`/`notification.push` 無 DLT**——推播是 best-effort 設計，掉了不重試（雷區16後台背景）。
+
+**指令/事件分離為何重要（ADR-002，雷區6）**：`wallet.credit.request`(指令) 與 `wallet.credit`(事件) 分開，避免 wallet-service 自己發 `wallet.credit` 又自己消費、無限迴圈入帳。**規則：wallet-service 內任何消費 `wallet.credit`/`wallet.debit` 事件的 listener 絕不可再呼叫 `WalletService.credit()/debit()`**，唯一安全例外是 `WalletReadSyncListener`（只寫讀視圖，`existsById` 冪等，不觸發入帳）。
+
+**改 topic 要同步**：`kafka/kafka-init.sh` 增刪 topic → 同步 `tests/infra/kafka.test.js` 的 topic 清單/數量斷言，否則 CI 紅（雷區7）。
+
+---
+
+### E4. Redis 架構設計（跨服務用途總覽）
+
+Redis 是**唯一單容器多服務共用**的元件（`lucky-star-redis`，member/wallet/game/rank/admin/gateway 都連同一個 Redis instance，靠 key prefix 分隔命名空間，無 DB index 分庫）。
+
+| Key Prefix | 用途 | 讀寫服務 | 資料結構 | TTL |
+|---|---|---|---|---|
+| `jwt:blacklist:{jti}` | JWT 登出黑名單 | member(寫,登出時) / gateway(讀,每請求查) | String | 到 token 原始效期 |
+| `token:min-iat:{userId}` | 強制某使用者之前所有 token 失效的時間戳(如改密碼) | member(寫) / gateway(讀) | String | — |
+| `refresh:{memberId}` | Refresh token 儲存 | member-service `TokenRedisService` | String | `JWT_REFRESH_TOKEN_EXPIRY_MS` |
+| `disabled:player:{memberId}` | 後台停用玩家即時封鎖標記 | admin(寫, `PlayerBanService`) / member+gateway(讀) | String | — |
+| `rate:player:{userId}` | 每玩家一般路徑限流計數 | gateway `PlayerRateLimitGlobalFilter` | String(counter) | 1 秒滑動窗 |
+| `rate:game:{userId}` | 遊戲路徑限流計數(更嚴格 burst，即 T-090 併發防護) | gateway `PlayerRateLimitGlobalFilter` | String(counter) | 1 秒滑動窗 |
+| `rank:global:coins` | 全域星幣排行榜 | rank-service `RankService` | **Sorted Set**(ZSET) | 永久 |
+| `rank:daily:winnings` | 今日贏幣王排行 | rank-service | ZSET | 48h(首次寫入設) |
+| `rank:friend:{playerId}` | 好友排行榜(依 `friend.relationship.updated` 重建) | rank-service | ZSET | 永久 |
+| `rank:player:usernames` | player 名稱快取(排行榜顯示用) | rank-service | Hash/String | — |
+| `game:fishing:session:{playerId}` | 捕魚跨批戰鬥狀態(累傷/kills/betPerShot/cannonLevel) | game-service `FishingSessionStore` | Hash(序列化 JSON 欄位) | **24 小時** |
+
+**共用 key 三方對齊要求（易踩雷）**：
+- `jwt:blacklist:{jti}`：member 寫、gateway 讀，字串**必須完全一致**，否則登出撤銷在 gateway 端查不到（見 `TokenRedisService.java` 註解）。
+- `disabled:player:{memberId}`：admin 寫、member+gateway 都讀，同上三方共用同一 key 格式不可改動。
+
+**Redis 故障容錯策略不同服務不同取捨**：
+- Gateway 限流（`rate:player:*`/`rate:game:*`）：**fail-open**（Redis 掛掉直接放行），理由是限流元件故障不該拖垮整體服務可用性。
+- JWT 黑名單查詢：**fail-closed**（Redis 錯誤時拒絕請求，寧可誤擋也不讓已撤銷 token 通過），T-090 C2 加了短重試（retryWhen backoff 1次/50ms）降低誤判率但語意不變（見 CHANGELOG `fix(gateway)` 條目）。
+- 捕魚 session：無 fallback，Redis 是**唯一真相來源**（`FishingSessionStore`），掛掉當批直接失敗。
+
+**設計取捨（可能被問）**：
+- 為何不用 Redis DB index (0~15) 分服務，而用 key prefix？→ 單一連線池/單一容器管理較簡單，本機開發規模夠用；正式環境要拆會改成獨立 Redis instance 而非 DB index（DB index 本身也不是強隔離）。
+- 為何限流用 Redis 而非本地記憶體？→ Gateway 若水平擴展多實例，本地計數器各自為政會失真，Redis 全域計數才準。
 
 ---
 
