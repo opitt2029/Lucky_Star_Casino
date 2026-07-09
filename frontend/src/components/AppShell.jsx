@@ -26,8 +26,7 @@ const navItems = [
   { to: '/shop', label: '禮品商城' },
   { to: '/inventory', label: '我的背包' },
   { to: '/rank', label: '排行榜' },
-  { to: '/transactions', label: '交易紀錄' },
-  { to: '/game-history', label: '遊戲紀錄' },
+  { to: '/records', label: '交易/遊戲紀錄' },
   { to: '/profile', label: '會員中心' },
 ]
 
