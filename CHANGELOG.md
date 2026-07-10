@@ -1,3 +1,22 @@
+## [docs] -- 2026-07-10 -- 九份 ADR 補「現況校驗」章節，對齊程式碼實際狀態並記錄文件漂移
+
+### Added
+- `docs/adr/ADR-000.md`、`ADR-001.md`、`ADR-002.md`、`ADR-003.md`、`ADR-004.md`、`ADR-005.md`、`ADR-006.md`、`ADR-007.md`、`ADR-009.md`：每份都新增「現況校驗（2026-07-10 補充）」章節，以 6 隻並行 Explore agent 逐一核對程式碼/schema/設定現況（檔案路徑+行號），補上決策當下沒有的細節：ADR-001 補 Postgres 15 表/MySQL 12 表完整清單與跨資料源交易拆 Bean 手法；ADR-002 補新增的 wallet.credit.request 發布端（月度獎勵、GM發幣）；ADR-007 補「其他服務尚未比照 Testcontainers」的現況；ADR-009 補對帳 script 已擴充到 7 項檢查。
+
+### Changed
+- 無程式碼異動，純文件補充。
+
+### Why
+- ADR 文件寫定後專案持續疊代（鑽石系統、禮品商城、Saga 補償、月度簽到獎勵等），原文件只反映決策當下快照，久了會跟現況脫節；依 AGENTS.md「以程式碼為準、發現落差要記錄並更正文件」的原則，逐份核對而非憑空補字。
+
+### 發現並記錄的文件漂移（未動程式碼，僅記錄供後續處理）
+1. **ADR-004 砲台傷害值**：文件宣告收斂至 `10/14/18`，但 `FishingCombat.CANNON_DAMAGE` 現值是 `{0,14,22,32}`，兩者不符；`pCapture` 有依當前傷害值自動反推，RTP 仍精確等於 0.96，不影響帳務正確性，純屬文件與程式碼對不上，已在 ADR-004 現況校驗標註待確認是刻意再平衡還是漏改。
+2. **Postgres migration 版號重複**：`V15__add_alert_resolution_audit.sql` 與 `V15__add_game_rounds_risk_indexes.sql` 同版號並存，在 ADR-001/ADR-007/ADR-009 三處現況校驗都有提及，建議下次改動 migration 時重新編號其中一個為 V16。
+3. **ADR-008 編號仍空白**：ADR-004/ADR-009 都提到「保留給 Phase 3（捕魚 Redis session Lua CAS）」，現況確認 `docs/adr/ADR-008.md` 尚未建檔，Phase 3 是八項架構改進中唯一未動工項目。
+
+### 如何驗證
+- 純文件變更；每份 ADR 新增章節引用的檔案路徑/行號、migration 版號、常數值均由 Explore agent 實際讀取程式碼確認，非憑空推測。
+
 ## [docs] -- 2026-07-10 -- 新增組員A五天衝刺「完整詳答」檔（含 Docker 七服務實作教學章）
 
 ### Added
