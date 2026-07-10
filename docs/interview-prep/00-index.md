@@ -96,4 +96,4 @@
 - 基礎設施：MySQL **3307** / PostgreSQL **5433** / Redis 6379 / Kafka 9092 / Kafka UI 8085
 - DB 角色：**PostgreSQL = 寫（帳務）**、**MySQL = 讀（查詢）**
 - 前端：React 18 + Vite 5 + Redux Toolkit + PixiJS 8 + STOMP
-- 壓測（`13`）：TimeLimiter 修正後 150 併發 5xx **78%→0**；單機 Postgres debit 容量 ≈**550–600 筆/秒**（JFR）；C1+C2 後 1,000 併發成功 +126%；**每一輪帳務不變量 0 違規**
+- 壓測（`13`）：TimeLimiter 修正後 150 併發 5xx **78%→0**；單機 Postgres debit 容量 ≈**550–600 筆/秒**（JFR）；C3+B1 對照重跑後 150 併發 P99 **−48%**（2,753→1,423 ms）、1,000 併發成功 **+430%**、401 **歸零**；**每一輪帳務不變量 0 違規**

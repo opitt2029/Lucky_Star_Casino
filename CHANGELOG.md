@@ -1,3 +1,20 @@
+## [docs] -- 2026-07-10 -- interview-prep 與組員A報告對齊 7/10 現況（ADR-009 補償、gateway -150 併發卸載、C3+B1 最終數據）
+
+### Changed
+- `docs/interview-prep/11-下注請求流與程式碼地圖.md`（漂移最大，7/03 後未更）：§5.1「credit 失敗」由「**沒有補償機制**」改寫為 ADR-009 補償單流程（落 `pending_wallet_credits`、排程 30 秒同冪等鍵重試）、§5.3 整段改寫為「早期無補償 → ADR-009 最小 Saga」演進敘事；§2 白板流/§4.2 gateway 表/§4.3 SlotService 流程補 CONCURRENCY_LIMIT(-150)、風控（RTP 快取＋Lua 並發閘）、補償與 roundId 去重步驟；§5.1 新增 gateway 429 併發卸載列、§5.2 補 AIMD 併發上限數值（初始 200/floor 50/ceiling 400/延遲目標 2s）；§6 面試範本與 §7 Discord 版同步。
+- `docs/interview-prep/10-API串接與架構.md`：§1 mermaid/§3.3 filter 鏈/§6 時序圖補 CONCURRENCY_LIMIT(-150, AIMD)；§3.4 韌性設定補 TimeLimiter 6s 教訓（預設 1s 腰斬慢呼叫）與 C2 JWT Redis 短重試；§6 一致性界線補 ADR-009 一條；§7 速查表補「派彩失敗」「擋暴量」兩列；開頭離線 HTML 參照修正為歸檔後路徑 `../_雜物/08-面試準備-API串接與架構-匯出.html`（原連結已失效）。
+- `docs/interview-prep/00-index.md` §5 / `01-專案程式碼地圖.md` §3·§6 / `02-設計決策與為什麼.md` 決策 4 / `06-題庫解答與模擬問答.md` Q63：filter 鏈補 -150 併發卸載；`00` 速記卡壓測數據由 C1+C2（+126%）更新為 C3+B1 最終（150 併發 P99 −48%、1,000 併發成功 +430%、401 歸零）。
+- `docs/interview-prep/04-資料庫與分散式觀念.md` §6.1：並發閘補「取號/釋放各用 Lua、防負值漂移（T-090 Phase A）」。
+- `docs/report/portfolio-組員A-五天衝刺與面試準備.md`／`portfolio-組員A-面試詳答與Docker實作.md`：Day 1/3 filter 鏈與白板圖補 -150（原與自身 Day 4 §4.7 的 C3 敘述不一致）、Demo 腳本「三層 filter」改四層、Day 5 demo 收尾數據更新為 C3+B1 最終。
+
+### Fixed
+- `docs/interview-prep/07-題庫-進階200題.md` 第 226 題題幹誤貼的 GitHub 合併衝突 URL（PR #188 殘留）已移除。
+
+### Why
+- `10`/`11` 成稿於 7/01–7/03，其後 ADR-009 補償（7/07）與 T-090 C1/C2/C3（7/08–09）落地，筆記仍教「credit 失敗無補償」與三層 filter 鏈，面試照講會與程式碼矛盾；`03`/`08` 核對後無漂移未動。
+### 如何驗證
+- 純文件變更；內容逐一對照 `FilterOrder.java`、`RouteConcurrencyLimitGlobalFilter`/`AdaptiveInFlightLimiter`、gateway `application.yml`（concurrency-limit/timelimiter）、`SlotService.settleInternal`、`WalletCompensationService`/`WalletCompensationRetryJob`（30s/指數退避）、`RiskControlService`（Lua 並發閘）、`kafka-init.sh`（8+5 topic）與 `13`/`T-090` 報告數據。
+
 ## [docs] -- 2026-07-10 -- 新增組員A五天衝刺「完整詳答」檔（含 Docker 七服務實作教學章）
 
 ### Added
