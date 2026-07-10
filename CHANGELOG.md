@@ -1,3 +1,18 @@
+## [docs] -- 2026-07-10 -- 新增組員A五天衝刺「完整詳答」檔（含 Docker 七服務實作教學章）
+
+### Added
+- `docs/report/portfolio-組員A-面試詳答與Docker實作.md`：把五天衝刺檔（`portfolio-組員A-五天衝刺與面試準備.md`）每天的「要能講出來」檢核項全部展開成可直接背誦的逐字答案（Day1 電梯稿/依賴鏈三問、Day2 debit 四步/TOCTOU/ADR-009、Day3 filter 順序/三層撤銷/fail-open vs fail-closed/single-flight、Day4 T-090 四幕劇＋追問鏈七題逐字、Day5 流程/行為題兩故事/OOP 四支柱）；第 6 章為 Docker 實作教學——multi-stage Dockerfile 逐行解剖（層快取、monorepo build context、非 root）、compose 六大機制（bridge 網路、.env 注入、healthcheck、depends_on 三種 condition、one-shot kafka-init、volume/CLUSTER_ID 陷阱）、動手 SOP 與常見錯誤對照表。
+
+### Changed
+- `docs/report/portfolio-組員A-五天衝刺與面試準備.md`：素材來源補新詳答檔連結；Day 4 追問鏈補列 `13` §7 新增的第七問（C3 重跑驗證與歸因）；數據速記卡補「C3+B1 歸因誠實聲明＋殘餘課題（429 佔比 65.3% FAIL、game CB 503）」一行，與 `13` 最新版對齊。
+
+### Why
+- 衝刺檔刻意只做排程與檢核、不重抄內容，但臨場複習需要「卡住立刻翻到完整答案」的單一檔案；Docker 容器化是履歷第三句主戰場，原素材只講架構不講實作原理，組長需能答出 Dockerfile/compose 層級的細節。
+- 衝刺檔兩處小補是因 `5553051` 更新 `13` 後（追問鏈第七問、歸因/殘餘課題）產生的文件間漂移。
+
+### 如何驗證
+- 純文件變更；詳答內容逐段核對 `docs/interview-prep/00/02/09/10/11/13`、`docker-compose.yml`、`backend/wallet-service/Dockerfile`、`docs/performance/T-090-load-test-report.md`，數字與檔案路徑一致。
+
 ## [docs] -- 2026-07-10 -- interview-prep 13：補 C3+B1 對照重跑數據（150 P99 -48%、1,000 成功+430%/401歸零）
 
 ### Changed
