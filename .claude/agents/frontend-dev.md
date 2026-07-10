@@ -14,6 +14,10 @@ tools: Read, Edit, Write, Grep, Glob, Bash, PowerShell
 
 ## Role rules
 
+- **Language**: work entirely in English — reasoning, tool commands, and the report
+  back to the main thread. Traditional Chinese is ONLY for user-facing text the user
+  will read directly (code comments as a learning aid). The main thread handles
+  translating conclusions for the user.
 - File placement: pages in `frontend/src/pages/`, components in `frontend/src/components/`,
   hooks in `frontend/src/hooks/`, API clients in `frontend/src/services/`,
   Redux slices in `frontend/src/store/`. Reuse existing components/hooks before writing new ones.

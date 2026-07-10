@@ -712,6 +712,9 @@ public class FishingService {
             try {
                 GameRound round = buildRound(session, balanceAfter);
                 roundRepository.save(round);
+                // 風控日水位計數器累加（Phase A2，best-effort）：僅在首次落地時累加，與 DB 口徑一致。
+                riskControlService.recordRoundSettled(
+                        playerId, GAME_TYPE, round.getBetAmount(), round.getWinAmount());
                 eventPublisher.publishFishingResult(round, session.getTotalShots());
             } catch (DataIntegrityViolationException e) {
                 // 僅當對局確實已被另一執行緒寫入（round_id 唯一鍵衝突）時，才視為並發結算而忽略；

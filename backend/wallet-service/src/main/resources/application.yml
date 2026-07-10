@@ -21,10 +21,9 @@ spring:
     username: ${POSTGRES_USER:lucky_user}
     password: ${POSTGRES_PASSWORD:lucky_password}
     driver-class-name: org.postgresql.Driver
-    hikari:
-      maximum-pool-size: 15
-      minimum-idle: 3
-      connection-timeout: 30000
+    maximum-pool-size: 15
+    minimum-idle: 3
+    connection-timeout: 30000
 
   # 注意：spring.jpa.* 在此服務無效 —— EntityManagerFactory 由 DataSourceConfig.java
   # 手動建立（雙 EMF 不能用 Spring Boot 預設自動配置）。
@@ -36,10 +35,9 @@ spring:
     username: ${MYSQL_USER:lucky_user}
     password: ${MYSQL_PASSWORD:lucky_password}
     driver-class-name: com.mysql.cj.jdbc.Driver
-    hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
-      connection-timeout: 30000
+    maximum-pool-size: 10
+    minimum-idle: 2
+    connection-timeout: 30000
 
   # Redis — 贈幣當日累計、破產補助當日狀態（TTL 到午夜）
   data:

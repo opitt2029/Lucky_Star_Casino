@@ -10,7 +10,253 @@
 ### 如何驗證
 - 純文件新增，不影響程式行為；內文所有數字與檔案路徑均比對 `T-090-load-test-report.md`、`13-壓測與效能調校.md`、`00-index.md` §5 一致。
 
-feature/huang-gateway-timelimiter
+## [test] -- 2026-07-09 -- T-090 C3+B1 效果對照重跑（150/1,000 併發）：wallet 路徑保護生效、401 歸零、成功 +430%
+
+### Added
+- `docs/performance/T-090-load-test-report.md`：新增「2026-07-09 C3（自適應在途上限）+ B1（Hikari 修正）效果對照重跑」章節——150 正式輪（`20260709-161414`）與 1,000 輪（`20260709-162358`）完整數據、對 C1 輪逐項對照表、Prometheus 佐證、T-091 對帳結果、CB/AIMD 閾值協調課題。
+- `tests/performance/results/20260709-{160905,161414,162358}/`：暖機輪（棄置）、150 正式輪、1,000 輪的 JTL/acceptance-report/HTML dashboard（不入版控，僅本機）。
+
+### Changed
+- `docs/plans/02-T-090-效能調校藍圖.md`：C3 列狀態由「對照壓測重跑待執行」改為「對照重跑已完成（2026-07-09）」附重點數據。
+
+### Why
+- C3（AIMD per-route 在途上限，首次收編 `/api/v1/wallet/**`）落地後需照 C1 SOP 對照重跑驗證機制效果。結果：150 併發 10,258 樣本 0 失敗/0 卸載、P99 2,753→1,423 ms；1,000 併發成功 1,477→7,829（+430%）、401 1,988→0、SocketTimeout −94%、wallet sampler 0 失敗（C1 殘餘課題①關閉）；429 佔比 65.3%>40% 誠實 FAIL（需求−容量差額，D1 課題）；殘餘失敗收斂為 game CB 503（2,024 筆 ≈ CB not_permitted 2,079）。帳務 gate 全 PASS（0 超扣/0 重複扣款；對帳 3 筆差異＝已知 2026-06-16 歷史髒資料）。⚠️ 歸因：本輪同時含 B1 Hikari pool 修正，debit 延遲改善（581→492 ms）主要歸 B1，報告內有明示聲明。
+
+### 如何驗證
+- 暖機（棄置）→ 2.5 分鐘輪距 → `run-slot-load-test.ps1 -Threads 150 -Max429Ratio 0` → 重新 provision 1,000 名（兼輪距）→ `-Threads 1000`；對帳 `accounting-reconciliation.sql` 經 `docker exec lucky-star-postgres psql` 執行，9 項檢查除歷史髒資料外全 0。
+
+## [docs] -- 2026-07-09 -- interview-prep：新增 13-壓測與效能調校（T-090 戰役）＋既有筆記對齊 7 月現況
+
+### Added
+- `docs/interview-prep/13-壓測與效能調校.md`：T-090 完整戰役的面試版敘事——測試設計（雙 gate：效能/帳務分判）、TimeLimiter 根因鏈（5xx 78%→0，Prometheus CB failed-calls 歸零證據）、瓶頸換位三輪（Phase A→C2→C1，「瓶頸只會被擠到沒設上限的地方」）、B1 排除法剖析（Hikari 巢狀 key bug、pgstattuple、JFR 定位 Postgres 交易容量 ≈550–600 筆/秒）、C3 AIMD 選型（併發控制 vs 速率控制、Little's Law）、帳務不變量全程 0 違規、追問鏈與事實速查表。
+
+### Changed
+- `00-index.md`：導覽表/對照表補 `13`（壓測、限流設計、Saga 補償三題）、兩分鐘技術版加第 7 點壓測、數據速記卡加壓測關鍵數字。
+- `01-專案程式碼地圖.md`：gateway 補 `RouteConcurrencyLimitGlobalFilter`/`AdaptiveInFlightLimiter`（C3）；§5 CI 修正為「七服務全跑＋Testcontainers 獨立 step（ADR-007）」（原誤寫只跑 4 服務）；速查表補 gateway C3 與 game `WalletCompensationService`（ADR-009）兩列。
+- `02-設計決策與為什麼.md`：ADR 摘要表補 ADR-007/008（保留）/009；新增「決策 9：game→wallet 派彩失敗的最小 Saga 補償」（冪等鍵不可換、語意非退款、為何不用 Saga 框架）。
+- `09-開發流程與工程實踐.md`：地雷數 20→22（三處）；時間軸補 7/07（ADR-007、監控棧、admin 白名單雷、ADR-009、audit 自動化）與 7/08–09（T-090 重跑戰役）兩列；§3-⑥ 誠實量測段落更新為重跑後結論（原停在「5xx≈80% FAIL」的 6 月舊狀態）；ADR 表與追問表同步。
+
+### Why
+- interview-prep 大多凍結於 6/30，未涵蓋 7 月的高價值素材（T-090 壓測戰役、ADR-007/009、C3），且 `01` 的 CI 描述與 `.github/workflows/ci.yml` 現況不符、`09` 的壓測敘事停在 TimeLimiter 修正前的舊結論——面試若照舊稿講會與 repo 事實矛盾。所有新增數字均取自 `docs/performance/T-090-*.md` 實測報告，無捏造。
+
+### 如何驗證
+- 純文件變更，無程式行為影響。數字逐一對照 `docs/performance/T-090-load-test-report.md`（5xx 78%→0、−72%、成功 +126%、429 46.2%）、`T-090-B1-wallet-debit-analysis.md`（≈550–600 筆/秒、pool size A/B、dead tuple 8.57%）、`T-090-C3-gateway-shedding-design-evaluation.md`（方案 D 拍板）；ADR-007/009 存在於 `docs/adr/`；CI 範圍對照 `.github/workflows/ci.yml` 第 79–90 行；地雷 22 條對照 `AGENTS.md` §2。
+
+## [perf] -- 2026-07-09 -- T-090 C3：gateway 併發上限動態化（AIMD 在途上限）＋ wallet 路徑納管
+
+### Added
+- `backend/gateway-service/.../filter/AdaptiveInFlightLimiter.java`：單一路徑前綴的動態在途限流器——Little's Law 即時層（在途上限固定的瞬間，延遲惡化自動壓低放行速率）＋ AIMD 回饋層（窗內 P95 超標 ×0.8 收緊、達標 +2 放寬、floor/ceiling 夾住、無流量不動）。延遲觀測是 per-instance 記憶體 ring buffer（tumbling window，容量 2048），熱路徑零同步、拒絕路徑維持零 I/O。
+- `application.yml` 的 `concurrency-limit` 改為 route 清單並新增 `/api/v1/wallet/` 路徑（B1：1,000 併發殘餘失敗六成六集中於未受保護的 wallet 路徑）；每條 route 有獨立 env 覆寫（`*_CONCURRENCY_LIMIT/FLOOR/CEILING/LATENCY_TARGET_MS`、`CONCURRENCY_ADJUST_INTERVAL_MS`）。
+
+### Changed
+- `GameConcurrencyLimitGlobalFilter` 一般化為 `RouteConcurrencyLimitGlobalFilter`：卸載機制（429 + Retry-After、JWT 之前執行、doFinally 歸還名額）不變，改為依設定的路徑前綴各持獨立 `AdaptiveInFlightLimiter`（game 寫路徑與 wallet 讀路徑容量特性不同，共用一個桶會互相污染回饋訊號）；新增 `@Scheduled`（預設每 5 秒）AIMD 調整迴圈，`GatewayServiceApplication` 加 `@EnableScheduling`。
+- `ConcurrencyLimitProperties` 從單一 `game` record 改為 `List<Route>`（pathPrefix/maxInFlight/floor/ceiling/latencyTargetMs）；`FilterOrder.GAME_CONCURRENCY_LIMIT` 更名 `CONCURRENCY_LIMIT`（值 -150 不變）。
+
+### Why
+- C3 設計評估（`docs/performance/T-090-C3-gateway-shedding-design-evaluation.md`）五選項拍板＝方案 D：動態令牌桶（方案 C）調的是速率、要保護的卻是在途，延遲驟變時要等一個觀測窗才反應；動態在途上限保留 Little's Law 零延遲的第一層保護，AIMD 只負責把上限收斂到機器真容量，回饋失效時退化成 C1 固定上限仍安全。同時收編 B1 改善方向第 4 項（上游承壓封頂）：wallet 路徑納管不會讓 debit 變快（瓶頸＝本機 Postgres 交易容量 ≈550-600 筆/秒），但防止超量流量把排隊時間堆到失控。
+- 150 併發迴歸基準不受影響：實測在途 ≈100 遠低於 target 下的任何 max，AIMD 只在 P95 超標時收緊；floor=50 保底不絕流。
+
+### 如何驗證
+- `mvn -pl backend/gateway-service test`：41/41 綠（`RouteConcurrencyLimitGlobalFilterTest` 13 個：原 C1 六個語意全保留＋wallet 獨立計數＋AIMD 收緊/放寬/floor-ceiling 夾住/無流量不調/窗歸零/收緊低於在途時計數不毀）。
+- 對照壓測（150/1,000 併發，照 C1 SOP）待跑，跑完補充至 `T-090-load-test-report.md`。
+
+## [fix] -- 2026-07-09 -- T-090 B1：wallet-service HikariCP maximum-pool-size 巢狀 key 失效（實際一直跑預設 10，非宣稱的 15/10）＋剖析報告
+
+### Fixed
+- `backend/wallet-service/src/main/resources/application.yml`：`spring.datasource.hikari.maximum-pool-size`／`spring.datasource-mysql.hikari.maximum-pool-size` 這兩個 key 拿掉多餘的巢狀 `hikari:` 層，改為攤平的 `spring.datasource.maximum-pool-size` 等。
+
+### Why
+- `DataSourceConfig.java` 的 `postgresDataSource()`/`mysqlDataSource()` 是手動 `@Bean` + `@ConfigurationProperties(prefix = "spring.datasource"/"spring.datasource-mysql")` **直接綁在 `HikariDataSource` 物件上**，只認得該物件攤平的 setter（`maximumPoolSize`／`minimumIdle`／`connectionTimeout`），沒有巢狀 `hikari` 屬性可綁——這和 Spring Boot 自動配置認得的 `spring.datasource.hikari.*` 是兩回事（那條路徑只在 Spring Boot 自己組裝 DataSource 時才生效，本服務是手動組裝）。結果是設定檔寫的 `maximum-pool-size: 15`（postgres）從未生效，實際一直跑 HikariCP 內建預設值 10（mysql 端因為預設本來就是 10，巧合沒被發現）。
+- 於 T-090 B1（wallet debit 路徑剖析）量測時，用 `/actuator/prometheus` 的 `hikaricp_connections_max` 直接量到 `max=10`，兩邊設定值都對不上，才揪出這個靜默失效的 key。
+
+### 如何驗證
+- 修正前後對照：`curl localhost:8082/actuator/prometheus | grep hikaricp_connections_max` 從 `HikariPool-1{max=10}` 變成 `HikariPool-1{max=15}`（postgres），mysql 端 `HikariPool-2` 維持 `max=10`（本來就等於預設值，行為不變，只是現在是「設定生效後剛好等於 10」而非「設定沒生效落回預設 10」）。
+- `mvn -pl backend/wallet-service test`：161/161 全綠。
+- **重要**：A/B 量測（150 併發、隔離直打 wallet-service debit，繞開 game-service/gateway）顯示 pool size 從 10 提升到 15、甚至實驗值 60，延遲量級都沒有顯著改善（avg 一直落在 280~430ms、p99 420~860ms），且穩態下連線池未被打滿——**這個修正單獨不會讓 debit 變快**，純粹是讓設定檔說的話算數，為後續調校建立正確的基準線。完整分析與尚未解開的瓶頸（初步指向單機 CPU/執行緒競爭）見 `docs/performance/T-090-B1-wallet-debit-analysis.md`。
+- code-reviewer 審查 PASS（範圍窄：僅連線池容量設定，未動帳務/冪等/樂觀鎖邏輯）。
+
+## [test] -- 2026-07-08 -- T-090 C1+C2 效果對照重跑：成功數 +126%、401 −63%、spin 延遲腰斬；殘餘失敗移位到未受保護的 wallet 路徑
+
+### Added
+- `docs/performance/T-090-load-test-report.md` 新增「C1+C2 效果對照重跑」節：150 併發正式輪（`results/20260708-153718`，**5,208 樣本 0 失敗、0 5xx、429 誤傷 0**——當日最乾淨一輪，距中繼目標只剩 P99 2,753ms）＋ 1,000 併發（`results/20260708-154603`，新 gate 語意首度適用）完整數據與 Prometheus 佐證。
+
+### Why / 結果摘要
+- 1,000 併發：429 卸載 5,300（46.2%）、成功 653→1,477（+126%）、401 5,315→1,988（−63%）、5xx 362→227；成功 spin 平均 5.21→2.65 s、wallet debit 1,070→581 ms（承壓封頂奏效）。帳務 gate 照舊全 PASS。
+- 誠實記錄兩個 FAIL：① 429 佔比 46.2% 超過暫定 40% 上限——1,000 執行緒需求遠超單機容量（~180/s），屬 D1 容量問題，不調數字；② accepted P99 仍 5.6s——殘餘 401/timeout 六成六集中在**未受 C1 保護的 `/api/v1/wallet/**` 路徑**（卸載使執行緒循環變快、錢包路徑打擊頻率反升），下一步＝B1 剖析＋評估 wallet 路徑納入上限。
+- 依 Phase A 輪 SOP 執行：gateway 重啟後先暖機一輪棄置、輪距 2 分鐘。
+
+### 如何驗證
+- 全數字出自 `results/20260708-15*` JTL 與 Prometheus range query（窗口迄 epoch 1783496829）；對帳 `docker exec psql` 九項僅既有 player 1001–1003 髒資料，照例排除。
+
+## [perf] -- 2026-07-08 -- T-090 C1：gateway 遊戲路徑全局併發上限（超限 429 快速卸載）＋驗收 gate 語意拍板
+
+### Added
+- `backend/gateway-service/.../filter/GameConcurrencyLimitGlobalFilter.java`：`/api/v1/game/**` 維護單機記憶體在途計數（AtomicInteger，非 Redis——上限本質是 per-instance 容量，拒絕路徑 O(1) 零 I/O），超過 `concurrency-limit.game.max-in-flight`（預設 200，env `GAME_CONCURRENCY_LIMIT`）立即 429＋`Retry-After: 1`。order=-150 **在 JWT 驗證之前**卸載：被拒請求連 3 次 Redis 撤銷查詢都不做，直接縮小 1,000 併發下 fail-closed 401 雪崩的暴露面。`doFinally` 歸還名額（涵蓋完成/錯誤/取消）。
+- `.../config/ConcurrencyLimitProperties.java` ＋ application.yml `concurrency-limit.game.max-in-flight`（200 的依據：150 併發實測在途 ≈ 100，容量內不誤傷；1,000 併發時後端承壓封頂 ~200）。
+- `GameConcurrencyLimitGlobalFilterTest`：6 測試（未滿轉發／滿載 429+Retry-After 不轉發／完成釋放／錯誤釋放／非遊戲路徑不受限／被拒不漏名額）。
+
+### Changed
+- `tests/performance/analyze-jtl.mjs`：依 D1 拍板語意改判——429 獨立為 shed 桶不計失敗，P99/5xx/失敗樣本以「被接受樣本」為母體；新增 gate「429 佔比 ≤ `MAX_429_RATIO`（預設 0.40）」防「全拒絕也算過」；報告明示此為語意修正。
+- `tests/performance/run-slot-load-test.ps1`：新增 `-Max429Ratio` 參數（150 迴歸基準傳 0 = 容量內不准卸載）。
+- `docs/plans/02-T-090-效能調校藍圖.md`：C1 標記已落地、D1 記錄拍板（429 語意已決，驗收拓樸仍開放）。
+
+### Why
+- 1,000 併發實測證明「全收排隊」的結局：成功率 6.8%、成功者平均 5.2s、5xx/timeout/401 三桶輪流當失敗主角。負載卸載把它改成「明確拒絕少數、保障多數」：被拒者拿到毫秒級 429＋重試指引（無帳務風險——請求根本沒進結算路徑），被接受者維持低延遲。429 語意（「我沒壞，請稍後再來」）與 5xx（故障）在 HTTP 層本就不同類。
+- gate 配套堵漏：429 佔比上限讓「拒絕」有代價；150 併發（容量內）要求 429=0，防止把容量問題藏進卸載。原始「1,000 併發全收且 P99<500ms」目標不消失，歸 D1 容量/拓樸問題。
+
+### 如何驗證
+- `mvn -pl backend/gateway-service test` 全綠（40 tests，含新 6 個）。
+- 實測效果（C1+C2 疊加）待重跑 T-090 150/1,000 對照後回填報告。
+
+## [perf] -- 2026-07-08 -- T-090 C2：gateway JWT filter Redis 撤銷檢查加瞬時錯誤短重試（fail-closed 語意不變）
+
+### Changed
+- `backend/gateway-service/.../filter/JwtAuthenticationGlobalFilter.java`：三項 Redis 撤銷檢查（黑名單/停用/min-iat 的 `Mono.zip`）在落入 fail-closed 前先 `retryWhen(Retry.backoff(1, 50ms))`——瞬時錯誤（尖峰逾時、連線抖動）重試一次，重試＝重新訂閱、三項檢查整包重查不會拿到殘缺結果；重試耗盡仍拒絕（401），**fail-closed 語意不變、不可改 fail-open**。
+- `CHANGELOG.md`：順手移除檔首殘留的分支名字串。
+
+### Why
+- T-090 壓測的 401 桶＝Redis 撤銷檢查在負載尖峰下逾時觸發 fail-closed（前次 1,000 併發起跑尖峰 343 筆；Phase A 對照重跑時已擴大為全程 5,315 筆——單機 CPU 飽和使 Redis 往返間歇超過 gateway `spring.data.redis.timeout: 2000ms`）。短重試可吸收「瞬時」抖動；全程持續的飽和延遲非重試能解，屬 C1（併發上限卸載）/D1（拓樸拍板）範疇，藍圖已註記。
+- Lettuce 連線模型檢視結論：`ReactiveStringRedisTemplate` 預設單一多工連線＋pipeline 是 Lettuce 正規用法，非本案瓶頸（Redis 本身無 eviction/rejected，慢在宿主機資源競爭），故不引入連線池、不加大 timeout（加大只會把 401 換成更深的排隊）。
+
+### 如何驗證
+- `mvn -pl backend/gateway-service test` 全綠；`JwtAuthenticationGlobalFilterTest` 新增 2 測試：`redisTransientError_recoversOnRetry_isForwarded`（第一次訂閱失敗、重試成功 → 放行且確認真的重試過）、`redisPersistentError_retriesThenStillFailsClosedWith401`（持續故障 → 重試耗盡仍 401 且不轉發，鎖住 fail-closed 不回歸）。
+- 實測效果待下一輪 T-090 重跑對照 401 桶（藍圖統一驗證流程）。
+
+## [fix] -- 2026-07-08 -- 修補玩家停用的稽核破口：Redis 封鎖改 best-effort，不再因 Redis 失敗回滾稽核
+
+### 背景
+- 承前一批把 `AdminPlayerService.setStatus` 收斂為 audit-first 同交易（稽核 → member → Redis 全包在 `@Transactional(postgresTransactionManager)`）。盤點時發現一個與該筆宣稱的「有停用就一定有稽核」相矛盾的窄窗：**第 3 步 Redis `ban/unban` 若丟例外，會連同已 write-ahead 的稽核一起 rollback**，但第 2 步 member DB status 已由 HTTP 改成功且不可回滾 → 結果是「玩家已停用、但稽核被清掉、也沒查得到誰做的」，正是原本要杜絕的稽核破口。
+
+### Changed
+- `backend/admin-service/.../service/AdminPlayerService.java`：第 3 步 Redis 封鎖/解封改為 **best-effort**，用 try/catch 包住 `playerBanService.ban/unban`，失敗只記 WARN、**不外拋**。走到這步時稽核＋member 已成立，Redis 失敗不得反過來 rollback 稽核。遺漏的 Redis 封鎖沿用既有設計、由登入時 DB status 檢查兜底。加回 best-effort WARN 用的 `Logger` 欄位與 slf4j import；同步修正 Javadoc（第 1、2 步仍強一致 audit-first，第 3 步 best-effort）。
+- `backend/admin-service/.../service/AdminPlayerServiceTest.java`：新增 `setStatus_redisFails_stillSucceedsAndKeepsAuditAndMemberChange`——Redis 丟例外時仍回成功、稽核與 member 呼叫皆保留。
+
+### 為什麼
+- **分清哪一步「不可失敗」、哪一步「可失敗且自癒」**：稽核與 member 狀態變更是稽核完整性的核心，必須強一致（前一批已做到）；但 Redis 即時封鎖只是「讓既有 token 提早失效」的最佳化，失敗本就可由登入 DB status 兜底、重按即補齊——把這個「可失敗且自癒」的步驟放進「不可失敗」的稽核交易裡，等於賦予它 rollback 稽核的權力，方向錯了。修法是把 Redis 移出強一致保護（best-effort），讓稽核＋member 這對強一致組合不被 Redis 抖動連累。
+
+### 如何驗證
+- `mvn -pl backend/admin-service test`：94 全綠（`AdminPlayerServiceTest` 10 項，含新增的 Redis best-effort 案例）。
+
+## [changed] -- 2026-07-08 -- 後台稽核全面收斂為強一致：鑽石卡生成 + 商城目錄變更由 best-effort 改硬失敗
+
+### 背景
+- 承前一筆把 AdminPlayerService 封鎖稽核收斂後，後台僅剩兩處稽核仍是 best-effort（失敗只記 WARN）：`DiamondCardService.generateCards`（生成即印可兌換星幣的價值）與 `AdminShopService.create/update`（目錄變更）。為讓「會改狀態/印價值的後台操作一律留痕」政策全面一致，一併收斂。
+
+### Changed
+- `backend/admin-service/.../service/DiamondCardService.java`：`writeAudit` 移除 try/catch，寫入失敗直接拋。因稽核（PostgreSQL 獨立交易）在卡片 `saveAll`（MySQL）**commit 之前**呼叫，例外會讓 `@Transactional(mysqlTransactionManager)` rollback → 卡片不生成。移除只用於 best-effort WARN 的 `Logger` 欄位與 slf4j import。
+- `backend/admin-service/.../service/AdminShopService.java`：`writeAudit` 同上移除 try/catch，稽核失敗→拋→商品變更 rollback。`Logger` 保留（`create`/`update` 的 `log.info` 仍在用）。
+- `backend/admin-service/.../service/DiamondCardServiceTest.java`：`generateCards_auditWriteFails_stillReturnsCards` → `..._throwsAndRollsBack`（稽核失敗改斷言整筆拋）。
+- `backend/admin-service/.../service/AdminShopServiceTest.java`：新增 `create_auditWriteFails_throwsAndRollsBack`。
+
+### 為什麼
+- 這兩處與 admin 的告警/GM 發幣不同——卡片/商品在 **MySQL**、稽核在 **PostgreSQL**，跨資料源、專案無 2PC，**做不到真原子**。能達到的最強保證＝稽核在 mysql commit 前寫入：稽核寫不進去就拋、連同 MySQL 寫入一起 rollback（「稽核寫不進去就不印卡/不改目錄」）。殘留的窄窗＝稽核已 commit 但 mysql commit 才失敗 → 孤兒稽核（有稽核無實體），屬「過度記錄」的安全方向，為雙資料源先天限制、已在 Javadoc 點明。
+- 取捨：商城目錄編輯屬低風險操作，強一致的代價是「稽核庫短暫不可用時目錄也改不了」；仍照收，換取後台稽核政策全面一致（值錢的鑽石卡更該如此）。
+- mock 測試無法觀察真實交易 rollback（repo 被 mock），故失敗案例只斷言例外向上傳播、rollback 由 `@Transactional` 於真實交易保證（比照玩家封鎖那筆的處理）。
+
+### 如何驗證
+- `mvn -pl backend/admin-service test`：93 全綠（`AdminShopServiceTest` 5 項含新增、`DiamondCardServiceTest` 6 項含改寫）。
+
+## [changed] -- 2026-07-08 -- 後台告警「已處理」分頁 + 玩家封鎖稽核由 best-effort 收斂為同交易強一致
+
+### 背景
+- 承前一筆（告警補 `resolved_by`/`resolved_at`）的兩個後續：① 後端已回傳處理者，但後台 Dashboard 只列「未處理」告警（`resolved:false`），沒有地方查「誰、何時」把告警按掉；② 前一筆刻意點名 AdminPlayerService 封鎖玩家的稽核仍是 best-effort（失敗只記 WARN），標為「既有設計未一併收斂」——本次一併收斂。
+
+### Changed
+- `frontend-admin/src/pages/Dashboard.jsx`：告警區塊加「未處理 / 已處理」分頁（`alertTab` 狀態，切換時 `fetchAlerts` 依賴改變→`useFetch` 自動重抓 `resolved=true/false`）。已處理分頁改顯示「處理者 / 處理時間」兩欄（讀 `resolvedBy` / `resolvedAt`）、拿掉「標記已處理」按鈕；空狀態文案依分頁切換。純前端，後端 `AlertView` 已具備欄位。
+- `backend/admin-service/.../service/AdminPlayerService.java`：`setStatus` 標 `@Transactional("postgresTransactionManager")`，稽核（`admin_action_logs`）與狀態變更放進**同一 postgres 交易**、改為 **audit-first**（順序：稽核 → member 內部 API 持久化 status → Redis 封鎖/解封）。`writeAudit` 移除 try/catch，寫入失敗直接拋（→ 500）、連同狀態變更 rollback，**不再** best-effort。同步移除只用於 best-effort WARN 的 `Logger` 欄位與 slf4j import。
+- `backend/admin-service/.../service/AdminPlayerServiceTest.java`：`setStatus_auditWriteFails_stillReturnsSuccessResponse` → `setStatus_auditWriteFails_throwsAndSkipsStateChange`（稽核失敗→整筆拋、member 與 Redis 皆不執行）；`setStatus_memberServiceDown_throwsAndSkipsRedis` 移除 `actionLog never().save()` 斷言（audit-first 下 save 已被呼叫，rollback 由 `@Transactional` 於真實交易保證，mock 不觀察 rollback）。
+
+### 為什麼
+- **強一致的先天邊界**：告警那筆能真「同交易」是因狀態與稽核都在 admin 的 PostgreSQL；玩家停用的真相狀態在 member-service（HTTP）＋ Redis，**無法真的加入 postgres 交易**，三者不可能原子一致。本次能做到的最強保證＝比照 `GmRewardService` 的 audit-first：稽核先寫（交易內未 commit），後續 member 失敗會連稽核一起 rollback——即「**沒稽核就不停用、稽核寫不進去就整筆失敗**」，杜絕「封鎖了卻查不到誰做的」的稽核破口。殘留反向半套（member 已改、Redis 未寫）沿用既有設計、由登入時 DB status 兜底重按即補齊。
+- 代價：`memberClient` 的 HTTP 呼叫落在 postgres 交易內會於呼叫期間佔用連線（與 GM 在交易內送 Kafka 同類取捨）。後台封鎖為低頻操作，連線池壓力可忽略，換取稽核不可遺失，值得。
+- 註：`DiamondCardService` 的稽核仍為 best-effort（本次未動，另有其取捨），非本次範圍。
+
+### 如何驗證
+- `mvn -pl backend/admin-service test`：92 全綠（`AdminPlayerServiceTest` 9 項含改寫後兩項）。
+- `cd frontend-admin && npx vite build`：綠燈，產出 `dist/assets/Dashboard-*.js`。
+
+## [fix] -- 2026-07-08 -- 後台告警「標記已處理」補稽核：記錄處理者 resolved_by + 落 admin_action_logs
+
+### 背景
+- 盤點 admin-service 稽核覆蓋率時發現：後台唯一「會改狀態卻完全不留痕」的操作是告警處理（`PATCH /admin/alerts/{id}/resolve`）。對照 GM 發幣 / 玩家封鎖 / 鑽石卡 / 商城全都記 operator + 稽核，只有告警漏掉——連 `admin_alerts` 自己都沒有欄位可記「誰、何時」把一筆風控告警按掉。風控告警盯的正是大額中獎/高頻下注/異常帳務，處理者不可追溯是稽核破口。
+
+### Added
+- `database/postgres/migration/V15__add_alert_resolution_audit.sql`：`admin_alerts` 補 `resolved_by VARCHAR(50)`、`resolved_at TIMESTAMP`（`ADD COLUMN IF NOT EXISTS`，既有環境可重跑）。
+
+### Changed
+- `database/postgres/init.sql`：`admin_alerts` 建表同步補 `resolved_by` / `resolved_at`（新環境與 migration 一致）。
+- `backend/admin-service/.../entity/AdminAlert.java`：新增 `resolvedBy` / `resolvedAt` 欄位；`markResolved()` → `markResolved(String operator)`，一併寫入處理者與 `LocalDateTime.now()`。
+- `backend/admin-service/.../dto/AlertView.java`：回應多帶 `resolvedBy` / `resolvedAt`（API 形狀擴充，供後台顯示處理者）。
+- `backend/admin-service/.../service/AdminAlertService.java`：`resolve(alertId)` → `resolve(alertId, operator)`；在**同一個 postgres 交易內**記處理者並落一筆 `admin_action_logs`（`action_type=ALERT_RESOLVE`、`target_player_id`=告警玩家、`idempotency_key=alert-resolve-<id>` 確定性去重）。稽核與狀態變更同交易、稽核寫不進去則整筆 rollback（比照 GM 發幣，**不採** AdminPlayerService 的 best-effort）。冪等強化：已處理再標一次仍回 200，但不覆寫原處理者、不重複寫稽核。
+- `backend/admin-service/.../controller/AdminAlertController.java`：`resolveAlert` 帶入 `Authentication`，以 `authentication.getName()` 作為處理者。
+- `backend/admin-service/.../service/AdminAlertServiceTest.java`：建構子補 `AdminActionLogRepository` mock；`resolve` 測試改斷言「記 operator + 落稽核（捕捉 AdminActionLog 驗欄位）」、「已處理不覆寫/不重複稽核」、「不存在不寫任何庫」。
+
+### 為什麼
+- 稽核放進**同一交易**而非 best-effort：告警處理是低頻但敏感的追責點，寧可「處理失敗」也不要「處理成功卻查不到誰做的」。這與 AdminPlayerService 封鎖玩家的 best-effort 立場不同——後者以「狀態變更優先、稽核可事後補」取捨，兩者差異已在程式碼註解點明，屬既有設計未一併收斂（可另立 issue 統一）。
+- 冪等不覆寫：保留「第一位處理者」才是稽核想要的答案；後續重按不該把責任轉移給最後一個點的人。
+
+### 如何驗證
+- `mvn -pl backend/admin-service test`：92 全綠（含改寫後的 `AdminAlertServiceTest`，7 項）。
+=======
+## [perf] -- 2026-07-08 -- T-090 效能調校 Phase A（A1–A4）：風控統計移出熱路徑
+
+### Added
+- `backend/game-service/.../scheduler/GlobalRtpCacheScheduler.java`（A1）：每 2 秒（`risk.rtp-cache-refresh-ms`）對 SLOT/BACCARAT/FISHING 各跑一次既有 `aggregateRecent` 聚合，寫入 Redis `risk:rtp:{gameType}`（value=`totalBet:totalWin`、TTL 10 秒）；單一遊戲刷新失敗不中斷其他遊戲。
+- `database/postgres/migration/V15__add_game_rounds_risk_indexes.sql` ＋ `database/postgres/init.sql`（A3）：`game_rounds` 補兩個 partial 複合索引 `idx_game_rounds_type_created (game_type, created_at DESC)` 與 `idx_game_rounds_player_type_settled (player_id, game_type, settled_at)`（皆 `WHERE status='SETTLED'`），服務排程聚合與 cache-miss 回填。
+- `RiskControlService.recordRoundSettled()`（A2）：每局結算落地後以單一 Lua（HINCRBY bet/win + PEXPIRE）累加 `risk:player-day:{playerId}:{yyyyMMdd}:{gameType}`（TTL 48h，日期入 key 天然跨日歸零）；best-effort，Redis 故障僅 log 不影響結算。三個遊戲（`SlotService`/`BaccaratService`/`FishingService`）皆於 `roundRepository.save` 首次落地成功後呼叫，口徑＝`game_rounds.bet_amount/win_amount`（含本金，與 `aggregatePlayerToday` 一致）。
+
+### Changed
+- `RiskControlService`：
+  - `isGlobalRtpOverLimit`（A1）改先讀 Redis 快取，miss（排程未跑過/Redis 故障/格式異常）退回直查 DB——只改「數據怎麼來」，不改「怎麼判」（per-game 門檻與含本金口徑不動，雷區 17）。
+  - `isPlayerOverLimit`（A2）改先讀日水位 hash，miss 退回 DB 聚合並以 HSETNX 回填（不覆蓋並發中的 HINCRBY，避免蓋掉別局剛累加的量）。
+  - 並發閘（A4）：`INCR`+`EXPIRE` 兩次往返合併為單一 Lua，且僅在計數器 0→1 首次取號時 PEXPIRE——修掉「每次 INCR 都續命 TTL」的語意問題；釋放端亦改 Lua（DECR 歸零即刪 key）——code review 抓出裸 DECR 在 key 先過期（請求超過 30s TTL / Redis 重啟）時會把計數器重建為無 TTL 的負值、並發閘對該玩家永久失效。
+  - `isPlayerOverLimit` 命中條件改「bet/win 兩欄皆存在」才信任快取，殘缺 hash（回填只寫入一欄即中斷）視同 miss 退回 DB——否則 netWin 恆為負、上限實質停用（code review 發現）。
+- `backend/game-service/src/main/resources/application.yml`：`risk.rtp-cache-refresh-ms: 2000`。
+- `docs/plans/02-T-090-效能調校藍圖.md`：進度表 A1–A4 標記已落地。
+- `CHANGELOG.md`：順手移除檔首殘留的分支名字串。
+
+### Why
+- 1,000 併發實測（2026-07-08）P99 5,291 ms 的主因是風控統計在請求熱路徑上即時重算：每局一次「近 500 局排序聚合」＋一次 per-player DB 聚合，1,000 個併發請求各自重算同一個全域答案、互相爭搶。修法＝統計改事件驅動維護（排程/計數器）、熱路徑只讀 Redis O(1)，DB 聚合退居 miss 回填與對帳基準（單一真相仍在 `game_rounds`）。
+- 可接受 2 秒舊資料：全局 RTP 攔截是統計性水位警報，非帳務正確性機制（帳務由 wallet 冪等鍵＋樂觀鎖守，雷區 8）；風險上限與 `rtp-sample-size: 500` 的統計慣性同量級。
+- 計數器累加放在對局落地之後且 best-effort：寧可水位少計一局（下次 miss 由 DB 回填補正），不可因 Redis 故障讓結算失敗。
+
+### 如何驗證
+- `mvn -pl backend/game-service test`：190 tests 全綠（含 `RiskControlServiceTest` 新增 9 個 A1/A2/A4 測試：快取命中不查 DB、miss 降級直查、HSETNX 回填、Lua 並發閘、best-effort 不拋例外）。
+- 效能對照（150 併發迴歸基準 + 1,000 併發趨勢）待重跑 T-090/T-091 後回填報告——依藍圖統一驗證流程，帳務 gate 為不可回歸硬底線。
+
+## [docs] -- 2026-07-08 -- T-090 效能調校藍圖：P99/5xx/失敗樣本的分階段施工計畫
+
+### Added
+- `docs/plans/02-T-090-效能調校藍圖.md`：把 1,000 併發重跑後的「下一輪效能調校」從一句話變成 8 個可施工項（A1–A4 風控查詢移出熱路徑／B1 wallet debit 剖析／C1 gateway 併發上限／C2 起跑 401／D1 驗收環境拍板），含進度表、施工順序與統一驗證流程。
+
+### Why
+- 效能 gate（P99 < 500 ms、5xx = 0、失敗 = 0）不過即不能上線，但先前僅有方向性描述、無計畫。讀碼定位出主因：`SlotService.settleInternal` 每局在請求路徑內跑 `GameRoundRepository.aggregateRecent`（近 500 局排序聚合）＋ `aggregatePlayerToday` 兩次 DB 查詢，且 `game_rounds` 缺複合索引——修法是把統計改為事件驅動維護、熱路徑只讀快取（O(N) 聚合移出 O(1) 路徑），而非調快查詢。
+- 帳務 gate 為不可回歸硬底線已寫入計畫的統一驗證流程。
+
+### 如何驗證
+- 純文件新增，無行為變更；各 Phase 落地時依計畫內驗證流程重跑 T-090/T-091 並回填進度表。
+
+## [test] -- 2026-07-08 -- T-090 1,000 併發完整重跑（TimeLimiter 修正後驗證）
+
+### 背景
+- gateway TimeLimiter 修正（見下一條目）先前僅在 150 併發驗證（5xx 78% → 0）；規格級 1,000 併發的修正後完整重跑尚未執行。本次同拓撲補跑到底，驗證修正在真實規格併發下的效果。
+
+### Added
+- `docs/performance/T-090-load-test-report.md`：新增「2026-07-08 gateway TimeLimiter 修正驗證（1,000 併發完整重跑）」節——12,530 樣本、P99 5,291 ms、失敗 8,582（68.5%），失敗組成拆解為 503 3,870（30.9%，較修正前 13,709 減 72%）／client 5s SocketTimeout 4,369（34.9%）／401 343（2.7%，起跑尖峰 12 秒內 JWT filter Redis fail-closed 所致）；idempotency/overdraw 全程 0。
+- 壓測產物：`tests/performance/results/20260708-103916/`（JTL/HTML/acceptance-report）、`tests/performance/results/accounting-20260708-104156/`（T-091 對帳 CSV，本機無 psql 改以 `docker exec lucky-star-postgres psql` 執行同一 SQL）。
+
+### Changed
+- `docs/performance/T-090-load-test-report.md`、`CHANGELOG.md`：順手清除 merge commit `166b179` 遺留的 conflict 標記殘骸（branch 名稱與 `=======`）。
+- `docs/plans/01-八項架構改進施工藍圖.md`：P2b 狀態註記補上「TimeLimiter 修正後 1,000 併發重跑完成」。
+
+### Why
+- 150 併發的驗證不能外推到 1,000 併發（修正前兩者失敗形態就不同）；且 AGENTS.md 明定無實測不得填數字，規格級併發必須實跑。
+- 結論：**熔斷「誤判環節」在 1,000 併發下確認消除**（Prometheus 佐證：CB `kind="failed"` calls 全服務歸零（修正前 game≈1,172/wallet≈424）、wallet CB not_permitted 由 ≈10,028 歸零、game not_permitted 由 ≈9,861 降至 ≈4,047 且全由 slow-call rate 合法觸發）；**帳務 gate 維持全 PASS**；效能 gate（P99<500ms/5xx=0）仍 FAIL，瓶頸移轉到 spin 路徑本身延遲（成功呼叫平均 4.42 s：風控 Redis 並發閘＋DB 聚合、注單稽核高併發變重），屬下一輪效能調校課題、超出本修正範圍。
+
+### 如何驗證
+- `tests/performance/results/20260708-103916/acceptance-report.md`、`results/accounting-20260708-104156/accounting-reconciliation.csv`；Prometheus range query（`increase(...[90s])`，窗口迄 10:40:24）可複驗，PromQL 見報告內嵌。
+- 迴歸自查：`node --test tests/infra/*.test.js` 綠燈（本次未動任何程式碼/設定，僅文件與測試產物）。
+
 ## [fix] -- 2026-07-08 -- gateway 補 Resilience4j TimeLimiter 設定，解決 T-090 thundering herd 熔斷
 
 ### 背景
@@ -26,7 +272,7 @@ feature/huang-gateway-timelimiter
 ### 如何驗證
 - 150 併發（`tests/performance/results/20260708-101629/acceptance-report.md`）：HTTP 5xx 由修正前 13,563（78.0%）降至 **0**；失敗樣本由 13,563 降至 4（0.05%）；idempotency/overdraw 全程 0。
 - P99（2,667 ms）仍未達 < 500 ms 門檻——歸類為下一輪效能調校的獨立課題（風控聚合/注單稽核在高併發下變重），不在本次修正範圍。
-=======
+
 ## [test] -- 2026-07-08 -- T-090 壓測完整重跑（Phase 2b 完成）：根因鏈確認、帳務對帳 PASS
 
 ### 背景
@@ -46,10 +292,50 @@ feature/huang-gateway-timelimiter
 
 ### 如何驗證
 - `tests/performance/results/20260708-100306/acceptance-report.md`（150 併發）、`tests/performance/results/20260708-100442/acceptance-report.md`（1000 併發）、`tests/performance/results/accounting-20260708-100542/accounting-reconciliation.csv`。
-- Prometheus range query（`increase(...[90s])` at test-window timestamp）可重跑複驗，見報告內嵌 PromQL。
- main
+- Prometheus range query（`increase(...[90s])` at test-window timestamp）可重跑複驗，見報告內嵌 PromQL。 develop
 
-feature/weiyu-saga-compensation-and-contracts
+## [feat] -- 2026-07-08 -- 玩家端「交易紀錄」與「遊戲紀錄」統整為單一時間軸頁
+
+### 背景
+- 原本前端有兩個獨立頁：`/transactions`（錢包帳務流水）與 `/game-history`（遊戲注單）。兩者其實大量重疊——一次老虎機在錢包會產生 `bet` + `payout` 兩筆交易、在遊戲服務再記一筆 round，是「同一經濟事件的兩種視角」。使用者要求把兩頁統整為一個。
+
+### Added
+- `frontend/src/pages/Records.jsx`：新增 `/records` 合併頁。各服務併發（`Promise.all`）抓最近 `FETCH_CAP=200` 筆 → 濾掉遊戲相關交易子型（`bet`/`payout`/`win`，涵蓋 mock 小寫與後端大寫 `BET`/`WIN`）→ 與遊戲 round 合併、依時間倒序 → 前端分頁（每頁 10 筆）。欄位：時間 / 來源 / 類型 / 金額 / 餘額；來源篩選（全部/交易/遊戲）。
+
+### Changed
+- `frontend/src/App.jsx`：新增 `/records` lazy route。
+- `frontend/src/components/AppShell.jsx`：導覽把「交易紀錄」「遊戲紀錄」兩項合併為單一「交易/遊戲紀錄」→ `/records`。
+- `frontend/e2e/smoke.spec.js`：導覽走查改點「交易/遊戲紀錄」並斷言 `/records`。
+
+### Removed
+- 刪除舊頁 `frontend/src/pages/Transactions.jsx`、`frontend/src/pages/GameHistory.jsx` 及 `App.jsx` 的 `/transactions`、`/game-history` 路由與 lazy import；`Records.jsx` 移除原本連向 `/game-history` 的明細入口。副作用：舊遊戲明細（局號、毫秒下注/派彩時間、投注前→派彩後餘額）不再有頁面可看。
+- 清除 `frontend/src/store/slices/walletSlice.js` 中因舊頁移除而變成 dead code 的交易相關部分：`fetchTransactions` thunk、`setTransactionFilters` / `setTransactionPage` reducer 與其 export、`fetchTransactions` 的 3 個 `extraReducers`，以及 initialState 的 `transactions` / `transactionTotal` / `transactionPage` / `transactionPageSize` / `filters` 欄位。合併頁改直接呼叫 `walletApi.getTransactions`，不再走 redux；`walletApi.getTransactions` 本身保留。
+
+### 為什麼
+- 直接把兩表原封不動混排，一次遊戲會冒出三列（下注 TX + 派彩 TX + 遊戲 round）、金額重複計。改以「遊戲每筆一列（顯示損益）+ 交易只保留非遊戲事件（簽到/任務/贈送/商城…）」讓每個事件只出現一次、金額不重複。餘額欄僅遊戲列有值（帳務流水不帶當下餘額），交易列顯示 `-`。跨頁排序正確性靠 bounded fetch（各抓一段視窗後在前端合併排序），而非「各取第 N 頁再合併」。
+
+### 如何驗證
+- `cd frontend && npx vite build`：綠燈，產出 `dist/assets/Records-*.js` chunk。
+
+## [fix] -- 2026-07-08 -- 後台 RTP 監控：無下注樣本改標 NO_DATA，不再誤報 ABNORMAL
+
+### 背景
+- 以 50 帳號模擬玩老虎機/百家樂/捕魚後查後台，發現剛玩完 RTP 報表把 SLOT（該時段快照尚無資料）標成 ABNORMAL。根因：`RtpReportService` 對 `totalBet=0` 的遊戲以 `actual=0` 硬比設計值，deviation 必達 `-design`（如 -0.95）而永遠超門檻。commit `4639c3f` 補了 FISHING 設計值 0.96，反而讓無資料的 FISHING 也會落入同一誤報。此為 T-053 的既有缺陷修正。
+
+### Fixed
+- `backend/admin-service/.../service/RtpReportService.java`：新增 `STATUS_NO_DATA`；`totalBet <= 0`（本時段快照無下注樣本，如剛過整點）時回 `NO_DATA`、deviation=0，跳過偏差判定，不再誤報 ABNORMAL。有資料的遊戲行為不變（NORMAL/ABNORMAL 判定不動）。
+
+### Changed
+- `frontend-admin/src/pages/RtpReport.jsx`、`Dashboard.jsx`：狀態徽章由二態改三態——`NO_DATA` 顯示中性灰「無資料」（不再誤顯綠色「正常」）；置頂 RTP 異常告警的 `abnormal` filter 僅收 `ABNORMAL`，NO_DATA 天然不觸發紅色告警。
+
+### 為什麼
+- 「沒有資料」與「RTP 真的異常」是兩件事，混為一談會讓營運每逢整點後、或新遊戲上線初期看到假紅燈而失去對告警的信任。獨立 NO_DATA 狀態把「未知」與「異常」分開，比硬塞 NORMAL 更誠實（無資料不等於健康）。
+
+### 如何驗證
+- `mvn -pl backend/admin-service test`：92 全綠（含新增回歸 `RtpReportServiceTest.noBetSample_isNoData_notAbnormal`）。
+- 重啟 admin-service 後查 `GET /admin/reports/rtp`：SLOT/FISHING（當前快照無資料）status=`NO_DATA`、deviation=0；BACCARAT（有 24 局資料）維持 `NORMAL`。
+develop
+
 ## [feat] -- 2026-07-07 -- AUDIT_REPORT 附錄 A 自動盤點：tools/audit/ 依證據清單重生進度表（Phase 8）
 
 ### 背景
@@ -122,7 +408,7 @@ feature/weiyu-saga-compensation-and-contracts
 - `node --test tests/infra/*.test.js`：142 tests 全綠。
 - 加上 `.dockerignore` 後 `docker compose build member-service` 成功，build context 由整個 repo 縮為 root pom + backend/。
 - `curl -X POST http://localhost:8080/api/v1/auth/register ...` 經 gateway 註冊回 `success:true`（容器拓撲端到端正常）。
-develop
+
 ## [refactor] -- 2026-07-07 -- 玩法契約單一來源化：repo 根 contracts/*.json + ContractParityTest 守門（Phase 5）
 
 ### 背景
@@ -180,7 +466,6 @@ develop
 ### 如何驗證
 - 乾淨 docker volume 下 `docker compose up -d --build`：12 個容器（5 infra + 7 後端）全數 `healthy`。
 - 透過 gateway（8080）完成註冊 -> 登入 -> 查餘額冒煙測試，皆回傳 200/201。
-develop
 
 ## [feat] -- 2026-07-07 -- 後端服務全面容器化：docker compose up -d --build 一鍵啟動 7 服務（取代多視窗手動啟動）
 

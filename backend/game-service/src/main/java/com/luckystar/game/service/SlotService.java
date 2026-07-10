@@ -196,6 +196,9 @@ public class SlotService {
                 GameRound round = buildRound(roundId, playerId, bet, serverSeed, serverSeedHash, clientSeed,
                         outcome, balanceBefore, balanceAfter, betAt);
                 roundRepository.save(round);
+                // 風控日水位計數器累加（Phase A2，best-effort）：僅在首次落地時累加，與 DB 口徑一致。
+                riskControlService.recordRoundSettled(
+                        playerId, GAME_TYPE, round.getBetAmount(), round.getWinAmount());
                 // 5) 發布 game.result（best-effort）。僅在首次落地時發布，避免重試重複事件。
                 eventPublisher.publishSlotResult(round, outcome);
             } catch (DataIntegrityViolationException e) {

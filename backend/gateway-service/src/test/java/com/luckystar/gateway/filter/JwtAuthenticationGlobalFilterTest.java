@@ -19,6 +19,7 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -191,6 +192,52 @@ class JwtAuthenticationGlobalFilterTest {
         filter.filter(exchange, chain).block();
 
         assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void redisTransientError_recoversOnRetry_isForwarded() {
+        // 第一次訂閱丟瞬時錯誤，重試（重新訂閱）後成功 → 應放行而非 401（T-090 C2）
+        AtomicInteger attempts = new AtomicInteger();
+        when(redis.hasKey(anyString())).thenReturn(Mono.defer(() ->
+                attempts.getAndIncrement() == 0
+                        ? Mono.error(new RuntimeException("transient redis timeout"))
+                        : Mono.just(false)));
+        AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+        MockServerHttpRequest request = MockServerHttpRequest
+                .get("/api/v1/wallet/balance")
+                .header("Authorization", "Bearer " + token("42", "PLAYER", "jti-retry-ok", 60_000))
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        filter.filter(exchange, capturingChain(captured)).block();
+
+        assertThat(captured.get()).isNotNull();
+        assertThat(captured.get().getRequest().getHeaders().get("X-User-Id")).containsExactly("42");
+        assertThat(attempts.get()).isGreaterThan(1); // 確認真的走過重試（第二次訂閱）
+    }
+
+    @Test
+    void redisPersistentError_retriesThenStillFailsClosedWith401() {
+        // 持續性故障：重試耗盡後仍 fail-closed 拒絕——鎖住「Redis 真掛掉時拒絕」語意不因重試回歸
+        AtomicInteger attempts = new AtomicInteger();
+        when(redis.hasKey(anyString())).thenReturn(Mono.defer(() -> {
+            attempts.incrementAndGet();
+            return Mono.error(new RuntimeException("redis down for good"));
+        }));
+        GatewayFilterChain chain = mock(GatewayFilterChain.class);
+
+        MockServerHttpRequest request = MockServerHttpRequest
+                .get("/api/v1/wallet/balance")
+                .header("Authorization", "Bearer " + token("42", "PLAYER", "jti-retry-fail", 60_000))
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        filter.filter(exchange, chain).block();
+
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(attempts.get()).isGreaterThan(1); // 有重試過，但重試失敗後依然拒絕
+        verify(chain, never()).filter(exchange);
     }
 
     @Test

@@ -55,6 +55,19 @@ class AdminShopServiceTest {
     }
 
     @Test
+    void create_auditWriteFails_throwsAndRollsBack() {
+        // 稽核不再 best-effort：與商品變更強一致，寫不進去則整筆失敗（→ 500）。
+        // save 雖已被呼叫，但真實 mysql 交易會隨此例外 rollback（@Transactional 保證，mock 不觀察 rollback）。
+        when(shopItemRepository.existsByItemCode("vip-ticket")).thenReturn(false);
+        when(shopItemRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(actionLogRepository.save(any())).thenThrow(new RuntimeException("db down"));
+
+        assertThatThrownBy(() -> adminShopService.create("admin1", createReq()))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("db down");
+    }
+
+    @Test
     void create_duplicateCode_throwsConflict() {
         when(shopItemRepository.existsByItemCode("vip-ticket")).thenReturn(true);
 

@@ -6,15 +6,6 @@ import { extractError } from '../../services/memberApi'
 const initialState = {
   balance: 0,
   frozenAmount: 0,
-  transactions: [],
-  transactionTotal: 0,
-  transactionPage: 1,
-  transactionPageSize: 8,
-  filters: {
-    type: 'all',
-    startDate: '',
-    endDate: '',
-  },
   checkIn: {
     loading: false,
     reward: null,
@@ -113,14 +104,6 @@ export const claimBankruptcyAid = createAsyncThunk(
   },
 )
 
-export const fetchTransactions = createAsyncThunk('wallet/fetchTransactions', async (params, { rejectWithValue }) => {
-  try {
-    return await walletApi.getTransactions(params)
-  } catch (error) {
-    return rejectWithValue(extractError(error))
-  }
-})
-
 export const giftCoins = createAsyncThunk('wallet/giftCoins', async (payload, { rejectWithValue }) => {
   try {
     return await walletApi.giftCoins(payload)
@@ -160,13 +143,6 @@ const walletSlice = createSlice({
       state.balance = 0
       state.frozenAmount = 0
       state.error = null
-    },
-    setTransactionFilters(state, action) {
-      state.filters = { ...state.filters, ...action.payload }
-      state.transactionPage = 1
-    },
-    setTransactionPage(state, action) {
-      state.transactionPage = action.payload
     },
     clearWalletNotice(state) {
       state.checkIn.message = ''
@@ -272,21 +248,6 @@ const walletSlice = createSlice({
         state.bankruptcyAid.loading = false
         state.bankruptcyAid.error = action.payload || '破產補助領取失敗'
       })
-      .addCase(fetchTransactions.pending, (state) => {
-        state.loading = true
-        state.error = null
-      })
-      .addCase(fetchTransactions.fulfilled, (state, action) => {
-        state.loading = false
-        state.transactions = action.payload.items
-        state.transactionTotal = action.payload.total
-        state.transactionPage = action.payload.page
-        state.transactionPageSize = action.payload.pageSize
-      })
-      .addCase(fetchTransactions.rejected, (state, action) => {
-        state.loading = false
-        state.error = action.payload || '交易紀錄讀取失敗'
-      })
       .addCase(giftCoins.pending, (state) => {
         state.gift.loading = true
         state.gift.message = ''
@@ -324,8 +285,6 @@ export const {
   setLoading,
   setError,
   resetWallet,
-  setTransactionFilters,
-  setTransactionPage,
   clearWalletNotice,
   clearBankruptcyNotice,
   clearGiftNotice,
