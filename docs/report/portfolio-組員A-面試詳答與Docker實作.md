@@ -42,7 +42,7 @@
 Frontend (React :5173)
    │
    ▼
-Gateway :8080  ── IP限流(-200) → JWT驗證(-100) → 玩家限流(-50)
+Gateway :8080  ── IP限流(-200) → 併發卸載(-150, AIMD) → JWT驗證(-100) → 玩家限流(-50)
    │
    ▼
 game-service :8083 ──(同步 REST + INTERNAL_SECRET)──▶ wallet-service :8082
@@ -137,7 +137,7 @@ mysql / postgres / redis（healthy）
 
 ```text
 Frontend ── POST /api/v1/game/slot/spin ──▶ Gateway
-   Gateway：IP限流 → JWT驗證(注入 X-User-Id) → 玩家/遊戲限流
+   Gateway：IP限流 → 併發卸載(AIMD 在途上限, 超限 429) → JWT驗證(注入 X-User-Id) → 玩家/遊戲限流
    ▼
 game-service SlotController → SlotService
    產生 roundId / serverSeed / clientSeed
@@ -173,6 +173,8 @@ game.result → notification-service → /user/queue/notifications
 ```text
 RATE_LIMIT (-200)          IP/全站限流
   ↓
+CONCURRENCY_LIMIT (-150)   per-route 全局在途上限（AIMD 動態調節），超限 429 卸載（T-090 C1/C3）
+  ↓
 JWT_AUTHENTICATION (-100)  驗簽 + Redis 撤銷檢查 → 注入 X-User-Id / X-User-Role
   ↓
 PLAYER_RATE_LIMIT (-50)    依 X-User-Id 的玩家級限流
@@ -180,7 +182,7 @@ PLAYER_RATE_LIMIT (-50)    依 X-User-Id 的玩家級限流
 路由轉發 (order ≥ 0)
 ```
 
-> 「順序是成本與依賴決定的：**IP 限流最先**，因為它最便宜——被它擋掉的請求連 JWT 驗簽、Redis 查詢的成本都省了，這是保護 gateway 自己。**JWT 第二**，因為它產出 `X-User-Id`。**玩家限流最後**，因為它的限流 key 就是上一步注入的 `X-User-Id`——依賴關係決定它必須排在 JWT 之後。」
+> 「順序是成本與依賴決定的：**IP 限流最先**，因為它最便宜——被它擋掉的請求連 JWT 驗簽、Redis 查詢的成本都省了，這是保護 gateway 自己。**併發卸載第二**，同樣刻意排在 JWT 之前——過載時被 429 拒掉的請求連驗簽和 Redis 查詢都不消耗，這是 T-090 壓測後加的（上限值 AIMD 動態調節，Day 4 §4.7 有完整選型故事）。**JWT 第三**，因為它產出 `X-User-Id`。**玩家限流最後**，因為它的限流 key 就是上一步注入的 `X-User-Id`——依賴關係決定它必須排在 JWT 之後。」
 
 ### 3.2 JWT 三層 Redis 撤銷 + fail-closed
 
@@ -365,7 +367,7 @@ gateway 的 CircuitBreaker 沒顯式設定 TimeLimiter
 ### 5.6 Demo 演練腳本（報告日照這個跑）
 
 1. `docker compose up -d` → 開 `docker compose ps` 秀依賴鏈啟動順序（infra healthy → kafka-init 退出 → 服務逐個 healthy → gateway 最後）——履歷第三句的現場證明。
-2. 登入 → 查餘額 → 下注扣款：邊做邊講「這一筆過了 gateway 三層 filter、wallet 四步防線」。
+2. 登入 → 查餘額 → 下注扣款：邊做邊講「這一筆過了 gateway 四層 filter（限流→併發卸載→JWT→玩家限流）、wallet 四步防線」。
 3. 快速連打觸發 429 → 講限流層次與 Retry-After。
 4. 收尾引壓測數據：TimeLimiter 修正 5xx 78%→0、C3+B1 重跑 1,000 併發成功 +430%、401 歸零、帳務全程 0 違規。
 5. E 專項投影片素材：E1 路由表、E2 容器依賴鏈、E3 topic 表、E4 Redis key 表（分工指南現成表格直接貼）。

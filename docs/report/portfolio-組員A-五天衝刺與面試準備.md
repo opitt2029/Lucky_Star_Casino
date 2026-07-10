@@ -29,12 +29,12 @@
 ### 必讀（約 2 小時）
 - [ ] `docs/interview-prep/00-index.md` §1~§3（30 秒電梯版、兩分鐘技術版、白板深問版）——**§1 直接背起來**
 - [ ] `docs/interview-prep/01-專案程式碼地圖.md` 全文（重點：§1 多模組 pom、§2 七服務職責、§3 端到端請求流）
-- [ ] 分工指南 **E1（API 串接架構）**：Gateway 路由表、filter 執行順序（-200 → -100 → -50）、服務間內部呼叫（`INTERNAL_SECRET`）
+- [ ] 分工指南 **E1（API 串接架構）**：Gateway 路由表、filter 執行順序（-200 → -150 併發卸載 → -100 → -50）、服務間內部呼叫（`INTERNAL_SECRET`）
 - [ ] 分工指南 **E2（Docker 部署架構）**：容器清單、啟動依賴鏈、`.env` 必填變數、KRaft 模式 Kafka、kafka-init one-shot 容器
 
 ### 要能講出來（自我檢核）
 - [ ] 30 秒版自我介紹講一遍不看稿（`00` §1）
-- [ ] 白板畫出：前端 → Gateway(限流→JWT→玩家限流) → game → wallet(同步 REST) → Kafka → rank/notification
+- [ ] 白板畫出：前端 → Gateway(限流→併發卸載→JWT→玩家限流) → game → wallet(同步 REST) → Kafka → rank/notification
 - [ ] Docker 依賴鏈背出來：infra(healthy) → kafka → kafka-init(completed) → member → wallet/rank → game → admin → notification → **gateway 最後**（因為它要轉發流量給全部）
 - [ ] 答出「為什麼 gateway 容器最後啟動？」「kafka-init 為什麼是 one-shot？」「`JWT_SECRET` 缺了會怎樣（fail-fast，`02` 決策 8）？」
 
@@ -78,7 +78,7 @@
 - [ ] 掃過真實檔案（面試被問「程式在哪」要能指路）：`JwtAuthenticationGlobalFilter.java`、`FilterOrder.java`、`PlayerRateLimitGlobalFilter.java`、gateway `application.yml`
 
 ### 要能講出來
-- [ ] filter 順序及**為什麼**：IP 限流(-200) 最先（省後面驗證成本）→ JWT(-100)（產出 X-User-Id）→ 玩家限流(-50)（依賴上一步的 X-User-Id 當 key）
+- [ ] filter 順序及**為什麼**：IP 限流(-200) 最先（省後面驗證成本）→ 併發卸載(-150)（AIMD 在途上限，排在 JWT 前讓被拒請求不耗 Redis，T-090 C1/C3）→ JWT(-100)（產出 X-User-Id）→ 玩家限流(-50)（依賴上一步的 X-User-Id 當 key）
 - [ ] JWT 三層 Redis 撤銷：`jwt:blacklist:{jti}` / `disabled:player:{sub}` / `token:min-iat:{sub}`；Redis 掛 → **fail-closed**
 - [ ] 答出「怎麼防前端偽造 X-User-Id？」→ 白名單路徑先剝除、驗證後先 remove 再 set
 - [ ] 答出「服務間為什麼用 INTERNAL_SECRET 不用 JWT？」→ JWT 代表玩家、內部呼叫代表可信服務；`/internal` 不經 gateway
@@ -130,7 +130,7 @@
 ### Demo 演練（報告日腳本，跑一次全流程）
 - [ ] `docker compose up -d` 一鍵起環境 → 秀依賴鏈啟動順序（履歷第三句的現場證明）
 - [ ] 登入 → 查餘額 → 下注扣款（講冪等+樂觀鎖）→ Gateway 429 限流演示
-- [ ] 引用壓測數據收尾：TimeLimiter 修正 5xx 78%→0、C1+C2 成功 +126%、401 −63%、帳務 0 違規
+- [ ] 引用壓測數據收尾：TimeLimiter 修正 5xx 78%→0、C3+B1 重跑後 1,000 併發成功 +430%、401 歸零、150 併發 P99 −48%、帳務 0 違規
 - [ ] E專項投影片素材確認：E1 路由表、E2 容器依賴鏈、E3 topic 表、E4 Redis key 表（分工指南裡都是現成表格，可直接貼）
 
 ### 總複習
@@ -203,7 +203,7 @@
 
 **DB 角色**：PostgreSQL = 寫（帳務、樂觀鎖）、MySQL = 讀（查詢）；wallet/admin 雙資料源手動配置
 
-**Gateway filter**：RATE_LIMIT(-200) → JWT(-100) → PLAYER_RATE_LIMIT(-50)；限流 fail-open、JWT 撤銷 fail-closed
+**Gateway filter**：RATE_LIMIT(-200) → CONCURRENCY_LIMIT(-150，AIMD 在途上限) → JWT(-100) → PLAYER_RATE_LIMIT(-50)；限流 fail-open、JWT 撤銷 fail-closed
 
 **限流 burst**：auth/IP 10、一般玩家 20/s、遊戲路徑 10/s（`rate:game:{userId}`）
 
