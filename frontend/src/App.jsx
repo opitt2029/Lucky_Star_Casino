@@ -16,8 +16,7 @@ const Baccarat = lazy(() => import('./pages/Baccarat'))
 const Fishing = lazy(() => import('./pages/Fishing'))
 const Rank = lazy(() => import('./pages/Rank'))
 const Profile = lazy(() => import('./pages/Profile'))
-const Transactions = lazy(() => import('./pages/Transactions'))
-const GameHistory = lazy(() => import('./pages/GameHistory'))
+const Records = lazy(() => import('./pages/Records'))
 const CasinoShop = lazy(() => import('./pages/CasinoShop'))
 const Inventory = lazy(() => import('./pages/Inventory'))
 const CheckIn = lazy(() => import('./pages/CheckIn'))
@@ -180,18 +179,10 @@ export default function App() {
             }
           />
           <Route
-            path="/transactions"
+            path="/records"
             element={
               <ProtectedPage>
-                <Transactions />
-              </ProtectedPage>
-            }
-          />
-          <Route
-            path="/game-history"
-            element={
-              <ProtectedPage>
-                <GameHistory />
+                <Records />
               </ProtectedPage>
             }
           />

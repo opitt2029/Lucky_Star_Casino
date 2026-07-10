@@ -8,7 +8,10 @@ param(
     [int]$DurationSeconds = 60,
     [int]$RampUpSeconds = 1,
     [int]$Bet = 100,
-    [int]$PacingMs = 1000
+    [int]$PacingMs = 1000,
+    # 429 卸載佔比上限（0..1），傳給 analyze-jtl.mjs 的 MAX_429_RATIO。
+    # 容量內迴歸基準（150 併發）應設 0（不准卸載）；1,000 併發趨勢照預設 0.40。
+    [double]$Max429Ratio = -1
 )
 
 $ErrorActionPreference = "Stop"
@@ -60,6 +63,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "JMeter exited with code $LASTEXITCODE."
 }
 
+if ($Max429Ratio -ge 0) { $env:MAX_429_RATIO = $Max429Ratio.ToString([System.Globalization.CultureInfo]::InvariantCulture) }
 node (Join-Path $scriptDir "analyze-jtl.mjs") $jtl $report
 if ($LASTEXITCODE -ne 0) {
     throw "T-090 acceptance gates failed. See $report and $htmlDir."

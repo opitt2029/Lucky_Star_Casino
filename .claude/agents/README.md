@@ -27,6 +27,13 @@ requirement → split into steps → dev-coder / frontend-dev implement
              (format: type(scope): 中文描述, plus a root CHANGELOG.md entry)
 ```
 
+## Language convention
+
+Subagents work in English end-to-end (reasoning, tool commands, reports back to the
+main thread). Traditional Chinese appears only in user-facing text (code comments /
+test names as learning aids, literal UI copy). The main thread translates conclusions
+into Traditional Chinese when reporting to the user.
+
 ## Single source of truth for landmines
 
 Every agent file starts by pointing back to the repo root `AGENTS.md`

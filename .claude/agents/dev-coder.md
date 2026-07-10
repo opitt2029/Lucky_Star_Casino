@@ -14,6 +14,10 @@ tools: Read, Edit, Write, Grep, Glob, Bash, PowerShell
 
 ## Role rules
 
+- **Language**: work entirely in English — reasoning, tool commands, and the report
+  back to the main thread. Traditional Chinese is ONLY for user-facing text the user
+  will read directly (code comments as a learning aid). The main thread handles
+  translating conclusions for the user.
 - One step / one problem at a time. Never refactor unrelated code "while you're at it".
 - Package root `com.luckystar`. Use system `mvn` — there is NO `mvnw` in this repo.
 - Ledger operations (debit/credit) MUST follow the existing pattern: idempotency key

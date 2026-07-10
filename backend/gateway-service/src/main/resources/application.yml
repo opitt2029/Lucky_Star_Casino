@@ -201,6 +201,30 @@ spring:
           predicates:
             - Path=/ws,/ws/**
 
+# per-route 全局併發上限（RouteConcurrencyLimitGlobalFilter，T-090 C1 固定上限 → C3 動態）：
+# 超過在途上限的請求立即 429 + Retry-After 卸載，不進 JWT/Redis/後端。
+# max-in-flight 是 AIMD 的「初始值」而非固定值：每 adjust-interval-ms 看一次該 route 的
+# 窗內 P95——超過 latency-target-ms 收緊（×0.8、不低於 floor）、達標放寬（+2、不高於
+# ceiling）、無流量不動。回饋失效時退化成固定上限（C1 行為），仍安全。
+# game 初始 200 的依據：150 併發（單機迴歸基準）實測在途 ≈ 吞吐 145/s × 平均 0.7s ≈ 100，
+# 200 保證容量內（150 併發）不誤傷（gate 要求 429=0）；floor=50 遠高於 150 併發實測在途，
+# AIMD 收緊不會觸及迴歸基準。wallet 路徑（B1：1,000 併發殘餘失敗六成六集中於此）比照納管，
+# 獨立計數＋獨立回饋——讀多的 wallet 與寫多的 game 容量特性不同，共用會互相污染訊號。
+# 多機部署時各值 = 單一 gateway 實例身後的容量。
+concurrency-limit:
+  adjust-interval-ms: ${CONCURRENCY_ADJUST_INTERVAL_MS:5000}
+  routes:
+    - path-prefix: /api/v1/game/
+      max-in-flight: ${GAME_CONCURRENCY_LIMIT:200}
+      floor: ${GAME_CONCURRENCY_FLOOR:50}
+      ceiling: ${GAME_CONCURRENCY_CEILING:400}
+      latency-target-ms: ${GAME_CONCURRENCY_LATENCY_TARGET_MS:2000}
+    - path-prefix: /api/v1/wallet/
+      max-in-flight: ${WALLET_CONCURRENCY_LIMIT:200}
+      floor: ${WALLET_CONCURRENCY_FLOOR:50}
+      ceiling: ${WALLET_CONCURRENCY_CEILING:400}
+      latency-target-ms: ${WALLET_CONCURRENCY_LATENCY_TARGET_MS:2000}
+
 # 每玩家限流設定（PlayerRateLimitGlobalFilter 使用）
 rate-limit:
   player:

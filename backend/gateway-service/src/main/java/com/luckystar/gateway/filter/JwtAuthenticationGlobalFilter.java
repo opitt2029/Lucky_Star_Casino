@@ -17,9 +17,11 @@ import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 
 /**
  * Gateway 全域 JWT 驗證：
@@ -45,6 +47,10 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
     private static final String USER_ROLE_HEADER = "X-User-Role";
     private static final String ADMIN_PATH_PREFIX = "/admin/";
     private static final String ADMIN_ROLE = "ADMIN";
+    // Redis 撤銷檢查的瞬時錯誤重試：1 次、退避 50ms 起（T-090 C2）。只吸收尖峰抖動，
+    // 不改變 fail-closed 語意——重試耗盡後仍拒絕請求
+    private static final long REDIS_RETRY_MAX_ATTEMPTS = 1;
+    private static final Duration REDIS_RETRY_MIN_BACKOFF = Duration.ofMillis(50);
 
     private final JwtProperties props;
     private final SecretKey signingKey;
@@ -118,9 +124,16 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
 
         return Mono.zip(blacklistCheck, disabledCheck, minIatCheck)
                 .map(checks -> checks.getT1() || checks.getT2() || checks.getT3())
+                // Redis 瞬時錯誤（尖峰逾時/連線抖動）先做 1 次短退避重試，重試＝重新訂閱、三項檢查全部重查，
+                // 不會拿到殘缺結果；重試仍失敗才落入下方 fail-closed
+                .retryWhen(Retry.backoff(REDIS_RETRY_MAX_ATTEMPTS, REDIS_RETRY_MIN_BACKOFF)
+                        .doBeforeRetry(signal -> log.debug("Redis revocation check retrying: {}",
+                                signal.failure().getMessage())))
                 // Redis 故障 → fail-closed：拒絕請求而非放行，避免黑名單/封鎖失效導致已撤銷的 token 復活
                 .onErrorResume(err -> {
-                    log.warn("Redis revocation check failed, denying request: {}", err.getMessage());
+                    // 重試耗盡時 err 是 RetryExhaustedException 包裝，取 cause 才是真正的 Redis 錯因
+                    Throwable rootCause = err.getCause() != null ? err.getCause() : err;
+                    log.warn("Redis revocation check failed, denying request: {}", rootCause.getMessage());
                     return Mono.just(Boolean.TRUE);
                 })
                 .flatMap(blocked -> {

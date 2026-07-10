@@ -501,9 +501,6 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | T-113 | CheckIn 頁面 | ✅ | `frontend/src/pages/CheckIn.jsx` 存在 |
 | T-114 | 統一客服入口（SupportModal / uiSlice）| ✅ | `SupportModal.jsx` + `uiSlice.js` 抽成 App 根層，QuickToolbar / 頭像下拉統一入口（CHANGELOG 2026-06-16）|
 
-### A.13 進度統計
-develop
-
 ### A.13 進度統計（自動計算）
 
 | 狀態 | 任務數 | 占比 |

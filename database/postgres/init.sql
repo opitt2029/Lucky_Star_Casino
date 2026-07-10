@@ -126,8 +126,17 @@ CREATE TABLE IF NOT EXISTS game_rounds (
 CREATE INDEX IF NOT EXISTS idx_game_rounds_player_id  ON game_rounds (player_id);
 CREATE INDEX IF NOT EXISTS idx_game_rounds_created_at ON game_rounds (created_at);
 
+-- 風控聚合查詢的複合索引（V15，T-090 Phase A3）：兩者皆只掃已結算對局，用 partial index 縮小體積。
+-- idx_game_rounds_type_created         → aggregateRecent（近 N 局全局 RTP）
+-- idx_game_rounds_player_type_settled  → aggregatePlayerToday（玩家今日水位）
+CREATE INDEX IF NOT EXISTS idx_game_rounds_type_created
+    ON game_rounds (game_type, created_at DESC)
+    WHERE status = 'SETTLED';
+CREATE INDEX IF NOT EXISTS idx_game_rounds_player_type_settled
+    ON game_rounds (player_id, game_type, settled_at)
+    WHERE status = 'SETTLED';
+
 -- -------------------------------------------------------
-feature/weiyu-saga-compensation-and-contracts
 -- pending_wallet_credits：game→wallet 補償單（ADR-009，Saga 補償）
 -- credit（派彩/退款）失敗時落地為「待送出的 wallet credit」，
 -- 排程帶同一冪等鍵重試；wallet 端 idempotency_key UNIQUE 保證不重複入帳。
@@ -184,7 +193,6 @@ CREATE TABLE IF NOT EXISTS cashback_records (
 
 CREATE INDEX IF NOT EXISTS idx_cashback_player_id ON cashback_records (player_id);
 CREATE INDEX IF NOT EXISTS idx_cashback_period    ON cashback_records (period_type, period_start);
-develop
 
 -- -------------------------------------------------------
 -- rank_history：週排行榜歷史快照
@@ -246,6 +254,8 @@ CREATE TABLE IF NOT EXISTS admin_alerts (
     alert_type   VARCHAR(30)  NOT NULL,   -- BIG_WIN / HIGH_FREQUENCY / ABNORMAL_TRANSFER
     detail       TEXT,
     is_resolved  BOOLEAN      NOT NULL DEFAULT FALSE,
+    resolved_by  VARCHAR(50),                            -- 標記已處理的後台操作者（未處理為 NULL）
+    resolved_at  TIMESTAMP,                              -- 標記已處理的時間（未處理為 NULL）
     created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_admin_alerts PRIMARY KEY (id),
     CONSTRAINT chk_alert_type  CHECK (alert_type IN ('BIG_WIN', 'HIGH_FREQUENCY', 'ABNORMAL_TRANSFER'))

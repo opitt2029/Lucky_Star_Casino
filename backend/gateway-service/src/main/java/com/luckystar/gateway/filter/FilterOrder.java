@@ -10,6 +10,8 @@ package com.luckystar.gateway.filter;
  *   執行鏈：
  *     RATE_LIMIT (-200)        ← 最早，先擋下暴力請求避免後續驗證浪費資源
  *       ↓
+ *     CONCURRENCY_LIMIT (-150) ← per-route 全局在途上限（動態 AIMD），超限 429 卸載（不進 JWT/Redis）
+ *       ↓
  *     JWT_AUTHENTICATION (-100) ← 驗 JWT + 黑名單，注入 X-User-Id / X-User-Role header
  *       ↓
  *     PLAYER_RATE_LIMIT (-50)  ← 依 X-User-Id 做每玩家滑動視窗限流
@@ -21,6 +23,9 @@ public final class FilterOrder {
 
     /** 速率限制：最早執行，攔截暴力請求避免後續資源浪費。 */
     public static final int RATE_LIMIT = -200;
+
+    /** per-route 全局併發上限（T-090 C1/C3）：在 JWT 之前卸載，被拒請求不消耗 Redis/後端資源。 */
+    public static final int CONCURRENCY_LIMIT = -150;
 
     /** JWT 驗證：驗簽、查黑名單、注入下游 header。 */
     public static final int JWT_AUTHENTICATION = -100;
