@@ -197,7 +197,7 @@
 
 ### 如何驗證
 - `mvn -pl backend/admin-service test`：92 全綠（含改寫後的 `AdminAlertServiceTest`，7 項）。
-=======
+
 ## [perf] -- 2026-07-08 -- T-090 效能調校 Phase A（A1–A4）：風控統計移出熱路徑
 
 ### Added
