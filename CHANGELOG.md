@@ -1,3 +1,15 @@
+## [docs] -- 2026-07-10 -- 新增組員A（組長）五天衝刺與面試準備整合檔
+
+### Added
+- `docs/report/portfolio-組員A-五天衝刺與面試準備.md`：整合 `portfolio-四人分工詳細指南.md` A組＋E專項段落與 `docs/interview-prep/00~13` 全套素材，排成五天可勾選清單（Day1 全貌/Docker → Day2 帳務 → Day3 Gateway/Redis → Day4 T-090 壓測 → Day5 流程/Demo），附「履歷三句防禦表」「數據速記卡」與「最小保命集」。
+
+### Why
+- 報告與面試共用同一套素材，但原素材分散 15+ 檔；組長（A組＋E專項＋T-090 主講）需要一份按天排程、可自我檢核的單一入口。
+- 同時校正履歷數字精確度：150 併發 5xx 13,563→0 與總失敗樣本→4（0.05%）是兩個指標，不可混寫；thundering herd 是熔斷 flapping 的症狀、根因是未設 TimeLimiter 的 1s 預設逾時（依 `docs/performance/T-090-load-test-report.md`）。
+
+### 如何驗證
+- 純文件新增，不影響程式行為；內文所有數字與檔案路徑均比對 `T-090-load-test-report.md`、`13-壓測與效能調校.md`、`00-index.md` §5 一致。
+
 feature/huang-gateway-timelimiter
 ## [fix] -- 2026-07-08 -- gateway 補 Resilience4j TimeLimiter 設定，解決 T-090 thundering herd 熔斷
 
