@@ -1,3 +1,142 @@
+## [docs] -- 2026-07-10 -- 九份 ADR 補「現況校驗」章節，對齊程式碼實際狀態並記錄文件漂移
+
+### Added
+- `docs/adr/ADR-000.md`、`ADR-001.md`、`ADR-002.md`、`ADR-003.md`、`ADR-004.md`、`ADR-005.md`、`ADR-006.md`、`ADR-007.md`、`ADR-009.md`：每份都新增「現況校驗（2026-07-10 補充）」章節，以 6 隻並行 Explore agent 逐一核對程式碼/schema/設定現況（檔案路徑+行號），補上決策當下沒有的細節：ADR-001 補 Postgres 15 表/MySQL 12 表完整清單與跨資料源交易拆 Bean 手法；ADR-002 補新增的 wallet.credit.request 發布端（月度獎勵、GM發幣）；ADR-007 補「其他服務尚未比照 Testcontainers」的現況；ADR-009 補對帳 script 已擴充到 7 項檢查。
+
+### Changed
+- 無程式碼異動，純文件補充。
+
+### Why
+- ADR 文件寫定後專案持續疊代（鑽石系統、禮品商城、Saga 補償、月度簽到獎勵等），原文件只反映決策當下快照，久了會跟現況脫節；依 AGENTS.md「以程式碼為準、發現落差要記錄並更正文件」的原則，逐份核對而非憑空補字。
+
+### 發現並記錄的文件漂移（未動程式碼，僅記錄供後續處理）
+1. **ADR-004 砲台傷害值**：文件宣告收斂至 `10/14/18`，但 `FishingCombat.CANNON_DAMAGE` 現值是 `{0,14,22,32}`，兩者不符；`pCapture` 有依當前傷害值自動反推，RTP 仍精確等於 0.96，不影響帳務正確性，純屬文件與程式碼對不上，已在 ADR-004 現況校驗標註待確認是刻意再平衡還是漏改。
+2. **Postgres migration 版號重複**：`V15__add_alert_resolution_audit.sql` 與 `V15__add_game_rounds_risk_indexes.sql` 同版號並存，在 ADR-001/ADR-007/ADR-009 三處現況校驗都有提及，建議下次改動 migration 時重新編號其中一個為 V16。
+3. **ADR-008 編號仍空白**：ADR-004/ADR-009 都提到「保留給 Phase 3（捕魚 Redis session Lua CAS）」，現況確認 `docs/adr/ADR-008.md` 尚未建檔，Phase 3 是八項架構改進中唯一未動工項目。
+
+### 如何驗證
+- 純文件變更；每份 ADR 新增章節引用的檔案路徑/行號、migration 版號、常數值均由 Explore agent 實際讀取程式碼確認，非憑空推測。
+## [docs] -- 2026-07-10 -- interview-prep 與組員A報告對齊 7/10 現況（ADR-009 補償、gateway -150 併發卸載、C3+B1 最終數據）
+
+### Changed
+- `docs/interview-prep/11-下注請求流與程式碼地圖.md`（漂移最大，7/03 後未更）：§5.1「credit 失敗」由「**沒有補償機制**」改寫為 ADR-009 補償單流程（落 `pending_wallet_credits`、排程 30 秒同冪等鍵重試）、§5.3 整段改寫為「早期無補償 → ADR-009 最小 Saga」演進敘事；§2 白板流/§4.2 gateway 表/§4.3 SlotService 流程補 CONCURRENCY_LIMIT(-150)、風控（RTP 快取＋Lua 並發閘）、補償與 roundId 去重步驟；§5.1 新增 gateway 429 併發卸載列、§5.2 補 AIMD 併發上限數值（初始 200/floor 50/ceiling 400/延遲目標 2s）；§6 面試範本與 §7 Discord 版同步。
+- `docs/interview-prep/10-API串接與架構.md`：§1 mermaid/§3.3 filter 鏈/§6 時序圖補 CONCURRENCY_LIMIT(-150, AIMD)；§3.4 韌性設定補 TimeLimiter 6s 教訓（預設 1s 腰斬慢呼叫）與 C2 JWT Redis 短重試；§6 一致性界線補 ADR-009 一條；§7 速查表補「派彩失敗」「擋暴量」兩列；開頭離線 HTML 參照修正為歸檔後路徑 `../_雜物/08-面試準備-API串接與架構-匯出.html`（原連結已失效）。
+- `docs/interview-prep/00-index.md` §5 / `01-專案程式碼地圖.md` §3·§6 / `02-設計決策與為什麼.md` 決策 4 / `06-題庫解答與模擬問答.md` Q63：filter 鏈補 -150 併發卸載；`00` 速記卡壓測數據由 C1+C2（+126%）更新為 C3+B1 最終（150 併發 P99 −48%、1,000 併發成功 +430%、401 歸零）。
+- `docs/interview-prep/04-資料庫與分散式觀念.md` §6.1：並發閘補「取號/釋放各用 Lua、防負值漂移（T-090 Phase A）」。
+- `docs/report/portfolio-組員A-五天衝刺與面試準備.md`／`portfolio-組員A-面試詳答與Docker實作.md`：Day 1/3 filter 鏈與白板圖補 -150（原與自身 Day 4 §4.7 的 C3 敘述不一致）、Demo 腳本「三層 filter」改四層、Day 5 demo 收尾數據更新為 C3+B1 最終。
+
+### Fixed
+- `docs/interview-prep/07-題庫-進階200題.md` 第 226 題題幹誤貼的 GitHub 合併衝突 URL（PR #188 殘留）已移除。
+
+### Why
+- `10`/`11` 成稿於 7/01–7/03，其後 ADR-009 補償（7/07）與 T-090 C1/C2/C3（7/08–09）落地，筆記仍教「credit 失敗無補償」與三層 filter 鏈，面試照講會與程式碼矛盾；`03`/`08` 核對後無漂移未動。
+### 如何驗證
+- 純文件變更；內容逐一對照 `FilterOrder.java`、`RouteConcurrencyLimitGlobalFilter`/`AdaptiveInFlightLimiter`、gateway `application.yml`（concurrency-limit/timelimiter）、`SlotService.settleInternal`、`WalletCompensationService`/`WalletCompensationRetryJob`（30s/指數退避）、`RiskControlService`（Lua 並發閘）、`kafka-init.sh`（8+5 topic）與 `13`/`T-090` 報告數據。
+
+## [docs] -- 2026-07-10 -- 新增組員A五天衝刺「完整詳答」檔（含 Docker 七服務實作教學章）
+
+### Added
+- `docs/report/portfolio-組員A-面試詳答與Docker實作.md`：把五天衝刺檔（`portfolio-組員A-五天衝刺與面試準備.md`）每天的「要能講出來」檢核項全部展開成可直接背誦的逐字答案（Day1 電梯稿/依賴鏈三問、Day2 debit 四步/TOCTOU/ADR-009、Day3 filter 順序/三層撤銷/fail-open vs fail-closed/single-flight、Day4 T-090 四幕劇＋追問鏈七題逐字、Day5 流程/行為題兩故事/OOP 四支柱）；第 6 章為 Docker 實作教學——multi-stage Dockerfile 逐行解剖（層快取、monorepo build context、非 root）、compose 六大機制（bridge 網路、.env 注入、healthcheck、depends_on 三種 condition、one-shot kafka-init、volume/CLUSTER_ID 陷阱）、動手 SOP 與常見錯誤對照表。
+
+### Changed
+- `docs/report/portfolio-組員A-五天衝刺與面試準備.md`：素材來源補新詳答檔連結；Day 4 追問鏈補列 `13` §7 新增的第七問（C3 重跑驗證與歸因）；數據速記卡補「C3+B1 歸因誠實聲明＋殘餘課題（429 佔比 65.3% FAIL、game CB 503）」一行，與 `13` 最新版對齊。
+
+### Why
+- 衝刺檔刻意只做排程與檢核、不重抄內容，但臨場複習需要「卡住立刻翻到完整答案」的單一檔案；Docker 容器化是履歷第三句主戰場，原素材只講架構不講實作原理，組長需能答出 Dockerfile/compose 層級的細節。
+- 衝刺檔兩處小補是因 `5553051` 更新 `13` 後（追問鏈第七問、歸因/殘餘課題）產生的文件間漂移。
+
+### 如何驗證
+- 純文件變更；詳答內容逐段核對 `docs/interview-prep/00/02/09/10/11/13`、`docker-compose.yml`、`backend/wallet-service/Dockerfile`、`docs/performance/T-090-load-test-report.md`，數字與檔案路徑一致。
+
+## [docs] -- 2026-07-10 -- interview-prep 13：補 C3+B1 對照重跑數據（150 P99 -48%、1,000 成功+430%/401歸零）
+
+### Changed
+- `docs/interview-prep/13-壓測與效能調校.md`：新增「5.3 對照重跑驗證（2026-07-09，C3+B1 疊加）」小節，補上 `T-090-load-test-report.md` 該日重跑的完整對照數據（150 併發 P99 2,753→1,423 ms、1,000 併發成功 1,477→7,829、401 1,988→0、被接受請求成功率 23.9%→78.4%）；§7 追問鏈新增一題「C3 上線後有實際重跑驗證嗎」；§8 事實速查表補 C3+B1 重跑結果、歸因聲明、殘餘課題（game CB 503、429 佔比 65.3% 誠實 FAIL）三列。
+
+### Why
+- 該檔在 `49b6f2f` 建立時（16:23）早於當日 C3+B1 重跑報告 `48a98c5`（16:29），內文仍停留在 C1+C2 舊數據（成功+126%、401−63%），與最新報告脫節；面試素材需與量測報告同步，避免背錯數字。
+- 沿用報告原文的歸因誠實聲明：延遲改善是 C3+B1 疊加效果，debit 絕對改善主要歸 B1（Hikari pool 修正），不可全記給 C3 限流機制。
+
+### 如何驗證
+- 純文件變更；內文數字逐一比對 `docs/performance/T-090-load-test-report.md`「2026-07-09 C3+B1 效果對照重跑」章節一致。
+
+## [docs] -- 2026-07-10 -- 新增組員A（組長）五天衝刺與面試準備整合檔
+
+### Added
+- `docs/report/portfolio-組員A-五天衝刺與面試準備.md`：整合 `portfolio-四人分工詳細指南.md` A組＋E專項段落與 `docs/interview-prep/00~13` 全套素材，排成五天可勾選清單（Day1 全貌/Docker → Day2 帳務 → Day3 Gateway/Redis → Day4 T-090 壓測 → Day5 流程/Demo），附「履歷三句防禦表」「數據速記卡」與「最小保命集」。
+
+### Why
+- 報告與面試共用同一套素材，但原素材分散 15+ 檔；組長（A組＋E專項＋T-090 主講）需要一份按天排程、可自我檢核的單一入口。
+- 同時校正履歷數字精確度：150 併發 5xx 13,563→0 與總失敗樣本→4（0.05%）是兩個指標，不可混寫；thundering herd 是熔斷 flapping 的症狀、根因是未設 TimeLimiter 的 1s 預設逾時（依 `docs/performance/T-090-load-test-report.md`）。
+
+### 如何驗證
+- 純文件新增，不影響程式行為；內文所有數字與檔案路徑均比對 `T-090-load-test-report.md`、`13-壓測與效能調校.md`、`00-index.md` §5 一致。
+
+## [test] -- 2026-07-09 -- T-090 C3+B1 效果對照重跑（150/1,000 併發）：wallet 路徑保護生效、401 歸零、成功 +430%
+
+### Added
+- `docs/performance/T-090-load-test-report.md`：新增「2026-07-09 C3（自適應在途上限）+ B1（Hikari 修正）效果對照重跑」章節——150 正式輪（`20260709-161414`）與 1,000 輪（`20260709-162358`）完整數據、對 C1 輪逐項對照表、Prometheus 佐證、T-091 對帳結果、CB/AIMD 閾值協調課題。
+- `tests/performance/results/20260709-{160905,161414,162358}/`：暖機輪（棄置）、150 正式輪、1,000 輪的 JTL/acceptance-report/HTML dashboard（不入版控，僅本機）。
+
+### Changed
+- `docs/plans/02-T-090-效能調校藍圖.md`：C3 列狀態由「對照壓測重跑待執行」改為「對照重跑已完成（2026-07-09）」附重點數據。
+
+### Why
+- C3（AIMD per-route 在途上限，首次收編 `/api/v1/wallet/**`）落地後需照 C1 SOP 對照重跑驗證機制效果。結果：150 併發 10,258 樣本 0 失敗/0 卸載、P99 2,753→1,423 ms；1,000 併發成功 1,477→7,829（+430%）、401 1,988→0、SocketTimeout −94%、wallet sampler 0 失敗（C1 殘餘課題①關閉）；429 佔比 65.3%>40% 誠實 FAIL（需求−容量差額，D1 課題）；殘餘失敗收斂為 game CB 503（2,024 筆 ≈ CB not_permitted 2,079）。帳務 gate 全 PASS（0 超扣/0 重複扣款；對帳 3 筆差異＝已知 2026-06-16 歷史髒資料）。⚠️ 歸因：本輪同時含 B1 Hikari pool 修正，debit 延遲改善（581→492 ms）主要歸 B1，報告內有明示聲明。
+
+### 如何驗證
+- 暖機（棄置）→ 2.5 分鐘輪距 → `run-slot-load-test.ps1 -Threads 150 -Max429Ratio 0` → 重新 provision 1,000 名（兼輪距）→ `-Threads 1000`；對帳 `accounting-reconciliation.sql` 經 `docker exec lucky-star-postgres psql` 執行，9 項檢查除歷史髒資料外全 0。
+
+## [docs] -- 2026-07-09 -- interview-prep：新增 13-壓測與效能調校（T-090 戰役）＋既有筆記對齊 7 月現況
+
+### Added
+- `docs/interview-prep/13-壓測與效能調校.md`：T-090 完整戰役的面試版敘事——測試設計（雙 gate：效能/帳務分判）、TimeLimiter 根因鏈（5xx 78%→0，Prometheus CB failed-calls 歸零證據）、瓶頸換位三輪（Phase A→C2→C1，「瓶頸只會被擠到沒設上限的地方」）、B1 排除法剖析（Hikari 巢狀 key bug、pgstattuple、JFR 定位 Postgres 交易容量 ≈550–600 筆/秒）、C3 AIMD 選型（併發控制 vs 速率控制、Little's Law）、帳務不變量全程 0 違規、追問鏈與事實速查表。
+
+### Changed
+- `00-index.md`：導覽表/對照表補 `13`（壓測、限流設計、Saga 補償三題）、兩分鐘技術版加第 7 點壓測、數據速記卡加壓測關鍵數字。
+- `01-專案程式碼地圖.md`：gateway 補 `RouteConcurrencyLimitGlobalFilter`/`AdaptiveInFlightLimiter`（C3）；§5 CI 修正為「七服務全跑＋Testcontainers 獨立 step（ADR-007）」（原誤寫只跑 4 服務）；速查表補 gateway C3 與 game `WalletCompensationService`（ADR-009）兩列。
+- `02-設計決策與為什麼.md`：ADR 摘要表補 ADR-007/008（保留）/009；新增「決策 9：game→wallet 派彩失敗的最小 Saga 補償」（冪等鍵不可換、語意非退款、為何不用 Saga 框架）。
+- `09-開發流程與工程實踐.md`：地雷數 20→22（三處）；時間軸補 7/07（ADR-007、監控棧、admin 白名單雷、ADR-009、audit 自動化）與 7/08–09（T-090 重跑戰役）兩列；§3-⑥ 誠實量測段落更新為重跑後結論（原停在「5xx≈80% FAIL」的 6 月舊狀態）；ADR 表與追問表同步。
+
+### Why
+- interview-prep 大多凍結於 6/30，未涵蓋 7 月的高價值素材（T-090 壓測戰役、ADR-007/009、C3），且 `01` 的 CI 描述與 `.github/workflows/ci.yml` 現況不符、`09` 的壓測敘事停在 TimeLimiter 修正前的舊結論——面試若照舊稿講會與 repo 事實矛盾。所有新增數字均取自 `docs/performance/T-090-*.md` 實測報告，無捏造。
+
+### 如何驗證
+- 純文件變更，無程式行為影響。數字逐一對照 `docs/performance/T-090-load-test-report.md`（5xx 78%→0、−72%、成功 +126%、429 46.2%）、`T-090-B1-wallet-debit-analysis.md`（≈550–600 筆/秒、pool size A/B、dead tuple 8.57%）、`T-090-C3-gateway-shedding-design-evaluation.md`（方案 D 拍板）；ADR-007/009 存在於 `docs/adr/`；CI 範圍對照 `.github/workflows/ci.yml` 第 79–90 行；地雷 22 條對照 `AGENTS.md` §2。
+
+## [perf] -- 2026-07-09 -- T-090 C3：gateway 併發上限動態化（AIMD 在途上限）＋ wallet 路徑納管
+
+### Added
+- `backend/gateway-service/.../filter/AdaptiveInFlightLimiter.java`：單一路徑前綴的動態在途限流器——Little's Law 即時層（在途上限固定的瞬間，延遲惡化自動壓低放行速率）＋ AIMD 回饋層（窗內 P95 超標 ×0.8 收緊、達標 +2 放寬、floor/ceiling 夾住、無流量不動）。延遲觀測是 per-instance 記憶體 ring buffer（tumbling window，容量 2048），熱路徑零同步、拒絕路徑維持零 I/O。
+- `application.yml` 的 `concurrency-limit` 改為 route 清單並新增 `/api/v1/wallet/` 路徑（B1：1,000 併發殘餘失敗六成六集中於未受保護的 wallet 路徑）；每條 route 有獨立 env 覆寫（`*_CONCURRENCY_LIMIT/FLOOR/CEILING/LATENCY_TARGET_MS`、`CONCURRENCY_ADJUST_INTERVAL_MS`）。
+
+### Changed
+- `GameConcurrencyLimitGlobalFilter` 一般化為 `RouteConcurrencyLimitGlobalFilter`：卸載機制（429 + Retry-After、JWT 之前執行、doFinally 歸還名額）不變，改為依設定的路徑前綴各持獨立 `AdaptiveInFlightLimiter`（game 寫路徑與 wallet 讀路徑容量特性不同，共用一個桶會互相污染回饋訊號）；新增 `@Scheduled`（預設每 5 秒）AIMD 調整迴圈，`GatewayServiceApplication` 加 `@EnableScheduling`。
+- `ConcurrencyLimitProperties` 從單一 `game` record 改為 `List<Route>`（pathPrefix/maxInFlight/floor/ceiling/latencyTargetMs）；`FilterOrder.GAME_CONCURRENCY_LIMIT` 更名 `CONCURRENCY_LIMIT`（值 -150 不變）。
+
+### Why
+- C3 設計評估（`docs/performance/T-090-C3-gateway-shedding-design-evaluation.md`）五選項拍板＝方案 D：動態令牌桶（方案 C）調的是速率、要保護的卻是在途，延遲驟變時要等一個觀測窗才反應；動態在途上限保留 Little's Law 零延遲的第一層保護，AIMD 只負責把上限收斂到機器真容量，回饋失效時退化成 C1 固定上限仍安全。同時收編 B1 改善方向第 4 項（上游承壓封頂）：wallet 路徑納管不會讓 debit 變快（瓶頸＝本機 Postgres 交易容量 ≈550-600 筆/秒），但防止超量流量把排隊時間堆到失控。
+- 150 併發迴歸基準不受影響：實測在途 ≈100 遠低於 target 下的任何 max，AIMD 只在 P95 超標時收緊；floor=50 保底不絕流。
+
+### 如何驗證
+- `mvn -pl backend/gateway-service test`：41/41 綠（`RouteConcurrencyLimitGlobalFilterTest` 13 個：原 C1 六個語意全保留＋wallet 獨立計數＋AIMD 收緊/放寬/floor-ceiling 夾住/無流量不調/窗歸零/收緊低於在途時計數不毀）。
+- 對照壓測（150/1,000 併發，照 C1 SOP）待跑，跑完補充至 `T-090-load-test-report.md`。
+
+## [fix] -- 2026-07-09 -- T-090 B1：wallet-service HikariCP maximum-pool-size 巢狀 key 失效（實際一直跑預設 10，非宣稱的 15/10）＋剖析報告
+
+### Fixed
+- `backend/wallet-service/src/main/resources/application.yml`：`spring.datasource.hikari.maximum-pool-size`／`spring.datasource-mysql.hikari.maximum-pool-size` 這兩個 key 拿掉多餘的巢狀 `hikari:` 層，改為攤平的 `spring.datasource.maximum-pool-size` 等。
+
+### Why
+- `DataSourceConfig.java` 的 `postgresDataSource()`/`mysqlDataSource()` 是手動 `@Bean` + `@ConfigurationProperties(prefix = "spring.datasource"/"spring.datasource-mysql")` **直接綁在 `HikariDataSource` 物件上**，只認得該物件攤平的 setter（`maximumPoolSize`／`minimumIdle`／`connectionTimeout`），沒有巢狀 `hikari` 屬性可綁——這和 Spring Boot 自動配置認得的 `spring.datasource.hikari.*` 是兩回事（那條路徑只在 Spring Boot 自己組裝 DataSource 時才生效，本服務是手動組裝）。結果是設定檔寫的 `maximum-pool-size: 15`（postgres）從未生效，實際一直跑 HikariCP 內建預設值 10（mysql 端因為預設本來就是 10，巧合沒被發現）。
+- 於 T-090 B1（wallet debit 路徑剖析）量測時，用 `/actuator/prometheus` 的 `hikaricp_connections_max` 直接量到 `max=10`，兩邊設定值都對不上，才揪出這個靜默失效的 key。
+
+### 如何驗證
+- 修正前後對照：`curl localhost:8082/actuator/prometheus | grep hikaricp_connections_max` 從 `HikariPool-1{max=10}` 變成 `HikariPool-1{max=15}`（postgres），mysql 端 `HikariPool-2` 維持 `max=10`（本來就等於預設值，行為不變，只是現在是「設定生效後剛好等於 10」而非「設定沒生效落回預設 10」）。
+- `mvn -pl backend/wallet-service test`：161/161 全綠。
+- **重要**：A/B 量測（150 併發、隔離直打 wallet-service debit，繞開 game-service/gateway）顯示 pool size 從 10 提升到 15、甚至實驗值 60，延遲量級都沒有顯著改善（avg 一直落在 280~430ms、p99 420~860ms），且穩態下連線池未被打滿——**這個修正單獨不會讓 debit 變快**，純粹是讓設定檔說的話算數，為後續調校建立正確的基準線。完整分析與尚未解開的瓶頸（初步指向單機 CPU/執行緒競爭）見 `docs/performance/T-090-B1-wallet-debit-analysis.md`。
+- code-reviewer 審查 PASS（範圍窄：僅連線池容量設定，未動帳務/冪等/樂觀鎖邏輯）。
+
 ## [changed] -- 2026-07-08 -- Fishing bottom cannon and hit reactions
 
 ### Changed
@@ -501,6 +640,7 @@
 
 ### 如何驗證
 - `mvn -pl backend/admin-service test`：92 全綠（含改寫後的 `AdminAlertServiceTest`，7 項）。
+
 ## [perf] -- 2026-07-08 -- T-090 效能調校 Phase A（A1–A4）：風控統計移出熱路徑
 
 ### Added
@@ -596,6 +736,29 @@
 ### 如何驗證
 - `tests/performance/results/20260708-100306/acceptance-report.md`（150 併發）、`tests/performance/results/20260708-100442/acceptance-report.md`（1000 併發）、`tests/performance/results/accounting-20260708-100542/accounting-reconciliation.csv`。
 - Prometheus range query（`increase(...[90s])` at test-window timestamp）可重跑複驗，見報告內嵌 PromQL。 develop
+
+## [feat] -- 2026-07-08 -- 玩家端「交易紀錄」與「遊戲紀錄」統整為單一時間軸頁
+
+### 背景
+- 原本前端有兩個獨立頁：`/transactions`（錢包帳務流水）與 `/game-history`（遊戲注單）。兩者其實大量重疊——一次老虎機在錢包會產生 `bet` + `payout` 兩筆交易、在遊戲服務再記一筆 round，是「同一經濟事件的兩種視角」。使用者要求把兩頁統整為一個。
+
+### Added
+- `frontend/src/pages/Records.jsx`：新增 `/records` 合併頁。各服務併發（`Promise.all`）抓最近 `FETCH_CAP=200` 筆 → 濾掉遊戲相關交易子型（`bet`/`payout`/`win`，涵蓋 mock 小寫與後端大寫 `BET`/`WIN`）→ 與遊戲 round 合併、依時間倒序 → 前端分頁（每頁 10 筆）。欄位：時間 / 來源 / 類型 / 金額 / 餘額；來源篩選（全部/交易/遊戲）。
+
+### Changed
+- `frontend/src/App.jsx`：新增 `/records` lazy route。
+- `frontend/src/components/AppShell.jsx`：導覽把「交易紀錄」「遊戲紀錄」兩項合併為單一「交易/遊戲紀錄」→ `/records`。
+- `frontend/e2e/smoke.spec.js`：導覽走查改點「交易/遊戲紀錄」並斷言 `/records`。
+
+### Removed
+- 刪除舊頁 `frontend/src/pages/Transactions.jsx`、`frontend/src/pages/GameHistory.jsx` 及 `App.jsx` 的 `/transactions`、`/game-history` 路由與 lazy import；`Records.jsx` 移除原本連向 `/game-history` 的明細入口。副作用：舊遊戲明細（局號、毫秒下注/派彩時間、投注前→派彩後餘額）不再有頁面可看。
+- 清除 `frontend/src/store/slices/walletSlice.js` 中因舊頁移除而變成 dead code 的交易相關部分：`fetchTransactions` thunk、`setTransactionFilters` / `setTransactionPage` reducer 與其 export、`fetchTransactions` 的 3 個 `extraReducers`，以及 initialState 的 `transactions` / `transactionTotal` / `transactionPage` / `transactionPageSize` / `filters` 欄位。合併頁改直接呼叫 `walletApi.getTransactions`，不再走 redux；`walletApi.getTransactions` 本身保留。
+
+### 為什麼
+- 直接把兩表原封不動混排，一次遊戲會冒出三列（下注 TX + 派彩 TX + 遊戲 round）、金額重複計。改以「遊戲每筆一列（顯示損益）+ 交易只保留非遊戲事件（簽到/任務/贈送/商城…）」讓每個事件只出現一次、金額不重複。餘額欄僅遊戲列有值（帳務流水不帶當下餘額），交易列顯示 `-`。跨頁排序正確性靠 bounded fetch（各抓一段視窗後在前端合併排序），而非「各取第 N 頁再合併」。
+
+### 如何驗證
+- `cd frontend && npx vite build`：綠燈，產出 `dist/assets/Records-*.js` chunk。
 
 ## [fix] -- 2026-07-08 -- 後台 RTP 監控：無下注樣本改標 NO_DATA，不再誤報 ABNORMAL
 
@@ -1065,7 +1228,6 @@ develop
 
 ### Verified
 - 對照 `FishingCombat.java` 與 `frontend/src/services/mockApi.js`，三處數值一致；純文件修改，無程式行為變更。
-
 ## [removed] -- 2026-07-05 -- Fishing buy-in entry note panel
 
 ### Removed
