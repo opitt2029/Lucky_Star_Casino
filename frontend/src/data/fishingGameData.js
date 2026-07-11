@@ -35,14 +35,15 @@ export const FISHING_DISPLAY_SPECIES = [
     multiplier: '80x - 120x',
     rarity: '稀有',
     description: '半透明紫藍光暈，移動較慢但血量更厚。',
-    swatch: 'linear-gradient(135deg, rgba(173,247,255,.9), rgba(137,79,255,.82), rgba(255,255,255,.35))',
+    swatch:
+      'linear-gradient(135deg, rgba(173,247,255,.9), rgba(137,79,255,.82), rgba(255,255,255,.35))',
   },
   {
     id: 'jackpot-whale',
     name: '彩金鯨王',
-    multiplier: '200x+',
+    multiplier: '200x 合約',
     rarity: '首領',
-    description: '紅金彩金光環與首領體型，需要集中火力才有機會捕獲。',
+    description: '紅金彩金光環與首領體型；實際派彩由後端回傳結果決定。',
     swatch: 'linear-gradient(135deg, #5d0614, #ff3f60 35%, #ffd76d 70%, #2b0610)',
   },
 ]
@@ -52,3 +53,26 @@ export const FISHING_JACKPOT = {
   amount: 888888,
   bonusText: '彩金鯨王倒數巡游中',
 }
+export const FISHING_BLOCKER_GUIDE = [
+  {
+    id: 'octopus',
+    name: '障礙章魚',
+    effect: '5 發擊破',
+    description: '擊破後噴墨遮蔽漁場視野 2 秒；射擊會消耗本局彈藥，不派彩。',
+    tone: 'ink',
+  },
+  {
+    id: 'starfish',
+    name: '障礙海星',
+    effect: '5 發擊破',
+    description: '擊破後目前魚群加速 2 秒；射擊會消耗本局彈藥，不派彩。',
+    tone: 'speed',
+  },
+  {
+    id: 'turtle',
+    name: '障礙海龜',
+    effect: '5 / 10 / 17 發',
+    description: '小中大尺寸保留原擊破次數；射擊會消耗本局彈藥，不派彩。',
+    tone: 'armor',
+  },
+]

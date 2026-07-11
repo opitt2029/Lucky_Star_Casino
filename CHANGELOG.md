@@ -1,3 +1,384 @@
+## [changed] -- 2026-07-08 -- Fishing bottom cannon and hit reactions
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: move the cannon origin to the bottom edge of the Pixi fishing canvas so the turret sits at the lowest part of the playfield.
+- `frontend/src/components/fishingEngine.js`: add a shared hit reaction for normal fish, high-value targets, bosses, special targets, and blockers, including short shake, rotation, scale pulse, flash, and tier-tuned `hit` / `crit` sound pitch.
+
+### Why
+- The cannon should anchor visually at the bottom of the game view, and every target should provide immediate readable impact feedback when hit.
+
+### Verified
+- `npm.cmd run lint` from `frontend/`
+- `npm.cmd run build` from `frontend/`
+- `git diff --check`
+
+## [changed] -- 2026-07-08 -- Fishing control dock outside canvas and smaller field sprites
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: reduce all normal, high-value, boss, special, and blocker field sprite sizes again for the provided high-detail artwork.
+- `frontend/src/pages/Fishing.jsx`: move the in-game `FishingControlDock` out of the Pixi canvas frame into a dedicated stage controls row.
+- `frontend/src/components/Fishing.css`: style the new stage controls row and keep it visible as the bottom row when the fishing stage enters fullscreen.
+
+### Why
+- The field sprites still occupied too much of the playfield, and the in-game control dock should not sit inside the canvas area while still remaining available in fullscreen mode.
+
+### Verified
+- `npm.cmd run lint` from `frontend/`
+- `npm.cmd run build` from `frontend/`
+- `git diff --check`
+
+## [changed] -- 2026-07-07 -- Fishing spawn frequency follows backend weights
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: normalize each fish's `spawnWeight` from the backend fish table and use it as the single weighted spawn source for normal field spawns, swarm bursts, special targets, and boss candidates.
+- `frontend/src/components/fishingEngine.js`: remove the independent boss timer and jackpot-first boss preference so rare fish frequency is controlled by `spawnWeight`; live bosses are still limited to one at a time.
+
+### Why
+- Fish appearance frequency should match the backend fishing contract instead of being skewed by frontend-only small-fish swarms or forced boss scheduling.
+
+### Verified
+- `npm.cmd run lint` from `frontend/`
+- `npm.cmd run build` from `frontend/`
+- `git diff --check`
+
+## [fixed] -- 2026-07-07 -- Fishing blocker size and turtle direction
+
+### Fixed
+- `frontend/src/components/fishingEngine.js`: mark the blocker turtle as a left-facing source image and apply shared `fishScaleX` direction logic during blocker spawn/update so it no longer swims backward.
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: further shrink blocker octopus, starfish, and turtle base size ranges and profile scale multipliers.
+
+### Why
+- The blocker sprites still read too large after the previous field-wide scale pass, and the turtle uses the blocker spawn path instead of normal fish metadata, so it needed its own direction metadata.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `git diff --check`
+
+## [fixed] -- 2026-07-07 -- Fishing field mask direction and size pass
+
+### Fixed
+- `frontend/src/components/fishingEngine.js`: expand the fish mask and swim bounds to the full canvas height so the former cannon-zone area no longer clips fish after removing the black deck overlay.
+- `frontend/src/components/fishingEngine.js`: flip the newly provided fish artwork back to the correct travel direction while preserving the current gold dragon and pixiu orientation.
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: further reduce fish, boss, special target, legendary fish king, and blocker display sizes for the new high-detail PNG art set.
+
+### Why
+- The old cannon-zone mask was still hiding fish even though the black deck was removed, most fish references were marked as naturally left-facing even though the new images face right, and the field sprites still occupied too much of the stage.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `git diff --check`
+
+## [changed] -- 2026-07-07 -- Fishing stage background cleanup
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: remove the old Pixi-drawn sea gradients, caustic lines, floor ornaments, shadow fish, bubbles, vignette, and black cannon deck panel so the supplied stage background remains visible behind the cannon.
+
+### Why
+- The provided background artwork already contains the intended underwater decorations, and the old black cannon/deck area was covering the lower part of the scene.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `git diff --check`
+
+## [changed] -- 2026-07-07 -- Fishing field sprite sizes reduced
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: substantially reduce rendered fish tier sizes, legendary fish king bonus size, high-value non-boss trim values, small-fish multiplier growth, and blocker creature size ranges.
+
+### Why
+- The provided high-detail PNG artwork reads too large in the Pixi fishing field, crowding the play area and obscuring the new stage background.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `git diff --check`
+
+## [changed] -- 2026-07-07 -- Fishing cannon and stage background reference artwork
+
+### Changed
+- `frontend/public/images/fishing/cannon-small-reference.png`, `cannon-medium-reference.png`, and `cannon-heavy-reference.png`: add the provided small, medium, and heavy cannon artwork with white backgrounds converted to transparency.
+- `frontend/public/images/fishing/fishing-stage-background-reference.png`: add the provided underwater treasure stage background.
+- `frontend/src/casino-fx/assets/registry.js`: map `cannon-copper`, `cannon-silver`, `cannon`, and `fishing-stage-background` to the provided PNG references.
+- `frontend/src/components/fishingEngine.js`: preload the stage background, render it as the bottom Pixi backdrop layer, and use the provided cannon PNGs as the active cannon body while preserving existing firing and muzzle effects.
+
+### Why
+- The fishing stage should use the supplied visual direction for small / medium / heavy cannons and the new underwater background without changing backend-authoritative cannon damage or shot contracts.
+
+### Verified
+- `python` PNG header check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [fixed] -- 2026-07-07 -- Fishing blocker PNG decode artifacts
+
+### Fixed
+- `frontend/public/images/fishing/blocker-turtle-reference.png`, `blocker-octopus-reference.png`, and `blocker-starfish-reference.png`: regenerate the transparent PNGs with a corrected PNG Paeth filter decoder so the blocker guide no longer renders diagonal corruption artifacts.
+
+### Why
+- The previous conversion script decoded Paeth-filtered scanlines incorrectly, which damaged these three supplied blocker images even though their PNG headers were valid.
+
+### Verified
+- `python` PNG header check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing blocker reference artwork
+
+### Changed
+- `frontend/public/images/fishing/blocker-turtle-reference.png`: add the provided obstacle turtle artwork with the white background converted to transparency.
+- `frontend/public/images/fishing/blocker-octopus-reference.png`: add the provided obstacle octopus artwork with the white background converted to transparency.
+- `frontend/public/images/fishing/blocker-starfish-reference.png`: add the provided obstacle starfish artwork with the white background converted to transparency.
+- `frontend/src/casino-fx/assets/registry.js`: point both legacy `fish-blocker-*` and active `fish-evil-blocker-*` ids to the new PNG references.
+- `frontend/src/data/fishingFishConfig.js`: update the blocker guide assets to show the provided turtle, octopus, and starfish images.
+- `frontend/public/images/fishing/blocker-{octopus,starfish,turtle}.svg`: remove generated SVG blocker artwork after replacing it with the provided PNG references.
+
+### Why
+- The three obstacle creatures should match the supplied visual direction in both the Pixi fishing stage and fish guide.
+
+### Verified
+- `python` PNG header check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing caishen and money tree reference artwork
+
+### Changed
+- `frontend/public/images/fishing/caishen-reference.png`: add the provided Caishen image as the in-game caishen asset with the white background converted to transparency.
+- `frontend/public/images/fishing/money-tree-reference.png`: add the provided money tree image as the in-game money tree asset with the white background converted to transparency.
+- `frontend/src/casino-fx/assets/registry.js`: point `fish-caishen` and `fish-money-tree` to the provided PNG references instead of generated SVGs.
+- `frontend/src/components/fishingEngine.js`: mark Caishen as non-directional alongside money tree so front-facing prize targets do not flip like fish.
+- `frontend/public/images/fishing/fish-caishen.svg` and `fish-money-tree.svg`: remove generated SVG files after replacing them with provided PNG references.
+
+### Why
+- Caishen and money tree should use the provided artwork exactly and behave visually as prize targets rather than directional swimming fish.
+
+### Verified
+- `python` PNG header check
+- `python` SVG XML parse check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [fixed] -- 2026-07-07 -- Fishing gold dragon white residue removal
+
+### Fixed
+- `frontend/public/images/fishing/gold-dragon-reference.png`: remove remaining low-saturation white/gray background residue and soften pale edge pixels around the provided gold dragon artwork.
+
+### Why
+- The gold dragon reference still had visible background remnants after the previous alpha cleanup pass.
+
+### Verified
+- `python` PNG header check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [fixed] -- 2026-07-07 -- Fishing gold dragon alpha cleanup
+
+### Fixed
+- `frontend/public/images/fishing/gold-dragon-reference.png`: rerun alpha extraction with a stronger white-background cleanup so leftover white islands and edge halos are transparent.
+
+### Why
+- The provided gold dragon artwork still had visible white remnants after the first background removal pass.
+
+### Verified
+- `python` PNG header check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing reference fish artwork set
+
+### Changed
+- `frontend/public/images/fishing/*-reference.png`: add the provided reference artwork for puffer, devil ray, angelfish, lantern fish, goldfish, koi, gold-star fish king, and jackpot fish king with white backgrounds converted to transparency.
+- `frontend/src/casino-fx/assets/registry.js`: point the corresponding fishing `assetId`s to the provided PNG references instead of generated SVGs or older placeholder art.
+- `frontend/src/data/fishingFishConfig.js`: update the static gold-star and jackpot fish king guide images to the provided references.
+- `frontend/public/images/fishing/fish-{puffer,devil-ray,angelfish,lantern,goldfish,koi}.svg` and `rainbow-jackpot-fish-king.svg`: remove SVG files that are now replaced by provided PNG references.
+
+### Why
+- These eight fish targets should match the user-provided artwork order and appearance exactly while preserving the backend fish codes and payout contract.
+
+### Verified
+- `python` PNG header check
+- `python` SVG XML parse check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing gold dragon reference artwork
+
+### Changed
+- `frontend/public/images/fishing/gold-dragon-reference.png`: add the user-provided golden dragon image as the in-game gold dragon asset, with the baked checkerboard background converted to transparency.
+- `frontend/src/casino-fx/assets/registry.js`: point `fish-gold-dragon` to the provided PNG reference instead of the generated SVG.
+- `frontend/public/images/fishing/fish-gold-dragon.svg`: remove the unused generated SVG after replacing it with the provided artwork.
+
+### Why
+- The gold dragon target should match the provided dragon artwork exactly rather than the previously generated vector approximation.
+
+### Verified
+- `python` PNG header check
+- `python` SVG XML parse check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing pixiu render size
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: reduce the in-game pixiu render trim from the shared high-value size to a smaller pixiu-specific size while leaving the provided PNG asset unchanged.
+
+### Why
+- The provided pixiu artwork reads larger than the previous vector at the same canvas size, so it needs a smaller render footprint without changing backend payout or target contract.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing pixiu reference artwork
+
+### Changed
+- `frontend/public/images/fishing/pixiu-gold-guardian.png`: add the user-provided golden pixiu image as the in-game pixiu asset, with the baked checkerboard background converted to transparency.
+- `frontend/src/casino-fx/assets/registry.js`: point `fish-pixiu` to the provided PNG reference instead of the generated SVG.
+- `frontend/public/images/fishing/fish-pixiu.svg`: remove the unused generated SVG after replacing it with the provided artwork.
+
+### Why
+- The pixiu target should match the provided golden guardian artwork exactly rather than the previously generated vector approximation.
+
+### Verified
+- `python` PNG header check
+- `python` SVG XML parse check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing non-fish prize artwork
+
+### Changed
+- `frontend/public/images/fishing/fish-gold-dragon.svg`: regenerate the gold dragon as a dragon-shaped prize target instead of a fish silhouette.
+- `frontend/public/images/fishing/fish-pixiu.svg`: regenerate the pixiu as a four-legged mythical beast target instead of a fish silhouette.
+- `frontend/public/images/fishing/fish-money-tree.svg`: regenerate the money tree as a tree-and-coin prize target instead of a fish silhouette.
+- `frontend/src/components/fishingEngine.js`: mark money tree as non-directional so it does not flip like a swimming creature while crossing the stage.
+
+### Why
+- Gold dragon, pixiu, and money tree are prize targets from the backend fish table, but their visuals should represent the actual object/creature rather than forcing them into fish-shaped artwork.
+
+### Verified
+- `python` SVG XML parse check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing high-value species fish silhouettes
+
+### Changed
+- `frontend/public/images/fishing/fish-gold-dragon.svg`: regenerate gold dragon as a fish silhouette with dragon-inspired fins, whisker-like spines, and gold scale bands.
+- `frontend/public/images/fishing/fish-pixiu.svg`: regenerate pixiu as a fish-bodied target with pixiu head cues, horn, mane, gold tail, and coin detail.
+- `frontend/public/images/fishing/fish-money-tree.svg`: regenerate money tree as a fish-bodied target with coin markings and leaf-fin accents instead of a tree object.
+
+### Why
+- Gold dragon, pixiu, and money tree are still fishing targets in gameplay, so their artwork should read as fish first while keeping enough theme detail to identify the backend species.
+
+### Verified
+- `python` SVG XML parse check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing angelfish and pixiu artwork polish
+
+### Changed
+- `frontend/public/images/fishing/fish-angelfish.svg`: move the eye and mouth details to the head side so the angelfish no longer appears to have its eye near the tail.
+- `frontend/public/images/fishing/fish-pixiu.svg`: regenerate the pixiu artwork with stronger head, horn, mane, gold tail, scale, and coin details while keeping the same backend `assetId` contract.
+
+### Why
+- The redesigned assets needed clearer front/back readability in motion, especially after fixing swim direction for left-facing generated fish.
+
+### Verified
+- `python` SVG XML parse check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [fixed] -- 2026-07-07 -- Fishing fish direction and size tuning
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: add explicit facing metadata for the newly generated non-boss fish SVGs so they face their swim direction while preserving the original gold-star and jackpot fish king behavior.
+- `frontend/src/components/fishingEngine.js`: increase the render size for newly added fish species, with a smaller trim for high-value non-boss targets such as gold dragon, pixiu, and caishen so they stay below boss presence.
+
+### Why
+- The generated fish artwork is left-facing by default, while the Pixi engine previously assumed right-facing textures; this made non-boss fish appear to swim backward. The added fish also needed larger in-game silhouettes without making high-value non-boss targets feel like bosses.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing selected fish visual redesign
+
+### Changed
+- `frontend/public/images/fishing/fish-angelfish.svg`: redesign the angelfish with a taller ornamental silhouette, brighter fins, and clearer stripe identity.
+- `frontend/public/images/fishing/fish-pixiu.svg`: redesign the pixiu fish with stronger mythical-beast cues, horn, jade body, gold tail, and coin detail.
+- `frontend/src/casino-fx/assets/registry.js`: restore `fish-dragon-king` to the original `fish-boss-whale.svg` mapping so the gold-star fish king uses its previous appearance.
+
+### Why
+- The newly integrated fish table needs distinct readable targets, while the gold-star fish king should retain the familiar original silhouette requested during review.
+
+### Verified
+- `python` SVG XML parse check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing contract fish SVG assets
+
+### Added
+- `frontend/public/images/fishing/fish-*.svg`: add distinct SVG artwork for the 10 backend contract fish asset ids that should not reuse the previous placeholders (`fish-koi`, `fish-goldfish`, `fish-lantern`, `fish-puffer`, `fish-angelfish`, `fish-devil-ray`, `fish-gold-dragon`, `fish-pixiu`, `fish-caishen`, and `fish-money-tree`).
+
+### Changed
+- `frontend/src/casino-fx/assets/registry.js`: map the newly surfaced backend fishing `assetId`s to generated SVGs instead of reusing the previous shared placeholder SVGs; `fish-dragon-king` remains on the original boss-whale artwork.
+
+### Why
+- Backend fish-table integration exposed more fish species in the Pixi fishing field, and each species needs a distinct visual identity so players can distinguish targets without breaking the existing backend `assetId` contract.
+
+### Verified
+- `python` SVG XML parse check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing backend contract alignment
+
+### Added
+- `frontend/src/hooks/useFishingSession.js`: restore an existing fishing session from `/active` on mount so refresh/re-entry follows the backend lifecycle instead of dropping the player back to idle.
+- `frontend/src/components/FishingFishInfoPanel.jsx`: build the fish guide from the backend `fishTable`, including HP, tier, spawn weight, and visual `DRAGON_KING` variants, then append the charged blocker guide.
+
+### Changed
+- `backend/game-service/src/main/java/com/luckystar/game/service/FishingService.java` and `backend/game-service/src/test/java/com/luckystar/game/service/FishingServiceTest.java`: enforce session-level `betPerShot` and `cannonLevel` for shot batches and cover the fixed-contract behavior in tests.
+- `frontend/src/hooks/useFishingSession.js` and `frontend/src/pages/Fishing.jsx`: keep verify-shot history to normal verifiable fish only, exclude `MISS`/blocker shots, and compare backend verification against `captured` plus payout instead of generic hit state.
+- `frontend/src/services/mockApi.js`: mirror backend start/top-up/shots validation, including buy-in and bet ranges, required top-up idempotency key, fixed session bet/cannon, and normalized shot fish types.
+
+### Why
+- The fishing UX must follow the backend session contract exactly: fixed buy-in settings per session, charged blocker/miss shots, stable verification semantics, and fish data coming from the backend response rather than duplicated front-end assumptions.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+- `mvn -pl backend/game-service test`
+
+## [feat] -- 2026-07-06 -- Fishing blocker effects and stage polish
+
+### Added
+- `frontend/src/components/fishingEngine.js`: add Pixi-only screen effects for blocker breaks: octopus ink遮蔽 and starfish fish-speed boost, with reduced effect density under perf/reduced-motion mode.
+- `frontend/src/data/fishingGameData.js` and `frontend/src/pages/Fishing.jsx`: add a right-side blocker guide card for octopus, starfish, and turtle behavior.
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: move blocker profile selection into per-species settings; octopus/starfish now spawn only as large 5-hit blockers, while turtles keep 5/10/17-hit tiers with larger visual sizes.
+- `frontend/src/components/fishingEngine.js`: enrich the Pixi stage with vignette, gold glints, distant fish silhouettes, and reusable screen effect overlays without changing `FishingCanvas` props or the `fire(fishInstanceId, fishCode)` contract.
+- `frontend/src/components/Fishing.css` and `frontend/src/data/fishingFishConfig.js`: update blocker guide copy and improve dock/card layout stability across desktop and mobile.
+
+### Why
+- Blocker fish needed distinct effects and clearer player-facing rules while keeping the existing Pixi engine, wallet/session flow, settlement, and fairness verification contracts intact.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
 ## [test] -- 2026-07-08 -- T-090 C1+C2 效果對照重跑：成功數 +126%、401 −63%、spin 延遲腰斬；殘餘失敗移位到未受保護的 wallet 路徑
 
 ### Added
@@ -120,7 +501,6 @@
 
 ### 如何驗證
 - `mvn -pl backend/admin-service test`：92 全綠（含改寫後的 `AdminAlertServiceTest`，7 項）。
-=======
 ## [perf] -- 2026-07-08 -- T-090 效能調校 Phase A（A1–A4）：風控統計移出熱路徑
 
 ### Added
@@ -685,6 +1065,7 @@ develop
 
 ### Verified
 - 對照 `FishingCombat.java` 與 `frontend/src/services/mockApi.js`，三處數值一致；純文件修改，無程式行為變更。
+
 ## [removed] -- 2026-07-05 -- Fishing buy-in entry note panel
 
 ### Removed
@@ -3663,5 +4044,3 @@ client DTO）`javac` 編譯通過。Lombok 檔案與 `@SpringBootTest` 待團隊
 
 ### Verified
 - `mvn -pl backend/wallet-service test` → 142 tests, 0 failures
-
-

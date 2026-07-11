@@ -15,12 +15,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.luckystar.game.client.WalletClient;
 import com.luckystar.game.client.dto.WalletCreditResponse;
 import com.luckystar.game.client.dto.WalletDebitResponse;
+import com.luckystar.game.dto.FishingShotsRequest;
 import com.luckystar.game.exception.WalletUnavailableException;
 import com.luckystar.game.fishing.FishingSession;
 import com.luckystar.game.fishing.FishingSessionStore;
 import com.luckystar.game.kafka.GameResultEventPublisher;
 import com.luckystar.game.repository.GameRoundRepository;
 import com.luckystar.game.rng.ProvablyFairRng;
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -124,6 +127,29 @@ class FishingServiceTest {
     }
 
     @Test
+    @DisplayName("shots reject in-round betPerShot or cannonLevel changes")
+    void shots_rejectsChangingSessionBetOrCannon() {
+        FishingSession active = FishingSession.builder()
+                .sessionId("sess-fixed").playerId(PLAYER_ID).cannonLevel(2).betPerShot(50L)
+                .buyIn(BUY_IN).balanceBefore(600000L).sessionBalance(1000L)
+                .totalBet(0L).totalPayout(0L).totalShots(0L).lastShotSeq(0L)
+                .serverSeed("srv").serverSeedHash("hash").clientSeed("cli").state("ACTIVE")
+                .createdAt(Instant.now()).lastActivityAt(Instant.now())
+                .build();
+        when(sessionStore.find(PLAYER_ID)).thenReturn(Optional.of(active));
+
+        FishingShotsRequest.Shot changedBet = shot(1L, 100L, 2, "KOI", "fish-a");
+        assertThrows(IllegalArgumentException.class,
+                () -> service.shots(PLAYER_ID, "sess-fixed", List.of(changedBet)));
+
+        FishingShotsRequest.Shot changedCannon = shot(1L, 50L, 3, "KOI", "fish-a");
+        assertThrows(IllegalArgumentException.class,
+                () -> service.shots(PLAYER_ID, "sess-fixed", List.of(changedCannon)));
+
+        verify(sessionStore, never()).save(any(FishingSession.class));
+    }
+
+    @Test
     @DisplayName("結算殘血回收：受傷未死的魚退還部分子彈成本，計入 credited 與 totalPayout")
     void end_creditsResidualRecoveryForDamagedUnkilledFish() {
         long betPerShot = 100L;
@@ -159,5 +185,16 @@ class FishingServiceTest {
         assertEquals(200L + expectedRecovery, credited.getValue());
         // totalPayout 計入回收（→ game_rounds.win_amount，RTP 監控涵蓋）
         assertEquals(expectedRecovery, resp.getTotalPayout());
+    }
+
+    private static FishingShotsRequest.Shot shot(long seq, long betPerShot, Integer cannonLevel,
+                                                 String fishType, String fishInstanceId) {
+        FishingShotsRequest.Shot shot = new FishingShotsRequest.Shot();
+        shot.setShotSeq(seq);
+        shot.setBetPerShot(betPerShot);
+        shot.setCannonLevel(cannonLevel);
+        shot.setFishType(fishType);
+        shot.setFishInstanceId(fishInstanceId);
+        return shot;
     }
 }
