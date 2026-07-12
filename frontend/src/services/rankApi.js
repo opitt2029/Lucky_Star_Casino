@@ -1,7 +1,7 @@
 import api from './api'
 import { mockApi } from './mockApi'
 
-const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true'
+const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
 
 // 後端 RankEntryResponse { playerId, username, rank, score } → 前端榜單列形狀。
 // 與 mockApi.getRank 的 { id, nickname, score } 對齊，讓 Rank.jsx / LeaderboardPanel 共用同一份欄位。

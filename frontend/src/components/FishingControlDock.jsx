@@ -7,7 +7,6 @@ export default function FishingControlDock({
   disabledReason,
   isSettling,
   isAmmoLocked = false,
-  onAmmoSelect,
   onSettle,
 }) {
   const cannonTone = ammoTone || activeAmmo?.tone || 'copper'
@@ -20,7 +19,7 @@ export default function FishingControlDock({
     >
       <div className="fishing-control-dock__title" aria-live="polite">
         <span>本局彈藥：{activeAmmo.label}</span>
-        <strong>彈藥金額：{activeAmmo.costPerShot.toLocaleString()} / 發</strong>
+        <strong>本局彈藥金額：{activeAmmo.costPerShot.toLocaleString()} / 發</strong>
       </div>
 
       <div className="fishing-dock-ammo-group" aria-label="本局彈藥">
@@ -29,18 +28,18 @@ export default function FishingControlDock({
             key={option.key}
             type="button"
             disabled={ammoDisabled}
-            onClick={() => onAmmoSelect?.(option)}
             aria-pressed={cannonLevel === option.level}
+            aria-disabled={ammoDisabled}
             className={`fishing-dock-ammo fishing-dock-ammo--${option.tone}`}
             title={
               ammoDisabled
-                ? '本局彈藥已鎖定'
+                ? '本局彈藥已鎖定，完成收網結算後可重新選擇'
                 : `${option.description}，每發 ${option.costPerShot.toLocaleString()} 星幣`
             }
           >
             <span className="fishing-dock-ammo__badge">{option.badge}</span>
             <strong>{option.label}</strong>
-            <span>彈藥金額 {option.costPerShot.toLocaleString()}</span>
+            <span>每發金額 {option.costPerShot.toLocaleString()}</span>
           </button>
         ))}
       </div>
@@ -51,7 +50,7 @@ export default function FishingControlDock({
       >
         <span>砲台</span>
         <strong>Lv {cannonLevel}</strong>
-        <small>本局固定火力</small>
+        <small>本局固定</small>
       </div>
 
       <button
@@ -59,10 +58,10 @@ export default function FishingControlDock({
         onClick={onSettle}
         disabled={!canSettle || isSettling}
         className="fishing-stage-settle fishing-stage-settle--dock"
-        aria-label="結算並離開漁場"
-        title={disabledReason || '結算並離開漁場'}
+        aria-label="收網結算並離開漁場"
+        title={disabledReason || '收網結算並離開漁場'}
       >
-        <strong>{isSettling ? '結算中' : '結算'}</strong>
+        <strong>{isSettling ? '收網中' : '收網'}</strong>
         <span>{canSettle ? '帶回星幣' : '至少完成一發射擊'}</span>
       </button>
     </div>

@@ -1,6 +1,6 @@
 import api from './api'
 
-const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true'
+const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
 
 function dataOf(payload) {
   return payload && typeof payload === 'object' && 'data' in payload ? payload.data : payload

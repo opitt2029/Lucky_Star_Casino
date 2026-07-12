@@ -1,3 +1,83 @@
+## [changed] -- 2026-07-13 -- Highlight special fishing targets
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: added tier aura rings and stronger hit/lock-on behavior for high-value, Boss, special, and legendary fishing targets.
+- `frontend/src/data/fishingFishConfig.js`: raised the Jackpot Fish King display value to `500x`, display HP to `5000`, and visual scale to `1.36` without changing the backend `DRAGON_KING` contract values used for settlement.
+- `frontend/src/components/FishingFishInfoPanel.jsx` and `frontend/src/components/Fishing.css`: show the Jackpot Fish King display value/HP in the guide and add distinct card effects for high-value, Boss, special, and legendary fish.
+- `frontend/src/data/fishingFishConfig.test.js`: covers the Jackpot Fish King display-only fields while preserving backend multiplier, HP, and tier values.
+- `frontend/src/data/fishingFishConfig.js` and `frontend/src/components/fishingEngine.js`: aligned `DEVIL_RAY` with the medium fish visual tier so it no longer receives high-value fish effects.
+- `frontend/src/components/Fishing.css`: keeps the fullscreen control dock as the bottom row while removing the gap between the Pixi canvas and controls so the cannon stays visible.
+
+### Why
+- Special fishing targets need clearer visual separation during play and in the lobby guide, while settlement-critical values must stay aligned with the backend fishing contract.
+
+### Verification
+- `npm.cmd run lint` (frontend): passed.
+- `npm.cmd run test -- FishingFishInfoPanel fishingFishConfig` (frontend): passed, 1 file / 2 tests.
+- `npm.cmd run build` (frontend): passed.
+
+## [changed] -- 2026-07-13 -- Separate fishing blocker guide
+
+### Changed
+- `frontend/src/components/FishingFishInfoPanel.jsx`: split blocker fish into their own `障礙魚種` section instead of appending them to the reward fish list.
+- `frontend/src/pages/Fishing.jsx`: removed the sidebar blocker guide and skill panel blocks entirely, including their displayed content.
+- `frontend/src/components/Fishing.css`: added section styling for the separated bottom blocker guide and removed CSS for the deleted sidebar blocker/skill blocks.
+
+### Why
+- Blockers do not pay rewards, so separating them from reward fish makes the bottom guide easier to understand; the duplicate sidebar blocker and skill panels should no longer be shown.
+
+### Verification
+- `npm.cmd run lint` (frontend): passed.
+- `npm.cmd run test -- FishingFishInfoPanel fishingFishConfig` (frontend): passed, 1 file / 2 tests.
+- `npm.cmd run build` (frontend): passed.
+
+## [changed] -- 2026-07-12 -- Improve fishing lobby fish guide layout
+
+### Changed
+- `frontend/src/components/FishingFishInfoPanel.jsx`: rewrote fish guide names, labels, and descriptions so players can understand rewards, HP, spawn frequency, and blockers more quickly.
+- `frontend/src/components/Fishing.css`: changed the fish guide cards to responsive columns and stacked metric chips so labels no longer squeeze into the next row.
+
+### Why
+- The fish guide inside `fishing-lobby__fish-info` was hard to read and its metric chips could crowd each other on narrower cards.
+
+### Verification
+- `npm.cmd run lint` (frontend): passed.
+- `npm.cmd run test -- FishingFishInfoPanel fishingFishConfig` (frontend): passed, 1 file / 2 tests.
+- `npm.cmd run build` (frontend): passed.
+
+## [changed] -- 2026-07-12 -- Raise demo player star coin balance
+
+### Changed
+- `frontend/src/services/mockApi.js`: set the mock demo/test player starting star coin balance to `999999999999`.
+- `frontend/src/services/*Api.js` and `frontend/src/hooks/useWebSocket.js`: default dev mode to mock API unless `VITE_USE_MOCK_API=false` is explicitly set.
+
+### Why
+- The demo player account needs a much larger balance for demo play without running out of star coins.
+- Direct `npm run dev` should use the mock wallet by default, matching the documented frontend contract.
+
+### Verification
+- `npm.cmd run test`: passed, 6 files / 42 tests.
+
+## [fix] -- 2026-07-12 -- Stabilize fishing lobby controls and fish king variants
+
+### Added
+- `frontend/src/components/FishingControlDock.test.jsx`: added coverage for ammo/cannon controls being disabled once a fishing round has started.
+- `frontend/src/data/fishingFishConfig.test.js`: added coverage that fish king visual variants do not overwrite backend `name`, `multiplier`, `hp`, or `tier` values.
+
+### Changed
+- `frontend/src/pages/Fishing.jsx`: limited ammo selection to the `idle` phase so session-level bet and cannon choices cannot change while playing or settling.
+- `frontend/src/components/FishingControlDock.jsx`: made disabled control state explicit with stable classes, `aria-disabled`, and explanatory titles.
+- `frontend/src/data/fishingFishConfig.js` and `frontend/src/components/FishingFishInfoPanel.jsx`: moved fish king visual variants to `visualKey` / `assetId` display metadata while preserving backend `code` and tier semantics.
+
+### Why
+- Fishing `betPerShot` and `cannonLevel` are session-level values; changing them after entry can desync frontend controls from backend validation.
+- Fish king skins should change presentation only, not settlement-critical backend fish identity.
+
+### Verification
+- `cd frontend && npm run lint`: passed.
+- `cd frontend && npm run test`: passed, 7 files / 44 tests.
+- `cd frontend && npm run build`: passed.
+- `cd frontend && npm run e2e`: passed, 1 skipped.
 ## [docs] -- 2026-07-10 -- 九份 ADR 補「現況校驗」章節，對齊程式碼實際狀態並記錄文件漂移
 
 ### Added

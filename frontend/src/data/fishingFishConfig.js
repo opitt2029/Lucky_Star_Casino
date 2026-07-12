@@ -1,6 +1,9 @@
 // TODO: replace this frontend display config with a backend fishing settings endpoint when available.
 export const JACKPOT_FISH_KING_ASSET =
   '/images/fishing/jackpot-fish-king-reference.png?v=20260707-reference-transparent'
+export const JACKPOT_FISH_KING_DISPLAY_MULTIPLIER = 500
+export const JACKPOT_FISH_KING_DISPLAY_HP = 5000
+export const JACKPOT_FISH_KING_VISUAL_SCALE = 1.36
 
 export const FISHING_FISH_INFO = [
   {
@@ -36,7 +39,7 @@ export const FISHING_FISH_INFO = [
     reward: 250,
     multiplier: '25x',
     rarity: '高價',
-    tier: 'high',
+    tier: 'medium',
     spawnRate: 0.06,
     hp: 250,
     asset: '/images/game/fishing/fish-ray-crystal.svg',
@@ -59,12 +62,16 @@ export const FISHING_FISH_INFO = [
     id: 'jackpot-fish-king',
     code: 'DRAGON_KING',
     name: '彩金魚王',
-    reward: 2000,
-    multiplier: '200x 合約 / 彩金外觀',
+    reward: 5000,
+    multiplier: '500x 彩金外觀 / 200x 合約',
     rarity: '傳奇',
     tier: 'legendary',
     spawnRate: 0.01,
-    hp: 2000,
+    hp: JACKPOT_FISH_KING_DISPLAY_HP,
+    displayMultiplier: JACKPOT_FISH_KING_DISPLAY_MULTIPLIER,
+    displayHp: JACKPOT_FISH_KING_DISPLAY_HP,
+    visualScale: JACKPOT_FISH_KING_VISUAL_SCALE,
+    visualTier: 'LEGENDARY',
     catchDifficulty: 'boss',
     asset: JACKPOT_FISH_KING_ASSET,
     description: '傳奇魚王，彩金外觀與最大體型；實際捕獲派彩以後端 DRAGON_KING 回傳 payout 為準。',
@@ -117,25 +124,29 @@ export const FISHING_FISH_INFO = [
 export function decorateFishingFishTable(fishTable = []) {
   return fishTable.flatMap((fish) => {
     if (fish.code !== 'DRAGON_KING') return [fish]
-    const bossWeight = Math.max(1, Math.min(fish.spawnWeight ?? 2, 2))
+
+    const backendWeight = Number(fish.spawnWeight)
+    const totalWeight = Number.isFinite(backendWeight) && backendWeight > 0 ? backendWeight : 0
+    const jackpotWeight = totalWeight > 1 ? 1 : 0
+    const bossWeight = Math.max(0, totalWeight - jackpotWeight)
+
     return [
       {
         ...fish,
         visualKey: 'gold-star-fish-king',
-        name: '金星魚王',
         assetId: fish.assetId || 'fish-dragon-king',
         spawnWeight: bossWeight,
-        tier: fish.tier || 'BOSS',
       },
       {
         ...fish,
         visualKey: 'jackpot-fish-king',
-        name: '彩金魚王',
         assetId: 'fish-rainbow-jackpot-fish-king',
-        visualMultiplier: 500,
-        spawnWeight: 1,
-        tier: 'BOSS',
+        spawnWeight: jackpotWeight,
+        displayMultiplier: JACKPOT_FISH_KING_DISPLAY_MULTIPLIER,
+        displayHp: JACKPOT_FISH_KING_DISPLAY_HP,
+        visualScale: JACKPOT_FISH_KING_VISUAL_SCALE,
+        visualTier: 'LEGENDARY',
       },
-    ]
+    ].filter((variant) => variant.spawnWeight > 0)
   })
 }

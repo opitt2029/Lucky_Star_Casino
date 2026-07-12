@@ -145,7 +145,7 @@ const MONTHLY_REWARD_MILESTONES = [
 // AGENTS 雷區 20）。改 database/mysql/init.sql 的 seed 時同步契約檔。
 const SHOP_CATALOG = shopCatalogContract.items
 
-const MOCK_TEST_STAR_COIN_BALANCE = 999999999
+const MOCK_TEST_STAR_COIN_BALANCE = 999999999999
 
 const TEST_ACCOUNT = {
   password: 'test1234',

@@ -17,10 +17,8 @@ import { announcePlayerWin } from '../casino-fx/announce/announceBus'
 import { useGameLeaveGuard } from '../hooks/useGameLeaveGuard'
 import '../components/Fishing.css'
 import {
-  FISHING_BLOCKER_GUIDE,
   FISHING_DISPLAY_SPECIES,
   FISHING_JACKPOT,
-  FISHING_SKILLS,
 } from '../data/fishingGameData'
 import { FISHING_AMMO_OPTIONS, getFishingAmmoByLevel } from '../data/fishingConfig'
 
@@ -213,6 +211,7 @@ export default function Fishing() {
 
   // 僅供進場前選擇：面額/砲台為 session 級參數（ADR-004 整場固定），hook 在 playing 階段會拒絕變更。
   const handleAmmoSelect = (option) => {
+    if (session.phase !== 'idle') return
     play('click')
     const betChanged = session.changeBetPerShot(option.costPerShot)
     const cannonChanged = session.changeCannonLevel(option.level)
@@ -440,7 +439,6 @@ export default function Fishing() {
                         disabledReason={canSettle ? '' : '目前沒有可結算的本局餘額或射擊紀錄'}
                         isSettling={phase === 'settling'}
                         isAmmoLocked={phase === 'playing' || phase === 'settling'}
-                        onAmmoSelect={handleAmmoSelect}
                         onSettle={handleEnd}
                       />
                     </div>
@@ -555,7 +553,7 @@ export default function Fishing() {
                         進入漁場
                       </h3>
                       <p className="mt-2 text-sm font-bold text-yellow-100/64">
-                        輸入本局要帶入漁場的星幣並選擇彈藥；子彈面額與砲台進場後固定，收網結算後可重新選擇。
+                        彈藥與砲台進場後整局固定，收網結算後可重新選擇。
                       </p>
                     </div>
 
@@ -606,7 +604,7 @@ export default function Fishing() {
 
                     <div className="grid gap-2 text-left">
                       <p className="gold-muted text-xs font-black uppercase tracking-[0.2em]">
-                        選擇彈藥（本局固定）
+                        選擇彈藥（進場後整局固定）
                       </p>
                       <div className="grid grid-cols-3 gap-2">
                         {FISHING_AMMO_OPTIONS.map((option) => (
@@ -692,42 +690,6 @@ export default function Fishing() {
                       <p>{fish.description}</p>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="fishing-blocker-card luxury-panel-soft p-4">
-              <p className="gold-muted text-xs font-black uppercase tracking-[0.24em]">障礙魚種</p>
-              <h3 className="brand-title mt-1 text-xl font-black text-yellow-100">
-                阻擋與擊破效果
-              </h3>
-              <div className="fishing-blocker-list mt-3">
-                {FISHING_BLOCKER_GUIDE.map((blocker) => (
-                  <div key={blocker.id} className={`fishing-blocker-row is-${blocker.tone}`}>
-                    <span aria-hidden="true" />
-                    <div>
-                      <strong>{blocker.name}</strong>
-                      <small>{blocker.effect}</small>
-                      <p>{blocker.description}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="fishing-skill-card luxury-panel-soft p-4">
-              <p className="gold-muted text-xs font-black uppercase tracking-[0.24em]">技能</p>
-              <h3 className="brand-title mt-1 text-xl font-black text-yellow-100">技能面板</h3>
-              <div className="fishing-skill-grid mt-3">
-                {FISHING_SKILLS.map((skill) => (
-                  <button
-                    key={skill.id}
-                    type="button"
-                    className={`fishing-skill-button is-${skill.tone}`}
-                    disabled
-                  >
-                    <strong>{skill.label}</strong>
-                    <span>{skill.status}</span>
-                  </button>
                 ))}
               </div>
             </div>

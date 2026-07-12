@@ -44,6 +44,7 @@ const HIT_REACTION_POWER = {
   high: 4.4,
   boss: 5.8,
   special: 4.4,
+  legendary: 7.2,
   blocker: 5.2,
 }
 const HIT_REACTION_PITCH = {
@@ -52,6 +53,7 @@ const HIT_REACTION_PITCH = {
   high: 0.92,
   boss: 0.78,
   special: 0.96,
+  legendary: 0.7,
   blocker: 0.86,
 }
 
@@ -222,6 +224,14 @@ const TIER_RENDER = {
   HIGH: { size: 42, durMin: 15, durMax: 19, glow: 1 },
   BOSS: { size: 52, durMin: 20, durMax: 26, glow: 1.5 },
   SPECIAL: { size: 40, durMin: 15, durMax: 19, glow: 1 },
+  LEGENDARY: { size: 72, durMin: 27, durMax: 34, glow: 3.2 },
+}
+
+const TIER_EFFECTS = {
+  high: { color: 0xffd76d, alpha: 0.34, radius: 0.72, width: 2, pulse: 0.16, spin: 0.7 },
+  boss: { color: 0xff5f7e, alpha: 0.42, radius: 0.78, width: 3, pulse: 0.2, spin: -0.58 },
+  special: { color: 0x62f6ff, alpha: 0.38, radius: 0.74, width: 2, pulse: 0.18, spin: 0.9 },
+  legendary: { color: 0xfff0a8, alpha: 0.58, radius: 0.9, width: 4, pulse: 0.28, spin: -0.82 },
 }
 
 const LEFT_FACING_FISH_ASSETS = new Set([
@@ -245,22 +255,34 @@ function fishScaleX(dir, baseScale, facesLeft = false, nonDirectional = false) {
 
 function deriveMeta(fish) {
   const tierKey = (fish.tier || 'SMALL').toUpperCase()
-  const base = TIER_RENDER[tierKey] || TIER_RENDER.SMALL
   const isLegendaryFishKing = fish.assetId === 'fish-rainbow-jackpot-fish-king'
-  const highValueTrim = HIGH_VALUE_NON_BOSS_SIZE_TRIM.get(fish.assetId) || 0
+  const isMediumDevilRay =
+    fish.code === 'DEVIL_RAY' || fish.assetId === 'fish-devil-ray' || fish.assetId === 'fish-ray-crystal'
+  const visualTierKey = String(
+    fish.visualTier || (isLegendaryFishKing ? 'LEGENDARY' : isMediumDevilRay ? 'MEDIUM' : tierKey)
+  ).toUpperCase()
+  const renderTierKey = TIER_RENDER[visualTierKey] ? visualTierKey : tierKey
+  const base = TIER_RENDER[renderTierKey] || TIER_RENDER.SMALL
+  const visualScale = Number(fish.visualScale || 1)
+  const highValueTrim = isLegendaryFishKing ? 0 : HIGH_VALUE_NON_BOSS_SIZE_TRIM.get(fish.assetId) || 0
   const smallSizeAdj = tierKey === 'SMALL' ? (fish.multiplier || 2) * 0.3 : 0
+  const size = Math.max(16, (base.size + smallSizeAdj - highValueTrim) * visualScale)
+  const tier = visualTierKey.toLowerCase()
+
   return {
-    tier: tierKey.toLowerCase(),
-    size: Math.max(16, base.size + smallSizeAdj - highValueTrim + (isLegendaryFishKing ? 12 : 0)),
+    tier,
+    backendTier: tierKey.toLowerCase(),
+    bossLike: tierKey === 'BOSS' || tier === 'legendary',
+    size,
     weight: normalizeSpawnWeight(fish.spawnWeight),
-    durMin: base.durMin + (isLegendaryFishKing ? 6 : 0),
-    durMax: base.durMax + (isLegendaryFishKing ? 8 : 0),
-    glow: base.glow + (isLegendaryFishKing ? 1.6 : 0),
+    durMin: base.durMin,
+    durMax: base.durMax,
+    glow: base.glow,
+    effect: TIER_EFFECTS[tier] || null,
     facesLeft: LEFT_FACING_FISH_ASSETS.has(fish.assetId),
     nonDirectional: NON_DIRECTIONAL_FISH_ASSETS.has(fish.assetId),
   }
 }
-
 function normalizeSpawnWeight(value) {
   const weight = Number(value)
   return Number.isFinite(weight) && weight > 0 ? weight : 0
@@ -827,7 +849,7 @@ export class FishingEngine {
   _blockerThreatLevel() {
     return this.fish.reduce((sum, f) => {
       if (f.blocker || f.caught || f.fleeing) return sum
-      if (f.tier === 'boss') return sum + 3
+      if (f.bossLike || f.tier === 'boss' || f.tier === 'legendary') return sum + 3
       if (f.tier === 'high' || f.tier === 'special') return sum + 2
       if (f.tier === 'medium') return sum + 1
       return sum
@@ -873,10 +895,10 @@ export class FishingEngine {
     return TURTLE_SIZE_PROFILES[1]
   }
   _spawnPool() {
-    const hasLiveBoss = this.fish.some((f) => !f.caught && !f.fleeing && f.tier === 'boss')
+    const hasLiveBoss = this.fish.some((f) => !f.caught && !f.fleeing && (f.bossLike || f.tier === 'boss' || f.tier === 'legendary'))
     return (this.table || []).filter((f) => {
       if (spawnWeightOf(f) <= 0) return false
-      return f._meta.tier !== 'boss' || !hasLiveBoss
+      return !f._meta.bossLike || !hasLiveBoss
     })
   }
 
@@ -901,8 +923,8 @@ export class FishingEngine {
     const yMin = Math.max(size * 0.55, H * 0.08)
     const yMax = this._fishYMax(W, H, size)
     const ySpan = Math.max(1, yMax - yMin)
-    const verticalRatio = meta.tier === 'boss' ? 0.1 : meta.tier === 'small' ? 0.32 : 0.22
-    const spawnRoll = meta.tier === 'boss' ? Math.random() * 0.58 : Math.random()
+    const verticalRatio = meta.bossLike ? 0.1 : meta.tier === 'small' ? 0.32 : 0.22
+    const spawnRoll = meta.bossLike ? Math.random() * 0.58 : Math.random()
     let vx
     let vy
     let startX
@@ -930,7 +952,7 @@ export class FishingEngine {
     }
     const dir = vx >= 0 ? 'ltr' : 'rtl'
 
-    if (meta.tier === 'boss') this.ctx.play?.('bossAlarm')
+    if (meta.bossLike) this.ctx.play?.('bossAlarm')
 
     const sprite = new Sprite(this.tex[pick.assetId] || Texture.WHITE)
     sprite.anchor.set(0.5)
@@ -958,13 +980,22 @@ export class FishingEngine {
       glow = new Graphics().circle(0, 0, size * 0.62).fill({ color: 0xffe39a, alpha: 0.3 })
       this.glowLayer.addChild(glow)
     }
+    let effectRing = null
+    if (meta.effect && !this.perfMode) {
+      effectRing = new Graphics()
+        .circle(0, 0, size * (meta.effect.radius || 0.74))
+        .stroke({ width: meta.effect.width || 2, color: meta.effect.color, alpha: meta.effect.alpha || 0.38 })
+      this.glowLayer.addChild(effectRing)
+    }
 
-    const maxHp = pick.hp || pick.multiplier * 10
+    const maxHp = Number(pick.displayHp ?? pick.hp ?? pick.multiplier * 10)
     this.fish.push({
       id: (this.idSeq += 1),
       code: pick.code,
       name: pick.name,
-      multiplier: pick.multiplier,
+      multiplier: Number(pick.displayMultiplier ?? pick.multiplier),
+      backendMultiplier: pick.multiplier,
+      bossLike: meta.bossLike,
       tier: meta.tier,
       sprite,
       dir,
@@ -998,6 +1029,8 @@ export class FishingEngine {
       fleeing: false,
       fleeMs: 0,
       glow,
+      effectRing,
+      effectStyle: meta.effect,
       glowPhase: Math.random() * Math.PI * 2,
       glowAmp: meta.glow,
     })
@@ -1097,6 +1130,7 @@ export class FishingEngine {
         f.sprite.scale.set(fishScaleX(f.dir, s, f.facesLeft, f.nonDirectional), s)
         if (f.hpBar) f.hpBar.visible = false
         if (f.glow) f.glow.alpha = (1 - k) * 0.3
+        if (f.effectRing) f.effectRing.alpha = 1 - k
         if (k >= 1) this._removeFishAt(i)
         continue
       }
@@ -1111,6 +1145,7 @@ export class FishingEngine {
         f.sprite.alpha = 1 - k
         if (f.hpBar) f.hpBar.visible = false
         if (f.glow) f.glow.visible = false
+        if (f.effectRing) f.effectRing.visible = false
         if (k >= 1) this._removeFishAt(i)
         continue
       }
@@ -1167,6 +1202,14 @@ export class FishingEngine {
         const pulse = 0.2 + (Math.sin(f.glowPhase) * 0.5 + 0.5) * 0.26 * f.glowAmp
         f.glow.alpha = this.perfMode ? pulse * 0.5 : pulse
       }
+      if (f.effectRing && f.effectStyle) {
+        const ringPulse = 1 + (Math.sin(f.glowPhase * 1.4) * 0.5 + 0.5) * (f.effectStyle.pulse || 0.16)
+        f.effectRing.x = f.x
+        f.effectRing.y = f.y
+        f.effectRing.rotation += dt * (f.effectStyle.spin || 0.6)
+        f.effectRing.scale.set(ringPulse)
+        f.effectRing.alpha = f.effectStyle.alpha || 0.38
+      }
       // 游出畫面回收
       if (
         f.x < -f.margin - 4 ||
@@ -1193,7 +1236,7 @@ export class FishingEngine {
     if (opts.sound) {
       this.ctx.play?.(crit ? 'crit' : 'hit', {
         pitch: (HIT_REACTION_PITCH[tier] || 1) * (crit ? 1.08 : 1) + Math.random() * 0.04,
-        volume: crit ? 1 : tier === 'boss' ? 0.92 : 0.78,
+        volume: crit ? 1 : tier === 'boss' || tier === 'legendary' ? 0.92 : 0.78,
       })
     }
   }
@@ -1208,6 +1251,7 @@ export class FishingEngine {
     f.sprite.destroy()
     if (f.hpBar) f.hpBar.destroy({ children: true })
     if (f.glow) f.glow.destroy()
+    if (f.effectRing) f.effectRing.destroy()
   }
 
   _removeFishById(id) {
@@ -1258,7 +1302,7 @@ export class FishingEngine {
 
   _fishHitRadius(f) {
     const tierBoost =
-      f.tier === 'boss' ? 0.44 : f.tier === 'high' || f.tier === 'special' ? 0.4 : 0.34
+      f.tier === 'legendary' ? 0.5 : f.tier === 'boss' ? 0.44 : f.tier === 'high' || f.tier === 'special' ? 0.4 : 0.34
     return Math.max(14, Math.min(86, f.dispSize * tierBoost + this.cannonStyle.bulletR))
   }
 
@@ -1352,7 +1396,7 @@ export class FishingEngine {
     const aimX = opts.aimX ?? f.x
     const aimY = opts.aimY ?? f.y
     this.aim = this._aimFor(aimX, aimY)
-    if (f.tier === 'boss' || f.tier === 'high' || f.tier === 'special') this.ctx.play?.('lockOn')
+    if (f.tier === 'boss' || f.tier === 'high' || f.tier === 'special' || f.tier === 'legendary') this.ctx.play?.('lockOn')
 
     const res = this.ctx.fire?.(String(f.id), f.code)
     if (!res || !res.ok) {
@@ -1522,7 +1566,7 @@ export class FishingEngine {
   }
 
   _notifyBoss() {
-    const active = this.fish.some((f) => !f.caught && f.tier === 'boss')
+    const active = this.fish.some((f) => !f.caught && !f.fleeing && (f.bossLike || f.tier === 'boss' || f.tier === 'legendary'))
     if (active !== this.lastBoss) {
       this.lastBoss = active
       this.ctx.onBossChange?.(active)
