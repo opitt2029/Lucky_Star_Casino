@@ -318,8 +318,7 @@
   line-height: 1.2;
 }
 
-.fishing-species-card,
-.fishing-skill-card {
+.fishing-species-card {
   overflow: hidden;
   background:
     radial-gradient(circle at 0% 0%, rgba(0, 229, 255, 0.1), transparent 34%),
@@ -373,46 +372,6 @@
   line-height: 1.45;
 }
 
-.fishing-skill-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.fishing-skill-button {
-  display: grid;
-  place-items: center;
-  min-height: 66px;
-  padding: 8px 6px;
-  border-radius: 7px;
-  border: 1px solid rgba(255, 220, 115, 0.18);
-  background: rgba(5, 18, 31, 0.65);
-  color: rgba(255, 239, 184, 0.72);
-  box-shadow: inset 0 -14px 22px rgba(0, 0, 0, 0.24);
-}
-
-.fishing-skill-button.is-cyan { border-color: rgba(78, 232, 255, 0.34); }
-.fishing-skill-button.is-violet { border-color: rgba(169, 122, 255, 0.34); }
-.fishing-skill-button.is-gold { border-color: rgba(255, 215, 98, 0.38); }
-
-.fishing-skill-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.66;
-}
-
-.fishing-skill-button strong {
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.fishing-skill-button span {
-  color: rgba(154, 239, 255, 0.62);
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 @media (max-width: 1024px) {
   .fishing-hero-shell {
     flex-direction: column;
@@ -436,8 +395,7 @@
     padding: 0 12px 12px;
   }
 
-  .fishing-multiplier-grid,
-  .fishing-skill-grid {
+  .fishing-multiplier-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1044,10 +1002,6 @@
 
 .fishing-redgold-shell .fishing-species-card .mt-3 {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-
-.fishing-redgold-shell .fishing-skill-grid {
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 @media (max-width: 1280px) {
@@ -2182,7 +2136,7 @@
 }
 
 .fishing-lobby__fish-info {
-  width: min(1120px, 100%);
+  width: min(1180px, 100%);
   margin: 0 auto;
   padding: clamp(14px, 2vw, 20px);
   border: 1px solid rgba(255, 225, 132, 0.3);
@@ -2218,16 +2172,55 @@
   text-shadow: 0 0 18px rgba(255, 211, 86, 0.28);
 }
 
+.fishing-lobby__fish-section {
+  display: grid;
+  gap: 10px;
+}
+
+.fishing-lobby__fish-section + .fishing-lobby__fish-section {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 226, 132, 0.18);
+}
+
+.fishing-lobby__section-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fishing-lobby__section-title span {
+  color: rgba(112, 235, 255, 0.72);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.fishing-lobby__section-title strong {
+  color: #fff2b7;
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.fishing-lobby__blocker-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
 .fishing-lobby__fish-list {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
 }
 
 .fishing-lobby__fish-card {
   position: relative;
   display: grid;
-  grid-template-rows: 96px minmax(0, 1fr);
+  grid-template-rows: 104px minmax(0, 1fr);
   min-width: 0;
   overflow: hidden;
   border: 1px solid rgba(255, 226, 132, 0.22);
@@ -2248,26 +2241,108 @@
     0 0 24px rgba(255, 201, 68, 0.16);
 }
 
+.fishing-lobby__fish-card.is-high {
+  border-color: rgba(255, 214, 108, 0.58);
+  background:
+    radial-gradient(circle at 50% 10%, rgba(255, 207, 85, 0.22), transparent 52%),
+    linear-gradient(180deg, rgba(50, 34, 13, 0.86), rgba(7, 35, 46, 0.84));
+  box-shadow:
+    inset 0 0 22px rgba(255, 205, 87, 0.11),
+    0 0 18px rgba(255, 190, 61, 0.11);
+}
+
+.fishing-lobby__fish-card.is-boss {
+  border-color: rgba(255, 95, 126, 0.62);
+  background:
+    radial-gradient(circle at 50% 10%, rgba(255, 95, 126, 0.26), transparent 52%),
+    linear-gradient(180deg, rgba(64, 11, 28, 0.88), rgba(8, 28, 43, 0.84));
+  box-shadow:
+    inset 0 0 24px rgba(255, 86, 123, 0.13),
+    0 0 22px rgba(255, 86, 123, 0.13);
+}
+
+.fishing-lobby__fish-card.is-special {
+  border-color: rgba(98, 246, 255, 0.6);
+  background:
+    radial-gradient(circle at 50% 10%, rgba(98, 246, 255, 0.2), transparent 52%),
+    linear-gradient(180deg, rgba(8, 43, 52, 0.86), rgba(45, 14, 58, 0.82));
+  box-shadow:
+    inset 0 0 22px rgba(98, 246, 255, 0.12),
+    0 0 18px rgba(98, 246, 255, 0.1);
+}
+
+.fishing-lobby__fish-card.is-high::after,
+.fishing-lobby__fish-card.is-boss::after,
+.fishing-lobby__fish-card.is-special::after,
+.fishing-lobby__fish-card.is-legendary::after {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border-radius: 8px;
+  pointer-events: none;
+  opacity: 0.62;
+  animation: fishingFishAuraPulse 2.2s ease-in-out infinite;
+}
+
+.fishing-lobby__fish-card.is-high::after {
+  border: 1px solid rgba(255, 215, 109, 0.5);
+  box-shadow: inset 0 0 18px rgba(255, 215, 109, 0.16);
+}
+
+.fishing-lobby__fish-card.is-boss::after {
+  border: 1px solid rgba(255, 95, 126, 0.52);
+  box-shadow: inset 0 0 20px rgba(255, 95, 126, 0.18);
+}
+
+.fishing-lobby__fish-card.is-special::after {
+  border: 1px solid rgba(98, 246, 255, 0.48);
+  box-shadow: inset 0 0 18px rgba(98, 246, 255, 0.16);
+}
+
+.fishing-lobby__fish-card.is-legendary::after {
+  border: 1px solid rgba(255, 239, 162, 0.62);
+  box-shadow:
+    inset 0 0 24px rgba(255, 231, 123, 0.22),
+    0 0 18px rgba(255, 211, 75, 0.14);
+}
+
+@keyframes fishingFishAuraPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.48;
+  }
+  50% {
+    transform: scale(1.015);
+    opacity: 0.82;
+  }
+}
 .fishing-lobby__fish-art {
   width: 100%;
-  height: 96px;
+  height: 104px;
   object-fit: contain;
-  padding: 10px 12px 2px;
+  padding: 10px 14px 4px;
   filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.36));
 }
 
 .fishing-lobby__fish-body {
   display: grid;
-  gap: 8px;
-  padding: 10px;
+  grid-template-rows: auto auto 1fr;
+  gap: 9px;
+  padding: 11px;
 }
 
-.fishing-lobby__fish-topline,
-.fishing-lobby__fish-metrics {
+.fishing-lobby__fish-topline {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
+}
+
+.fishing-lobby__fish-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
   min-width: 0;
 }
 
@@ -2285,25 +2360,38 @@
 
 .fishing-lobby__fish-rarity,
 .fishing-lobby__fish-multiplier {
-  flex: 0 0 auto;
+  min-width: 0;
   border-radius: 999px;
   border: 1px solid rgba(255, 226, 132, 0.28);
-  padding: 3px 7px;
+  padding: 5px 7px;
   color: rgba(192, 247, 255, 0.86);
   font-size: 10px;
   font-weight: 950;
-  line-height: 1;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .fishing-lobby__fish-reward {
+  grid-column: 1 / -1;
   min-width: 0;
+  border: 1px solid rgba(255, 226, 132, 0.26);
+  border-radius: 8px;
+  padding: 6px 8px;
   color: #ffe58e;
+  background: rgba(255, 226, 132, 0.08);
   font-size: 13px;
   font-weight: 950;
-  line-height: 1.15;
+  line-height: 1.2;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .fishing-lobby__fish-multiplier {
+  display: flex;
+  min-height: 26px;
+  align-items: center;
+  justify-content: center;
   color: #2c0c04;
   background: linear-gradient(180deg, #fff2a8, #f2b632);
 }
@@ -2313,13 +2401,8 @@
   color: rgba(255, 239, 196, 0.66);
   font-size: 11px;
   font-weight: 780;
-  line-height: 1.48;
-}
-
-@media (max-width: 1180px) {
-  .fishing-lobby__fish-list {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 720px) {
@@ -2332,9 +2415,10 @@
     gap: 6px;
   }
 
-  .fishing-lobby__fish-list {
+  .fishing-lobby__fish-list,
+  .fishing-lobby__blocker-list {
     grid-auto-flow: column;
-    grid-auto-columns: minmax(210px, 74vw);
+    grid-auto-columns: minmax(260px, 82vw);
     grid-template-columns: none;
     overflow-x: auto;
     padding-bottom: 4px;
@@ -2453,5 +2537,213 @@
 
   .fishing-stage-marquee__perf {
     grid-column: 2;
+  }
+}
+/* Dock stability refinements. */
+.fishing-redgold-shell .fishing-control-dock__title,
+.fishing-redgold-shell .fishing-dock-ammo,
+.fishing-dock-cannon-bay,
+.fishing-redgold-shell .fishing-stage-frame .fishing-stage-settle.fishing-stage-settle--dock {
+  min-width: 0;
+}
+
+.fishing-dock-ammo-group {
+  align-items: stretch;
+}
+
+.fishing-redgold-shell .fishing-dock-ammo {
+  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-areas:
+    'badge label'
+    'badge amount';
+}
+
+.fishing-redgold-shell .fishing-dock-ammo[aria-pressed='true'] {
+  outline: 2px solid rgba(255, 243, 185, 0.5);
+  outline-offset: -3px;
+}
+
+@media (max-width: 560px) {
+  .fishing-redgold-shell .fishing-stage-frame .fishing-control-dock--ingame {
+    max-height: min(360px, calc(100% - 16px));
+  }
+
+  .fishing-redgold-shell .fishing-dock-ammo {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'label'
+      'amount';
+    justify-items: center;
+  }
+
+  .fishing-dock-cannon-bay small,
+  .fishing-stage-settle--dock span {
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Mobile playing-stage containment: keep the Pixi table inside the shell instead of clipping a desktop-width grid. */
+@media (max-width: 768px) {
+  .fishing-redgold-shell,
+  .fishing-redgold-shell .fishing-page,
+  .fishing-redgold-shell .fishing-main,
+  .fishing-fullscreen-surface,
+  .fishing-stage-card,
+  .fishing-stage-frame {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    justify-self: stretch;
+  }
+
+  .fishing-redgold-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fishing-redgold-shell .fishing-page {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .fishing-redgold-shell .fishing-stage-frame .fishing-arena,
+  .fishing-redgold-shell .fishing-arena,
+  .fishing-redgold-shell .fishing-arena > canvas {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .fishing-redgold-shell .fishing-stage-frame .fishing-control-dock--ingame {
+    width: auto;
+    max-width: calc(100% - 16px);
+  }
+}
+
+
+/* Keep the active fishing controls outside the Pixi canvas while preserving fullscreen play. */
+.fishing-redgold-shell .fishing-stage-controls {
+  position: relative;
+  z-index: 9;
+  margin: 10px clamp(12px, 1.8vw, 26px) 0;
+}
+
+.fishing-redgold-shell .fishing-stage-controls .fishing-control-dock--ingame {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  display: grid;
+  grid-template-columns: minmax(156px, 0.72fr) minmax(324px, 1.45fr) minmax(142px, 0.58fr) minmax(118px, 0.42fr);
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  min-height: 76px;
+  padding: 8px;
+  border: 1px solid rgba(255, 228, 139, 0.64);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(106, 13, 34, 0.86), rgba(12, 14, 24, 0.92)),
+    repeating-linear-gradient(90deg, rgba(255, 213, 88, 0.08) 0 1px, transparent 1px 22px);
+  box-shadow:
+    inset 0 0 24px rgba(255, 215, 92, 0.13),
+    0 14px 34px rgba(0, 0, 0, 0.34),
+    0 0 0 2px rgba(52, 8, 18, 0.42);
+  backdrop-filter: blur(12px) saturate(1.15);
+}
+
+.fishing-redgold-shell .fishing-stage-controls .fishing-control-dock--ingame::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 244, 188, 0.12);
+  pointer-events: none;
+}
+
+.fishing-redgold-shell .fishing-stage-controls .fishing-stage-settle.fishing-stage-settle--dock {
+  min-width: 0;
+  min-height: 64px;
+}
+
+.fishing-game--fullscreen .fishing-stage-card {
+  position: relative;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.fishing-game--fullscreen .fishing-stage-frame {
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.fishing-game--fullscreen .fishing-stage-frame::before {
+  display: none;
+}
+
+.fishing-game--fullscreen .fishing-stage-frame .fishing-arena,
+.fishing-game--fullscreen .fishing-arena,
+.fishing-game--fullscreen .fishing-arena > canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.fishing-game--fullscreen .fishing-stage-frame .fishing-arena,
+.fishing-game--fullscreen .fishing-arena {
+  border: 0;
+  border-radius: 0;
+  box-shadow: inset 0 -70px 110px rgba(0, 0, 0, 0.48);
+}
+
+.fishing-game--fullscreen .fishing-stage-controls {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  z-index: 9;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.fishing-game--fullscreen .fishing-stage-controls .fishing-control-dock--ingame {
+  max-height: min(28vh, 176px);
+  overflow-y: auto;
+}
+
+@media (max-width: 1180px) {
+  .fishing-redgold-shell .fishing-stage-controls .fishing-control-dock--ingame {
+    grid-template-columns: minmax(150px, 0.74fr) minmax(280px, 1.32fr) minmax(122px, 0.5fr) minmax(112px, 0.4fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .fishing-redgold-shell .fishing-stage-controls .fishing-control-dock--ingame {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .fishing-redgold-shell .fishing-stage-controls {
+    margin: 8px 8px 0;
+  }
+
+  .fishing-redgold-shell .fishing-stage-controls .fishing-control-dock--ingame {
+    grid-template-columns: minmax(0, 1fr);
+    max-height: min(42vh, 360px);
+    overflow-y: auto;
+    padding: 7px;
+  }
+
+  .fishing-game--fullscreen .fishing-stage-controls {
+    left: auto;
+    right: auto;
+    bottom: auto;
+    margin: 0;
+    padding: 0;
+  }
+
+  .fishing-game--fullscreen .fishing-stage-controls .fishing-control-dock--ingame {
+    max-height: 34vh;
   }
 }

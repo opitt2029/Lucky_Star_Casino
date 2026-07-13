@@ -4,7 +4,7 @@
 > 前半（§1–§4）是技術參考（結構表 / 路由表 / 片段），後半（§5–§7）是面試「為什麼這樣串」與被追問怎麼答。
 > 想看「怎麼在本機把它跑起來」翻 `../LOCAL_API_INTEGRATION_GUIDE.md`；想看規格與服務邊界翻 `../architecture.md`；決策原文在 `../adr/ADR-001.md`（CQRS）、`../adr/ADR-002.md`（指令/事件分離）。本檔不重複那些，只用面試口吻把它們串成一條線。
 
-> 📖 **圖怎麼看**：本檔的流程圖是 **mermaid 彩色圖**——藍＝前端、黃＝Gateway、綠＝後端服務、紫＝Kafka 事件。同目錄有一份 `10-API串接與架構.html`（離線自帶，打開即有彩圖、不需連網），用瀏覽器 `Ctrl+P` 可直接轉 PDF。
+> 📖 **圖怎麼看**：本檔的流程圖是 **mermaid 彩色圖**——藍＝前端、黃＝Gateway、綠＝後端服務、紫＝Kafka 事件。另有一份離線匯出 HTML（`../_雜物/08-面試準備-API串接與架構-匯出.html`，打開即有彩圖、不需連網，但內容為舊版快照、以本檔為準），用瀏覽器 `Ctrl+P` 可直接轉 PDF。
 
 ---
 
@@ -27,9 +27,10 @@ flowchart TD
     A["React 頁面<br/>dispatch spinSlot（Redux thunk）"]:::fe --> B["api.js 共用 axios<br/>請求攔截器注入 Bearer JWT"]:::fe
     B --> G["🚪 Gateway 8080 統一入口"]:::gw
     G --> G1["① IP 限流 -200<br/>先擋暴力請求"]:::gw
-    G1 --> G2["② 驗 JWT + Redis 撤銷檢查<br/>注入 X-User-Id / X-User-Role"]:::gw
-    G2 --> G3["③ 每玩家限流 -50"]:::gw
-    G3 --> G4["④ 路由比對（宣告順序）+ 熔斷"]:::gw
+    G1 --> G1b["② 全局在途上限 -150<br/>AIMD 動態調節，超限 429 卸載"]:::gw
+    G1b --> G2["③ 驗 JWT + Redis 撤銷檢查<br/>注入 X-User-Id / X-User-Role"]:::gw
+    G2 --> G3["④ 每玩家限流 -50"]:::gw
+    G3 --> G4["⑤ 路由比對（宣告順序）+ 熔斷"]:::gw
     G4 --> S["🎮 game-service 8083<br/>讀 X-User-Id，不再驗 JWT"]:::svc
     S -->|"同步 REST・X-Internal-Secret"| W["💰 wallet /internal/wallet/*<br/>debit 下注 / credit 派彩<br/>冪等鍵 + 樂觀鎖"]:::svc
     S -->|"非同步 Kafka"| K{{"Kafka 事件<br/>game.result / wallet.credit / wallet.debit"}}:::kafka
@@ -215,20 +216,23 @@ export const spinSlot = createAsyncThunk('game/spinSlot', async (payload, { reje
 全域 filter 的 order（數字越小越早）定義在 `filter/FilterOrder.java`：
 
 ```
-RATE_LIMIT (-200)  →  JWT_AUTHENTICATION (-100)  →  PLAYER_RATE_LIMIT (-50)  →  路由轉發 (≥0)
+RATE_LIMIT (-200)  →  CONCURRENCY_LIMIT (-150)  →  JWT_AUTHENTICATION (-100)  →  PLAYER_RATE_LIMIT (-50)  →  路由轉發 (≥0)
 ```
 
 順序是刻意的：
 
 1. **先做 IP 層限流**——暴力請求在最外層就擋掉，不浪費後面驗證的資源。
-2. **再驗 JWT**——驗過才拿得到 `X-User-Id`。
-3. **最後做每玩家限流**——這一步依賴上一步注入的 `X-User-Id` 當計數金鑰，所以必須排在 JWT 之後。
+2. **再做 per-route 全局在途上限**（T-090 C1/C3）——game/wallet 路徑各自維護「同時在途請求數」上限，超限直接 429 快速卸載；刻意排在 JWT **之前**，被拒請求連 Redis 撤銷查詢都不消耗。上限不是固定值，由 `AdaptiveInFlightLimiter` 用 **AIMD**（延遲達標加法增、超標乘法減）動態調節（初始 200、floor 50、ceiling 400、延遲目標 2s）。
+3. **再驗 JWT**——驗過才拿得到 `X-User-Id`。
+4. **最後做每玩家限流**——這一步依賴上一步注入的 `X-User-Id` 當計數金鑰，所以必須排在 JWT 之後。
 
 ### 3.4 韌性設定（一句話帶過即可）
 
 - **HttpClient 連線池**：`max-idle-time: 10s` 刻意設得比下游 Tomcat 的 `keepAliveTimeout`（預設 20s）短，並開背景驅逐。否則 Gateway 會重用「下游已關閉的 keep-alive 連線」→ 偶發 503。
 - **全域 Retry**：只對 **GET（冪等）** 自動重試；POST（註冊/登入/下注）不重試，避免重複副作用。
 - **Resilience4j CircuitBreaker**：每個下游服務一個 instance，失敗率 >50% 或慢呼叫（>3s）率 >80% 觸發熔斷，走 `fallbackUri`。
+- **TimeLimiter 顯式拉高到 6s**（T-090 壓測教訓）：未顯式設定時 Spring Cloud CircuitBreaker 預設逾時只有 **1 秒**，比 slow-call 門檻（3s）短得多——高併發排隊下呼叫在被判定為「慢」之前就被 TimeLimiter 腰斬判 failed，觸發熔斷反覆開闔、half-open 放行又引發 thundering herd。拉高到略大於 slow-call 門檻，讓慢呼叫真正完成、交由 slow-call 統計判定（修正後 150 併發 5xx 78%→0）。
+- **JWT filter 的 Redis 撤銷查詢加瞬時錯誤短重試**（T-090 C2）：`retryWhen` backoff 重試 1 次/50ms，吸收壓力下的瞬時抖動；fail-closed 語意不變，重試耗盡仍拒絕。
 
 ---
 
@@ -404,7 +408,7 @@ sequenceDiagram
     participant KF as Kafka
     participant DS as rank/notif/admin
     F->>GW: POST /api/v1/game/slot/spin，帶 Bearer JWT
-    GW->>GW: IP限流 → 驗JWT+Redis撤銷 → 每玩家限流
+    GW->>GW: IP限流 → 在途上限(AIMD) → 驗JWT+Redis撤銷 → 每玩家限流
     GW->>GM: 轉發並注入 X-User-Id
     GM->>WL: debit 下注（鍵 slot-bet-roundId，帶 X-Internal-Secret）
     WL-->>GM: 扣款成功（樂觀鎖＋冪等）
@@ -422,6 +426,7 @@ sequenceDiagram
 - debit 與 credit 是**兩次獨立的 wallet HTTP 呼叫**，各帶**確定性冪等鍵**（`slot-bet-<roundId>` / `slot-win-<roundId>`，見 `SlotService.java:157,176`）。
 - 對局結果由 seed 三元組（serverSeed/clientSeed/nonce）**確定性推導**，`game_rounds` 以 roundId 去重。
 - 因此整局結算**可安全重試**：重算結果一致、帳務靠冪等鍵不重複、對局靠 roundId 不重複記錄。
+- **credit 失敗不會讓贏分蒸發**（ADR-009）：game 在 catch 內落 `pending_wallet_credits` 補償單，排程每 30 秒帶**同一冪等鍵**重試派彩（換鍵就會重複入帳），超過重試上限標 FAILED 交人工＋對帳工具兜底。
 - Kafka 事件全為 **best-effort**：帳務已同步落地在 Postgres，事件遺失只影響排行/推播的即時性，**不影響錢**。這是「同步管錢、非同步管通知」的分工。
 
 帳務兩大護欄（雷區 8）：`wallet_transactions.idempotency_key` 的 **UNIQUE** 約束防重複入帳/扣款、`wallets.version` 的 **`@Version` 樂觀鎖**防併發超扣。
@@ -446,6 +451,8 @@ sequenceDiagram
 | DB 寫入和發事件怎麼保證都成功？ | Outbox：事件與業務資料同交易寫入，背景 poller 保證最終送達（at-least-once） | §5.3 |
 | 帳務怎麼防重複扣款/超扣？ | idempotency_key UNIQUE 防重、@Version 樂觀鎖防超扣 | §6 |
 | Kafka 訊息掉了會怎樣？ | 帳務已同步落地，事件 best-effort 只影響排行/推播即時性，不影響錢；失敗進 DLT | §6 |
+| 派彩（credit）失敗怎麼辦？ | 落補償單、排程帶同一冪等鍵重試（ADR-009 最小 Saga），贏的錢不會消失 | §6 |
+| 系統怎麼擋暴量？ | IP 限流 + JWT 前的 AIMD 在途上限 429 卸載 + 每玩家限流，三層由外而內 | §3.3、`13` |
 | 前端為什麼只打一個位址？ | baseURL 指向 Gateway，服務拆分/搬遷前端零改動 | §2.2 |
 | 前端 mock 為什麼要鏡像後端？ | 單一真相是後端，mock 與後端引擎分歧會讓玩家體驗到錯的規則 | §2.5 |
 
