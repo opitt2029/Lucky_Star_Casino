@@ -40,6 +40,27 @@ const EXPECTED_DLT_TOPICS = [
   'wallet.credit.request.DLT', // 入帳指令失敗（ADR-002）
 ];
 
+// 高流量 topic：每筆下注/派彩/遊戲局都會觸發，或多 service 匯聚推播；producer 皆以 playerId
+// 當 key（notification.push 的廣播訊息除外），加 partition 才有平行消費的意義。
+const HIGH_THROUGHPUT_TOPICS = [
+  'wallet.debit',
+  'wallet.credit.request',
+  'wallet.credit',
+  'game.result',
+  'notification.push',
+];
+const HIGH_THROUGHPUT_PARTITIONS = 6;
+
+// 低流量 topic：註冊/好友異動不常發生；rank.update 的 producer 用固定 key，多 partition 無效益。
+const LOW_THROUGHPUT_TOPICS = [
+  'member.registered',
+  'friend.relationship.updated',
+  'rank.update',
+];
+const LOW_THROUGHPUT_PARTITIONS = 3;
+
+const DLT_PARTITIONS = 1;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 測試群組：必要 Topics
 // ─────────────────────────────────────────────────────────────────────────────
@@ -90,6 +111,53 @@ describe('kafka-init.sh — Dead Letter Topics', () => {
       EXPECTED_DLT_TOPICS.length,
       `預期 ${EXPECTED_DLT_TOPICS.length} 個 DLT topic，實際找到 ${dltTopics.length} 個`
     );
+  });
+
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 測試群組：Partition 數量
+// 腳本用「陣列變數 + for 迴圈」建立 topic，同一陣列內的 topic 共用迴圈裡的 --partitions 值。
+// 這裡抓「陣列宣告」到「陣列後第一個 --partitions」之間的區塊，確認高/低流量分組沒被改錯。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('kafka-init.sh — Partition 數量', () => {
+
+  function partitionsForArrayBlock(varName) {
+    const arrayStart = kafkaScript.indexOf(`${varName}=(`);
+    assert.ok(arrayStart !== -1, `找不到陣列變數 "${varName}"`);
+    const afterArray = kafkaScript.slice(arrayStart);
+    const match = afterArray.match(/--partitions\s+(\d+)/);
+    assert.ok(match, `"${varName}" 後找不到 --partitions 設定`);
+    return Number(match[1]);
+  }
+
+  test(`高流量 topic 群組（${HIGH_THROUGHPUT_TOPICS.join('/')}）partitions 應為 ${HIGH_THROUGHPUT_PARTITIONS}`, () => {
+    for (const topic of HIGH_THROUGHPUT_TOPICS) {
+      assert.ok(
+        kafkaScript.includes(`"${topic}"`),
+        `high_throughput_topics 陣列中找不到 "${topic}"`
+      );
+    }
+    assert.strictEqual(partitionsForArrayBlock('high_throughput_topics'), HIGH_THROUGHPUT_PARTITIONS);
+  });
+
+  test(`低流量 topic 群組（${LOW_THROUGHPUT_TOPICS.join('/')}）partitions 應為 ${LOW_THROUGHPUT_PARTITIONS}`, () => {
+    for (const topic of LOW_THROUGHPUT_TOPICS) {
+      assert.ok(
+        kafkaScript.includes(`"${topic}"`),
+        `low_throughput_topics 陣列中找不到 "${topic}"`
+      );
+    }
+    assert.strictEqual(partitionsForArrayBlock('low_throughput_topics'), LOW_THROUGHPUT_PARTITIONS);
+  });
+
+  test(`DLT topic partitions 應為 ${DLT_PARTITIONS}`, () => {
+    assert.strictEqual(partitionsForArrayBlock('dlt_topics'), DLT_PARTITIONS);
+  });
+
+  test('高/低流量 topic 群組合計應涵蓋所有一般 topic（沒有漏掉或多分類）', () => {
+    const combined = [...HIGH_THROUGHPUT_TOPICS, ...LOW_THROUGHPUT_TOPICS].sort();
+    assert.deepStrictEqual(combined, [...EXPECTED_TOPICS].sort());
   });
 
 });
