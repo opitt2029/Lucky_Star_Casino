@@ -169,7 +169,7 @@ sequenceDiagram
     M-->>FE: accessToken（15 分）+ refreshToken
     Note over FE,GW: 之後每個請求帶 Authorization: Bearer
     FE->>GW: 任意 API 請求
-    GW->>RD: 查 JWT 黑名單 auth:blacklist:{jti}
+    GW->>RD: 查 JWT 黑名單 jwt:blacklist:{jti}
     Note over GW,RD: fail-closed：Redis 故障一律視同已撤銷
     GW->>GW: 驗 HMAC-SHA256 簽章
     GW->>GW: 注入 X-User-Id / X-User-Role

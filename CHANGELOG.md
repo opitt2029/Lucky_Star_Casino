@@ -1,3 +1,15 @@
+## [docs] -- 2026-07-13 -- 修正 Redis key 命名文件與實際程式碼漂移（refresh/blacklist）
+
+### Changed
+- `docs/architecture.md` §5 Redis 用途分配表：`auth:refresh:{playerId}` 改為 `refresh:{memberId}`、`auth:blacklist:{jti}` 改為 `jwt:blacklist:{jti}`，與 `TokenRedisService`（`backend/member-service`）實際 key prefix 對齊；並補註 refresh token 為每次 `AuthService.refreshToken()` rotate + 重設 TTL（非單純固定倒數 7 天）。
+- `docs/report/Lucky-Star-Casino-開發與流程報告.md`、`docs/report/Lucky-Star-Casino-總體檢報告.md`：登入時序圖內 `auth:blacklist:{jti}` 同步改為 `jwt:blacklist:{jti}`。
+
+### Why
+- 文件 key 命名與 `TokenRedisService`（`REFRESH_KEY_PREFIX = "refresh:"`、`BLACKLIST_KEY_PREFIX = "jwt:blacklist:"`）不符，會誤導直接查 Redis 除錯的人；`BLACKLIST_KEY_PREFIX` 的 comment 特別強調須與 gateway `JwtAuthenticationGlobalFilter` 一致，文件錯誤等於雙重誤導。
+
+### 如何驗證
+- 純文件變更；核對 `backend/member-service/src/main/java/com/luckystar/member/service/TokenRedisService.java`、`AuthService.java` 實際 key 字串與行為一致。
+
 ## [changed] -- 2026-07-13 -- Highlight special fishing targets
 
 ### Changed
