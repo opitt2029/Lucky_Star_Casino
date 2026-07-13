@@ -30,6 +30,19 @@
 ### 如何驗證
 - 純文件變更，不影響程式行為。所有敘述逐項比對真實檔案：`docker-compose.yml`（7 服務 + observability profile）、`.env.example`（CHANGE_ME 佔位符）、`kafka/kafka-init.sh`（8+5 topic）、兩套 `init.sql`（15+11 表）、gateway `application.yml`（路由順序、jwt.whitelist、concurrency-limit）、各服務 `DataSourceConfig`（wallet/admin 雙 EMF）、`GmRewardService`（GM 發幣走 `wallet.credit.request`）、`FishingSessionStore`（無 version/Lua → P3 確實未動工）、`TopupController`、`RealtimeBridge.jsx`、`rankSlice/walletSlice`（BUG-001~005 已修）。
 - `python docs/game-math/verify_rtp.py` 實跑：老虎機 RTP 0.93830 / 命中率 0.30681，與 `SlotSymbol` Javadoc（93.8% / 30.7%）吻合，確認 game-math 無漂移。
+## [changed] -- 2026-07-13 -- 高流量 Kafka topic 拉高 partition 數並補測試斷言
+
+### Changed
+- `kafka/kafka-init.sh`：topic 建立從單一迴圈拆成 `high_throughput_topics`（`wallet.debit`/`wallet.credit.request`/`wallet.credit`/`game.result`/`notification.push`，partitions 3→6）與 `low_throughput_topics`（`member.registered`/`friend.relationship.updated`/`rank.update`，維持 3）兩組；`dlt_topics` 維持 1。
+- `tests/infra/kafka.test.js`：新增「Partition 數量」測試群組，鎖住兩個流量分組的 topic 名單與各自 partitions 值，並斷言兩組合計涵蓋所有一般 topic（防止分類時漏topic或重複分類）。
+
+### Why
+- `wallet.debit`/`wallet.credit`/`game.result` 每筆下注、派彩、遊戲局都會觸發，`notification.push` 由多個 service 匯聚推播，量遠高於註冊/好友異動/排行榜這類低頻事件；先前所有 topic 一律 3 partitions 沒有按流量分級。確認這幾個 topic 的 producer 皆以 `playerId` 當 key（`WalletService`/`GameResultEventPublisher`/`CashbackEventPublisher`/`NotificationPushPublisher`），加 partition 不影響同玩家事件的順序保證；`rank.update` 的 `RankUpdatePublisher` 用固定 key（`GLOBAL_TOP10_TYPE`），加 partition 無平行消費效益，維持低流量分組。
+- 舊版 `kafka.test.js` 只斷言「有 `--partitions` flag」、不鎖數值，之後改壞 partition 數不會被 CI 抓到，故補上數值斷言。
+
+### 如何驗證
+- `node --test tests/infra/kafka.test.js`：25 個測試全過。
+- 提醒：`--if-not-exists` 對已存在的 topic 不生效，既有環境要套用新 partition 數須手動 `kafka-topics --alter --partitions 6`，或 `docker-compose down -v` 清 volume 後重建。
 
 ## [docs] -- 2026-07-13 -- 修正 Redis key 命名文件與實際程式碼漂移（refresh/blacklist）
 
