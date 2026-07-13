@@ -27,18 +27,36 @@ set -euo pipefail
 
 echo "Creating Kafka topics..."
 
-topics=(
-  "member.registered"
+# 高流量 topic（每筆下注/派彩/遊戲局都會觸發，或多 service 匯聚推播）給較多 partition，
+# 讓同 consumer group 未來可以多開 consumer instance 平行消費。
+# 注意：wallet.debit/wallet.credit/game.result/notification.push 的 producer 皆以 playerId 當 key
+# （notification.push 的 admin 廣播訊息 key 可能為 null），加 partition 不影響同玩家事件的順序保證。
+high_throughput_topics=(
   "wallet.debit"
   "wallet.credit.request"
   "wallet.credit"
-  "friend.relationship.updated"
   "game.result"
-  "rank.update"
   "notification.push"
 )
 
-for topic in "${topics[@]}"; do
+for topic in "${high_throughput_topics[@]}"; do
+  kafka-topics --create \
+    --if-not-exists \
+    --bootstrap-server lucky-star-kafka:29092 \
+    --replication-factor 1 \
+    --partitions 6 \
+    --topic "${topic}"
+done
+
+# 低流量 topic：註冊/好友異動不常發生；rank.update 的 producer 用固定 key（GLOBAL_TOP10_TYPE），
+# 所有訊息本就落同一 partition，多開 partition 沒有平行消費的效果。
+low_throughput_topics=(
+  "member.registered"
+  "friend.relationship.updated"
+  "rank.update"
+)
+
+for topic in "${low_throughput_topics[@]}"; do
   kafka-topics --create \
     --if-not-exists \
     --bootstrap-server lucky-star-kafka:29092 \
