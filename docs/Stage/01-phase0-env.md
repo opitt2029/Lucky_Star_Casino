@@ -1,4 +1,9 @@
-# Phase 0 — 環境收尾（P0）
+# Phase 0 — 環境收尾（P0）✅ 已完成
+
+> **完成摘要（2026-07-13 複核）**：T-002 已完成，且**範圍超出本計畫**——後端七服務也已容器化，
+> `docker compose up -d --build` 一次起 infra + 7 個後端（`plans/01` Phase 6，PR #172/#177）。
+> 另加 `observability` profile 選配 Prometheus(9090)/Grafana(3000)。
+> 以下為當時的施工計畫，保留作歷史紀錄。
 
 > 含任務：T-002（Docker Compose 整合環境）
 > 目標：一鍵 `docker compose up` 把 PostgreSQL/MySQL/Redis/Kafka/Kafka UI 全部拉起，volume 持久化。

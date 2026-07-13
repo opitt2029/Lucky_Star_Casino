@@ -1,8 +1,9 @@
-# 百家樂遊戲規則（T-034）
+# 百家樂遊戲規則（T-034 / T-035）
 
 > 對應實作：`backend/game-service/.../baccarat/BaccaratGameService.java`
 > 本文件為交付物之一，描述本系統採用的標準百家樂（Punto Banco）規則與派彩設計，供前端、
 > 測試與稽核對齊。
+> 最後校對：2026-07-13（規則內容與實作一致，僅更新 §6 契約檔與 §7 範圍說明）
 
 ---
 
@@ -73,8 +74,21 @@
 | 牌面數 | 13 | `RANKS` |
 | 花色數 | 4 | `SUITS` |
 
+### 6.1 契約檔與前端 mock（雷區 14）
+
+補牌表與賠付數值另存一份 **`contracts/baccarat-rules.json`**：
+
+- 前端 `mockApi.js` **直接 import 這個檔**，所以 mock 模式下玩家體驗到的規則＝契約檔。
+- 後端仍以 `BaccaratGameService` 的常數／`bankerDraws` 為**執行期權威**（不 runtime 載 JSON）。
+- 兩者由 game-service 的 `ContractParityTest` 逐欄斷言相等——**漂移＝CI 紅燈**。
+
+改規則的 SOP：改後端 → 同步 `contracts/baccarat-rules.json` → 跑
+`mvn -pl backend/game-service test`。補牌「邏輯」（流程判斷）仍是程式碼鏡像，JSON 只存表格數值。
+
 ## 7. 範圍說明
 
-- 本文件與 `BaccaratGameService`（T-034）僅涵蓋**遊戲邏輯與派彩計算**。
+- 本文件與 `BaccaratGameService`（T-034）涵蓋**遊戲邏輯與派彩計算**。
 - 對外 API（`POST /api/v1/game/baccarat/bet`、`/result`）、Wallet 扣款/派彩串接與 Redis Session
-  屬 **T-035**，另行實作。
+  屬 **T-035，✅ 已完成**（`BaccaratController` / `BaccaratService`）。
+- 風控注意：百家樂含本金 RTP ≈ 0.99，`risk.global-rtp-limit` 的 `BACCARAT` 門檻必須高於此值，
+  否則每局誤判超限、結果被強制改判成「莊家贏」（雷區 17，2026-06-25 修過的 bug）。

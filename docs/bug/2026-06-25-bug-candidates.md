@@ -1,5 +1,22 @@
 # 2026-06-25 Bug Candidates
 
+> **狀態：✅ 全部 5 項已修復並關閉**（2026-07-13 逐項對照程式碼複核）
+>
+> 本檔保留作為當時的稽核紀錄。**下面每一項的 Evidence 都是 2026-06-25 當時的行號與現象，
+> 現在已不成立**，請勿據此再開 issue。逐項驗證結果：
+>
+> | 編號 | 原問題 | 現況（2026-07-13 複核） |
+> |---|---|---|
+> | BUG-001 | Rank 頁固定走 mock、欄位對不上 | ✅ 已修：`rankSlice.js` 改 `rankApi.getRanks(playerId)`，走真實端點 |
+> | BUG-002 | 交易紀錄/贈幣寫死 mock | ✅ 已修：`walletSlice.js` 全面改走 `walletApi`（含 `giftCoins`、簽到、破產補助等） |
+> | BUG-003 | 前端訂閱後端從未發布的 WS topic | ✅ 已修：`RealtimeBridge.jsx` 移除 `/topic/wallet`、`/topic/game/result`，只留 `/topic/rank`；註解已寫明餘額走 REST 回應、遊戲結果走私人佇列 |
+> | BUG-004 | `CASHBACK` 子型未進 init.sql / DTO 白名單 | ✅ 已修：兩套 `init.sql` 的 CHECK 與 `CreditRequest` 皆已含 `CASHBACK` |
+> | BUG-005 | 捕魚退款被記成 `WIN`，污染今日贏幣王 | ✅ 已修：`WalletClient` 新增可帶 `subType` 的 `credit()` 多載，退款改用非 WIN 子型 |
+>
+> 相關雷區已寫進 `AGENTS.md`（子型四同步＝雷區 18；排行只認 `WIN`＝雷區 18 末段）。
+
+---
+
 Scope: current `develop` (`2e9aad8642cc35c86ee77d3e48c553a9d9a31834`)
 
 ## BUG-001 - Rank page still uses mock data and mismatches backend schema

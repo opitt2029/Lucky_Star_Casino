@@ -2,41 +2,52 @@
 
 > 來源：`docs/幸運星幣城_工作分配表.xlsx`（T-000~T-107 單一真相來源）
 > 本檔目的：把組員 D 負責的 25 個任務，依「優先級 + 依賴關係」排出可執行順序，拆成 8 個 Phase。
-> 動工前必讀：`AGENTS.md`（§2 已知地雷）、`AUDIT_REPORT.md` 附錄 A、`CHANGELOG.md`。
+>
+> ## ✅ 全部完成（2026-07-13 複核）
+>
+> **這 25 個任務已全數落地。本檔與 `01`~`08` 各 Phase 檔皆為「施工當時的計畫」，
+> 現在是歷史紀錄，不是待辦清單。** 動工新任務請改看 `docs/plans/`。
+>
+> 查最新逐項進度請看 `AUDIT_REPORT.md` 附錄 A（由 `tools/audit/generate-audit-snapshot.mjs`
+> 自動產生），別依賴本檔的舊快照。
 
 ---
 
 ## 1. 任務現況總表（D 負責）
 
-| 任務 | 模組 | 優先 | 名稱 | 表定狀態 | 實際盤點 |
-|---|---|---|---|---|---|
-| T-002 | 全域 | P0 | Docker Compose 整合環境 | ⚠️ 部分完成 | 需補完/驗證一鍵啟動 |
-| T-003 | 全域 | P0 | Spring Boot 專案初始化 | ✅ 已完成 | 六服務骨架存在 |
-| T-040 | Rank | P0 | Redis ZSet 全服排行榜 | ✅ 已完成 | `RankService` + consumer 已實作 |
-| T-041 | Rank | P0 | 好友排行榜 | ⬜ 未開始 | ⚠️ 已有 `FriendRelationshipUpdatedConsumer` + `/friends` 端點骨架，須驗證補完 |
-| T-042 | Rank | P0 | 排行榜查詢 API | ⬜ 未開始 | ⚠️ `RankController` 已有 `/global`、`/global/{id}`、`/friends`，須驗證契約完整 |
-| T-043 | Rank | P1 | 每週重置排程 | ✅ 已完成 | `WeeklyRankResetScheduler` 存在 |
-| T-044 | Rank | P1 | 每日持幣快照 | ✅ 已完成 | `DailyRankSnapshotScheduler` 存在 |
-| T-045 | Rank | P2 | 今日贏幣王排行榜 | ⬜ 未開始 | 需新 ZSet + 消費中獎事件 |
-| T-050 | Admin | P1 | Admin JWT（角色區分） | ⬜ 未開始 | admin-service 仍空殼 |
-| T-051 | Admin | P1 | 玩家帳號管理 API | ⬜ 未開始 | 依賴 T-050 |
-| T-052 | Admin | P1 | 星幣流通量報表 API | ⬜ 未開始 | 依賴 T-050 |
-| T-053 | Admin | P1 | 遊戲 RTP 監控 API | ⬜ 未開始 | 依賴 T-050 + game RTP（T-037 已完成） |
-| T-054 | Admin | P2 | 異常玩家偵測 | ⬜ 未開始 | 依賴 T-050 |
-| T-055 | Admin | P2 | 手動發放星幣（GM） | ⬜ 未開始 | 依賴 T-050 + wallet 入帳契約 |
-| T-070 | Notification | P1 | WebSocket STOMP Server | ⬜ 未開始 | notification 服務尚未建立 |
-| T-071 | Notification | P1 | Kafka → WebSocket 橋接 | ⬜ 未開始 | 依賴 T-070 |
-| T-072 | Notification | P1 | 遊戲結果推播 | ⬜ 未開始 | 依賴 T-071 |
-| T-073 | Notification | P2 | 排行榜變動廣播 | ⬜ 未開始 | 依賴 T-071 + rank.update 事件 |
-| T-090 | 測試 | P0 | JMeter 高併發壓測 | ⬜ 未開始 | slot API 已完成，腳本骨架已存在 |
-| T-091 | 測試 | P0 | 帳務一致性對帳腳本 | ⬜ 未開始 | 依賴 T-090 跑完 |
-| T-092 | 測試 | P1 | Swagger UI 整合 | ⬜ 未開始 | 各服務加 springdoc |
-| T-100 | 鑽石 | P0 | DB Schema 鑽石表 | ✅ 已完成 | init.sql 已更新 |
-| T-105 | 鑽石 | P1 | 批量生成點數卡 API | ⬜ 未開始 | 依賴 T-050 + T-100 |
-| T-106 | 鑽石 | P1 | 點數卡列表/狀態 API | ⬜ 未開始 | 依賴 T-050 + T-100 |
+> 下表「原盤點」欄是 2026-06 排計畫時的判斷，保留以對照；「現況」欄為 2026-07-13 依程式碼複核。
 
-**已完成（5.5）**：T-003、T-040、T-043、T-044、T-100、（T-002 半）。
-**待辦（18.5 項）**：其餘。
+| 任務 | 模組 | 優先 | 名稱 | 原盤點 | 現況（2026-07-13） |
+|---|---|---|---|---|---|
+| T-002 | 全域 | P0 | Docker Compose 整合環境 | ⚠️ 部分完成 | ✅ 一鍵起 infra + 7 後端（`docker compose up -d --build`） |
+| T-003 | 全域 | P0 | Spring Boot 專案初始化 | ✅ | ✅ 七服務（含 notification） |
+| T-040 | Rank | P0 | Redis ZSet 全服排行榜 | ✅ | ✅ |
+| T-041 | Rank | P0 | 好友排行榜 | ⬜ | ✅ `FriendRelationshipUpdatedConsumer` + `/friends` |
+| T-042 | Rank | P0 | 排行榜查詢 API | ⬜ | ✅ `RankController` |
+| T-043 | Rank | P1 | 每週重置排程 | ✅ | ✅ |
+| T-044 | Rank | P1 | 每日持幣快照 | ✅ | ✅ |
+| T-045 | Rank | P2 | 今日贏幣王排行榜 | ⬜ | ✅ `rank:daily:winnings` ZSet（只認 `sub_type=WIN`） |
+| T-050 | Admin | P1 | Admin JWT（角色區分） | ⬜ | ✅ 獨立 `ADMIN_JWT_SECRET`（雷區 21） |
+| T-051 | Admin | P1 | 玩家帳號管理 API | ⬜ | ✅ 含經 member 內部 API 持久化 `members.status` |
+| T-052 | Admin | P1 | 星幣流通量報表 API | ⬜ | ✅ `CoinFlowReportService` |
+| T-053 | Admin | P1 | 遊戲 RTP 監控 API | ⬜ | ✅ |
+| T-054 | Admin | P2 | 異常玩家偵測 | ⬜ | ✅ 含 `GET /admin/alerts` |
+| T-055 | Admin | P2 | 手動發放星幣（GM） | ⬜ | ✅ `GmRewardService` 發 `wallet.credit.request` 指令（不直接寫 wallet） |
+| T-070 | Notification | P1 | WebSocket STOMP Server | ⬜ | ✅ port 8087、`/ws` |
+| T-071 | Notification | P1 | Kafka → WebSocket 橋接 | ⬜ | ✅ |
+| T-072 | Notification | P1 | 遊戲結果推播 | ⬜ | ✅ 私人佇列 `/user/queue/notifications` |
+| T-073 | Notification | P2 | 排行榜變動廣播 | ⬜ | ✅ `/topic/rank` |
+| T-090 | 測試 | P0 | JMeter 高併發壓測 | ⬜ | ✅ 已實跑；後續效能調校見 `plans/02-T-090-效能調校藍圖.md` |
+| T-091 | 測試 | P0 | 帳務一致性對帳腳本 | ⬜ | ✅ 帳務 gate 全 PASS |
+| T-092 | 測試 | P1 | Swagger UI 整合 | ⬜ | ✅ gateway 聚合 `/v3/api-docs/{service}` |
+| T-100 | 鑽石 | P0 | DB Schema 鑽石表 | ✅ | ✅ |
+| T-105 | 鑽石 | P1 | 批量生成點數卡 API | ⬜ | ✅ `AdminDiamondController` |
+| T-106 | 鑽石 | P1 | 點數卡列表/狀態 API | ⬜ | ✅ |
+
+**25 / 25 完成。**
+
+> ⚠️ 這正是 AGENTS.md §1 警告的情形：手動維護的進度表會落後程式碼。判定任務是否完成，
+> 請以 Controller/Service 檔是否存在、`git log --grep` 有無該 `T-0xx` commit 為準。
 
 ---
 

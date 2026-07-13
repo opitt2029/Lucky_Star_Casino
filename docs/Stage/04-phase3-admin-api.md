@@ -1,4 +1,12 @@
-# Phase 3 — Admin 管理 / 報表 API（P1）
+# Phase 3 — Admin 管理 / 報表 API（P1）✅ 已完成
+
+> **完成摘要（2026-07-13 複核）**：T-051 / T-052 / T-053 皆已完成
+> （玩家管理、`CoinFlowReportService` 流通量報表、RTP 監控）。P2 的 T-054（異常偵測，
+> 含 `GET /admin/alerts`）與 T-055（GM 發幣）也已完成。
+>
+> 實作重點：T-051 停用玩家時，除了 Redis 即時封鎖，還經 member 內部 API
+> `PATCH /internal/members/{id}/status` 持久化 `members.status`；所有後台寫入動作寫
+> `admin_action_logs` 稽核。以下為當時的施工計畫，保留作歷史紀錄。
 
 > 含任務：T-051（玩家帳號管理）、T-052（星幣流通量報表）、T-053（遊戲 RTP 監控）
 > 前置：T-050（Admin Security）必須先完成。
