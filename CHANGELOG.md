@@ -1,3 +1,36 @@
+## [docs] -- 2026-07-13 -- docs/ 全面盤點校正：架構文件對齊程式碼、進度表歸零、歷史文件標記、新增索引
+
+### Added
+- `docs/README.md`：**docs 索引**（原本沒有）。把 60 份文件分成 🟢 現況 / 🟡 計畫 / ⚪ 歷史三類，明確標示哪些可照著動工、哪些只能當背景讀；附 ADR 全表與「不在 docs/ 但必讀」清單。
+- `docs/_雜物/prompts/README.md`：歸檔說明表，逐份標註對應任務的現況。
+- `docs/plans/02-捕魚機升級-血量傷害模型.md`：補「進度總覽」表（CLAUDE.md §4 要求 plan 檔須有狀態表）——Phase 1~4 全數 ✅，並標明檔內數值是草案、已被 ADR-003/004 取代。
+
+### Changed
+- `docs/architecture.md`（漂移最嚴重的架構文件，停在 5/26 v1.0）：§1 概覽圖補 notification 8087 與 `wallet.credit.request`；§2 七服務職責全面重寫（game 補捕魚/風控/cashback/ADR-009 補償；wallet 補鑽石/商城/儲值/雙 EMF；admin 補獨立 JWT secret 與雷區 21；member 補簽到路由雷區 19；notification 移除「未在 compose 列出」的過時備注）；§4 資料表補齊 15+11 張（原本只列 7+7）；§5 Redis key 改為程式碼實際字串（`game:fishing:session:*`、`risk:*`、`token:min-iat:*`）；§6 Kafka 改為實際的 8 業務 + 5 DLT；§7 Port 補 notification 8087 / frontend-admin 5174 / Prometheus / Grafana；§8.2 下注流程補併發卸載、風控、補償；**§9 ADR 表整段重寫**。
+- `docs/PROJECT_BASE_EXPLANATION.md`：**整份重寫**。原文寫「後端服務尚未實作、PostgreSQL 只有 system_health_check 一張表」，與現況相差兩個月。
+- `docs/ENV_SETUP_GUIDE.md`：修正 clone 網址（原為不存在的 `Lucky-Strat-Casino`）；§3.2 從「已有預設值不需修改」改為 **CHANGE_ME 佔位符必須自行生成**（含各密鑰用途表）；§5.1 Kafka topic 清單補齊；Redis 容器名改為實際的 `lucky-star-redis`；§6.2 補 notification-service；**§6.3 原文說 member 連 PostgreSQL——實際是 MySQL**，改為各服務 DB 對照表；§7.4 新增 `VITE_USE_MOCK_API` 說明與 frontend-admin 章節；新增 Q6/Q7 排錯。
+- `docs/LOCAL_API_INTEGRATION_GUIDE.md`：移除「或使用專案內 `mvnw`」（雷區 1：**本專案沒有 mvnw**）；修正「5174 是 5173 的備援 port」（實際是**管理後台專屬 port**）；`.env` 明文開發密鑰改為佔位說明；**啟動順序補上「後端已容器化，`docker compose up -d` 會一起起 7 個後端」**——原文教人 compose 之後再 `mvn spring-boot:run`，會直接撞 port；新增 mock 預設開啟的警告。
+- `docs/dual-datasource-guide.md`：**核心敘述是錯的**——原文說「目前架構不需要 JPA 操作次庫，用 `JdbcTemplate` 即可」，但 wallet/admin 實際都有**兩套手動建立的 EntityManagerFactory**。改為依實際 `DataSourceConfig` 重寫：Bean 對照表、套件配置決定 EMF、`@Transactional` 必須指定 manager、**跨庫必須拆成兩個 Bean（自我呼叫會讓 proxy 失效）**、Testcontainers 測試（ADR-007）。
+- `docs/baccarat-rules.md`：§6 補契約檔 `contracts/baccarat-rules.json` 與 `ContractParityTest` 守門；§7 T-035 由「另行實作」改為 ✅ 已完成，補風控門檻雷區 17。
+- `docs/Stage/00-ROADMAP.md` + `01`~`08`：組員 D 的 25 個任務經程式碼複核**已全數完成**，現況表逐項更新（原表 18.5 項標為待辦），各 Phase 檔加完成摘要並標記為歷史計畫。
+- `docs/plans/01-八項架構改進施工藍圖.md`：P2b 補「調校另立藍圖」指向 `plans/02`；P3 標明 2026-07-13 複核仍未動工（`FishingSessionStore` 尚無 version/Lua）。
+- `docs/handover-topup-自助加值.md`：狀態由「尚未動工、程式碼一行都還沒寫」改為 **✅ 已完成並合併**（commit `c497a86`），附實際檔案對照表，原內容收進 `<details>` 作歷史。
+- `docs/bug/2026-06-25-bug-candidates.md`：5 項 bug **逐項複核全數已修**，開頭加驗證結果表。
+- `docs/report/PROJECT_ANALYSIS.md`：開頭加更新框——§14 的 8 項改進建議**已完成 7 項**（僅 Redis Lua CAS 未動工）；§10 已知限制、§12 面試答題（Q5 Saga、Q10 Testcontainers、Q11 瓶頸、Q12 契約）、§15 劣勢均依現況改寫，避免面試照舊文講「壓測沒跑、Saga 未實作」。
+- `docs/report/Lucky-Star-Casino-{總體檢報告,專題提案書,前端功能導覽,開發與流程報告,補充說明}.md`：加「📌 這是交付快照，不是現況文件」聲明並指向現況文件（內容不動——這 5 份已匯出 HTML/PDF 交付，改寫會破壞快照性質）。
+- **`AGENTS.md` 雷區 10 / 16**：雷區 10 原寫「捕魚機 Phase 1+2 已併入 develop，**Phase 3 進行中**」——複核發現 Phase 3（戰鬥回饋/砲台差異化/新互動）與 Phase 4（魚種重設/BOSS）**皆已落地**，改為「Phase 1~4 全部完成」；雷區 16 末補「升級進度」條目，明確標出**唯一未動工項＝Redis session 原子化（Lua CAS，ADR-008）**，並指向 `plans/01` Phase 3 的施工說明。證據：`fishingEngine.js` 已有 HP 條/暴擊/傷害浮字/自動射擊/鎖定/準心/`perfMode`/分頁暫停、`FishingCombat.CANNON_DAMAGE={0,14,22,32}`、`FishSpecies` 11 種含 `Tier.BOSS` 龍王；而 `FishingSessionStore` 仍無 `version` 欄位與 Lua script。
+
+### Removed（移動）
+- `docs/prompt-{fishing-优化,slot-機率修復,security-上一頁防呆,security-多帳號數據隔離,security-獲利攔截風控}.md` 與 `docs/performance/t090-{1000-rerun,b1}-handoff-prompt.md` → 移至 `docs/_雜物/prompts/`。這 7 份都是一次性施工提示詞，對應功能全部已落地（風控＝`RiskControlService`、上一頁防呆＝`useGameLeaveGuard.js`；「多帳號幸運值殘留」那份甚至已不適用——FortuneMeter 元件已從前端移除）。
+
+### Why
+- docs/ 累積 60 份文件、跨度兩個月，但多數是「當時的快照」且沒有索引，導致新人與 AI 讀到過期敘述會**直接踩雷**：照 `LOCAL_API_INTEGRATION_GUIDE` 會撞 port、照 `dual-datasource-guide` 會寫出 proxy 失效的跨庫程式碼、照 `ENV_SETUP_GUIDE` 會把 member 連到 PostgreSQL、照 `Stage/` 會重做 18 項已完成的任務。
+- 這正是 AGENTS.md §1 警告的「手動維護的文件會落後程式碼」。本次不只修內容，也**建立分類機制**（README 三分類 + 歷史文件加聲明），讓下次判斷「這份能不能信」有依據。
+
+### 如何驗證
+- 純文件變更，不影響程式行為。所有敘述逐項比對真實檔案：`docker-compose.yml`（7 服務 + observability profile）、`.env.example`（CHANGE_ME 佔位符）、`kafka/kafka-init.sh`（8+5 topic）、兩套 `init.sql`（15+11 表）、gateway `application.yml`（路由順序、jwt.whitelist、concurrency-limit）、各服務 `DataSourceConfig`（wallet/admin 雙 EMF）、`GmRewardService`（GM 發幣走 `wallet.credit.request`）、`FishingSessionStore`（無 version/Lua → P3 確實未動工）、`TopupController`、`RealtimeBridge.jsx`、`rankSlice/walletSlice`（BUG-001~005 已修）。
+- `python docs/game-math/verify_rtp.py` 實跑：老虎機 RTP 0.93830 / 命中率 0.30681，與 `SlotSymbol` Javadoc（93.8% / 30.7%）吻合，確認 game-math 無漂移。
+
 ## [docs] -- 2026-07-10 -- interview-prep 與組員A報告對齊 7/10 現況（ADR-009 補償、gateway -150 併發卸載、C3+B1 最終數據）
 
 ### Changed

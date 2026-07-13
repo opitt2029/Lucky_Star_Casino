@@ -1,4 +1,18 @@
-# Phase 7 — 測試 & 文件（P0 / P1）
+# Phase 7 — 測試 & 文件（P0 / P1）✅ 已完成
+
+> **完成摘要（2026-07-13 複核）**：
+> - **T-092 Swagger**：各服務加 springdoc，gateway 聚合 `/v3/api-docs/{service}`。
+> - **T-090 JMeter 壓測**：✅ 已實跑完成（150 / 1,000 併發）。
+>   結論與根因鏈見 `docs/performance/T-090-load-test-report.md`。
+> - **T-091 帳務對帳**：✅ 帳務 gate 全程 PASS（`tests/performance/accounting-reconciliation.sql`、
+>   `tools/reconciliation/reconcile-game-wallet.mjs`）。
+>
+> ⚠️ **T-090 的後續效能調校是另一條線、仍在進行**：Phase A/B1/C1/C2/C3 已落地並對照重跑
+> （150 併發 P99 −48%、1,000 併發成功 +430%、401 歸零），但 D1（驗收拓樸與 gate 語意）
+> 尚未拍板、1,000 併發下 429 佔比仍高。**要接手效能調校請看
+> `docs/plans/02-T-090-效能調校藍圖.md`，不是本檔。**
+>
+> 以下為當時的施工計畫，保留作歷史紀錄。
 
 > 含任務：T-092（Swagger）、T-090（JMeter 壓測）、T-091（帳務對帳）
 > 為何排最後：T-090/T-091 雖 P0，但需**完整服務拓撲 + 真實數據**才能跑（AGENTS.md §地雷 12）；

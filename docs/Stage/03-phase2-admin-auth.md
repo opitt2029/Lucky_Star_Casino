@@ -1,8 +1,18 @@
-# Phase 2 — Admin 地基（P1）
+# Phase 2 — Admin 地基（P1）✅ 已完成
+
+> **完成摘要（2026-07-13 複核）**：T-050 已完成。admin-service 現有 `SecurityConfig`、
+> `AdminUserSeeder`、獨立 `ADMIN_JWT_SECRET` 簽發，`admin_users` 表在 PostgreSQL。
+>
+> ⚠️ **後來踩到的雷（雷區 21，2026-07-07 修）**：admin JWT 與玩家 JWT 是**兩套 secret**，
+> gateway 的 `JwtAuthenticationGlobalFilter` 只持玩家 secret、驗不了 admin token，
+> 所以 `/admin/` **必須留在 gateway 的 `jwt.whitelist`**（gateway 純轉發，認證由 admin 自身
+> Spring Security 負責）。把它移出白名單＝整條後台路徑被 401 擋死，連登入端點都進不去。
+> 也不要在 admin-service 內假設拿得到 gateway 注入的 `X-User-Id`/`X-User-Role`（白名單路徑會剝除）。
+>
+> 以下為當時的施工計畫，保留作歷史紀錄；「admin-service 仍空殼」的敘述早已不成立。
 
 > 含任務：T-050（Admin JWT 角色區分 + Spring Security）
 > 目標：建立 admin-service 的認證/授權地基。**這是所有 Admin API（T-051~T-055, T-105, T-106）的前置**，務必先做。
-> 現況：admin-service 仍空殼（只有 DataSourceConfig / PostgresJpaConfig），無 controller/security。
 
 ---
 

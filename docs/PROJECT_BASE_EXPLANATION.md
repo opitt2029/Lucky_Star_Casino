@@ -1,209 +1,155 @@
-# Lucky Star Casino 專案基底功能說明
+# Lucky Star Casino 專案功能總說明
 
-這份文件說明目前專案基底已經提供什麼、各資料夾代表什麼，以及整個系統預計怎麼運作。
+> 最後校對：2026-07-13（依實際程式碼盤點重寫）
+>
+> ⚠️ 本檔在 2026-05 建立時寫的是「專案基底／骨架」，內容停留在「後端服務尚未實作、
+> PostgreSQL 只有 `system_health_check` 一張表」。那些敘述**早已不成立**：七個後端服務、
+> 三款遊戲、後台、推播、鑽石/商城/儲值皆已上線。本次依程式碼全面重寫。
+>
+> 想看更深的架構細節請讀 [`architecture.md`](architecture.md)；想看逐項任務進度請讀
+> `AUDIT_REPORT.md` 附錄 A（自動產生）。
 
-## 目前專案在做什麼
+---
 
-Lucky Star Casino 是一個「模擬幣」線上娛樂遊戲平台的專案骨架。它的定位不是金錢交易系統，而是提供會員、錢包、遊戲、排行榜與後台管理等功能的社交娛樂平台基底。
+## 1. 這個專案是什麼
 
-目前 repo 主要完成的是基礎設施層：
+Lucky Star Casino（幸運星幣城）是一個**模擬幣**線上娛樂平台，**沒有真實金流**。
+定位是社交娛樂 + 微服務架構練習：會員、錢包帳務、遊戲、排行榜、後台管理、即時推播。
 
-- 使用 Docker Compose 一次啟動開發環境需要的服務。
-- 建立 MySQL 與 PostgreSQL 資料庫容器。
-- 建立 Redis 容器，預留給快取、短期狀態或 session 使用。
-- 建立 Kafka 與 Kafka UI，預留給服務之間的事件流。
-- 自動建立平台會用到的 Kafka topics。
-- 預留前端與多個後端微服務的資料夾結構。
+技術骨幹：Java 21 / Spring Boot 3.3.5 微服務（Maven monorepo，套件根 `com.luckystar`）
++ Spring Cloud Gateway + React(Vite) 前端 ×2 + PostgreSQL/MySQL CQRS + Redis + Kafka。
 
-換句話說，這個專案目前比較像是「可啟動的系統底座」，還不是已完成的產品功能。
+---
 
-## 整體架構概念
+## 2. 系統組成（皆已實作）
 
 ```mermaid
 flowchart LR
-    user["使用者"] --> frontend["Frontend React/Vite"]
-    frontend --> gateway["Gateway Service"]
-    gateway --> member["Member Service"]
-    gateway --> wallet["Wallet Service"]
-    gateway --> game["Game Service"]
-    gateway --> rank["Rank Service"]
-    gateway --> admin["Admin Service"]
+    player["玩家瀏覽器<br/>frontend 5173"] --> gateway["Gateway 8080"]
+    admin_ui["管理後台<br/>frontend-admin 5174"] --> gateway
 
-    member --> mysql["MySQL"]
+    gateway --> member["Member 8081"]
+    gateway --> wallet["Wallet 8082"]
+    gateway --> game["Game 8083"]
+    gateway --> rank["Rank 8084"]
+    gateway --> admin["Admin 8086"]
+    gateway --> notif["Notification 8087<br/>WebSocket /ws"]
+
+    member --> mysql["MySQL 3307<br/>讀庫 / 會員"]
+    wallet --> postgres["PostgreSQL 5433<br/>帳務寫庫"]
     wallet --> mysql
-    game --> postgres["PostgreSQL"]
+    game --> postgres
     rank --> postgres
+    admin --> mysql
     admin --> postgres
 
     member --> redis["Redis"]
     wallet --> redis
     game --> redis
+    rank --> redis
+    gateway --> redis
 
     member --> kafka["Kafka"]
     wallet --> kafka
     game --> kafka
     rank --> kafka
-    kafka --> kafkaUi["Kafka UI"]
+    admin --> kafka
+    kafka --> notif
 ```
 
-上圖是此專案基底預計支援的運作方式。實際程式碼尚未建立，但資料夾與基礎設施已經先把未來的服務邊界畫出來。
+| 服務 | Port | 主要職責 |
+|---|---|---|
+| gateway-service | 8080 | 唯一對外入口：自適應併發卸載 → 限流 → JWT 驗證 → 路由 → 熔斷 |
+| member-service | 8081 | 註冊/登入/JWT 輪替、個資、好友、每日簽到、月度累計獎勵 |
+| wallet-service | 8082 | 星幣帳務（扣款/派彩/流水）、贈幣、破產補助、鑽石、禮品商城、自助加值 |
+| game-service | 8083 | Provably Fair RNG、老虎機、百家樂、捕魚機、RTP 統計、風控、回饋 |
+| rank-service | 8084 | 全服/好友/今日贏幣王排行榜、週榜重置、每日快照 |
+| admin-service | 8086 | 後台認證、玩家管理、流通量報表、RTP 監控、異常偵測、GM 發幣、鑽石卡、商城目錄 |
+| notification-service | 8087 | WebSocket(STOMP) 推播：遊戲結果、排行變動、系統通知 |
 
-## 資料夾用途
+前端是**兩個獨立專案**：玩家端 `frontend/`（5173）、管理後台 `frontend-admin/`（5174）。
+兩者的 JWT 是**兩套不同 secret**，不可混用。
+
+---
+
+## 3. 玩家能玩到什麼
+
+| 功能 | 說明 |
+|---|---|
+| 老虎機 | 3×3 單中線兩階賠付（三連＋左二同），理論 RTP ≈ 93.8%、命中率 ≈ 30.7% |
+| 百家樂 | 標準 Punto Banco 補牌表、莊贏扣 5% 傭金、和局押莊/閒退本金（見 [`baccarat-rules.md`](baccarat-rules.md)） |
+| 捕魚機 | PixiJS canvas 引擎；**血量/傷害模型**（累積傷害 → 致命一擊才判定捕獲），buy-in 批次結算、殘血部分回收（ADR-003/004） |
+| 排行榜 | 全服持幣榜、好友榜、今日贏幣王；週榜自動重置 |
+| 社交 | 好友、贈幣、破產補助 |
+| 簽到 | 每日簽到 + 月度累計里程碑獎勵 |
+| 鑽石 | 點數卡兌換鑽石 → 鑽石換星幣 |
+| 商城 | 星幣兌換禮品 + 背包 |
+| 自助加值 | 模擬支付的儲值訂單（**無真實金流**） |
+| 即時推播 | 遊戲結果、排行變動走 WebSocket |
+
+> 前端預設走 **mock**（`VITE_USE_MOCK_API !== 'false'`）。要玩真後端請把它設成 `false`。
+> mock 的玩法/賠付必須鏡像後端（單一真相＝後端 enum + `contracts/*.json`），詳見 AGENTS.md 雷區 14。
+
+---
+
+## 4. 資料存哪裡（CQRS，ADR-001）
+
+- **PostgreSQL（帳務寫庫，強 ACID）**：`wallets`、`wallet_transactions`、`diamond_wallets`、
+  `shop_redemptions`、`topup_orders`、`game_rounds`、`game_rtp_stats`、`cashback_records`、
+  `pending_wallet_credits`、`rank_history`、`rank_daily_snapshots`、`admin_users`、
+  `admin_alerts`、`admin_action_logs`、`dead_letter_messages`
+- **MySQL（查詢讀庫）**：`members`、`friendships`、`daily_checkins`、`monthly_reward_claims`、
+  `task_definitions`、`player_tasks`、`outbox_events`、`gift_logs`、`wallet_transactions`（讀視圖）、
+  `diamond_cards`、`shop_items`
+- **Redis**：refresh token、JWT 黑名單、停用旗標、遊戲/捕魚 session、風控計數、排行 ZSet、限流
+- **Kafka**：8 個業務 topic + 5 個 DLT（清單見 `kafka/kafka-init.sh`）
+
+**帳務兩大安全根基**：`wallet_transactions.idempotency_key` UNIQUE（防重複入帳）、
+`wallets.version` 樂觀鎖（防超扣）。所有扣款/入帳都遵循這個模式。
+
+---
+
+## 5. 資料夾用途
 
 | 路徑 | 用途 |
-| --- | --- |
-| `frontend/` | 預留給 React + Vite 前端。未來會放使用者介面、路由、API 串接、狀態管理。 |
-| `backend/gateway-service/` | 預留給 API Gateway。未來負責統一入口、路由轉發、驗證與跨服務請求控管。 |
-| `backend/member-service/` | 預留給會員服務。未來負責註冊、登入、會員資料與身分驗證相關邏輯。 |
-| `backend/wallet-service/` | 預留給錢包服務。未來負責模擬幣餘額、扣款、加款與交易紀錄。 |
-| `backend/game-service/` | 預留給遊戲服務。未來負責遊戲流程、下注模擬、遊戲結果產生。 |
-| `backend/rank-service/` | 預留給排行榜服務。未來負責排行計算、排行查詢與成績更新。 |
-| `backend/admin-service/` | 預留給後台管理服務。未來負責營運、會員、遊戲與系統管理功能。 |
-| `database/mysql/` | MySQL 初始化 SQL。 |
-| `database/postgres/` | PostgreSQL 初始化 SQL。 |
-| `kafka/` | Kafka topic 初始化腳本。 |
-| `docs/` | 專案文件。 |
+|---|---|
+| `backend/*-service/` | 七個 Spring Boot 微服務 |
+| `frontend/` | 玩家端 React + Vite + Redux Toolkit（含 PixiJS 捕魚引擎） |
+| `frontend-admin/` | 管理後台 React |
+| `contracts/*.json` | 玩法數值單一來源（mock 直接 import；後端由 `ContractParityTest` 守門） |
+| `database/{mysql,postgres}/` | `init.sql` + `migration/` + 測試種子資料 |
+| `kafka/kafka-init.sh` | Topic 自動建立腳本 |
+| `tests/{infra,e2e,smoke,performance}/` | 基礎設施測試、E2E、冒煙、JMeter 壓測 |
+| `tools/{audit,reconciliation,screenshot}/` | 進度快照產生器、帳務對帳、截圖 |
+| `observability/` | Prometheus / Grafana 設定 |
+| `docs/` | 本資料夾（見 [`README.md`](README.md) 索引） |
 
-## Docker Compose 啟動的服務
+---
 
-目前 `docker-compose.yml` 會啟動以下容器：
+## 6. 怎麼跑起來
 
-| 服務 | 容器名稱 | 功能 |
-| --- | --- | --- |
-| `mysql` | `lucky-star-mysql` | MySQL 8.4，預留給關聯式業務資料。 |
-| `postgres` | `lucky-star-postgres` | PostgreSQL 16，預留給另一組關聯式資料或服務資料。 |
-| `redis` | `lucky-star-redis` | Redis 7，預留給快取、session、限流、短期狀態。 |
-| `kafka` | `lucky-star-kafka` | Kafka broker（7.6.1 KRaft 模式，broker+controller 合一，無 Zookeeper），負責事件訊息。 |
-| `kafka-init` | `lucky-star-kafka-init` | 等 Kafka 健康後，自動建立 topics。 |
-| `kafka-ui` | `lucky-star-kafka-ui` | Kafka 管理介面，預設可從 `http://localhost:8085` 查看。 |
-
-MySQL、PostgreSQL、Redis、Kafka 都有 healthcheck。這代表 Docker Compose 可以判斷服務是否真的可用，而不只是容器是否已啟動。
-
-## 環境變數與本機 Port
-
-`.env.example` 定義了本機開發環境的預設 port 與帳密。實際啟動前應複製成 `.env`：
+後端**已全部容器化**，一行起七服務 + 基礎設施：
 
 ```bash
-cp .env.example .env
+cp .env.example .env      # 然後把所有 CHANGE_ME 換成自己生成的隨機值
+docker compose up -d --build
 ```
 
-目前預設值包含：
+⚠️ `.env` 的 `JWT_SECRET`／`INTERNAL_SECRET`／`CORS_ALLOWED_ORIGINS` **缺了就啟動失敗**（無預設值），
+且密鑰不足 HS256 的 32 bytes 下限會 fail-fast——這是刻意設計。生成方式見
+[`security/secret-rotation.md`](security/secret-rotation.md)。
 
-| 服務 | 本機 port |
-| --- | --- |
-| MySQL | `3307` |
-| PostgreSQL | `5433` |
-| Redis | `6379` |
-| Kafka | `9092` |
-| Kafka UI | `8085` |
-| Frontend | `5173` |
-| Gateway | `8080` |
-| Member Service | `8081` |
-| Wallet Service | `8082` |
-| Game Service | `8083` |
-| Rank Service | `8084` |
-| Admin Service | `8086` |
+詳細 SOP：根目錄 `DEPLOY.md`；新手逐步教學：[`ENV_SETUP_GUIDE.md`](ENV_SETUP_GUIDE.md)。
 
-## 資料庫目前初始化了什麼
+> Docker 的 `init.sql` **只在 volume 第一次建立時執行**。改了 schema 要重來：
+> `docker compose down -v && docker compose up -d`（會清光本機 DB 資料）。
 
-### MySQL（`database/mysql/init.sql`）
+---
 
-| 資料表 | 所屬服務 | 說明 |
-| --- | --- | --- |
-| `system_health_check` | 基礎建設 | 確認資料庫初始化流程正常，各 Service 可寫入健康狀態 |
-| `members` | Member Service | 玩家帳號：帳號、信箱、密碼雜湊、暱稱、頭像、角色、狀態 |
+## 7. 現在還沒做的
 
-#### `members` 資料表欄位說明
-
-| 欄位 | 型別 | 說明 |
-| --- | --- | --- |
-| `id` | BIGINT AUTO_INCREMENT | 玩家主鍵（playerId） |
-| `username` | VARCHAR(50) UNIQUE | 登入帳號 |
-| `email` | VARCHAR(100) UNIQUE | 電子信箱 |
-| `password_hash` | VARCHAR(255) | BCrypt 雜湊密碼，不儲存明文 |
-| `nickname` | VARCHAR(50) | 顯示暱稱，可由玩家更新 |
-| `avatar` | TEXT NULL | 頭像：`https://` URL 或 `data:image/...;base64,...` |
-| `role` | ENUM('PLAYER','ADMIN') | 預設 PLAYER |
-| `status` | ENUM('ACTIVE','DISABLED') | 停權時設為 DISABLED |
-| `created_at` | DATETIME | 建立時間 |
-| `updated_at` | DATETIME ON UPDATE | 最後更新時間（自動維護） |
-
-### PostgreSQL（`database/postgres/init.sql`）
-
-| 資料表 | 所屬服務 | 說明 |
-| --- | --- | --- |
-| `system_health_check` | 基礎建設 | 同 MySQL 版本，確認初始化流程正常 |
-
-> 錢包、遊戲、排行榜、後台等 PostgreSQL 資料表尚未建立，待各服務開發時補充。
-
-需要注意的是，Docker 的資料庫初始化 SQL 只會在 volume 第一次建立時執行。如果已經啟動過容器，後續修改 init SQL 不會自動重跑。若要重新初始化本機資料庫，需要先刪除 volume：
-
-```bash
-docker-compose down -v
-docker-compose up -d
-```
-
-執行前要確認本機資料可以被清掉。
-
-## Kafka Topics 的用途
-
-`kafka/kafka-init.sh` 會自動建立以下 topics：
-
-| Topic | 預計用途 |
-| --- | --- |
-| `member.registered` | 會員註冊完成事件。可供錢包服務建立初始錢包、通知服務推送歡迎訊息。 |
-| `wallet.debit` | 錢包扣款事件。可用在遊戲下注、消費模擬幣等情境。 |
-| `wallet.credit` | 錢包加款事件。可用在遊戲獎勵、活動贈幣等情境。 |
-| `game.result` | 遊戲結果事件。可供錢包結算、排行榜更新、後台統計使用。 |
-| `rank.update` | 排行榜更新事件。可供前端或通知功能取得最新排行狀態。 |
-| `notification.push` | 通知推送事件。預留給站內通知或其他提醒流程。 |
-
-每個 topic 目前設定為：
-
-- replication factor：`1`
-- partitions：`3`
-
-這適合本機開發環境。正式環境通常會需要更高的 replication factor，並依照流量調整 partitions。
-
-## 預期的基本流程
-
-以下是一個未來會員玩遊戲的可能流程：
-
-1. 使用者透過前端註冊或登入。
-2. 前端請求 Gateway。
-3. Gateway 將會員相關請求轉給 Member Service。
-4. 會員註冊完成後，Member Service 發出 `member.registered` 事件。
-5. Wallet Service 收到事件後建立初始錢包。
-6. 使用者開始遊戲時，Game Service 發起遊戲流程。
-7. Wallet Service 根據遊戲需求處理 `wallet.debit` 或 `wallet.credit`。
-8. Game Service 產生 `game.result` 事件。
-9. Rank Service 根據遊戲結果更新排行榜，並發出 `rank.update`。
-10. Notification 相關流程可透過 `notification.push` 發送提醒。
-
-這些目前是架構預留與 topic 設計，尚未有實際後端服務程式碼。
-
-## 目前已完成與尚未完成
-
-已完成：
-
-- 專案目錄骨架。
-- Docker Compose 基礎服務。
-- MySQL、PostgreSQL、Redis、Kafka、Kafka UI。
-- Kafka topic 自動建立流程。
-- 資料庫基本初始化表（`system_health_check`）。
-- MySQL `members` 資料表 schema（`database/mysql/init.sql`）。
-- `.env.example` 本機開發設定。
-
-尚未完成：
-
-- React 前端實作。
-- Spring Boot 後端服務實作。
-- API Gateway 路由設定。
-- 會員、錢包、遊戲、排行榜、後台的 API。
-- 錢包、遊戲、排行榜、後台等 PostgreSQL 資料表 schema。
-- 認證與授權。
-- 測試、CI/CD、正式環境部署設定。
-
-## 一句話總結
-
-這個專案現在的功能，是先把「線上模擬幣娛樂平台」會需要的開發底座架好：資料庫、快取、事件系統、服務資料夾與本機啟動方式都已經準備好；真正的前後端業務功能還在待實作階段。
+- **捕魚 Redis session 原子化（Lua CAS）**：`plans/01` Phase 3，ADR-008 編號已保留，未動工。
+- **T-090 效能調校 D1**：最終驗收拓樸（單機 vs 多機）與 gate 語意尚未拍板；
+  1,000 併發下 429 佔比仍高（容量問題），見 `plans/02-T-090-效能調校藍圖.md`。
+- **認證安全強化**：refresh token 仍存 localStorage、無絕對逾時、無改密碼端點，
+  設計已寫成 [`specs/SPEC-001-auth-token-session-hardening.md`](specs/SPEC-001-auth-token-session-hardening.md)，待實作。

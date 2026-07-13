@@ -1,8 +1,31 @@
 # 交接紀錄 — 玩家自助加值（模擬支付儲值訂單）
 
 > 建立日期：2026-06-17
-> 狀態：**設計已對齊、尚未動工**。功能程式碼一行都還沒寫。
-> ⚠️ 建議在「乾淨的新 session」接手實作，原因見最後一節。
+> **狀態：✅ 已完成並合併**（commit `c497a86`「feat(wallet-service): 玩家自助加值（模擬支付儲值訂單）」）
+> 本檔已完成交接使命，保留作為**設計脈絡的歷史紀錄**；下面的「待辦清單」全數已做完，
+> 請勿再照著它動工。要查現況請直接看程式碼。
+
+## ✅ 實際落地的成品（2026-07-13 核對）
+
+| 項目 | 實際檔案 |
+|---|---|
+| 後端 API | `wallet-service` → `controller/TopupController.java`（`/api/v1/wallet/topup`） |
+| 端點 | `GET /packages`、`POST /orders`、`POST /orders/{id}/pay`、`GET /orders` |
+| Service | `service/TopupService.java` |
+| Entity / Repo | `postgres/entity/TopupOrder.java`、`postgres/repository/TopupOrderRepository.java` |
+| DTO | `CreateTopupOrderRequest`、`TopupOrderResponse`、`TopupPackageResponse` |
+| 例外 | `IllegalTopupStateException`、`InvalidTopupPackageException`、`TopupOrderNotFoundException` |
+| Schema | `database/postgres/init.sql` 的 `topup_orders` 表 + `TOPUP` 子型 CHECK |
+| 測試 | `service/TopupServiceTest.java` |
+| 前端 | `frontend/src/pages/Topup.jsx` + `services/walletApi.js`（路由已掛在 `App.jsx`） |
+
+gateway 無需新增路由——`/api/v1/wallet/topup/**` 被既有的 `wallet` catch-all 路由吃下
+（與雷區 19 的簽到端點不同，簽到的服務在 member 才需要獨立路由）。
+
+---
+
+<details>
+<summary>以下為 2026-06-17 交接當時的原始內容（歷史紀錄，已不再是待辦）</summary>
 
 ---
 
@@ -120,3 +143,5 @@
 1. 確認服務是否還在跑（`docker compose ps` + 測各 port）；沒跑就照第 1 節重啟。
 2. 真實 `Read` 一遍第 3 節列的關鍵檔，核對事實。
 3. 先做後端（建表 → entity → repo → dto → service → controller），用 curl 驗證三支 API（建單 / 付款 / 查單）餘額真的增加，再串前端。
+
+</details>

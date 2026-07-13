@@ -1,4 +1,11 @@
-# Phase 1 — Rank 模組收尾（P0）
+# Phase 1 — Rank 模組收尾（P0）✅ 已完成
+
+> **完成摘要（2026-07-13 複核）**：T-041 / T-042 皆已完成（`FriendRelationshipUpdatedConsumer`、
+> `RankController` 的 `/global`、`/global/{id}`、`/friends`）。P2 的 T-045 今日贏幣王
+> （`rank:daily:winnings`）也已一併完成。以下為當時的施工計畫，保留作歷史紀錄。
+>
+> ⚠️ 後來新增的鐵則：`friend.relationship.updated` 帶的是**完整好友清單**、不是增量
+> （雷區 11）；今日贏幣王只認 `sub_type=WIN`，退款/獎勵子型不得污染排行（雷區 18）。
 
 > 含任務：T-041（好友排行榜）、T-042（排行榜查詢 API）
 > 目標：把 Rank 模組剩下兩個 P0 收掉。T-040/T-043/T-044 已完成。
