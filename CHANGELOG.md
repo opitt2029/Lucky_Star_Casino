@@ -1,3 +1,30 @@
+## [docs] -- 2026-07-13 -- interview-prep 補三個缺口：契約守門決策、風控門檻的蒙地卡羅論證、Kafka partition 分層
+
+### Added
+- `docs/interview-prep/02-設計決策與為什麼.md`：新增**決策 10「契約檔守門」**（`contracts/*.json` + `ContractParityTest`：前端 mock 直接 import 契約檔、後端維持 enum 為執行期權威、相等性測試守 CI）。原本整份 interview-prep **完全沒提這個機制**，但它是「怎麼防止前後端業務規則不同步」這題的標準答案。
+- `docs/interview-prep/02-設計決策與為什麼.md` 決策 5：補**「門檻錯了兩次」的完整故事**——第二次（per-game 之後仍誤判）的根因是「監控的是 500 局樣本平均、而樣本平均自己有標準差」，附蒙地卡羅實測的誤報率對照表（SLOT 0.97 → 36% 誤判；1.30 → 0.06%）。這是「你怎麼決定告警閾值」的滿分答案。
+- `docs/interview-prep/04-資料庫與分散式觀念.md` §7：補 **Kafka partition 分層設計**（高流量 6 / 低流量 3 / DLT 1），論點是「加 partition 有沒有用取決於 producer 的 key」——`rank.update` 用固定 key，開再多 partition 平行度仍是 1。
+
+### Changed
+- `docs/interview-prep/01-專案程式碼地圖.md` §5、`09-開發流程與工程實踐.md`：測試策略補上 `ContractParityTest`，並主動點出它的已知邊界（守得住數值、守不住演算法邏輯）。
+- `docs/interview-prep/00-index.md`：速查表補三題（前後端不同步 / 告警閾值 / partition 數）。
+- `docs/interview-prep/04-資料庫與分散式觀念.md`：修正 `wallet.credit` 消費者敘述——實際是 rank / admin / wallet(read-sync) **三個**獨立 group，原文只寫 rank。
+
+### 為什麼
+盤點 `docs/interview-prep` 與程式碼的一致性時發現：整體同步狀況良好（13 章壓測完全對齊 T-090、程式碼地圖無死連結），但有三個「專案做了、文件沒寫」的缺口，且三者都恰好是高頻面試題的最佳素材。風控門檻那則尤其重要——現行值 SLOT 1.30 / BACCARAT 1.20 的**決策理由只存在於 YAML 註解裡**，面試文件只講了「per-game」這個表層結論，漏掉真正有價值的「用模擬量化誤報率」方法論。
+
+### 如何驗證
+- 逐項與程式碼交叉核對：`contracts/*.json` 五檔存在、`game-service` 的 `ContractParityTest` 存在；`kafka/kafka-init.sh` 確認 6/3/1 分層；`game-service/application.yml` 確認 `SLOT: 1.30 / BACCARAT: 1.20 / FISHING: 1.10 / default: 1.05`；`grep topics=` 確認 `wallet.credit` 的三個消費者。
+- 純文件變更，不影響任何測試。
+
+### Fixed
+- `backend/game-service/.../fishing/FishingCombat.java`：**`CANNON_DAMAGE` 的 Javadoc 過時**——寫著「銅 10 / 銀 14 / 金 18（金炮約銅炮 1.8×）」，但實際常數是 `{0, 14, 22, 32}`（銅 14 / 銀 22 / 金 32，金炮約銅炮 2.3×）；連帶「金炮對中小魚 `pCapture` ≈ 0.44」也是舊值。依現行常數重算後改為「銅 0.57~0.86、銀 0.37~0.48、金 0.25~0.48（魚種越大越低）」，並補上 ADR-004 的「勿對低 `pCapture` 設硬地板」警告（設地板會打破 `pCapture = TARGET_RTP × E[N] / multiplier`，使 RTP 破表）。**僅改註解，無行為變更**——這是文件漂移，照舊註解調參會做出錯誤決策。
+
+### 相關
+同日在專案外的教材 `D:\Lucky_Star_Prac`（個人練習用，不在本 repo）做了對應的錯誤修正與章節補充；上述 Javadoc 漂移就是在教材比對過程中發現的。
+
+---
+
 ## [docs] -- 2026-07-13 -- docs/ 全面盤點校正：架構文件對齊程式碼、進度表歸零、歷史文件標記、新增索引
 
 ### Added
