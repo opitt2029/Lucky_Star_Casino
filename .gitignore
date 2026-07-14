@@ -74,7 +74,9 @@ coverage/
 .cache/
 
 # JMeter pressure-test runtime data
-tests/performance/players.csv
+# players*.csv 內含 provision-players.mjs 產生的玩家 JWT，勿進版控
+# （players.csv.example 不以 .csv 結尾，不受此規則影響）
+tests/performance/players*.csv
 tests/performance/results/
 
 # 本機服務啟動 log（run_in_background 輸出）
