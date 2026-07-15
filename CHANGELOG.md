@@ -1,3 +1,257 @@
+## [changed] -- 2026-07-16 -- Restore baccarat side panel and move rules to page top
+
+### Changed
+- frontend/src/pages/Baccarat.jsx: moved the baccarat rules card to the top of baccarat-page above the game table.
+- frontend/src/pages/Baccarat.jsx: moved BaccaratRoadmap back into baccarat-side-panel so the side panel has its original roadmap role.
+- frontend/src/styles/games/baccarat.css: restored the 1500px+ normal-page baccarat-side-panel right rail while keeping narrower layouts stacked below the table.
+
+### Why
+- The side panel should return to its original table-side placement, while the game rules card should be the top-of-page helper section.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- Playwright layout QA passed at 1100x900 and 1500x900: rules above table, side panel contains roadmap only, 1500px side panel restored to right rail, 1100px side panel remains below felt, bodyOverflowX 0.
+
+## [changed] -- 2026-07-16 -- Move baccarat roadmap to page top and remove fairness panel
+
+### Changed
+- frontend/src/pages/Baccarat.jsx: moved BaccaratRoadmap, which renders baccarat-roadmap-panel, to the top of baccarat-page above the game table.
+- frontend/src/pages/Baccarat.jsx: simplified baccarat-side-panel so it only keeps the baccarat rules card below the game table.
+- frontend/src/styles/games/baccarat.css: added top spacing for the page-level baccarat-roadmap-panel and removed unused baccarat-api-panel rules from the dedicated baccarat stylesheet.
+
+### Removed
+- frontend/src/pages/Baccarat.jsx: removed the baccarat-api-panel fairness verification block from the baccarat page.
+
+### Why
+- The roadmap panel should be visible at the top of the baccarat web page, and the fairness verification panel is no longer part of the requested layout.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- rg confirmed Baccarat.jsx only renders BaccaratRoadmap once at the page top and no longer contains baccarat-api-panel or fairness verification copy.
+
+## [changed] -- 2026-07-14 -- Keep baccarat side panel below the table
+
+### Changed
+- frontend/src/styles/games/baccarat.css: forced the normal baccarat page to use a single table column at every viewport width.
+- frontend/src/styles/games/baccarat.css: kept baccarat-side-panel below baccarat-table-felt with full-width alignment instead of moving it into a right-side column on wide desktop.
+- frontend/src/styles/games/baccarat.css: preserved fullscreen behavior by keeping the external side panel hidden in baccarat-table--fullscreen.
+
+### Why
+- The baccarat side panel should be consistent across the web page layout and always appear below the game screen, regardless of viewport size.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- Playwright layout QA passed at 1100x900, 1500x900, and 1800x900: side panel below felt, aligned full width, static position, and bodyOverflowX 0.
+
+## [fixed] -- 2026-07-14 -- Prevent baccarat wide-desktop clipping
+
+### Fixed
+- frontend/src/styles/games/baccarat.css: stopped the normal baccarat table from clipping content at 1500px+ widths by allowing the table and felt area to show natural overflow.
+- frontend/src/styles/games/baccarat.css: disabled the normal-page 16:9 felt constraint at 1500px+ widths and restored an auto-height felt area sized by its table content.
+- frontend/src/styles/games/baccarat.css: kept the fix scoped to non-fullscreen baccarat tables so fullscreen keeps its separate viewport layout.
+
+### Why
+- The 1500px+ desktop breakpoint was reapplying a fixed 16:9 felt height while the normal table still contained betting, chip, side-bet, settlement, and side-panel content, causing the game screen to be severely clipped.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- Playwright wide-desktop QA passed at 1600x900 and 1800x900: felt aspect-ratio auto, table/felt overflow visible, deepestOverflow <= 0, feltOverflowY 0, bodyOverflowX 0.
+
+## [fixed] -- 2026-07-14 -- Polish baccarat side bets, squeeze hint, and deal animation
+
+### Fixed
+- frontend/src/styles/games/baccarat.css: kept normal-page baccarat-side-bets buttons on a single horizontal row and compacted their labels so they no longer wrap into a second line.
+- frontend/src/styles/games/baccarat.css: moved the baccarat-squeeze__hint label back inside each baccarat-hand card area with a compact pill style.
+- frontend/src/pages/Baccarat.jsx: changed the dealing sequence to animate hidden card backs first, then reveal real cards only after the dealing animation finishes.
+- frontend/src/components/baccarat/BaccaratCard.jsx and BaccaratHandPanel.jsx: added per-round dealSeed support so dealt cards fly in from varied random directions instead of using one fixed motion.
+
+### Why
+- The normal table side-bet tracker should stay visually tidy, squeeze hints should not overflow the hand panel, and starting a round should not briefly expose the final cards before the dealing animation completes.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [changed] -- 2026-07-14 -- Move baccarat reveal button into duel grid center
+
+### Changed
+- frontend/src/pages/Baccarat.jsx: moved the concealed-card reveal action from the table header into the center of baccarat-duel-grid below the VS medallion.
+- frontend/src/components/baccarat/BaccaratTableHeader.jsx: removed the header-level direct reveal button props and kept the header focused on squeeze mode and fullscreen controls.
+- frontend/src/styles/games/baccarat.css: added baccarat-duel-center and baccarat-reveal-center-button styles so the reveal action stays centered between Banker and Player hands.
+
+### Why
+- The direct reveal action should live visually inside the card area where the player is deciding whether to reveal the current hand.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [fixed] -- 2026-07-14 -- Rebalance baccarat fullscreen card and side-bet areas
+
+### Fixed
+- frontend/src/styles/games/baccarat.css: enlarged baccarat-duel-grid in fullscreen mode and restored a larger hand/card presentation.
+- frontend/src/styles/games/baccarat.css: reduced baccarat-betting-mat height and hid the fullscreen-only betting note so the card area has more room.
+- frontend/src/styles/games/baccarat.css: expanded and compressed baccarat-side-bets in the fullscreen right rail so all eight side-bet buttons remain visible, including wide short viewports.
+- frontend/src/styles/games/baccarat.css: disabled the normal desktop 16:9 felt aspect ratio in fullscreen mode to prevent vertical overflow.
+
+### Why
+- The fullscreen baccarat table needed a larger card area, a thinner main betting mat, and a complete side-bet list without clipping.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- Playwright fullscreen QA passed at 1440x900 and 2048x768: all 8 side-bet buttons visible, duel taller than betting mat, overflowX 0, tableOverflowY 0.
+
+## [fixed] -- 2026-07-14 -- Separate baccarat page and fullscreen scroll layouts
+
+### Fixed
+- frontend/src/pages/Baccarat.jsx: moved baccarat-side-panel inside baccarat-table so the normal baccarat-table--idle shell covers the full game screen, and added a body scroll lock while fullscreen is active.
+- frontend/src/styles/games/baccarat.css: forced the normal page layout to use one browser scrollbar with no side-panel vertical scrollbar.
+- frontend/src/styles/games/baccarat.css: hid the external side panel in fullscreen mode and kept fullscreen table/body overflow locked separately from the normal web page layout.
+
+### Why
+- The normal baccarat page should have one coherent table shell and one page scrollbar, while fullscreen should be a separate fixed viewport design without nested page scrolling.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- Playwright scroll QA passed: normal table contains side-panel, no side-panel vertical scrollbar, fullscreen hides side-panel, body and table overflow are hidden, and settlement remains visible.
+
+## [fixed] -- 2026-07-14 -- Reposition baccarat fullscreen settlement panel
+
+### Fixed
+- frontend/src/styles/games/baccarat.css: moved baccarat-settlement--empty from the lower chip row into the fullscreen right rail above side bets.
+- frontend/src/styles/games/baccarat.css: enlarged the empty settlement panel into a useful 140-150px information panel while keeping baccarat-duel-grid compact.
+- frontend/src/styles/games/baccarat.css: kept side bets below settlement in fullscreen mode with zero viewport overflow.
+
+### Why
+- The empty settlement panel was still perceived as pushed below the fullscreen game area, and the previous rail was too small for the available right-side space.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- Playwright layout QA measured refreshed fullscreen layouts at 1440x900 and 1100x800: settlement above side bets, in viewport, useful size true, duel compact true, and zero overflow.
+
+## [fixed] -- 2026-07-14 -- Compact baccarat fullscreen card arena and settlement rail
+
+### Fixed
+- frontend/src/styles/games/baccarat.css: hid the duplicated status bar in baccarat fullscreen mode and compressed the table header so the game surface starts higher in the viewport.
+- frontend/src/styles/games/baccarat.css: constrained baccarat-duel-grid in fullscreen mode with smaller width, lower height ceiling, compact cards, and reduced score chrome.
+- frontend/src/styles/games/baccarat.css: docked baccarat-settlement--empty as a short right-side rail instead of letting it stretch with the chip tray row.
+
+### Why
+- The fullscreen baccarat card area was visually too dominant, and the empty settlement panel needed to feel integrated inside the game viewport.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- Playwright layout QA measured fullscreen layouts at 1440x900 and 1100x800 with zero overflow; duel-grid was reduced to 780x150 and 792x144, and empty settlement rail to 105px tall.
+
+## [fixed] -- 2026-07-13 -- Refine baccarat side panel and fullscreen table layout
+
+### Fixed
+- frontend/src/pages/Baccarat.jsx: removed the four MetricCard blocks from baccarat-side-panel so the side panel no longer renders rounded border p-4 metric cards.
+- frontend/src/styles/games/baccarat.css: changed side-bet cards to a stable grid layout so odds, title, description, and state badges no longer overlap.
+- frontend/src/styles/games/baccarat.css: made baccarat fullscreen mode own the viewport and compressed the table grid so side-bets and the empty settlement rail stay visible inside the game screen.
+
+### Why
+- The baccarat desktop table needed the external side metrics removed and the in-table side-bet and settlement panels integrated into fullscreen without clipping or overlap.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- Playwright layout QA passed for refreshed baccarat page at 1440x900 and 1100x800 fullscreen-class layouts with zero side-bet overlap and zero horizontal overflow.
+
+## [changed] -- 2026-07-13 -- Integrate baccarat side bets and empty settlement rail
+
+### Changed
+- frontend/src/components/baccarat/BaccaratSideBets.jsx: replaced disabled preview tiles with selectable side-bet tracking, odds, descriptions, and hit-or-miss result states based on dealt cards.
+- frontend/src/pages/Baccarat.jsx: added local side-bet tracking state without changing the baccarat backend betting payload or wallet settlement flow.
+- frontend/src/components/baccarat/BaccaratSettlementPanel.jsx: compacted the empty settlement state into an in-table status rail and added side-bet tracking count.
+- frontend/src/styles/games/baccarat.css: integrated side-bet tracker styling and compact empty settlement styling into normal and fullscreen table layouts.
+
+### Why
+- Side bets and the empty settlement panel should feel like part of the baccarat table, including fullscreen mode, while backend settlement still only supports main bets.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- Playwright QA passed for refreshed baccarat page, side-bet tracking, fullscreen layout class, settlement, and roadmap update.
+
+## [changed] -- 2026-07-13 -- Add baccarat interaction polish
+
+### Changed
+- frontend/src/pages/Baccarat.jsx: added dealer cue state, staged card dealing, and fullscreen table state while keeping wallet guards intact.
+- frontend/src/components/baccarat/BaccaratBettingMat.jsx: added betting-zone pulse and chip-flight feedback on bet selection and chip changes.
+- frontend/src/components/baccarat/BaccaratRoadmapPanel.jsx: localized road-dot tooltip labels.
+- frontend/src/styles/games/baccarat.css: added dealer cue, table sweep, chip-flight, settlement sweep, and roadmap drop animations with reduced-motion fallback.
+
+### Why
+- The baccarat page needed more responsive table feedback without changing backend settlement or wallet behavior.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [fix] -- 2026-07-13 -- Restore baccarat theme background and panel layout
+
+### Fixed
+- frontend/src/pages/Baccarat.jsx: moved BaccaratChipTray directly below BaccaratBettingMat so chip controls sit under the main betting area.
+- frontend/src/styles/games/baccarat.css: disabled the custom baccarat fixed background overlay so the page uses the AppShell site theme again.
+- frontend/src/styles/games/baccarat.css: restored the wide desktop side panel to single-column layout and limited centered half-width metric cards to responsive stacked-below-table layouts.
+
+### Why
+- The baccarat page should inherit the site casino theme background, keep controls near the betting mat, and only use compact metric cards when the side panel is moved below the table.
+
+### Verification
+- npm.cmd run lint frontend passed.
+- npm.cmd run build frontend passed.
+
+## [fix] -- 2026-07-13 -- Compact baccarat side metrics
+
+### Fixed
+- frontend/src/styles/games/baccarat.css: arranged the four baccarat MetricCard items as two-column half-width cards while keeping roadmap, rules, and verification panels full-width.
+
+### Why
+- The baccarat side metrics were too wide when the side panel moved below the table.
+
+### Verification
+- npm.cmd run lint frontend passed.
+- npm.cmd run build frontend passed.
+
+## [fix] -- 2026-07-13 -- Adjust baccarat interaction and responsive layout
+
+### Fixed
+- frontend/src/pages/Baccarat.jsx keeps the deal control clickable enough to show the missing-bet prompt while still blocking insufficient-balance deals.
+- frontend/src/components/baccarat/BaccaratRoadmapPanel.jsx and BaccaratSideBets.jsx replace visible roadmap and side-bet English copy with Chinese labels.
+- frontend/src/styles/games/baccarat.css prevents side-bet preview clipping and moves the baccarat side panel below the table until wide desktop space is available.
+
+### Why
+- The baccarat table needed usable controls, localized analysis panels, and more table width on reduced desktop viewports.
+
+### Verification
+- npm.cmd run lint frontend passed.
+- npm.cmd run build frontend passed.
+
+## [changed] -- 2026-07-13 -- Rebuild desktop baccarat table UI
+
+### Changed
+- frontend/src/pages/Baccarat.jsx wired the baccarat page to a dedicated game stylesheet, added fullscreen table support, and kept the existing wallet/API/betting/squeeze flow intact.
+- frontend/src/components/baccarat refreshed the table HUD, betting mat, chip tray, hand panels, settlement panel, side-bet preview, and roadmap panel.
+- frontend/src/utils/baccaratGame.js restored readable baccarat bet labels used across the page.
+- frontend/src/styles/games/baccarat.css added the dedicated desktop baccarat casino-table layout, 16:9 felt stage, glass HUD, roadmap panel, chip dock, settlement overlay styling, and responsive fallbacks.
+
+### Why
+- /game/baccarat needed a full desktop game-table refactor rather than color-only tweaks, while preserving the existing backend contract and frontend balance guards.
+
+### Verification
+- npm.cmd run lint frontend passed.
+- npm.cmd run build frontend passed.
+
 ## [docs] -- 2026-07-14 -- ADR-004 補修訂紀錄：追認砲台傷害 14/22/32 為定案值，收掉最後一筆已知 ADR 漂移
 
 ### Changed
