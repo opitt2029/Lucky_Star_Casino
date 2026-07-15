@@ -17,13 +17,14 @@ export default function BaccaratHandPanel({
   winner,
   winnerKey,
   concealed = false,
+  dealSeed = 1,
   onCardRevealed,
 }) {
   const visibleCards = cards.length ? cards : [null, null]
   const isNatural = !concealed && score !== null && (score === 8 || score === 9)
 
   return (
-    <section className={['baccarat-hand', winnerClass(winner, winnerKey)].join(' ')}>
+    <section className={['baccarat-hand', winnerClass(winner, winnerKey)].join(' ')} aria-label={`${localName}手牌`}>
       <div className="baccarat-hand__header">
         <div className="baccarat-hand__name">
           <p className="baccarat-hand__eyebrow">{title}</p>
@@ -51,6 +52,7 @@ export default function BaccaratHandPanel({
               card={card}
               index={index}
               isDealing={isDealing}
+              dealSeed={dealSeed}
             />
           ),
         )}

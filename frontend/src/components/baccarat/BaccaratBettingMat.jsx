@@ -19,12 +19,14 @@ function ChipStack({ amount }) {
   )
 }
 
-export default function BaccaratBettingMat({ bets, selectedBet, disabled, onPlaceBet }) {
+export default function BaccaratBettingMat({ bets, selectedBet, disabled, onPlaceBet, chipFlight }) {
   return (
-    <section className="baccarat-betting-mat" aria-label="百家樂主注下注區">
+    <section className="baccarat-betting-mat" aria-label="百家樂主下注區">
       {betOrder.map((betType) => {
         const name = betNames[betType]
         const amount = bets[betType] || 0
+        const isChipFlying = chipFlight?.betType === betType
+
         return (
           <button
             key={betType}
@@ -35,18 +37,22 @@ export default function BaccaratBettingMat({ bets, selectedBet, disabled, onPlac
               'baccarat-bet-zone',
               `baccarat-bet-zone--${betType.toLowerCase()}`,
               selectedBet === betType ? 'baccarat-bet-zone--selected' : '',
+              isChipFlying ? 'baccarat-bet-zone--pulse' : '',
             ].join(' ')}
+            aria-pressed={selectedBet === betType}
+            aria-label={`下注 ${name.zh}，賠率 ${BET_ODDS[betType]} 比 1`}
           >
             <span className="baccarat-bet-zone__ratio">{BET_ODDS[betType]} : 1</span>
             <strong>{name.zh}</strong>
             <em>{name.en}</em>
-            <span className="baccarat-bet-zone__amount">已下注 {Number(amount).toLocaleString()}</span>
+            <span className="baccarat-bet-zone__amount">本區下注 {Number(amount).toLocaleString()}</span>
             <ChipStack amount={amount} />
+            {isChipFlying && <span key={chipFlight.nonce} className="baccarat-chip-flight" aria-hidden="true" />}
           </button>
         )
       })}
       <span className="baccarat-betting-mat__note">
-        目前主注維持單區下注：{BET_TYPES.map((type) => BET_LABELS[type]).join(' / ')}
+        目前後端契約維持單區主注：{BET_TYPES.map((type) => BET_LABELS[type]).join(' / ')}
       </span>
     </section>
   )

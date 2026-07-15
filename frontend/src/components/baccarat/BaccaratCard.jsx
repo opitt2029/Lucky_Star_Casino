@@ -11,7 +11,26 @@ const suitSymbols = {
 const redSuits = new Set(['heart', 'diamond'])
 const SQUEEZE_HOLD_MS = 1200
 
-export default function BaccaratCard({ card, index = 0, isDealing = false }) {
+function dealRandom(seed, index, salt) {
+  const value = Math.sin((Number(seed) || 1) * (index + 1) * 12.9898 + salt * 78.233) * 43758.5453
+  return value - Math.floor(value)
+}
+
+function buildDealStyle(seed, index) {
+  const direction = dealRandom(seed, index, 1) > 0.5 ? 1 : -1
+  const x = Math.round((48 + dealRandom(seed, index, 2) * 72) * direction)
+  const y = Math.round(-52 - dealRandom(seed, index, 3) * 70)
+  const rotate = Math.round((8 + dealRandom(seed, index, 4) * 14) * direction)
+
+  return {
+    animationDelay: `${index * 90}ms`,
+    '--baccarat-deal-x': `${x}px`,
+    '--baccarat-deal-y': `${y}px`,
+    '--baccarat-deal-rotate': `${rotate}deg`,
+  }
+}
+
+export default function BaccaratCard({ card, index = 0, isDealing = false, dealSeed = 1 }) {
   const isRed = card && redSuits.has(card.suit)
 
   return (
@@ -22,7 +41,8 @@ export default function BaccaratCard({ card, index = 0, isDealing = false }) {
         isRed ? 'baccarat-card--red' : 'baccarat-card--black',
         isDealing || card ? 'baccarat-card--dealt' : '',
       ].join(' ')}
-      style={{ animationDelay: `${index * 90}ms` }}
+      style={buildDealStyle(dealSeed, index)}
+      aria-hidden={!card}
     >
       {card ? (
         <>
@@ -80,7 +100,7 @@ export function BaccaratSqueezeCard({ card, index = 0, onRevealed }) {
       onPointerCancel={stopSqueeze}
       onPointerLeave={stopSqueeze}
       onContextMenu={(event) => event.preventDefault()}
-      aria-label="長按咪牌"
+      aria-label={`咪牌 ${card.rank}${suitSymbols[card.suit] || ''}`}
     >
       <div className="baccarat-squeeze__back">
         <BaccaratCard card={null} index={index} />
