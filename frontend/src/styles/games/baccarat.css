@@ -1988,3 +1988,50 @@ body.baccarat-fullscreen-active {
     overflow: visible !important;
   }
 }
+/* Fullscreen cockpit override: the page layout and fullscreen table are intentionally separate. */
+.baccarat-table--fullscreen,
+.baccarat-table:fullscreen {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  width: 100vw;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  padding: clamp(8px, 1.2vw, 16px);
+}
+
+.baccarat-table--fullscreen .baccarat-table-felt,
+.baccarat-table:fullscreen .baccarat-table-felt {
+  min-height: 0 !important;
+  height: 100%;
+  overflow: hidden;
+}
+
+.baccarat-table--fullscreen .baccarat-chip-tray,
+.baccarat-table:fullscreen .baccarat-chip-tray,
+.baccarat-table--fullscreen .baccarat-betting-mat,
+.baccarat-table:fullscreen .baccarat-betting-mat,
+.baccarat-table--fullscreen .baccarat-side-bets,
+.baccarat-table:fullscreen .baccarat-side-bets,
+.baccarat-table--fullscreen .baccarat-settlement,
+.baccarat-table:fullscreen .baccarat-settlement {
+  min-width: 0;
+}
+
+.baccarat-table--fullscreen .baccarat-side-panel,
+.baccarat-table:fullscreen .baccarat-side-panel {
+  display: none !important;
+}
+
+@media (max-width: 900px) {
+  .baccarat-table--fullscreen,
+  .baccarat-table:fullscreen {
+    overflow: auto;
+  }
+
+  .baccarat-table--fullscreen .baccarat-table-felt,
+  .baccarat-table:fullscreen .baccarat-table-felt {
+    height: auto;
+    overflow: visible;
+  }
+}

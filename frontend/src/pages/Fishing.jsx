@@ -313,7 +313,17 @@ export default function Fishing() {
         </div>
 
         <section className="fishing-page grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_280px]">
-          <div className="fishing-main grid gap-4 content-start">
+          <div
+            ref={fullscreenTargetRef}
+            className={`fishing-main fishing-fullscreen-surface grid gap-4 content-start ${isFullscreen ? 'fishing-game--fullscreen' : ''}`}
+          >
+            <div className="fishing-flowbar">
+              <div>
+                <p className="fishing-flowbar__eyebrow">Lucky Fishing</p>
+                <strong>{phase === 'playing' || phase === 'settling' ? '漁場作戰中' : '進場準備'}</strong>
+              </div>
+
+            </div>
             {phase === 'playing' || phase === 'settling' ? (
               <>
                 <div className="fishing-hud">
@@ -361,10 +371,7 @@ export default function Fishing() {
                   </div>
                 </div>
 
-                <div
-                  ref={fullscreenTargetRef}
-                  className={`fishing-fullscreen-surface ${isFullscreen ? 'fishing-game--fullscreen' : ''}`}
-                >
+                <div className="fishing-play-surface">
                   <div className="fishing-stage-card">
                     <div className="fishing-stage-marquee" aria-label="捕魚桌狀態">
                       <span>深海戰場</span>
@@ -386,23 +393,26 @@ export default function Fishing() {
                               ? '結算中'
                               : '手動瞄準'}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => setPerfMode((v) => !v)}
-                        aria-pressed={perfMode}
-                        className="fishing-hud__perf fishing-stage-marquee__perf"
-                        title="切換效能模式"
-                      >
-                        效能 {perfMode ? '開' : '關'}
-                      </button>
+
+                      <div className="fishing-stage-marquee__actions">
+                        <button
+                          type="button"
+                          onClick={() => setPerfMode((v) => !v)}
+                          aria-pressed={perfMode}
+                          className="fishing-hud__perf fishing-stage-marquee__perf"
+                          title="切換效能模式"
+                        >
+                          效能 {perfMode ? '開' : '關'}
+                        </button>
+                        <FishingFullscreenButton
+                          isFullscreen={isFullscreen}
+                          disabled={!fullscreenSupported}
+                          message={fullscreenMessage}
+                          onToggle={handleToggleFullscreen}
+                        />
+                      </div>
                     </div>
                     <div className="fishing-stage-frame">
-                      <FishingFullscreenButton
-                        isFullscreen={isFullscreen}
-                        disabled={!fullscreenSupported}
-                        message={fullscreenMessage}
-                        onToggle={handleToggleFullscreen}
-                      />
                       <Suspense
                         fallback={
                           <div className="fishing-arena grid place-items-center">

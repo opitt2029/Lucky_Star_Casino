@@ -1,3 +1,30 @@
+## [changed] -- 2026-07-16 -- Move fishing fullscreen control into stage marquee
+
+### Changed
+- frontend/src/pages/Fishing.jsx: removed the fishing-flowbar wallet chip and moved the FishingFullscreenButton into fishing-stage-marquee beside the performance toggle.
+- frontend/src/components/Fishing.css: added marquee action layout for the performance and fullscreen controls, and removed obsolete flowbar wallet/stage-frame button styling.
+
+### Why
+- The fishing game screen should keep top-level flowbar information minimal and group in-game display controls together inside the stage marquee.
+
+### Verification
+- npm.cmd run lint in frontend passed.
+- npm.cmd run build in frontend passed.
+## [changed] -- 2026-07-16 -- Add fullscreen cockpit layouts to player games
+
+### Changed
+- frontend/src/pages/SlotGame.jsx: rebuilt the slot page around a fullscreen-capable game surface with in-surface controls for balance, bet selection, round state, result, and session profit.
+- frontend/src/pages/Fishing.jsx: moved the fullscreen target to wrap the full fishing flow, including buy-in, settlement, HUD, canvas controls, and top-up modal.
+- frontend/src/components/slotMachine.css: added normal-page and fullscreen-specific slot cockpit layouts.
+- frontend/src/components/Fishing.css: added a fishing flowbar and full-flow fullscreen constraints.
+- frontend/src/styles/games/baccarat.css: added final fullscreen cockpit overrides so baccarat keeps web-page and fullscreen layouts separate.
+
+### Why
+- All `/game/` pages should support a fullscreen game mode where the entire gameplay flow can be controlled from one viewport, while the regular web page layout remains independently designed.
+
+### Verification
+- npm.cmd run build in frontend passed.
+- npm.cmd run lint in frontend passed.
 ## [changed] -- 2026-07-16 -- Restore baccarat side panel and move rules to page top
 
 ### Changed

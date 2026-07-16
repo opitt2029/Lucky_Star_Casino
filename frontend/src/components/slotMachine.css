@@ -1,3 +1,185 @@
 /* SlotMachine imports this file so /game/slot is explicitly wired to the new
    reel implementation. The concrete visual rules live in index.css today to
    preserve the existing app theme and avoid duplicating the full machine skin. */
+
+/* Game fullscreen split layout: normal page keeps the info rail, fullscreen becomes a single-screen cockpit. */
+.slot-game-surface {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.slot-game-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(243, 215, 141, 0.2);
+  border-radius: 8px;
+  background: rgba(70, 8, 14, 0.78);
+  padding: 12px 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.slot-game-topbar__eyebrow {
+  margin: 0;
+  color: rgba(247, 215, 128, 0.78);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.slot-game-topbar__title {
+  margin: 3px 0 0;
+  color: #fff7d6;
+  font-size: clamp(1.25rem, 2vw, 1.8rem);
+  font-weight: 950;
+  line-height: 1;
+}
+
+.slot-fullscreen-button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgba(243, 215, 141, 0.5);
+  border-radius: 7px;
+  background: rgba(12, 5, 7, 0.72);
+  color: #fff3c4;
+  padding: 0 12px;
+  font-size: 0.82rem;
+  font-weight: 950;
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+
+.slot-fullscreen-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(243, 215, 141, 0.9);
+  background: rgba(115, 16, 22, 0.86);
+}
+
+.slot-fullscreen-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.slot-fullscreen-message {
+  margin: 0;
+  border: 1px solid rgba(248, 113, 113, 0.34);
+  border-radius: 7px;
+  background: rgba(127, 29, 29, 0.24);
+  color: #fecaca;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.slot-game-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  min-width: 0;
+  align-items: start;
+}
+
+.slot-game-machine,
+.slot-game-control-panel {
+  min-width: 0;
+}
+
+.slot-game-control-panel {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+@media (min-width: 1024px) {
+  .slot-game-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 300px);
+  }
+}
+
+.slot-game-surface--fullscreen,
+.slot-game-surface:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(249, 198, 91, 0.16), transparent 28%),
+    linear-gradient(180deg, #180307 0%, #070203 100%);
+  padding: clamp(8px, 1.4vw, 16px);
+}
+
+body.slot-fullscreen-active {
+  overflow: hidden;
+}
+
+.slot-game-surface--fullscreen .slot-game-layout,
+.slot-game-surface:fullscreen .slot-game-layout {
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(236px, 280px);
+  align-items: stretch;
+}
+
+.slot-game-surface--fullscreen .slot-game-topbar,
+.slot-game-surface:fullscreen .slot-game-topbar {
+  padding: 8px 10px;
+}
+
+.slot-game-surface--fullscreen .slot-game-machine,
+.slot-game-surface:fullscreen .slot-game-machine,
+.slot-game-surface--fullscreen .slot-machine,
+.slot-game-surface:fullscreen .slot-machine {
+  min-height: 0;
+  height: 100%;
+}
+
+.slot-game-surface--fullscreen .slot-machine,
+.slot-game-surface:fullscreen .slot-machine {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  padding: clamp(8px, 1.1vw, 14px);
+}
+
+.slot-game-surface--fullscreen .slot-cabinet,
+.slot-game-surface:fullscreen .slot-cabinet {
+  min-height: 0;
+  height: 100%;
+  margin-top: 10px;
+}
+
+.slot-game-surface--fullscreen .slot-game-control-panel,
+.slot-game-surface:fullscreen .slot-game-control-panel {
+  max-height: 100%;
+  overflow: auto;
+  gap: 10px;
+  padding-right: 2px;
+  scrollbar-width: thin;
+}
+
+.slot-game-surface--fullscreen .slot-game-control-panel > button,
+.slot-game-surface:fullscreen .slot-game-control-panel > button {
+  display: none;
+}
+
+.slot-game-surface--fullscreen .slot-game-control-panel .luxury-panel-soft,
+.slot-game-surface:fullscreen .slot-game-control-panel .luxury-panel-soft {
+  padding: 12px;
+}
+
+@media (max-width: 820px) {
+  .slot-game-surface--fullscreen,
+  .slot-game-surface:fullscreen {
+    overflow: auto;
+  }
+
+  .slot-game-surface--fullscreen .slot-game-layout,
+  .slot-game-surface:fullscreen .slot-game-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
