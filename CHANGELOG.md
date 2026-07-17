@@ -1,3 +1,20 @@
+## [changed] — 2026-07-17 — T-090 E1+E2：game/wallet CB 改時間窗＋AIMD 延遲窗排除卸載樣本（消滅 CB/AIMD 互踩）
+
+### Changed
+- `backend/gateway-service/src/main/resources/application.yml`：`game-service`/`wallet-service` 兩個 CB instance 由 `COUNT_BASED/size 10/min-calls 5/slow-call 3s/80%` 改為 `TIME_BASED/10 秒窗/min-calls 20/slow-call 4s（仍 < TimeLimiter 6s）/90%`；game route 的 AIMD `latency-target-ms` 預設 2000 → 1500（E1）。member/rank/admin 低流量路由維持原參數。
+- `backend/gateway-service/.../filter/RouteConcurrencyLimitGlobalFilter.java`＋`AdaptiveInFlightLimiter.java`：`doFinally` 只把「HTTP < 500 且非 429」的回應計入 AIMD 延遲窗；429/5xx/無狀態碼（取消）一律歸還名額但不記樣本（E2）。全 5xx 窗＝無有效樣本 → 複用「無流量不動」語意，上限凍結。
+
+### Added
+- `CircuitBreakerDisasterReactionTest`：鎖住 E1 綁定值（漂移即紅燈）＋模擬下游全逾時、斷言 min-calls 湊滿即開路（災難反應不劣化的不可回歸約束）。
+- `RouteConcurrencyLimitGlobalFilterTest` 新增 4 個 E2 樣本篩選測試（2xx 進窗、429/5xx 不進窗、全 5xx 凍結、取消歸還名額不記樣本）。
+
+### Why
+2026-07-09 C3+B1 輪的唯一失敗桶（503×2,024）根因是兩層保護互踩：CB 的 COUNT_BASED 10 筆窗在 464/s 吞吐下只有 ~21ms 流量、瞬時抖動即誤觸開路；開路後毫秒級 503 進 AIMD 窗拉低 P95、誘使放寬上限、推爆 half-open 的後端，形成正回饋震盪。E1 把 CB 退居災難保險絲（AIMD 先收緊）、E2 切斷訊號污染（就算閾值調錯也不再共振）。詳見 `docs/plans/03-T-090-第二輪效能調校藍圖.md` Phase E1/E2。
+
+### Verification
+- `mvn -pl backend/gateway-service test`：47/47 全綠（原 41 ＋ 新增 6）。
+- 對照重跑（150/1,000 併發）排定於落地後執行，判準＝503 桶 2,024 → 趨近 0、accepted 成功率 78.4% → 90%+。
+
 ## [changed] -- 2026-07-16 -- Restore baccarat side panel and move rules to page top
 
 ### Changed
