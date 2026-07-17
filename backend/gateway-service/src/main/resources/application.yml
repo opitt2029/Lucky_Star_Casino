@@ -218,7 +218,9 @@ concurrency-limit:
       max-in-flight: ${GAME_CONCURRENCY_LIMIT:200}
       floor: ${GAME_CONCURRENCY_FLOOR:50}
       ceiling: ${GAME_CONCURRENCY_CEILING:400}
-      latency-target-ms: ${GAME_CONCURRENCY_LATENCY_TARGET_MS:2000}
+      # 1500 而非 2000（T-090 E1）：目標須領先 CB slow-call 4s 一段裕度，讓 AIMD 在 CB
+      # 感知慢呼叫前先收緊；150 併發迴歸實測 P95 遠低於 1.5s，不影響 429=0 基準。
+      latency-target-ms: ${GAME_CONCURRENCY_LATENCY_TARGET_MS:1500}
     - path-prefix: /api/v1/wallet/
       max-in-flight: ${WALLET_CONCURRENCY_LIMIT:200}
       floor: ${WALLET_CONCURRENCY_FLOOR:50}
@@ -248,23 +250,28 @@ resilience4j:
         wait-duration-in-open-state: 10s     # 熔斷後等 10s 進入 half-open
         permitted-number-of-calls-in-half-open-state: 3
         automatic-transition-from-open-to-half-open-enabled: true
+      # wallet/game 兩個高吞吐 instance（T-090 E1）：COUNT_BASED size=10 在 464/s 吞吐下
+      # 只代表 ~21ms 的流量，瞬時抖動即誤觸開路（2026-07-09 輪 503×2,024 唯一失敗來源）。
+      # 改 TIME_BASED 10 秒窗讓慢呼叫率回歸統計量；min-calls 20 防低流量冷啟動誤觸；
+      # slow-call 4s/90%（仍 < TimeLimiter 6s）把 CB 退居災難保險絲——AIMD（收緊目標 1.5s）
+      # 永遠先於 CB 介入，常態飽和由 AIMD 卸載。低流量路由（member/rank/admin）無實證問題，維持原參數。
       wallet-service:
         failure-rate-threshold: 50
-        slow-call-rate-threshold: 80
-        slow-call-duration-threshold: 3s
-        sliding-window-type: COUNT_BASED
+        slow-call-rate-threshold: 90
+        slow-call-duration-threshold: 4s
+        sliding-window-type: TIME_BASED
         sliding-window-size: 10
-        minimum-number-of-calls: 5
+        minimum-number-of-calls: 20
         wait-duration-in-open-state: 10s
         permitted-number-of-calls-in-half-open-state: 3
         automatic-transition-from-open-to-half-open-enabled: true
       game-service:
         failure-rate-threshold: 50
-        slow-call-rate-threshold: 80
-        slow-call-duration-threshold: 3s
-        sliding-window-type: COUNT_BASED
+        slow-call-rate-threshold: 90
+        slow-call-duration-threshold: 4s
+        sliding-window-type: TIME_BASED
         sliding-window-size: 10
-        minimum-number-of-calls: 5
+        minimum-number-of-calls: 20
         wait-duration-in-open-state: 10s
         permitted-number-of-calls-in-half-open-state: 3
         automatic-transition-from-open-to-half-open-enabled: true
