@@ -1,3 +1,471 @@
+## [changed] -- 2026-07-16 -- Restore baccarat side panel and move rules to page top
+
+### Changed
+- frontend/src/pages/Baccarat.jsx: moved the baccarat rules card to the top of baccarat-page above the game table.
+- frontend/src/pages/Baccarat.jsx: moved BaccaratRoadmap back into baccarat-side-panel so the side panel has its original roadmap role.
+- frontend/src/styles/games/baccarat.css: restored the 1500px+ normal-page baccarat-side-panel right rail while keeping narrower layouts stacked below the table.
+
+### Why
+- The side panel should return to its original table-side placement, while the game rules card should be the top-of-page helper section.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- Playwright layout QA passed at 1100x900 and 1500x900: rules above table, side panel contains roadmap only, 1500px side panel restored to right rail, 1100px side panel remains below felt, bodyOverflowX 0.
+
+## [changed] -- 2026-07-16 -- Move baccarat roadmap to page top and remove fairness panel
+
+### Changed
+- frontend/src/pages/Baccarat.jsx: moved BaccaratRoadmap, which renders baccarat-roadmap-panel, to the top of baccarat-page above the game table.
+- frontend/src/pages/Baccarat.jsx: simplified baccarat-side-panel so it only keeps the baccarat rules card below the game table.
+- frontend/src/styles/games/baccarat.css: added top spacing for the page-level baccarat-roadmap-panel and removed unused baccarat-api-panel rules from the dedicated baccarat stylesheet.
+
+### Removed
+- frontend/src/pages/Baccarat.jsx: removed the baccarat-api-panel fairness verification block from the baccarat page.
+
+### Why
+- The roadmap panel should be visible at the top of the baccarat web page, and the fairness verification panel is no longer part of the requested layout.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- rg confirmed Baccarat.jsx only renders BaccaratRoadmap once at the page top and no longer contains baccarat-api-panel or fairness verification copy.
+
+## [changed] -- 2026-07-14 -- Keep baccarat side panel below the table
+
+### Changed
+- frontend/src/styles/games/baccarat.css: forced the normal baccarat page to use a single table column at every viewport width.
+- frontend/src/styles/games/baccarat.css: kept baccarat-side-panel below baccarat-table-felt with full-width alignment instead of moving it into a right-side column on wide desktop.
+- frontend/src/styles/games/baccarat.css: preserved fullscreen behavior by keeping the external side panel hidden in baccarat-table--fullscreen.
+
+### Why
+- The baccarat side panel should be consistent across the web page layout and always appear below the game screen, regardless of viewport size.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- Playwright layout QA passed at 1100x900, 1500x900, and 1800x900: side panel below felt, aligned full width, static position, and bodyOverflowX 0.
+
+## [fixed] -- 2026-07-14 -- Prevent baccarat wide-desktop clipping
+
+### Fixed
+- frontend/src/styles/games/baccarat.css: stopped the normal baccarat table from clipping content at 1500px+ widths by allowing the table and felt area to show natural overflow.
+- frontend/src/styles/games/baccarat.css: disabled the normal-page 16:9 felt constraint at 1500px+ widths and restored an auto-height felt area sized by its table content.
+- frontend/src/styles/games/baccarat.css: kept the fix scoped to non-fullscreen baccarat tables so fullscreen keeps its separate viewport layout.
+
+### Why
+- The 1500px+ desktop breakpoint was reapplying a fixed 16:9 felt height while the normal table still contained betting, chip, side-bet, settlement, and side-panel content, causing the game screen to be severely clipped.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- Playwright wide-desktop QA passed at 1600x900 and 1800x900: felt aspect-ratio auto, table/felt overflow visible, deepestOverflow <= 0, feltOverflowY 0, bodyOverflowX 0.
+
+## [fixed] -- 2026-07-14 -- Polish baccarat side bets, squeeze hint, and deal animation
+
+### Fixed
+- frontend/src/styles/games/baccarat.css: kept normal-page baccarat-side-bets buttons on a single horizontal row and compacted their labels so they no longer wrap into a second line.
+- frontend/src/styles/games/baccarat.css: moved the baccarat-squeeze__hint label back inside each baccarat-hand card area with a compact pill style.
+- frontend/src/pages/Baccarat.jsx: changed the dealing sequence to animate hidden card backs first, then reveal real cards only after the dealing animation finishes.
+- frontend/src/components/baccarat/BaccaratCard.jsx and BaccaratHandPanel.jsx: added per-round dealSeed support so dealt cards fly in from varied random directions instead of using one fixed motion.
+
+### Why
+- The normal table side-bet tracker should stay visually tidy, squeeze hints should not overflow the hand panel, and starting a round should not briefly expose the final cards before the dealing animation completes.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [changed] -- 2026-07-14 -- Move baccarat reveal button into duel grid center
+
+### Changed
+- frontend/src/pages/Baccarat.jsx: moved the concealed-card reveal action from the table header into the center of baccarat-duel-grid below the VS medallion.
+- frontend/src/components/baccarat/BaccaratTableHeader.jsx: removed the header-level direct reveal button props and kept the header focused on squeeze mode and fullscreen controls.
+- frontend/src/styles/games/baccarat.css: added baccarat-duel-center and baccarat-reveal-center-button styles so the reveal action stays centered between Banker and Player hands.
+
+### Why
+- The direct reveal action should live visually inside the card area where the player is deciding whether to reveal the current hand.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [fixed] -- 2026-07-14 -- Rebalance baccarat fullscreen card and side-bet areas
+
+### Fixed
+- frontend/src/styles/games/baccarat.css: enlarged baccarat-duel-grid in fullscreen mode and restored a larger hand/card presentation.
+- frontend/src/styles/games/baccarat.css: reduced baccarat-betting-mat height and hid the fullscreen-only betting note so the card area has more room.
+- frontend/src/styles/games/baccarat.css: expanded and compressed baccarat-side-bets in the fullscreen right rail so all eight side-bet buttons remain visible, including wide short viewports.
+- frontend/src/styles/games/baccarat.css: disabled the normal desktop 16:9 felt aspect ratio in fullscreen mode to prevent vertical overflow.
+
+### Why
+- The fullscreen baccarat table needed a larger card area, a thinner main betting mat, and a complete side-bet list without clipping.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- Playwright fullscreen QA passed at 1440x900 and 2048x768: all 8 side-bet buttons visible, duel taller than betting mat, overflowX 0, tableOverflowY 0.
+
+## [fixed] -- 2026-07-14 -- Separate baccarat page and fullscreen scroll layouts
+
+### Fixed
+- frontend/src/pages/Baccarat.jsx: moved baccarat-side-panel inside baccarat-table so the normal baccarat-table--idle shell covers the full game screen, and added a body scroll lock while fullscreen is active.
+- frontend/src/styles/games/baccarat.css: forced the normal page layout to use one browser scrollbar with no side-panel vertical scrollbar.
+- frontend/src/styles/games/baccarat.css: hid the external side panel in fullscreen mode and kept fullscreen table/body overflow locked separately from the normal web page layout.
+
+### Why
+- The normal baccarat page should have one coherent table shell and one page scrollbar, while fullscreen should be a separate fixed viewport design without nested page scrolling.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- Playwright scroll QA passed: normal table contains side-panel, no side-panel vertical scrollbar, fullscreen hides side-panel, body and table overflow are hidden, and settlement remains visible.
+
+## [fixed] -- 2026-07-14 -- Reposition baccarat fullscreen settlement panel
+
+### Fixed
+- frontend/src/styles/games/baccarat.css: moved baccarat-settlement--empty from the lower chip row into the fullscreen right rail above side bets.
+- frontend/src/styles/games/baccarat.css: enlarged the empty settlement panel into a useful 140-150px information panel while keeping baccarat-duel-grid compact.
+- frontend/src/styles/games/baccarat.css: kept side bets below settlement in fullscreen mode with zero viewport overflow.
+
+### Why
+- The empty settlement panel was still perceived as pushed below the fullscreen game area, and the previous rail was too small for the available right-side space.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- Playwright layout QA measured refreshed fullscreen layouts at 1440x900 and 1100x800: settlement above side bets, in viewport, useful size true, duel compact true, and zero overflow.
+
+## [fixed] -- 2026-07-14 -- Compact baccarat fullscreen card arena and settlement rail
+
+### Fixed
+- frontend/src/styles/games/baccarat.css: hid the duplicated status bar in baccarat fullscreen mode and compressed the table header so the game surface starts higher in the viewport.
+- frontend/src/styles/games/baccarat.css: constrained baccarat-duel-grid in fullscreen mode with smaller width, lower height ceiling, compact cards, and reduced score chrome.
+- frontend/src/styles/games/baccarat.css: docked baccarat-settlement--empty as a short right-side rail instead of letting it stretch with the chip tray row.
+
+### Why
+- The fullscreen baccarat card area was visually too dominant, and the empty settlement panel needed to feel integrated inside the game viewport.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- Playwright layout QA measured fullscreen layouts at 1440x900 and 1100x800 with zero overflow; duel-grid was reduced to 780x150 and 792x144, and empty settlement rail to 105px tall.
+
+## [fixed] -- 2026-07-13 -- Refine baccarat side panel and fullscreen table layout
+
+### Fixed
+- frontend/src/pages/Baccarat.jsx: removed the four MetricCard blocks from baccarat-side-panel so the side panel no longer renders rounded border p-4 metric cards.
+- frontend/src/styles/games/baccarat.css: changed side-bet cards to a stable grid layout so odds, title, description, and state badges no longer overlap.
+- frontend/src/styles/games/baccarat.css: made baccarat fullscreen mode own the viewport and compressed the table grid so side-bets and the empty settlement rail stay visible inside the game screen.
+
+### Why
+- The baccarat desktop table needed the external side metrics removed and the in-table side-bet and settlement panels integrated into fullscreen without clipping or overlap.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- Playwright layout QA passed for refreshed baccarat page at 1440x900 and 1100x800 fullscreen-class layouts with zero side-bet overlap and zero horizontal overflow.
+
+## [changed] -- 2026-07-13 -- Integrate baccarat side bets and empty settlement rail
+
+### Changed
+- frontend/src/components/baccarat/BaccaratSideBets.jsx: replaced disabled preview tiles with selectable side-bet tracking, odds, descriptions, and hit-or-miss result states based on dealt cards.
+- frontend/src/pages/Baccarat.jsx: added local side-bet tracking state without changing the baccarat backend betting payload or wallet settlement flow.
+- frontend/src/components/baccarat/BaccaratSettlementPanel.jsx: compacted the empty settlement state into an in-table status rail and added side-bet tracking count.
+- frontend/src/styles/games/baccarat.css: integrated side-bet tracker styling and compact empty settlement styling into normal and fullscreen table layouts.
+
+### Why
+- Side bets and the empty settlement panel should feel like part of the baccarat table, including fullscreen mode, while backend settlement still only supports main bets.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- Playwright QA passed for refreshed baccarat page, side-bet tracking, fullscreen layout class, settlement, and roadmap update.
+
+## [changed] -- 2026-07-13 -- Add baccarat interaction polish
+
+### Changed
+- frontend/src/pages/Baccarat.jsx: added dealer cue state, staged card dealing, and fullscreen table state while keeping wallet guards intact.
+- frontend/src/components/baccarat/BaccaratBettingMat.jsx: added betting-zone pulse and chip-flight feedback on bet selection and chip changes.
+- frontend/src/components/baccarat/BaccaratRoadmapPanel.jsx: localized road-dot tooltip labels.
+- frontend/src/styles/games/baccarat.css: added dealer cue, table sweep, chip-flight, settlement sweep, and roadmap drop animations with reduced-motion fallback.
+
+### Why
+- The baccarat page needed more responsive table feedback without changing backend settlement or wallet behavior.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [fix] -- 2026-07-13 -- Restore baccarat theme background and panel layout
+
+### Fixed
+- frontend/src/pages/Baccarat.jsx: moved BaccaratChipTray directly below BaccaratBettingMat so chip controls sit under the main betting area.
+- frontend/src/styles/games/baccarat.css: disabled the custom baccarat fixed background overlay so the page uses the AppShell site theme again.
+- frontend/src/styles/games/baccarat.css: restored the wide desktop side panel to single-column layout and limited centered half-width metric cards to responsive stacked-below-table layouts.
+
+### Why
+- The baccarat page should inherit the site casino theme background, keep controls near the betting mat, and only use compact metric cards when the side panel is moved below the table.
+
+### Verification
+- npm.cmd run lint frontend passed.
+- npm.cmd run build frontend passed.
+
+## [fix] -- 2026-07-13 -- Compact baccarat side metrics
+
+### Fixed
+- frontend/src/styles/games/baccarat.css: arranged the four baccarat MetricCard items as two-column half-width cards while keeping roadmap, rules, and verification panels full-width.
+
+### Why
+- The baccarat side metrics were too wide when the side panel moved below the table.
+
+### Verification
+- npm.cmd run lint frontend passed.
+- npm.cmd run build frontend passed.
+
+## [fix] -- 2026-07-13 -- Adjust baccarat interaction and responsive layout
+
+### Fixed
+- frontend/src/pages/Baccarat.jsx keeps the deal control clickable enough to show the missing-bet prompt while still blocking insufficient-balance deals.
+- frontend/src/components/baccarat/BaccaratRoadmapPanel.jsx and BaccaratSideBets.jsx replace visible roadmap and side-bet English copy with Chinese labels.
+- frontend/src/styles/games/baccarat.css prevents side-bet preview clipping and moves the baccarat side panel below the table until wide desktop space is available.
+
+### Why
+- The baccarat table needed usable controls, localized analysis panels, and more table width on reduced desktop viewports.
+
+### Verification
+- npm.cmd run lint frontend passed.
+- npm.cmd run build frontend passed.
+
+## [changed] -- 2026-07-13 -- Rebuild desktop baccarat table UI
+
+### Changed
+- frontend/src/pages/Baccarat.jsx wired the baccarat page to a dedicated game stylesheet, added fullscreen table support, and kept the existing wallet/API/betting/squeeze flow intact.
+- frontend/src/components/baccarat refreshed the table HUD, betting mat, chip tray, hand panels, settlement panel, side-bet preview, and roadmap panel.
+- frontend/src/utils/baccaratGame.js restored readable baccarat bet labels used across the page.
+- frontend/src/styles/games/baccarat.css added the dedicated desktop baccarat casino-table layout, 16:9 felt stage, glass HUD, roadmap panel, chip dock, settlement overlay styling, and responsive fallbacks.
+
+### Why
+- /game/baccarat needed a full desktop game-table refactor rather than color-only tweaks, while preserving the existing backend contract and frontend balance guards.
+
+### Verification
+- npm.cmd run lint frontend passed.
+- npm.cmd run build frontend passed.
+
+## [docs] -- 2026-07-14 -- ADR-004 補修訂紀錄：追認砲台傷害 14/22/32 為定案值，收掉最後一筆已知 ADR 漂移
+
+### Changed
+- `docs/adr/ADR-004.md`：新增〈修訂紀錄〉章節，決策第 3 點（砲台傷害 10/14/18）加修訂警示框；原「現況校驗」的 ⚠️ 懸案標記為已收斂。內容含：
+  - **漂移源頭考證**：commit `440b6df`（2026-07-06）在障礙魚/MISS 改版中把 `CANNON_DAMAGE` 從 `{0,10,14,18}` 改為 `{0,14,22,32}`，但 commit 訊息與 CHANGELOG 均未提及此行——無痕調參即漂移成因。
+  - **追認為刻意調整、不改回**：後續契約檔、`FishingCombatTest`、2026-07-13 重算的 Javadoc 全部以 14/22/32 為基準，生態一致；依 AGENTS.md「以程式碼為準」定案。同時記錄代價（金/銅倍率回到 ≈2.29×、金炮最低捕獲率降回 ~0.25，部分讓渡「減少掙脫挫折」的原目標）。
+  - **順帶記錄模型邊界**：`440b6df` 起 MISS/障礙魚命中是「扣費、零派彩、零回收」，不在 pCapture/回收模型內——「體感地板 0.70」僅對打在獎勵魚上的子彈成立，實戰 RTP 低於 0.96 的幅度另受空射比例稀釋；風控門檻 `FISHING: 1.10` 裕度仍足、無需調整。
+
+### 為什麼
+- 2026-07-10 九份 ADR 現況校驗後，這是唯一開著的文件漂移（ADR-004 自己列了「刻意 vs 疏漏」兩種可能待查證）。本次沿 git 歷史（`git log -S`）追到唯一變更點並定案，讓 ADR-004 不再與程式碼分歧，也給未來調參者留下「勿再無痕調參、走雷區 16 四同步＋修訂紀錄」的明確規則。
+
+### 如何驗證
+- 純文件變更，無程式行為影響。考證依據可重現：`git log --all -S '{0, 14, 22, 32}' -- backend/game-service` 唯一命中 `440b6df`；`git show 440b6df` 確認訊息/CHANGELOG 未提傷害調整；現行 `FishingCombat.java:67` 與 `contracts/fishing-combat.json` 均為 `[0, 14, 22, 32]`。
+
+## [docs] -- 2026-07-13 -- interview-prep 補三個缺口：契約守門決策、風控門檻的蒙地卡羅論證、Kafka partition 分層
+
+### Added
+- `docs/interview-prep/02-設計決策與為什麼.md`：新增**決策 10「契約檔守門」**（`contracts/*.json` + `ContractParityTest`：前端 mock 直接 import 契約檔、後端維持 enum 為執行期權威、相等性測試守 CI）。原本整份 interview-prep **完全沒提這個機制**，但它是「怎麼防止前後端業務規則不同步」這題的標準答案。
+- `docs/interview-prep/02-設計決策與為什麼.md` 決策 5：補**「門檻錯了兩次」的完整故事**——第二次（per-game 之後仍誤判）的根因是「監控的是 500 局樣本平均、而樣本平均自己有標準差」，附蒙地卡羅實測的誤報率對照表（SLOT 0.97 → 36% 誤判；1.30 → 0.06%）。這是「你怎麼決定告警閾值」的滿分答案。
+- `docs/interview-prep/04-資料庫與分散式觀念.md` §7：補 **Kafka partition 分層設計**（高流量 6 / 低流量 3 / DLT 1），論點是「加 partition 有沒有用取決於 producer 的 key」——`rank.update` 用固定 key，開再多 partition 平行度仍是 1。
+
+### Changed
+- `docs/interview-prep/01-專案程式碼地圖.md` §5、`09-開發流程與工程實踐.md`：測試策略補上 `ContractParityTest`，並主動點出它的已知邊界（守得住數值、守不住演算法邏輯）。
+- `docs/interview-prep/00-index.md`：速查表補三題（前後端不同步 / 告警閾值 / partition 數）。
+- `docs/interview-prep/04-資料庫與分散式觀念.md`：修正 `wallet.credit` 消費者敘述——實際是 rank / admin / wallet(read-sync) **三個**獨立 group，原文只寫 rank。
+
+### 為什麼
+盤點 `docs/interview-prep` 與程式碼的一致性時發現：整體同步狀況良好（13 章壓測完全對齊 T-090、程式碼地圖無死連結），但有三個「專案做了、文件沒寫」的缺口，且三者都恰好是高頻面試題的最佳素材。風控門檻那則尤其重要——現行值 SLOT 1.30 / BACCARAT 1.20 的**決策理由只存在於 YAML 註解裡**，面試文件只講了「per-game」這個表層結論，漏掉真正有價值的「用模擬量化誤報率」方法論。
+
+### 如何驗證
+- 逐項與程式碼交叉核對：`contracts/*.json` 五檔存在、`game-service` 的 `ContractParityTest` 存在；`kafka/kafka-init.sh` 確認 6/3/1 分層；`game-service/application.yml` 確認 `SLOT: 1.30 / BACCARAT: 1.20 / FISHING: 1.10 / default: 1.05`；`grep topics=` 確認 `wallet.credit` 的三個消費者。
+- 純文件變更，不影響任何測試。
+
+### Fixed
+- `backend/game-service/.../fishing/FishingCombat.java`：**`CANNON_DAMAGE` 的 Javadoc 過時**——寫著「銅 10 / 銀 14 / 金 18（金炮約銅炮 1.8×）」，但實際常數是 `{0, 14, 22, 32}`（銅 14 / 銀 22 / 金 32，金炮約銅炮 2.3×）；連帶「金炮對中小魚 `pCapture` ≈ 0.44」也是舊值。依現行常數重算後改為「銅 0.57~0.86、銀 0.37~0.48、金 0.25~0.48（魚種越大越低）」，並補上 ADR-004 的「勿對低 `pCapture` 設硬地板」警告（設地板會打破 `pCapture = TARGET_RTP × E[N] / multiplier`，使 RTP 破表）。**僅改註解，無行為變更**——這是文件漂移，照舊註解調參會做出錯誤決策。
+
+### 相關
+同日在專案外的教材 `D:\Lucky_Star_Prac`（個人練習用，不在本 repo）做了對應的錯誤修正與章節補充；上述 Javadoc 漂移就是在教材比對過程中發現的。
+
+---
+
+## [docs] -- 2026-07-13 -- docs/ 全面盤點校正：架構文件對齊程式碼、進度表歸零、歷史文件標記、新增索引
+
+### Added
+- `docs/README.md`：**docs 索引**（原本沒有）。把 60 份文件分成 🟢 現況 / 🟡 計畫 / ⚪ 歷史三類，明確標示哪些可照著動工、哪些只能當背景讀；附 ADR 全表與「不在 docs/ 但必讀」清單。
+- `docs/_雜物/prompts/README.md`：歸檔說明表，逐份標註對應任務的現況。
+- `docs/plans/02-捕魚機升級-血量傷害模型.md`：補「進度總覽」表（CLAUDE.md §4 要求 plan 檔須有狀態表）——Phase 1~4 全數 ✅，並標明檔內數值是草案、已被 ADR-003/004 取代。
+
+### Changed
+- `docs/architecture.md`（漂移最嚴重的架構文件，停在 5/26 v1.0）：§1 概覽圖補 notification 8087 與 `wallet.credit.request`；§2 七服務職責全面重寫（game 補捕魚/風控/cashback/ADR-009 補償；wallet 補鑽石/商城/儲值/雙 EMF；admin 補獨立 JWT secret 與雷區 21；member 補簽到路由雷區 19；notification 移除「未在 compose 列出」的過時備注）；§4 資料表補齊 15+11 張（原本只列 7+7）；§5 Redis key 改為程式碼實際字串（`game:fishing:session:*`、`risk:*`、`token:min-iat:*`）；§6 Kafka 改為實際的 8 業務 + 5 DLT；§7 Port 補 notification 8087 / frontend-admin 5174 / Prometheus / Grafana；§8.2 下注流程補併發卸載、風控、補償；**§9 ADR 表整段重寫**。
+- `docs/PROJECT_BASE_EXPLANATION.md`：**整份重寫**。原文寫「後端服務尚未實作、PostgreSQL 只有 system_health_check 一張表」，與現況相差兩個月。
+- `docs/ENV_SETUP_GUIDE.md`：修正 clone 網址（原為不存在的 `Lucky-Strat-Casino`）；§3.2 從「已有預設值不需修改」改為 **CHANGE_ME 佔位符必須自行生成**（含各密鑰用途表）；§5.1 Kafka topic 清單補齊；Redis 容器名改為實際的 `lucky-star-redis`；§6.2 補 notification-service；**§6.3 原文說 member 連 PostgreSQL——實際是 MySQL**，改為各服務 DB 對照表；§7.4 新增 `VITE_USE_MOCK_API` 說明與 frontend-admin 章節；新增 Q6/Q7 排錯。
+- `docs/LOCAL_API_INTEGRATION_GUIDE.md`：移除「或使用專案內 `mvnw`」（雷區 1：**本專案沒有 mvnw**）；修正「5174 是 5173 的備援 port」（實際是**管理後台專屬 port**）；`.env` 明文開發密鑰改為佔位說明；**啟動順序補上「後端已容器化，`docker compose up -d` 會一起起 7 個後端」**——原文教人 compose 之後再 `mvn spring-boot:run`，會直接撞 port；新增 mock 預設開啟的警告。
+- `docs/dual-datasource-guide.md`：**核心敘述是錯的**——原文說「目前架構不需要 JPA 操作次庫，用 `JdbcTemplate` 即可」，但 wallet/admin 實際都有**兩套手動建立的 EntityManagerFactory**。改為依實際 `DataSourceConfig` 重寫：Bean 對照表、套件配置決定 EMF、`@Transactional` 必須指定 manager、**跨庫必須拆成兩個 Bean（自我呼叫會讓 proxy 失效）**、Testcontainers 測試（ADR-007）。
+- `docs/baccarat-rules.md`：§6 補契約檔 `contracts/baccarat-rules.json` 與 `ContractParityTest` 守門；§7 T-035 由「另行實作」改為 ✅ 已完成，補風控門檻雷區 17。
+- `docs/Stage/00-ROADMAP.md` + `01`~`08`：組員 D 的 25 個任務經程式碼複核**已全數完成**，現況表逐項更新（原表 18.5 項標為待辦），各 Phase 檔加完成摘要並標記為歷史計畫。
+- `docs/plans/01-八項架構改進施工藍圖.md`：P2b 補「調校另立藍圖」指向 `plans/02`；P3 標明 2026-07-13 複核仍未動工（`FishingSessionStore` 尚無 version/Lua）。
+- `docs/handover-topup-自助加值.md`：狀態由「尚未動工、程式碼一行都還沒寫」改為 **✅ 已完成並合併**（commit `c497a86`），附實際檔案對照表，原內容收進 `<details>` 作歷史。
+- `docs/bug/2026-06-25-bug-candidates.md`：5 項 bug **逐項複核全數已修**，開頭加驗證結果表。
+- `docs/report/PROJECT_ANALYSIS.md`：開頭加更新框——§14 的 8 項改進建議**已完成 7 項**（僅 Redis Lua CAS 未動工）；§10 已知限制、§12 面試答題（Q5 Saga、Q10 Testcontainers、Q11 瓶頸、Q12 契約）、§15 劣勢均依現況改寫，避免面試照舊文講「壓測沒跑、Saga 未實作」。
+- `docs/report/Lucky-Star-Casino-{總體檢報告,專題提案書,前端功能導覽,開發與流程報告,補充說明}.md`：加「📌 這是交付快照，不是現況文件」聲明並指向現況文件（內容不動——這 5 份已匯出 HTML/PDF 交付，改寫會破壞快照性質）。
+- **`AGENTS.md` 雷區 10 / 16**：雷區 10 原寫「捕魚機 Phase 1+2 已併入 develop，**Phase 3 進行中**」——複核發現 Phase 3（戰鬥回饋/砲台差異化/新互動）與 Phase 4（魚種重設/BOSS）**皆已落地**，改為「Phase 1~4 全部完成」；雷區 16 末補「升級進度」條目，明確標出**唯一未動工項＝Redis session 原子化（Lua CAS，ADR-008）**，並指向 `plans/01` Phase 3 的施工說明。證據：`fishingEngine.js` 已有 HP 條/暴擊/傷害浮字/自動射擊/鎖定/準心/`perfMode`/分頁暫停、`FishingCombat.CANNON_DAMAGE={0,14,22,32}`、`FishSpecies` 11 種含 `Tier.BOSS` 龍王；而 `FishingSessionStore` 仍無 `version` 欄位與 Lua script。
+
+### Removed（移動）
+- `docs/prompt-{fishing-优化,slot-機率修復,security-上一頁防呆,security-多帳號數據隔離,security-獲利攔截風控}.md` 與 `docs/performance/t090-{1000-rerun,b1}-handoff-prompt.md` → 移至 `docs/_雜物/prompts/`。這 7 份都是一次性施工提示詞，對應功能全部已落地（風控＝`RiskControlService`、上一頁防呆＝`useGameLeaveGuard.js`；「多帳號幸運值殘留」那份甚至已不適用——FortuneMeter 元件已從前端移除）。
+
+### Why
+- docs/ 累積 60 份文件、跨度兩個月，但多數是「當時的快照」且沒有索引，導致新人與 AI 讀到過期敘述會**直接踩雷**：照 `LOCAL_API_INTEGRATION_GUIDE` 會撞 port、照 `dual-datasource-guide` 會寫出 proxy 失效的跨庫程式碼、照 `ENV_SETUP_GUIDE` 會把 member 連到 PostgreSQL、照 `Stage/` 會重做 18 項已完成的任務。
+- 這正是 AGENTS.md §1 警告的「手動維護的文件會落後程式碼」。本次不只修內容，也**建立分類機制**（README 三分類 + 歷史文件加聲明），讓下次判斷「這份能不能信」有依據。
+
+### 如何驗證
+- 純文件變更，不影響程式行為。所有敘述逐項比對真實檔案：`docker-compose.yml`（7 服務 + observability profile）、`.env.example`（CHANGE_ME 佔位符）、`kafka/kafka-init.sh`（8+5 topic）、兩套 `init.sql`（15+11 表）、gateway `application.yml`（路由順序、jwt.whitelist、concurrency-limit）、各服務 `DataSourceConfig`（wallet/admin 雙 EMF）、`GmRewardService`（GM 發幣走 `wallet.credit.request`）、`FishingSessionStore`（無 version/Lua → P3 確實未動工）、`TopupController`、`RealtimeBridge.jsx`、`rankSlice/walletSlice`（BUG-001~005 已修）。
+- `python docs/game-math/verify_rtp.py` 實跑：老虎機 RTP 0.93830 / 命中率 0.30681，與 `SlotSymbol` Javadoc（93.8% / 30.7%）吻合，確認 game-math 無漂移。
+## [changed] -- 2026-07-13 -- 高流量 Kafka topic 拉高 partition 數並補測試斷言
+
+### Changed
+- `kafka/kafka-init.sh`：topic 建立從單一迴圈拆成 `high_throughput_topics`（`wallet.debit`/`wallet.credit.request`/`wallet.credit`/`game.result`/`notification.push`，partitions 3→6）與 `low_throughput_topics`（`member.registered`/`friend.relationship.updated`/`rank.update`，維持 3）兩組；`dlt_topics` 維持 1。
+- `tests/infra/kafka.test.js`：新增「Partition 數量」測試群組，鎖住兩個流量分組的 topic 名單與各自 partitions 值，並斷言兩組合計涵蓋所有一般 topic（防止分類時漏topic或重複分類）。
+
+### Why
+- `wallet.debit`/`wallet.credit`/`game.result` 每筆下注、派彩、遊戲局都會觸發，`notification.push` 由多個 service 匯聚推播，量遠高於註冊/好友異動/排行榜這類低頻事件；先前所有 topic 一律 3 partitions 沒有按流量分級。確認這幾個 topic 的 producer 皆以 `playerId` 當 key（`WalletService`/`GameResultEventPublisher`/`CashbackEventPublisher`/`NotificationPushPublisher`），加 partition 不影響同玩家事件的順序保證；`rank.update` 的 `RankUpdatePublisher` 用固定 key（`GLOBAL_TOP10_TYPE`），加 partition 無平行消費效益，維持低流量分組。
+- 舊版 `kafka.test.js` 只斷言「有 `--partitions` flag」、不鎖數值，之後改壞 partition 數不會被 CI 抓到，故補上數值斷言。
+
+### 如何驗證
+- `node --test tests/infra/kafka.test.js`：25 個測試全過。
+- 提醒：`--if-not-exists` 對已存在的 topic 不生效，既有環境要套用新 partition 數須手動 `kafka-topics --alter --partitions 6`，或 `docker-compose down -v` 清 volume 後重建。
+
+## [docs] -- 2026-07-13 -- 修正 Redis key 命名文件與實際程式碼漂移（refresh/blacklist）
+
+### Changed
+- `docs/architecture.md` §5 Redis 用途分配表：`auth:refresh:{playerId}` 改為 `refresh:{memberId}`、`auth:blacklist:{jti}` 改為 `jwt:blacklist:{jti}`，與 `TokenRedisService`（`backend/member-service`）實際 key prefix 對齊；並補註 refresh token 為每次 `AuthService.refreshToken()` rotate + 重設 TTL（非單純固定倒數 7 天）。
+- `docs/report/Lucky-Star-Casino-開發與流程報告.md`、`docs/report/Lucky-Star-Casino-總體檢報告.md`：登入時序圖內 `auth:blacklist:{jti}` 同步改為 `jwt:blacklist:{jti}`。
+
+### Why
+- 文件 key 命名與 `TokenRedisService`（`REFRESH_KEY_PREFIX = "refresh:"`、`BLACKLIST_KEY_PREFIX = "jwt:blacklist:"`）不符，會誤導直接查 Redis 除錯的人；`BLACKLIST_KEY_PREFIX` 的 comment 特別強調須與 gateway `JwtAuthenticationGlobalFilter` 一致，文件錯誤等於雙重誤導。
+
+### 如何驗證
+- 純文件變更；核對 `backend/member-service/src/main/java/com/luckystar/member/service/TokenRedisService.java`、`AuthService.java` 實際 key 字串與行為一致。
+
+## [changed] -- 2026-07-13 -- Highlight special fishing targets
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: added tier aura rings and stronger hit/lock-on behavior for high-value, Boss, special, and legendary fishing targets.
+- `frontend/src/data/fishingFishConfig.js`: raised the Jackpot Fish King display value to `500x`, display HP to `5000`, and visual scale to `1.36` without changing the backend `DRAGON_KING` contract values used for settlement.
+- `frontend/src/components/FishingFishInfoPanel.jsx` and `frontend/src/components/Fishing.css`: show the Jackpot Fish King display value/HP in the guide and add distinct card effects for high-value, Boss, special, and legendary fish.
+- `frontend/src/data/fishingFishConfig.test.js`: covers the Jackpot Fish King display-only fields while preserving backend multiplier, HP, and tier values.
+- `frontend/src/data/fishingFishConfig.js` and `frontend/src/components/fishingEngine.js`: aligned `DEVIL_RAY` with the medium fish visual tier so it no longer receives high-value fish effects.
+- `frontend/src/components/Fishing.css`: keeps the fullscreen control dock as the bottom row while removing the gap between the Pixi canvas and controls so the cannon stays visible.
+
+### Why
+- Special fishing targets need clearer visual separation during play and in the lobby guide, while settlement-critical values must stay aligned with the backend fishing contract.
+
+### Verification
+- `npm.cmd run lint` (frontend): passed.
+- `npm.cmd run test -- FishingFishInfoPanel fishingFishConfig` (frontend): passed, 1 file / 2 tests.
+- `npm.cmd run build` (frontend): passed.
+
+## [changed] -- 2026-07-13 -- Separate fishing blocker guide
+
+### Changed
+- `frontend/src/components/FishingFishInfoPanel.jsx`: split blocker fish into their own `障礙魚種` section instead of appending them to the reward fish list.
+- `frontend/src/pages/Fishing.jsx`: removed the sidebar blocker guide and skill panel blocks entirely, including their displayed content.
+- `frontend/src/components/Fishing.css`: added section styling for the separated bottom blocker guide and removed CSS for the deleted sidebar blocker/skill blocks.
+
+### Why
+- Blockers do not pay rewards, so separating them from reward fish makes the bottom guide easier to understand; the duplicate sidebar blocker and skill panels should no longer be shown.
+
+### Verification
+- `npm.cmd run lint` (frontend): passed.
+- `npm.cmd run test -- FishingFishInfoPanel fishingFishConfig` (frontend): passed, 1 file / 2 tests.
+- `npm.cmd run build` (frontend): passed.
+
+## [changed] -- 2026-07-12 -- Improve fishing lobby fish guide layout
+
+### Changed
+- `frontend/src/components/FishingFishInfoPanel.jsx`: rewrote fish guide names, labels, and descriptions so players can understand rewards, HP, spawn frequency, and blockers more quickly.
+- `frontend/src/components/Fishing.css`: changed the fish guide cards to responsive columns and stacked metric chips so labels no longer squeeze into the next row.
+
+### Why
+- The fish guide inside `fishing-lobby__fish-info` was hard to read and its metric chips could crowd each other on narrower cards.
+
+### Verification
+- `npm.cmd run lint` (frontend): passed.
+- `npm.cmd run test -- FishingFishInfoPanel fishingFishConfig` (frontend): passed, 1 file / 2 tests.
+- `npm.cmd run build` (frontend): passed.
+
+## [changed] -- 2026-07-12 -- Raise demo player star coin balance
+
+### Changed
+- `frontend/src/services/mockApi.js`: set the mock demo/test player starting star coin balance to `999999999999`.
+- `frontend/src/services/*Api.js` and `frontend/src/hooks/useWebSocket.js`: default dev mode to mock API unless `VITE_USE_MOCK_API=false` is explicitly set.
+
+### Why
+- The demo player account needs a much larger balance for demo play without running out of star coins.
+- Direct `npm run dev` should use the mock wallet by default, matching the documented frontend contract.
+
+### Verification
+- `npm.cmd run test`: passed, 6 files / 42 tests.
+
+## [fix] -- 2026-07-12 -- Stabilize fishing lobby controls and fish king variants
+
+### Added
+- `frontend/src/components/FishingControlDock.test.jsx`: added coverage for ammo/cannon controls being disabled once a fishing round has started.
+- `frontend/src/data/fishingFishConfig.test.js`: added coverage that fish king visual variants do not overwrite backend `name`, `multiplier`, `hp`, or `tier` values.
+
+### Changed
+- `frontend/src/pages/Fishing.jsx`: limited ammo selection to the `idle` phase so session-level bet and cannon choices cannot change while playing or settling.
+- `frontend/src/components/FishingControlDock.jsx`: made disabled control state explicit with stable classes, `aria-disabled`, and explanatory titles.
+- `frontend/src/data/fishingFishConfig.js` and `frontend/src/components/FishingFishInfoPanel.jsx`: moved fish king visual variants to `visualKey` / `assetId` display metadata while preserving backend `code` and tier semantics.
+
+### Why
+- Fishing `betPerShot` and `cannonLevel` are session-level values; changing them after entry can desync frontend controls from backend validation.
+- Fish king skins should change presentation only, not settlement-critical backend fish identity.
+
+### Verification
+- `cd frontend && npm run lint`: passed.
+- `cd frontend && npm run test`: passed, 7 files / 44 tests.
+- `cd frontend && npm run build`: passed.
+- `cd frontend && npm run e2e`: passed, 1 skipped.
+## [docs] -- 2026-07-10 -- 九份 ADR 補「現況校驗」章節，對齊程式碼實際狀態並記錄文件漂移
+
+### Added
+- `docs/adr/ADR-000.md`、`ADR-001.md`、`ADR-002.md`、`ADR-003.md`、`ADR-004.md`、`ADR-005.md`、`ADR-006.md`、`ADR-007.md`、`ADR-009.md`：每份都新增「現況校驗（2026-07-10 補充）」章節，以 6 隻並行 Explore agent 逐一核對程式碼/schema/設定現況（檔案路徑+行號），補上決策當下沒有的細節：ADR-001 補 Postgres 15 表/MySQL 12 表完整清單與跨資料源交易拆 Bean 手法；ADR-002 補新增的 wallet.credit.request 發布端（月度獎勵、GM發幣）；ADR-007 補「其他服務尚未比照 Testcontainers」的現況；ADR-009 補對帳 script 已擴充到 7 項檢查。
+
+### Changed
+- 無程式碼異動，純文件補充。
+
+### Why
+- ADR 文件寫定後專案持續疊代（鑽石系統、禮品商城、Saga 補償、月度簽到獎勵等），原文件只反映決策當下快照，久了會跟現況脫節；依 AGENTS.md「以程式碼為準、發現落差要記錄並更正文件」的原則，逐份核對而非憑空補字。
+
+### 發現並記錄的文件漂移（未動程式碼，僅記錄供後續處理）
+1. **ADR-004 砲台傷害值**：文件宣告收斂至 `10/14/18`，但 `FishingCombat.CANNON_DAMAGE` 現值是 `{0,14,22,32}`，兩者不符；`pCapture` 有依當前傷害值自動反推，RTP 仍精確等於 0.96，不影響帳務正確性，純屬文件與程式碼對不上，已在 ADR-004 現況校驗標註待確認是刻意再平衡還是漏改。
+2. **Postgres migration 版號重複**：`V15__add_alert_resolution_audit.sql` 與 `V15__add_game_rounds_risk_indexes.sql` 同版號並存，在 ADR-001/ADR-007/ADR-009 三處現況校驗都有提及，建議下次改動 migration 時重新編號其中一個為 V16。
+3. **ADR-008 編號仍空白**：ADR-004/ADR-009 都提到「保留給 Phase 3（捕魚 Redis session Lua CAS）」，現況確認 `docs/adr/ADR-008.md` 尚未建檔，Phase 3 是八項架構改進中唯一未動工項目。
+
+### 如何驗證
+- 純文件變更；每份 ADR 新增章節引用的檔案路徑/行號、migration 版號、常數值均由 Explore agent 實際讀取程式碼確認，非憑空推測。
+## [docs] -- 2026-07-10 -- interview-prep 與組員A報告對齊 7/10 現況（ADR-009 補償、gateway -150 併發卸載、C3+B1 最終數據）
+
+### Changed
+- `docs/interview-prep/11-下注請求流與程式碼地圖.md`（漂移最大，7/03 後未更）：§5.1「credit 失敗」由「**沒有補償機制**」改寫為 ADR-009 補償單流程（落 `pending_wallet_credits`、排程 30 秒同冪等鍵重試）、§5.3 整段改寫為「早期無補償 → ADR-009 最小 Saga」演進敘事；§2 白板流/§4.2 gateway 表/§4.3 SlotService 流程補 CONCURRENCY_LIMIT(-150)、風控（RTP 快取＋Lua 並發閘）、補償與 roundId 去重步驟；§5.1 新增 gateway 429 併發卸載列、§5.2 補 AIMD 併發上限數值（初始 200/floor 50/ceiling 400/延遲目標 2s）；§6 面試範本與 §7 Discord 版同步。
+- `docs/interview-prep/10-API串接與架構.md`：§1 mermaid/§3.3 filter 鏈/§6 時序圖補 CONCURRENCY_LIMIT(-150, AIMD)；§3.4 韌性設定補 TimeLimiter 6s 教訓（預設 1s 腰斬慢呼叫）與 C2 JWT Redis 短重試；§6 一致性界線補 ADR-009 一條；§7 速查表補「派彩失敗」「擋暴量」兩列；開頭離線 HTML 參照修正為歸檔後路徑 `../_雜物/08-面試準備-API串接與架構-匯出.html`（原連結已失效）。
+- `docs/interview-prep/00-index.md` §5 / `01-專案程式碼地圖.md` §3·§6 / `02-設計決策與為什麼.md` 決策 4 / `06-題庫解答與模擬問答.md` Q63：filter 鏈補 -150 併發卸載；`00` 速記卡壓測數據由 C1+C2（+126%）更新為 C3+B1 最終（150 併發 P99 −48%、1,000 併發成功 +430%、401 歸零）。
+- `docs/interview-prep/04-資料庫與分散式觀念.md` §6.1：並發閘補「取號/釋放各用 Lua、防負值漂移（T-090 Phase A）」。
+- `docs/report/portfolio-組員A-五天衝刺與面試準備.md`／`portfolio-組員A-面試詳答與Docker實作.md`：Day 1/3 filter 鏈與白板圖補 -150（原與自身 Day 4 §4.7 的 C3 敘述不一致）、Demo 腳本「三層 filter」改四層、Day 5 demo 收尾數據更新為 C3+B1 最終。
+
+### Fixed
+- `docs/interview-prep/07-題庫-進階200題.md` 第 226 題題幹誤貼的 GitHub 合併衝突 URL（PR #188 殘留）已移除。
+
+### Why
+- `10`/`11` 成稿於 7/01–7/03，其後 ADR-009 補償（7/07）與 T-090 C1/C2/C3（7/08–09）落地，筆記仍教「credit 失敗無補償」與三層 filter 鏈，面試照講會與程式碼矛盾；`03`/`08` 核對後無漂移未動。
+### 如何驗證
+- 純文件變更；內容逐一對照 `FilterOrder.java`、`RouteConcurrencyLimitGlobalFilter`/`AdaptiveInFlightLimiter`、gateway `application.yml`（concurrency-limit/timelimiter）、`SlotService.settleInternal`、`WalletCompensationService`/`WalletCompensationRetryJob`（30s/指數退避）、`RiskControlService`（Lua 並發閘）、`kafka-init.sh`（8+5 topic）與 `13`/`T-090` 報告數據。
+
 ## [docs] -- 2026-07-10 -- 新增組員A五天衝刺「完整詳答」檔（含 Docker 七服務實作教學章）
 
 ### Added
@@ -101,6 +569,387 @@
 - `mvn -pl backend/wallet-service test`：161/161 全綠。
 - **重要**：A/B 量測（150 併發、隔離直打 wallet-service debit，繞開 game-service/gateway）顯示 pool size 從 10 提升到 15、甚至實驗值 60，延遲量級都沒有顯著改善（avg 一直落在 280~430ms、p99 420~860ms），且穩態下連線池未被打滿——**這個修正單獨不會讓 debit 變快**，純粹是讓設定檔說的話算數，為後續調校建立正確的基準線。完整分析與尚未解開的瓶頸（初步指向單機 CPU/執行緒競爭）見 `docs/performance/T-090-B1-wallet-debit-analysis.md`。
 - code-reviewer 審查 PASS（範圍窄：僅連線池容量設定，未動帳務/冪等/樂觀鎖邏輯）。
+
+## [changed] -- 2026-07-08 -- Fishing bottom cannon and hit reactions
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: move the cannon origin to the bottom edge of the Pixi fishing canvas so the turret sits at the lowest part of the playfield.
+- `frontend/src/components/fishingEngine.js`: add a shared hit reaction for normal fish, high-value targets, bosses, special targets, and blockers, including short shake, rotation, scale pulse, flash, and tier-tuned `hit` / `crit` sound pitch.
+
+### Why
+- The cannon should anchor visually at the bottom of the game view, and every target should provide immediate readable impact feedback when hit.
+
+### Verified
+- `npm.cmd run lint` from `frontend/`
+- `npm.cmd run build` from `frontend/`
+- `git diff --check`
+
+## [changed] -- 2026-07-08 -- Fishing control dock outside canvas and smaller field sprites
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: reduce all normal, high-value, boss, special, and blocker field sprite sizes again for the provided high-detail artwork.
+- `frontend/src/pages/Fishing.jsx`: move the in-game `FishingControlDock` out of the Pixi canvas frame into a dedicated stage controls row.
+- `frontend/src/components/Fishing.css`: style the new stage controls row and keep it visible as the bottom row when the fishing stage enters fullscreen.
+
+### Why
+- The field sprites still occupied too much of the playfield, and the in-game control dock should not sit inside the canvas area while still remaining available in fullscreen mode.
+
+### Verified
+- `npm.cmd run lint` from `frontend/`
+- `npm.cmd run build` from `frontend/`
+- `git diff --check`
+
+## [changed] -- 2026-07-07 -- Fishing spawn frequency follows backend weights
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: normalize each fish's `spawnWeight` from the backend fish table and use it as the single weighted spawn source for normal field spawns, swarm bursts, special targets, and boss candidates.
+- `frontend/src/components/fishingEngine.js`: remove the independent boss timer and jackpot-first boss preference so rare fish frequency is controlled by `spawnWeight`; live bosses are still limited to one at a time.
+
+### Why
+- Fish appearance frequency should match the backend fishing contract instead of being skewed by frontend-only small-fish swarms or forced boss scheduling.
+
+### Verified
+- `npm.cmd run lint` from `frontend/`
+- `npm.cmd run build` from `frontend/`
+- `git diff --check`
+
+## [fixed] -- 2026-07-07 -- Fishing blocker size and turtle direction
+
+### Fixed
+- `frontend/src/components/fishingEngine.js`: mark the blocker turtle as a left-facing source image and apply shared `fishScaleX` direction logic during blocker spawn/update so it no longer swims backward.
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: further shrink blocker octopus, starfish, and turtle base size ranges and profile scale multipliers.
+
+### Why
+- The blocker sprites still read too large after the previous field-wide scale pass, and the turtle uses the blocker spawn path instead of normal fish metadata, so it needed its own direction metadata.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `git diff --check`
+
+## [fixed] -- 2026-07-07 -- Fishing field mask direction and size pass
+
+### Fixed
+- `frontend/src/components/fishingEngine.js`: expand the fish mask and swim bounds to the full canvas height so the former cannon-zone area no longer clips fish after removing the black deck overlay.
+- `frontend/src/components/fishingEngine.js`: flip the newly provided fish artwork back to the correct travel direction while preserving the current gold dragon and pixiu orientation.
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: further reduce fish, boss, special target, legendary fish king, and blocker display sizes for the new high-detail PNG art set.
+
+### Why
+- The old cannon-zone mask was still hiding fish even though the black deck was removed, most fish references were marked as naturally left-facing even though the new images face right, and the field sprites still occupied too much of the stage.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `git diff --check`
+
+## [changed] -- 2026-07-07 -- Fishing stage background cleanup
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: remove the old Pixi-drawn sea gradients, caustic lines, floor ornaments, shadow fish, bubbles, vignette, and black cannon deck panel so the supplied stage background remains visible behind the cannon.
+
+### Why
+- The provided background artwork already contains the intended underwater decorations, and the old black cannon/deck area was covering the lower part of the scene.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `git diff --check`
+
+## [changed] -- 2026-07-07 -- Fishing field sprite sizes reduced
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: substantially reduce rendered fish tier sizes, legendary fish king bonus size, high-value non-boss trim values, small-fish multiplier growth, and blocker creature size ranges.
+
+### Why
+- The provided high-detail PNG artwork reads too large in the Pixi fishing field, crowding the play area and obscuring the new stage background.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `git diff --check`
+
+## [changed] -- 2026-07-07 -- Fishing cannon and stage background reference artwork
+
+### Changed
+- `frontend/public/images/fishing/cannon-small-reference.png`, `cannon-medium-reference.png`, and `cannon-heavy-reference.png`: add the provided small, medium, and heavy cannon artwork with white backgrounds converted to transparency.
+- `frontend/public/images/fishing/fishing-stage-background-reference.png`: add the provided underwater treasure stage background.
+- `frontend/src/casino-fx/assets/registry.js`: map `cannon-copper`, `cannon-silver`, `cannon`, and `fishing-stage-background` to the provided PNG references.
+- `frontend/src/components/fishingEngine.js`: preload the stage background, render it as the bottom Pixi backdrop layer, and use the provided cannon PNGs as the active cannon body while preserving existing firing and muzzle effects.
+
+### Why
+- The fishing stage should use the supplied visual direction for small / medium / heavy cannons and the new underwater background without changing backend-authoritative cannon damage or shot contracts.
+
+### Verified
+- `python` PNG header check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [fixed] -- 2026-07-07 -- Fishing blocker PNG decode artifacts
+
+### Fixed
+- `frontend/public/images/fishing/blocker-turtle-reference.png`, `blocker-octopus-reference.png`, and `blocker-starfish-reference.png`: regenerate the transparent PNGs with a corrected PNG Paeth filter decoder so the blocker guide no longer renders diagonal corruption artifacts.
+
+### Why
+- The previous conversion script decoded Paeth-filtered scanlines incorrectly, which damaged these three supplied blocker images even though their PNG headers were valid.
+
+### Verified
+- `python` PNG header check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing blocker reference artwork
+
+### Changed
+- `frontend/public/images/fishing/blocker-turtle-reference.png`: add the provided obstacle turtle artwork with the white background converted to transparency.
+- `frontend/public/images/fishing/blocker-octopus-reference.png`: add the provided obstacle octopus artwork with the white background converted to transparency.
+- `frontend/public/images/fishing/blocker-starfish-reference.png`: add the provided obstacle starfish artwork with the white background converted to transparency.
+- `frontend/src/casino-fx/assets/registry.js`: point both legacy `fish-blocker-*` and active `fish-evil-blocker-*` ids to the new PNG references.
+- `frontend/src/data/fishingFishConfig.js`: update the blocker guide assets to show the provided turtle, octopus, and starfish images.
+- `frontend/public/images/fishing/blocker-{octopus,starfish,turtle}.svg`: remove generated SVG blocker artwork after replacing it with the provided PNG references.
+
+### Why
+- The three obstacle creatures should match the supplied visual direction in both the Pixi fishing stage and fish guide.
+
+### Verified
+- `python` PNG header check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing caishen and money tree reference artwork
+
+### Changed
+- `frontend/public/images/fishing/caishen-reference.png`: add the provided Caishen image as the in-game caishen asset with the white background converted to transparency.
+- `frontend/public/images/fishing/money-tree-reference.png`: add the provided money tree image as the in-game money tree asset with the white background converted to transparency.
+- `frontend/src/casino-fx/assets/registry.js`: point `fish-caishen` and `fish-money-tree` to the provided PNG references instead of generated SVGs.
+- `frontend/src/components/fishingEngine.js`: mark Caishen as non-directional alongside money tree so front-facing prize targets do not flip like fish.
+- `frontend/public/images/fishing/fish-caishen.svg` and `fish-money-tree.svg`: remove generated SVG files after replacing them with provided PNG references.
+
+### Why
+- Caishen and money tree should use the provided artwork exactly and behave visually as prize targets rather than directional swimming fish.
+
+### Verified
+- `python` PNG header check
+- `python` SVG XML parse check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [fixed] -- 2026-07-07 -- Fishing gold dragon white residue removal
+
+### Fixed
+- `frontend/public/images/fishing/gold-dragon-reference.png`: remove remaining low-saturation white/gray background residue and soften pale edge pixels around the provided gold dragon artwork.
+
+### Why
+- The gold dragon reference still had visible background remnants after the previous alpha cleanup pass.
+
+### Verified
+- `python` PNG header check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [fixed] -- 2026-07-07 -- Fishing gold dragon alpha cleanup
+
+### Fixed
+- `frontend/public/images/fishing/gold-dragon-reference.png`: rerun alpha extraction with a stronger white-background cleanup so leftover white islands and edge halos are transparent.
+
+### Why
+- The provided gold dragon artwork still had visible white remnants after the first background removal pass.
+
+### Verified
+- `python` PNG header check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing reference fish artwork set
+
+### Changed
+- `frontend/public/images/fishing/*-reference.png`: add the provided reference artwork for puffer, devil ray, angelfish, lantern fish, goldfish, koi, gold-star fish king, and jackpot fish king with white backgrounds converted to transparency.
+- `frontend/src/casino-fx/assets/registry.js`: point the corresponding fishing `assetId`s to the provided PNG references instead of generated SVGs or older placeholder art.
+- `frontend/src/data/fishingFishConfig.js`: update the static gold-star and jackpot fish king guide images to the provided references.
+- `frontend/public/images/fishing/fish-{puffer,devil-ray,angelfish,lantern,goldfish,koi}.svg` and `rainbow-jackpot-fish-king.svg`: remove SVG files that are now replaced by provided PNG references.
+
+### Why
+- These eight fish targets should match the user-provided artwork order and appearance exactly while preserving the backend fish codes and payout contract.
+
+### Verified
+- `python` PNG header check
+- `python` SVG XML parse check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing gold dragon reference artwork
+
+### Changed
+- `frontend/public/images/fishing/gold-dragon-reference.png`: add the user-provided golden dragon image as the in-game gold dragon asset, with the baked checkerboard background converted to transparency.
+- `frontend/src/casino-fx/assets/registry.js`: point `fish-gold-dragon` to the provided PNG reference instead of the generated SVG.
+- `frontend/public/images/fishing/fish-gold-dragon.svg`: remove the unused generated SVG after replacing it with the provided artwork.
+
+### Why
+- The gold dragon target should match the provided dragon artwork exactly rather than the previously generated vector approximation.
+
+### Verified
+- `python` PNG header check
+- `python` SVG XML parse check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing pixiu render size
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: reduce the in-game pixiu render trim from the shared high-value size to a smaller pixiu-specific size while leaving the provided PNG asset unchanged.
+
+### Why
+- The provided pixiu artwork reads larger than the previous vector at the same canvas size, so it needs a smaller render footprint without changing backend payout or target contract.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing pixiu reference artwork
+
+### Changed
+- `frontend/public/images/fishing/pixiu-gold-guardian.png`: add the user-provided golden pixiu image as the in-game pixiu asset, with the baked checkerboard background converted to transparency.
+- `frontend/src/casino-fx/assets/registry.js`: point `fish-pixiu` to the provided PNG reference instead of the generated SVG.
+- `frontend/public/images/fishing/fish-pixiu.svg`: remove the unused generated SVG after replacing it with the provided artwork.
+
+### Why
+- The pixiu target should match the provided golden guardian artwork exactly rather than the previously generated vector approximation.
+
+### Verified
+- `python` PNG header check
+- `python` SVG XML parse check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing non-fish prize artwork
+
+### Changed
+- `frontend/public/images/fishing/fish-gold-dragon.svg`: regenerate the gold dragon as a dragon-shaped prize target instead of a fish silhouette.
+- `frontend/public/images/fishing/fish-pixiu.svg`: regenerate the pixiu as a four-legged mythical beast target instead of a fish silhouette.
+- `frontend/public/images/fishing/fish-money-tree.svg`: regenerate the money tree as a tree-and-coin prize target instead of a fish silhouette.
+- `frontend/src/components/fishingEngine.js`: mark money tree as non-directional so it does not flip like a swimming creature while crossing the stage.
+
+### Why
+- Gold dragon, pixiu, and money tree are prize targets from the backend fish table, but their visuals should represent the actual object/creature rather than forcing them into fish-shaped artwork.
+
+### Verified
+- `python` SVG XML parse check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing high-value species fish silhouettes
+
+### Changed
+- `frontend/public/images/fishing/fish-gold-dragon.svg`: regenerate gold dragon as a fish silhouette with dragon-inspired fins, whisker-like spines, and gold scale bands.
+- `frontend/public/images/fishing/fish-pixiu.svg`: regenerate pixiu as a fish-bodied target with pixiu head cues, horn, mane, gold tail, and coin detail.
+- `frontend/public/images/fishing/fish-money-tree.svg`: regenerate money tree as a fish-bodied target with coin markings and leaf-fin accents instead of a tree object.
+
+### Why
+- Gold dragon, pixiu, and money tree are still fishing targets in gameplay, so their artwork should read as fish first while keeping enough theme detail to identify the backend species.
+
+### Verified
+- `python` SVG XML parse check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing angelfish and pixiu artwork polish
+
+### Changed
+- `frontend/public/images/fishing/fish-angelfish.svg`: move the eye and mouth details to the head side so the angelfish no longer appears to have its eye near the tail.
+- `frontend/public/images/fishing/fish-pixiu.svg`: regenerate the pixiu artwork with stronger head, horn, mane, gold tail, scale, and coin details while keeping the same backend `assetId` contract.
+
+### Why
+- The redesigned assets needed clearer front/back readability in motion, especially after fixing swim direction for left-facing generated fish.
+
+### Verified
+- `python` SVG XML parse check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [fixed] -- 2026-07-07 -- Fishing fish direction and size tuning
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: add explicit facing metadata for the newly generated non-boss fish SVGs so they face their swim direction while preserving the original gold-star and jackpot fish king behavior.
+- `frontend/src/components/fishingEngine.js`: increase the render size for newly added fish species, with a smaller trim for high-value non-boss targets such as gold dragon, pixiu, and caishen so they stay below boss presence.
+
+### Why
+- The generated fish artwork is left-facing by default, while the Pixi engine previously assumed right-facing textures; this made non-boss fish appear to swim backward. The added fish also needed larger in-game silhouettes without making high-value non-boss targets feel like bosses.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing selected fish visual redesign
+
+### Changed
+- `frontend/public/images/fishing/fish-angelfish.svg`: redesign the angelfish with a taller ornamental silhouette, brighter fins, and clearer stripe identity.
+- `frontend/public/images/fishing/fish-pixiu.svg`: redesign the pixiu fish with stronger mythical-beast cues, horn, jade body, gold tail, and coin detail.
+- `frontend/src/casino-fx/assets/registry.js`: restore `fish-dragon-king` to the original `fish-boss-whale.svg` mapping so the gold-star fish king uses its previous appearance.
+
+### Why
+- The newly integrated fish table needs distinct readable targets, while the gold-star fish king should retain the familiar original silhouette requested during review.
+
+### Verified
+- `python` SVG XML parse check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing contract fish SVG assets
+
+### Added
+- `frontend/public/images/fishing/fish-*.svg`: add distinct SVG artwork for the 10 backend contract fish asset ids that should not reuse the previous placeholders (`fish-koi`, `fish-goldfish`, `fish-lantern`, `fish-puffer`, `fish-angelfish`, `fish-devil-ray`, `fish-gold-dragon`, `fish-pixiu`, `fish-caishen`, and `fish-money-tree`).
+
+### Changed
+- `frontend/src/casino-fx/assets/registry.js`: map the newly surfaced backend fishing `assetId`s to generated SVGs instead of reusing the previous shared placeholder SVGs; `fish-dragon-king` remains on the original boss-whale artwork.
+
+### Why
+- Backend fish-table integration exposed more fish species in the Pixi fishing field, and each species needs a distinct visual identity so players can distinguish targets without breaking the existing backend `assetId` contract.
+
+### Verified
+- `python` SVG XML parse check
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+## [changed] -- 2026-07-07 -- Fishing backend contract alignment
+
+### Added
+- `frontend/src/hooks/useFishingSession.js`: restore an existing fishing session from `/active` on mount so refresh/re-entry follows the backend lifecycle instead of dropping the player back to idle.
+- `frontend/src/components/FishingFishInfoPanel.jsx`: build the fish guide from the backend `fishTable`, including HP, tier, spawn weight, and visual `DRAGON_KING` variants, then append the charged blocker guide.
+
+### Changed
+- `backend/game-service/src/main/java/com/luckystar/game/service/FishingService.java` and `backend/game-service/src/test/java/com/luckystar/game/service/FishingServiceTest.java`: enforce session-level `betPerShot` and `cannonLevel` for shot batches and cover the fixed-contract behavior in tests.
+- `frontend/src/hooks/useFishingSession.js` and `frontend/src/pages/Fishing.jsx`: keep verify-shot history to normal verifiable fish only, exclude `MISS`/blocker shots, and compare backend verification against `captured` plus payout instead of generic hit state.
+- `frontend/src/services/mockApi.js`: mirror backend start/top-up/shots validation, including buy-in and bet ranges, required top-up idempotency key, fixed session bet/cannon, and normalized shot fish types.
+
+### Why
+- The fishing UX must follow the backend session contract exactly: fixed buy-in settings per session, charged blocker/miss shots, stable verification semantics, and fish data coming from the backend response rather than duplicated front-end assumptions.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `npm.cmd run test`
+- `mvn -pl backend/game-service test`
+
+## [feat] -- 2026-07-06 -- Fishing blocker effects and stage polish
+
+### Added
+- `frontend/src/components/fishingEngine.js`: add Pixi-only screen effects for blocker breaks: octopus ink遮蔽 and starfish fish-speed boost, with reduced effect density under perf/reduced-motion mode.
+- `frontend/src/data/fishingGameData.js` and `frontend/src/pages/Fishing.jsx`: add a right-side blocker guide card for octopus, starfish, and turtle behavior.
+
+### Changed
+- `frontend/src/components/fishingEngine.js`: move blocker profile selection into per-species settings; octopus/starfish now spawn only as large 5-hit blockers, while turtles keep 5/10/17-hit tiers with larger visual sizes.
+- `frontend/src/components/fishingEngine.js`: enrich the Pixi stage with vignette, gold glints, distant fish silhouettes, and reusable screen effect overlays without changing `FishingCanvas` props or the `fire(fishInstanceId, fishCode)` contract.
+- `frontend/src/components/Fishing.css` and `frontend/src/data/fishingFishConfig.js`: update blocker guide copy and improve dock/card layout stability across desktop and mobile.
+
+### Why
+- Blocker fish needed distinct effects and clearer player-facing rules while keeping the existing Pixi engine, wallet/session flow, settlement, and fairness verification contracts intact.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
 
 ## [test] -- 2026-07-08 -- T-090 C1+C2 效果對照重跑：成功數 +126%、401 −63%、spin 延遲腰斬；殘餘失敗移位到未受保護的 wallet 路徑
 
@@ -3790,5 +4639,3 @@ client DTO）`javac` 編譯通過。Lombok 檔案與 `@SpringBootTest` 待團隊
 
 ### Verified
 - `mvn -pl backend/wallet-service test` → 142 tests, 0 failures
-
-

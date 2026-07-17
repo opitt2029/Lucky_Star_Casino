@@ -1,7 +1,7 @@
-import { BET_LABELS } from '../../utils/baccaratGame'
+﻿import { BET_LABELS } from '../../utils/baccaratGame'
 
 const phaseLabels = {
-  idle: '下注中',
+  idle: '等待下注',
   betting: '下注中',
   dealing: '發牌中',
   squeezing: '等待咪牌',
@@ -17,8 +17,8 @@ export default function BaccaratStatusBar({ phase, selectedBet, betAmount, round
   return (
     <div className="baccarat-status-bar" aria-live="polite">
       <div>
-        <span>狀態</span>
-        <strong>{phaseLabels[phase] || '下注中'}</strong>
+        <span>階段</span>
+        <strong>{phaseLabels[phase] || '等待下注'}</strong>
       </div>
       <div>
         <span>本局下注</span>
@@ -33,7 +33,7 @@ export default function BaccaratStatusBar({ phase, selectedBet, betAmount, round
         <strong>{profitText}</strong>
       </div>
       <div>
-        <span>本場局數</span>
+        <span>歷史局數</span>
         <strong>{historyCount}</strong>
       </div>
       <div>

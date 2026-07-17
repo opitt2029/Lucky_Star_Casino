@@ -10,12 +10,7 @@ import FishingFullscreenButton from '../components/FishingFullscreenButton'
 import FishingFishInfoPanel from '../components/FishingFishInfoPanel'
 import { fishingApi } from '../services/fishingApi'
 import { fetchWallet } from '../store/slices/walletSlice'
-import {
-  useFishingSession,
-  BUYIN_TIERS,
-  BUYIN_MIN,
-  BUYIN_MAX,
-} from '../hooks/useFishingSession'
+import { useFishingSession, BUYIN_TIERS, BUYIN_MIN, BUYIN_MAX } from '../hooks/useFishingSession'
 import { useSound } from '../casino-fx/sound/useSound'
 import { useBgm } from '../casino-fx/sound/useBgm'
 import { announcePlayerWin } from '../casino-fx/announce/announceBus'
@@ -24,7 +19,6 @@ import '../components/Fishing.css'
 import {
   FISHING_DISPLAY_SPECIES,
   FISHING_JACKPOT,
-  FISHING_SKILLS,
 } from '../data/fishingGameData'
 import { FISHING_AMMO_OPTIONS, getFishingAmmoByLevel } from '../data/fishingConfig'
 
@@ -66,7 +60,7 @@ function ShotVerifyPanel({ sessionId, shots, fishTable, play }) {
         fishType: shot.fishType,
         betPerShot: shot.betPerShot,
       })
-      const consistent = data.hit === shot.hit && Number(data.payout) === Number(shot.payout)
+      const consistent = data.hit === Boolean(shot.captured) && Number(data.payout) === Number(shot.payout)
       setResults((prev) => ({ ...prev, [shot.shotSeq]: { data, consistent } }))
     } catch (err) {
       setResults((prev) => ({
@@ -92,13 +86,15 @@ function ShotVerifyPanel({ sessionId, shots, fishTable, play }) {
             >
               <span className="truncate">
                 第 {shot.shotSeq} 發, {nameByCode[shot.fishType] || shot.fishType},
-                {shot.hit ? ` 捕獲 +${shot.payout.toLocaleString()}` : ' 未捕獲'}
+                {shot.captured ? ` 捕獲 +${shot.payout.toLocaleString()}` : ' 未捕獲'}
               </span>
               {state.data ? (
                 <span
                   className={[
                     'shrink-0 font-black',
-                    state.data.commitmentValid && state.consistent ? 'text-emerald-300' : 'text-red-300',
+                    state.data.commitmentValid && state.consistent
+                      ? 'text-emerald-300'
+                      : 'text-red-300',
                   ].join(' ')}
                   title={state.data.message}
                 >
@@ -179,8 +175,10 @@ export default function Fishing() {
   const selectedTopUp = Number.parseInt(topUpText, 10)
   const selectedEntryAmmo = getFishingAmmoByLevel(selectedAmmoLevel)
   const selectedBet = selectedEntryAmmo.costPerShot
-  const buyInValid = Number.isInteger(selectedBuyIn) && selectedBuyIn >= BUYIN_MIN && selectedBuyIn <= BUYIN_MAX
-  const topUpValid = Number.isInteger(selectedTopUp) && selectedTopUp >= BUYIN_MIN && selectedTopUp <= BUYIN_MAX
+  const buyInValid =
+    Number.isInteger(selectedBuyIn) && selectedBuyIn >= BUYIN_MIN && selectedBuyIn <= BUYIN_MAX
+  const topUpValid =
+    Number.isInteger(selectedTopUp) && selectedTopUp >= BUYIN_MIN && selectedTopUp <= BUYIN_MAX
   const canStart = buyInValid && balance >= selectedBuyIn
   const jackpotAmount = FISHING_JACKPOT.amount.toLocaleString()
 
@@ -197,18 +195,23 @@ export default function Fishing() {
     ({ payout, effMult }) => {
       if (effMult >= 30) {
         play('winEpic')
-        announcePlayerWin({ playerName: player?.nickname || player?.username, game: 'fishing', amount: payout })
+        announcePlayerWin({
+          playerName: player?.nickname || player?.username,
+          game: 'fishing',
+          amount: payout,
+        })
       } else if (effMult >= 10) {
         play('winBig')
       } else {
         play('winSmall')
       }
     },
-    [play, player],
+    [play, player]
   )
 
   // 僅供進場前選擇：面額/砲台為 session 級參數（ADR-004 整場固定），hook 在 playing 階段會拒絕變更。
   const handleAmmoSelect = (option) => {
+    if (session.phase !== 'idle') return
     play('click')
     const betChanged = session.changeBetPerShot(option.costPerShot)
     const cannonChanged = session.changeCannonLevel(option.level)
@@ -219,7 +222,11 @@ export default function Fishing() {
     if (!canStart) return
     play('click')
     setSessionBuyIn(selectedBuyIn)
-    session.startSession({ buyIn: selectedBuyIn, cannonLevel: selectedAmmoLevel, betPerShot: selectedBet })
+    session.startSession({
+      buyIn: selectedBuyIn,
+      cannonLevel: selectedAmmoLevel,
+      betPerShot: selectedBet,
+    })
   }
 
   const handleTopUp = async () => {
@@ -246,17 +253,24 @@ export default function Fishing() {
       }
       return result
     },
-    [play, session],
+    [play, session]
   )
 
   const { phase, sessionBalance, stats, settleResult, error, betPerShot, cannonLevel } = session
-  const activeAmmo = FISHING_AMMO_OPTIONS.find((option) => option.costPerShot === betPerShot) || getFishingAmmoByLevel(cannonLevel)
-  const canSettle = phase === 'playing' && (sessionBalance > 0 || stats.totalShots > 0 || stats.totalPayout > 0)
+  const activeAmmo =
+    FISHING_AMMO_OPTIONS.find((option) => option.costPerShot === betPerShot) ||
+    getFishingAmmoByLevel(cannonLevel)
+  const canSettle =
+    phase === 'playing' && (sessionBalance > 0 || stats.totalShots > 0 || stats.totalPayout > 0)
   const canSubmitTopUp =
-    phase === 'playing' && sessionBalance < betPerShot && topUpValid && balance >= selectedTopUp && !session.topUpLoading
+    phase === 'playing' &&
+    sessionBalance < betPerShot &&
+    topUpValid &&
+    balance >= selectedTopUp &&
+    !session.topUpLoading
   useGameLeaveGuard(
     phase === 'playing',
-    '本局尚未收網結算，離開頁面可能會中斷目前捕魚流程。請先按「收網結算」將餘額回到錢包。',
+    '本局尚未收網結算，離開頁面可能會中斷目前捕魚流程。請先按「收網結算」將餘額回到錢包。'
   )
 
   useEffect(() => {
@@ -272,7 +286,6 @@ export default function Fishing() {
 
   return (
     <AppShell>
-
       <main className="fishing-redgold-shell" data-style="red-gold-deep-sea">
         <div className="fishing-hero-shell">
           <div className="fishing-hero-copy">
@@ -306,19 +319,27 @@ export default function Fishing() {
                 <div className="fishing-hud">
                   <div className="fishing-hud__metric">
                     <span className="fishing-hud__label">本局餘額</span>
-                    <span className="fishing-hud__value tabular-nums">{sessionBalance.toLocaleString()}</span>
+                    <span className="fishing-hud__value tabular-nums">
+                      {sessionBalance.toLocaleString()}
+                    </span>
                   </div>
                   <div className="fishing-hud__metric">
                     <span className="fishing-hud__label">累積派彩</span>
-                    <span className="fishing-hud__value tabular-nums">{stats.totalPayout.toLocaleString()}</span>
+                    <span className="fishing-hud__value tabular-nums">
+                      {stats.totalPayout.toLocaleString()}
+                    </span>
                   </div>
                   <div className="fishing-hud__metric">
                     <span className="fishing-hud__label">已發射</span>
-                    <span className="fishing-hud__value tabular-nums">{stats.totalShots.toLocaleString()} 發</span>
+                    <span className="fishing-hud__value tabular-nums">
+                      {stats.totalShots.toLocaleString()} 發
+                    </span>
                   </div>
                   <div className="fishing-hud__metric">
                     <span className="fishing-hud__label">捕獲數</span>
-                    <span className="fishing-hud__value tabular-nums">{stats.caughtCount.toLocaleString()} 尾</span>
+                    <span className="fishing-hud__value tabular-nums">
+                      {stats.caughtCount.toLocaleString()} 尾
+                    </span>
                   </div>
                   {roundProfit !== null && (
                     <div className="fishing-hud__metric">
@@ -326,146 +347,189 @@ export default function Fishing() {
                       <span
                         className={`fishing-hud__value tabular-nums ${roundProfit >= 0 ? 'text-emerald-300' : 'text-red-300'}`}
                       >
-                        {roundProfit >= 0 ? `+${roundProfit.toLocaleString()}` : roundProfit.toLocaleString()}
+                        {roundProfit >= 0
+                          ? `+${roundProfit.toLocaleString()}`
+                          : roundProfit.toLocaleString()}
                       </span>
                     </div>
                   )}
                   <div className="fishing-hud__metric fishing-hud__metric--wide">
                     <span className="fishing-hud__label">炮台資訊</span>
-                    <span className="fishing-hud__value">Lv {cannonLevel} / 每發 {betPerShot}</span>
-                  </div>
-                </div>
-
-                <div ref={fullscreenTargetRef} className={`fishing-fullscreen-surface ${isFullscreen ? 'fishing-game--fullscreen' : ''}`}>
-                  <div className="fishing-stage-card">
-                  <div className="fishing-stage-marquee" aria-label="捕魚桌狀態">
-                    <span>深海戰場</span>
-                    <strong>{bossActive ? '首領追獵中' : 'Lucky Fishing'}</strong>
-                    <span className={error && phase === 'playing' ? 'is-alert' : bossActive && phase === 'playing' ? 'is-boss' : ''}>
-                      {error && phase === 'playing'
-                        ? error
-                        : bossActive && phase === 'playing'
-                          ? '彩金鯨王出沒'
-                          : phase === 'settling'
-                            ? '結算中'
-                            : '手動瞄準'}
+                    <span className="fishing-hud__value">
+                      Lv {cannonLevel} / 每發 {betPerShot}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setPerfMode((v) => !v)}
-                      aria-pressed={perfMode}
-                      className="fishing-hud__perf fishing-stage-marquee__perf"
-                      title="切換效能模式"
-                    >
-                      效能 {perfMode ? '開' : '關'}
-                    </button>
-                  </div>
-                  <div className="fishing-stage-frame">
-                    <FishingFullscreenButton
-                      isFullscreen={isFullscreen}
-                      disabled={!fullscreenSupported}
-                      message={fullscreenMessage}
-                      onToggle={handleToggleFullscreen}
-                    />
-                    <Suspense
-                      fallback={
-                        <div className="fishing-arena grid place-items-center">
-                          <p className="brand-title text-xl font-black text-yellow-100">載入捕魚桌中...</p>
-                        </div>
-                      }
-                    >
-                      <FishingCanvas
-                        phase={phase}
-                        betPerShot={betPerShot}
-                        cannonLevel={cannonLevel}
-                      ammoTone={activeAmmo.tone}
-                        fishTable={session.fishTable}
-                        fire={handleFire}
-                        play={play}
-                        perfMode={perfMode}
-                        registerResults={(fn) => {
-                          arenaResultsRef.current = fn
-                        }}
-                        onCatch={handleCatch}
-                        onBossChange={setBossActive}
-                      />
-                    </Suspense>
-                    <FishingControlDock
-                      activeAmmo={activeAmmo}
-                      ammoOptions={FISHING_AMMO_OPTIONS}
-                      cannonLevel={cannonLevel}
-                      ammoTone={activeAmmo.tone}
-                      canSettle={canSettle}
-                      disabledReason={canSettle ? '' : '目前沒有可結算的本局餘額或射擊紀錄'}
-                      isSettling={phase === 'settling'}
-                      onAmmoSelect={handleAmmoSelect}
-                      onSettle={handleEnd}
-                    />
-                  </div>
-                  {error && phase === 'playing' && (
-                    <div className="fishing-api-alert" role="status">
-                      {error.includes('餘額') ? '餘額不足，請先加值或降低彈藥額度。' : error}
-                    </div>
-                  )}
-                  {fullscreenMessage && (
-                    <div className="fishing-api-alert fishing-api-alert--info" role="status">
-                      {fullscreenMessage}
-                    </div>
-                  )}
-                  <div className="fishing-stage-footlights" aria-hidden="true">
-                    <span />
-                    <span />
-                    <span />
-                    <span />
-                    <span />
                   </div>
                 </div>
 
-                {isTopUpModalOpen && phase === 'playing' && (
-                  <div className="fishing-topup-modal" role="dialog" aria-modal="true" aria-labelledby="fishing-topup-title">
-                    <div className="fishing-topup-modal__backdrop" onClick={() => setIsTopUpModalOpen(false)} />
-                    <div className="fishing-topup-modal__panel">
+                <div
+                  ref={fullscreenTargetRef}
+                  className={`fishing-fullscreen-surface ${isFullscreen ? 'fishing-game--fullscreen' : ''}`}
+                >
+                  <div className="fishing-stage-card">
+                    <div className="fishing-stage-marquee" aria-label="捕魚桌狀態">
+                      <span>深海戰場</span>
+                      <strong>{bossActive ? '首領追獵中' : 'Lucky Fishing'}</strong>
+                      <span
+                        className={
+                          error && phase === 'playing'
+                            ? 'is-alert'
+                            : bossActive && phase === 'playing'
+                              ? 'is-boss'
+                              : ''
+                        }
+                      >
+                        {error && phase === 'playing'
+                          ? error
+                          : bossActive && phase === 'playing'
+                            ? '彩金鯨王出沒'
+                            : phase === 'settling'
+                              ? '結算中'
+                              : '手動瞄準'}
+                      </span>
                       <button
                         type="button"
-                        className="fishing-topup-modal__close"
-                        onClick={() => setIsTopUpModalOpen(false)}
-                        aria-label="關閉臨時加值"
+                        onClick={() => setPerfMode((v) => !v)}
+                        aria-pressed={perfMode}
+                        className="fishing-hud__perf fishing-stage-marquee__perf"
+                        title="切換效能模式"
                       >
-                        ×
+                        效能 {perfMode ? '開' : '關'}
                       </button>
-                      <span className="fishing-topup-modal__eyebrow">Lucky Fishing</span>
-                      <h3 id="fishing-topup-title">臨時加值</h3>
-                      <p>本局可用額度已不足以發射目前彈藥，請從錢包加入本局後繼續遊玩。</p>
-                      <label className="fishing-topup-modal__field">
-                        <span>加值金額</span>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={topUpText}
-                          onChange={(e) => setTopUpText(e.target.value.replace(/\D/g, '').slice(0, 7))}
-                          aria-label="臨時加值金額"
+                    </div>
+                    <div className="fishing-stage-frame">
+                      <FishingFullscreenButton
+                        isFullscreen={isFullscreen}
+                        disabled={!fullscreenSupported}
+                        message={fullscreenMessage}
+                        onToggle={handleToggleFullscreen}
+                      />
+                      <Suspense
+                        fallback={
+                          <div className="fishing-arena grid place-items-center">
+                            <p className="brand-title text-xl font-black text-yellow-100">
+                              載入捕魚桌中...
+                            </p>
+                          </div>
+                        }
+                      >
+                        <FishingCanvas
+                          phase={phase}
+                          betPerShot={betPerShot}
+                          cannonLevel={cannonLevel}
+                          ammoTone={activeAmmo.tone}
+                          fishTable={session.fishTable}
+                          fire={handleFire}
+                          play={play}
+                          perfMode={perfMode}
+                          registerResults={(fn) => {
+                            arenaResultsRef.current = fn
+                          }}
+                          onCatch={handleCatch}
+                          onBossChange={setBossActive}
                         />
-                      </label>
-                      <div className="fishing-topup-modal__wallet">錢包餘額：{balance.toLocaleString()}</div>
-                      {balance < selectedTopUp && <div className="fishing-topup-modal__error">錢包餘額不足</div>}
-                      <div className="fishing-topup-modal__actions">
-                        <button type="button" className="fishing-topup-modal__cancel" onClick={() => setIsTopUpModalOpen(false)}>
-                          取消
-                        </button>
-                        <button type="button" className="fishing-topup-modal__submit" onClick={handleTopUp} disabled={!canSubmitTopUp}>
-                          {session.topUpLoading ? '加值中' : '加入本局'}
-                        </button>
+                      </Suspense>
+                    </div>
+                    <div className="fishing-stage-controls">
+                      <FishingControlDock
+                        activeAmmo={activeAmmo}
+                        ammoOptions={FISHING_AMMO_OPTIONS}
+                        cannonLevel={cannonLevel}
+                        ammoTone={activeAmmo.tone}
+                        canSettle={canSettle}
+                        disabledReason={canSettle ? '' : '目前沒有可結算的本局餘額或射擊紀錄'}
+                        isSettling={phase === 'settling'}
+                        isAmmoLocked={phase === 'playing' || phase === 'settling'}
+                        onSettle={handleEnd}
+                      />
+                    </div>
+                    {error && phase === 'playing' && (
+                      <div className="fishing-api-alert" role="status">
+                        {error.includes('餘額') ? '餘額不足，請先加值或收網結算。' : error}
                       </div>
+                    )}
+                    {fullscreenMessage && (
+                      <div className="fishing-api-alert fishing-api-alert--info" role="status">
+                        {fullscreenMessage}
+                      </div>
+                    )}
+                    <div className="fishing-stage-footlights" aria-hidden="true">
+                      <span />
+                      <span />
+                      <span />
+                      <span />
+                      <span />
                     </div>
                   </div>
-                )}
-                </div>
 
+                  {isTopUpModalOpen && phase === 'playing' && (
+                    <div
+                      className="fishing-topup-modal"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="fishing-topup-title"
+                    >
+                      <div
+                        className="fishing-topup-modal__backdrop"
+                        onClick={() => setIsTopUpModalOpen(false)}
+                      />
+                      <div className="fishing-topup-modal__panel">
+                        <button
+                          type="button"
+                          className="fishing-topup-modal__close"
+                          onClick={() => setIsTopUpModalOpen(false)}
+                          aria-label="關閉臨時加值"
+                        >
+                          ×
+                        </button>
+                        <span className="fishing-topup-modal__eyebrow">Lucky Fishing</span>
+                        <h3 id="fishing-topup-title">臨時加值</h3>
+                        <p>本局可用額度已不足以發射目前彈藥，請從錢包加入本局後繼續遊玩。</p>
+                        <label className="fishing-topup-modal__field">
+                          <span>加值金額</span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={topUpText}
+                            onChange={(e) =>
+                              setTopUpText(e.target.value.replace(/\D/g, '').slice(0, 7))
+                            }
+                            aria-label="臨時加值金額"
+                          />
+                        </label>
+                        <div className="fishing-topup-modal__wallet">
+                          錢包餘額：{balance.toLocaleString()}
+                        </div>
+                        {balance < selectedTopUp && (
+                          <div className="fishing-topup-modal__error">錢包餘額不足</div>
+                        )}
+                        <div className="fishing-topup-modal__actions">
+                          <button
+                            type="button"
+                            className="fishing-topup-modal__cancel"
+                            onClick={() => setIsTopUpModalOpen(false)}
+                          >
+                            取消
+                          </button>
+                          <button
+                            type="button"
+                            className="fishing-topup-modal__submit"
+                            onClick={handleTopUp}
+                            disabled={!canSubmitTopUp}
+                          >
+                            {session.topUpLoading ? '加值中' : '加入本局'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </>
             ) : (
               <div className="fishing-lobby luxury-panel grid min-h-[420px] place-items-center gap-5 rounded p-6 text-center">
                 {phase === 'loading' ? (
-                  <p className="brand-title text-xl font-black text-yellow-100">讀取捕魚資料中...</p>
+                  <p className="brand-title text-xl font-black text-yellow-100">
+                    讀取捕魚資料中...
+                  </p>
                 ) : phase === 'settled' && settleResult ? (
                   <FishingSettlementPanel
                     settleResult={settleResult}
@@ -482,15 +546,21 @@ export default function Fishing() {
                 ) : (
                   <div className="grid w-full max-w-md gap-5">
                     <div>
-                      <p className="gold-muted text-xs font-black uppercase tracking-[0.3em]">進場設定</p>
-                      <h3 className="brand-title mt-1 text-3xl font-black text-yellow-100">進入漁場</h3>
+                      <p className="gold-muted text-xs font-black uppercase tracking-[0.3em]">
+                        進場設定
+                      </p>
+                      <h3 className="brand-title mt-1 text-3xl font-black text-yellow-100">
+                        進入漁場
+                      </h3>
                       <p className="mt-2 text-sm font-bold text-yellow-100/64">
-                        輸入本局要帶入漁場的星幣並選擇彈藥；子彈面額與砲台進場後固定，收網結算後可重新選擇。
+                        彈藥與砲台進場後整局固定，收網結算後可重新選擇。
                       </p>
                     </div>
 
                     <div className="grid gap-2 text-left">
-                      <p className="gold-muted text-xs font-black uppercase tracking-[0.2em]">進場金額</p>
+                      <p className="gold-muted text-xs font-black uppercase tracking-[0.2em]">
+                        進場金額
+                      </p>
                       <div className="grid grid-cols-4 gap-2">
                         {BUYIN_TIERS.map((option) => (
                           <button
@@ -512,23 +582,30 @@ export default function Fishing() {
                         type="text"
                         inputMode="numeric"
                         value={buyInText}
-                        onChange={(e) => setBuyInText(e.target.value.replace(/\D/g, '').slice(0, 7))}
+                        onChange={(e) =>
+                          setBuyInText(e.target.value.replace(/\D/g, '').slice(0, 7))
+                        }
                         placeholder={`可輸入 ${BUYIN_MIN.toLocaleString()} 到 ${BUYIN_MAX.toLocaleString()}`}
                         aria-label="自訂進場金額"
                         className={[
                           'min-h-11 rounded border bg-red-950/70 px-3 text-sm font-black text-yellow-100 outline-none transition',
-                          buyInValid ? 'border-yellow-200/20 focus:border-yellow-200/70' : 'border-red-400/50',
+                          buyInValid
+                            ? 'border-yellow-200/20 focus:border-yellow-200/70'
+                            : 'border-red-400/50',
                         ].join(' ')}
                       />
                       {!buyInValid && (
                         <p className="text-[11px] font-bold text-red-300">
-                          進場金額需介於 {BUYIN_MIN.toLocaleString()} 到 {BUYIN_MAX.toLocaleString()} 星幣。
+                          進場金額需介於 {BUYIN_MIN.toLocaleString()} 到{' '}
+                          {BUYIN_MAX.toLocaleString()} 星幣。
                         </p>
                       )}
                     </div>
 
                     <div className="grid gap-2 text-left">
-                      <p className="gold-muted text-xs font-black uppercase tracking-[0.2em]">選擇彈藥（遊戲中可切換）</p>
+                      <p className="gold-muted text-xs font-black uppercase tracking-[0.2em]">
+                        選擇彈藥（進場後整局固定）
+                      </p>
                       <div className="grid grid-cols-3 gap-2">
                         {FISHING_AMMO_OPTIONS.map((option) => (
                           <button
@@ -545,12 +622,13 @@ export default function Fishing() {
                             title={`${option.description}，每發 ${option.costPerShot.toLocaleString()} 星幣`}
                           >
                             {option.badge}・{option.label}
-                            <span className="block text-[11px] font-bold opacity-80">{option.costPerShot.toLocaleString()} / 發</span>
+                            <span className="block text-[11px] font-bold opacity-80">
+                              {option.costPerShot.toLocaleString()} / 發
+                            </span>
                           </button>
                         ))}
                       </div>
                     </div>
-
 
                     <button
                       type="button"
@@ -565,17 +643,23 @@ export default function Fishing() {
                           : `\u9032\u5165\u6f01\u5834\uff0c\u5e36\u5165 ${selectedBuyIn.toLocaleString()} \u661f\u5e63`}
                     </button>
                     {error && (
-                      <p className="rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">{error}</p>
+                      <p className="rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">
+                        {error}
+                      </p>
                     )}
                   </div>
                 )}
-
               </div>
             )}
           </div>
 
           <aside className="fishing-side-panel grid gap-4 content-start">
-            <MetricCard label="可用星幣" value={walletLoading ? '同步中' : balance.toLocaleString()} caption="進場前請確認錢包餘額。" tone="light" />
+            <MetricCard
+              label="可用星幣"
+              value={walletLoading ? '同步中' : balance.toLocaleString()}
+              caption="進場前請確認錢包餘額。"
+              tone="light"
+            />
             <GameRuleCard
               title="捕魚機規則"
               subtitle="了解進場金額、子彈面額、炮台傷害與收網結算。"
@@ -593,26 +677,19 @@ export default function Fishing() {
               <div className="mt-3 grid gap-2">
                 {FISHING_DISPLAY_SPECIES.map((fish) => (
                   <div key={fish.id} className="fishing-species-row">
-                    <span className="fishing-species-swatch" style={{ background: fish.swatch }} aria-hidden="true" />
+                    <span
+                      className="fishing-species-swatch"
+                      style={{ background: fish.swatch }}
+                      aria-hidden="true"
+                    />
                     <div>
                       <strong>{fish.name}</strong>
-                      <small>{fish.rarity} / {fish.multiplier}</small>
+                      <small>
+                        {fish.rarity} / {fish.multiplier}
+                      </small>
                       <p>{fish.description}</p>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="fishing-skill-card luxury-panel-soft p-4">
-              <p className="gold-muted text-xs font-black uppercase tracking-[0.24em]">技能</p>
-              <h3 className="brand-title mt-1 text-xl font-black text-yellow-100">技能面板</h3>
-              <div className="fishing-skill-grid mt-3">
-                {FISHING_SKILLS.map((skill) => (
-                  <button key={skill.id} type="button" className={`fishing-skill-button is-${skill.tone}`} disabled>
-                    <strong>{skill.label}</strong>
-                    <span>{skill.status}</span>
-                  </button>
                 ))}
               </div>
             </div>
@@ -620,7 +697,10 @@ export default function Fishing() {
         </section>
 
         <section className="fishing-bottom-info" aria-label="捕魚機補充資訊">
-          <FishingFishInfoPanel betPerShot={selectedBet} />
+          <FishingFishInfoPanel
+            betPerShot={betPerShot || selectedBet}
+            fishTable={session.fishTable}
+          />
         </section>
       </main>
     </AppShell>

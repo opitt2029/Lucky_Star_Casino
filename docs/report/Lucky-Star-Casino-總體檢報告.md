@@ -1,5 +1,15 @@
 # 幸運星幣城（Lucky Star Casino）— 系統總體檢報告
 
+> ### 📌 這是交付快照，不是現況文件（2026-07-13 標註）
+>
+> 本報告是 **2026-06 中旬的交付版本**（同名 `.html`/`.pdf` 已匯出、已提交），內容凍結在當時，
+> **之後不再隨程式碼更新**。其後專案有大量演進——ADR-007/009、T-090 壓測實跑與效能調校、
+> 全容器化、契約單一來源、鑽石/商城/儲值、認證強化規劃等——本報告皆未涵蓋。
+>
+> 要查**現況**請看：[`docs/architecture.md`](../architecture.md)（架構）、
+> [`docs/PROJECT_BASE_EXPLANATION.md`](../PROJECT_BASE_EXPLANATION.md)（功能總覽）、
+> `AUDIT_REPORT.md` 附錄 A（逐項進度，自動產生）、`CHANGELOG.md`（最近改了什麼）。
+
 > 產出日期：2026-06-12 ｜ 範圍：全專案除錯體檢、系統工作流程（Mermaid）、前端功能導覽（標註截圖）
 > 同資料夾的 `Lucky-Star-Casino-總體檢報告.html` 可直接用瀏覽器開啟 → 列印 → 另存 PDF。
 
@@ -169,7 +179,7 @@ sequenceDiagram
     M-->>FE: accessToken（15 分）+ refreshToken
     Note over FE,GW: 之後每個請求帶 Authorization: Bearer
     FE->>GW: 任意 API 請求
-    GW->>RD: 查 JWT 黑名單 auth:blacklist:{jti}
+    GW->>RD: 查 JWT 黑名單 jwt:blacklist:{jti}
     Note over GW,RD: fail-closed：Redis 故障一律視同已撤銷
     GW->>GW: 驗 HMAC-SHA256 簽章
     GW->>GW: 注入 X-User-Id / X-User-Role

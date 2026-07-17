@@ -1,6 +1,6 @@
 import api from './api'
 
-const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true'
+const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
 const MOCK_DIAMOND_KEY = 'lucky-star-diamond-wallet-v1'
 const DIAMOND_EXCHANGE_RATE = 20
 

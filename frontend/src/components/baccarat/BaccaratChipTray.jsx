@@ -1,4 +1,4 @@
-const chips = [100, 200, 500, 1000, 2000, 3000, 5000]
+﻿const chips = [100, 200, 500, 1000, 2000, 3000, 5000]
 
 export default function BaccaratChipTray({
   amount,
@@ -17,7 +17,7 @@ export default function BaccaratChipTray({
   onSubmit,
 }) {
   return (
-    <section className="baccarat-chip-tray" aria-label="下注操作列">
+    <section className="baccarat-chip-tray" aria-label="下注控制列">
       <div className="baccarat-chip-tray__chips">
         {chips.map((chip) => (
           <button
@@ -26,6 +26,7 @@ export default function BaccaratChipTray({
             onClick={() => onChipSelect(chip)}
             disabled={disabled}
             className={['baccarat-chip', Number(amount) === chip ? 'baccarat-chip--selected' : ''].join(' ')}
+            aria-pressed={Number(amount) === chip}
           >
             {chip.toLocaleString()}
           </button>
@@ -53,10 +54,10 @@ export default function BaccaratChipTray({
             清除下注
           </button>
           <button type="button" onClick={onRepeat} disabled={disabled || repeatDisabled} className="baccarat-secondary-button">
-            重複上局
+            重押
           </button>
           <button type="button" onClick={onDouble} disabled={disabled || doubleDisabled} className="baccarat-secondary-button">
-            加倍下注
+            加倍
           </button>
           <button type="button" onClick={onSubmit} disabled={!canSubmit} className="baccarat-action-button">
             {submitLabel}

@@ -1,8 +1,7 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import AppShell from '../components/AppShell'
 import GameRuleCard from '../components/GameRuleCard'
-import MetricCard from '../components/MetricCard'
 import BaccaratRoadmap from '../components/BaccaratRoadmap'
 import BaccaratBettingMat from '../components/baccarat/BaccaratBettingMat'
 import BaccaratChipTray from '../components/baccarat/BaccaratChipTray'
@@ -21,10 +20,12 @@ import { CoinRainPro, RedEnvelopeRain } from '../casino-fx/fx/FallRain'
 import BrushBanner from '../casino-fx/fx/BrushBanner'
 import { announcePlayerWin } from '../casino-fx/announce/announceBus'
 import { useGameLeaveGuard } from '../hooks/useGameLeaveGuard'
+import '../styles/games/baccarat.css'
 
 const SUIT_BY_SYMBOL = { '♠': 'spade', '♥': 'heart', '♦': 'diamond', '♣': 'club' }
 const MIN_BET = 100
 const MAX_BET = 5000
+const DEAL_STEP_DELAY_MS = 260
 const SQUEEZE_STORAGE_KEY = 'lucky-star-baccarat-squeeze-v1'
 const initialBets = { Player: 0, Banker: 0, Tie: 0 }
 
@@ -81,6 +82,26 @@ function buildBets(selectedBet, amount) {
   return { ...initialBets, [selectedBet]: Number(amount) || 0 }
 }
 
+function waitForDealStep() {
+  return new Promise((resolve) => window.setTimeout(resolve, DEAL_STEP_DELAY_MS))
+}
+
+function buildHiddenCards(count) {
+  return Array.from({ length: count }, () => null)
+}
+
+function buildDealSteps(playerCards, bankerCards) {
+  const steps = [
+    { side: 'player', count: 1, message: '閒家第一張入桌' },
+    { side: 'banker', count: 1, message: '莊家第一張入桌' },
+    { side: 'player', count: 2, message: '閒家第二張入桌' },
+    { side: 'banker', count: 2, message: '莊家第二張入桌' },
+    { side: 'player', count: 3, message: '閒家補牌' },
+    { side: 'banker', count: 3, message: '莊家補牌' },
+  ]
+
+  return steps.filter((step) => (step.side === 'player' ? playerCards.length : bankerCards.length) >= step.count)
+}
 export default function Baccarat() {
   const dispatch = useDispatch()
   const balance = useSelector((state) => state.wallet.balance)
@@ -105,7 +126,13 @@ export default function Baccarat() {
   const [squeezeMode, setSqueezeModeState] = useState(() => getSqueezeMode(player?.id))
   const [concealed, setConcealed] = useState(false)
   const [revealedCount, setRevealedCount] = useState(0)
+  const [dealingStep, setDealingStep] = useState('')
+  const [dealAnimationSeed, setDealAnimationSeed] = useState(1)
+  const [chipFlight, setChipFlight] = useState({ betType: '', nonce: 0 })
+  const [selectedSideBets, setSelectedSideBets] = useState([])
   const pendingRef = useRef(null)
+  const stageRef = useRef(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const [burstTrigger, setBurstTrigger] = useState(0)
   const [coinTrigger, setCoinTrigger] = useState(0)
   const [coinDensity, setCoinDensity] = useState('light')
@@ -120,6 +147,17 @@ export default function Baccarat() {
     setSqueezeModeState(getSqueezeMode(player?.id))
   }, [player?.id])
 
+  useEffect(() => {
+    const handleFullscreenChange = () => setIsFullscreen(document.fullscreenElement === stageRef.current)
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  }, [])
+
+  useEffect(() => {
+    document.body.classList.toggle('baccarat-fullscreen-active', isFullscreen)
+    return () => document.body.classList.remove('baccarat-fullscreen-active')
+  }, [isFullscreen])
+
   const numericBetAmount = useMemo(() => Number(betAmount), [betAmount])
   const amountInRange = Number.isFinite(numericBetAmount) && numericBetAmount >= MIN_BET && numericBetAmount <= MAX_BET
   const notEnoughBalance = amountInRange && balance < numericBetAmount
@@ -132,7 +170,7 @@ export default function Baccarat() {
   const submitLabel = locked ? '發牌中...' : notEnoughBalance ? '星幣不足' : phase === 'settled' ? '開始下一局' : '開始發牌'
   const activeRoundBet = roundBet || (selectedBet ? { selectedBet, amount: numericBetAmount, rebate: null } : null)
   const trayHint = (() => {
-    if (!selectedBet) return '請先點選 Player、Tie 或 Banker 下注區。'
+    if (!selectedBet) return '請先點選閒家、和局或莊家下注區；也可以按開始發牌查看提示。'
     if (!amountInRange) return `下注金額需介於 ${MIN_BET.toLocaleString()} ~ ${MAX_BET.toLocaleString()} 星幣。`
     if (notEnoughBalance) return '星幣不足，無法開始發牌。'
     if (doubleAmount > MAX_BET) return '加倍後會超過單局 5,000 星幣上限。'
@@ -140,6 +178,7 @@ export default function Baccarat() {
     if (phase === 'squeezing') return '請先完成咪牌或直接開牌。'
     return '點擊下注區會把目前籌碼套用到該區；目前後端維持單區下注。'
   })()
+  const dealerCue = dealingStep || resultMessage || trayHint
 
   const applyResult = (payload) => {
     const { result, nextWinner, profit, betArea, amount } = payload
@@ -167,6 +206,7 @@ export default function Baccarat() {
     setHistory((prev) => [...prev, { winner: nextWinner, roundId: result.roundId }].slice(-50))
     setConcealed(false)
     setPhase('settled')
+    setDealingStep('')
     pendingRef.current = null
 
     if (profit > 0) {
@@ -219,6 +259,7 @@ export default function Baccarat() {
 
   const handlePlaceBet = (betType) => {
     if (locked) return
+    setChipFlight((prev) => ({ betType, nonce: prev.nonce + 1 }))
     const nextAmount = Number.isFinite(numericBetAmount) ? numericBetAmount : 0
     setSelectedBet(betType)
     setBets(buildBets(betType, nextAmount))
@@ -235,6 +276,7 @@ export default function Baccarat() {
 
   const handleChipSelect = (amount) => {
     if (locked) return
+    if (selectedBet) setChipFlight((prev) => ({ betType: selectedBet, nonce: prev.nonce + 1 }))
     setBetAmount(String(amount))
     if (selectedBet) setBets(buildBets(selectedBet, amount))
     if (selectedBet) setPhase('betting')
@@ -245,6 +287,7 @@ export default function Baccarat() {
     if (locked) return
     setSelectedBet('')
     setBets(initialBets)
+    setSelectedSideBets([])
     setPhase('idle')
     setResultMessage('已清除本局下注。')
     soundEngine.play('click')
@@ -298,6 +341,8 @@ export default function Baccarat() {
     setBankerScore(null)
     setConcealed(false)
     setRevealedCount(0)
+    setDealingStep('荷官洗牌，準備發牌')
+    setDealAnimationSeed(Math.floor(Math.random() * 1000000) + 1)
     pendingRef.current = null
     soundEngine.play('chip')
 
@@ -311,9 +356,18 @@ export default function Baccarat() {
       const parsedPlayerCards = (result.playerCards || []).map(parseCard)
       const parsedBankerCards = (result.bankerCards || []).map(parseCard)
 
-      parsedPlayerCards.concat(parsedBankerCards).forEach((_, index) => {
-        soundEngine.play('cardDeal', { delay: index * 0.13 })
-      })
+      const dealSteps = buildDealSteps(parsedPlayerCards, parsedBankerCards)
+      for (const step of dealSteps) {
+        setDealingStep(step.message)
+        soundEngine.play('cardDeal')
+        if (step.side === 'player') {
+          setPlayerCards(buildHiddenCards(step.count))
+        } else {
+          setBankerCards(buildHiddenCards(step.count))
+        }
+        await waitForDealStep()
+      }
+
       setPlayerCards(parsedPlayerCards)
       setBankerCards(parsedBankerCards)
 
@@ -322,6 +376,7 @@ export default function Baccarat() {
         setRevealedCount(0)
         setConcealed(true)
         setPhase('squeezing')
+        setDealingStep('')
         setResultMessage('長按牌面慢慢搓開，或點「直接開牌」。')
       } else {
         applyResult(payload)
@@ -330,10 +385,40 @@ export default function Baccarat() {
       setResultMessage(typeof error === 'string' ? error : '本局結算失敗，請稍後再試。')
       setRoundProfit(null)
       setRoundPayout(null)
+      setDealingStep('')
       setPhase(selectedBet ? 'betting' : 'idle')
     }
   }
 
+
+
+  const handleToggleSideBet = (sideBetId) => {
+    if (locked) return
+    setSelectedSideBets((prev) => (
+      prev.includes(sideBetId)
+        ? prev.filter((id) => id !== sideBetId)
+        : [...prev, sideBetId]
+    ))
+    soundEngine.play('click')
+  }
+
+  const handleClearSideBets = () => {
+    if (locked || selectedSideBets.length === 0) return
+    setSelectedSideBets([])
+    soundEngine.play('click')
+  }
+  const handleFullscreen = async () => {
+    if (!stageRef.current || !document.fullscreenEnabled) return
+    try {
+      if (document.fullscreenElement === stageRef.current) {
+        await document.exitFullscreen()
+      } else {
+        await stageRef.current.requestFullscreen()
+      }
+    } catch {
+      setResultMessage('目前瀏覽器無法切換全螢幕。')
+    }
+  }
   const handleRevealAll = () => {
     if (pendingRef.current) {
       soundEngine.play('cardFlip')
@@ -358,17 +443,26 @@ export default function Baccarat() {
       <BrushBanner trigger={banner.trigger} text={banner.text} level={banner.level} />
 
       <section className="baccarat-page">
+        <GameRuleCard title="百家樂規則" subtitle="查看點數計算、補牌、賠率與返水。" rules={baccaratRules} payouts={baccaratPayouts} />
         <div className="baccarat-main-grid">
-          <div className={['baccarat-table', phase === 'settled' ? 'baccarat-table--settled' : ''].join(' ')}>
+          <div
+            ref={stageRef}
+            className={[
+              'baccarat-table',
+              `baccarat-table--${phase}`,
+              phase === 'settled' ? 'baccarat-table--settled' : '',
+              isFullscreen ? 'baccarat-table--fullscreen' : '',
+            ].join(' ')}
+          >
             <BaccaratTableHeader
               phase={phase}
               balance={balance}
               roundCount={history.length}
               sessionProfit={sessionProfit}
               squeezeMode={squeezeMode}
-              concealed={concealed}
               onToggleSqueeze={toggleSqueezeMode}
-              onRevealAll={handleRevealAll}
+              onFullscreen={handleFullscreen}
+              isFullscreen={isFullscreen}
             />
             <BaccaratStatusBar
               phase={phase}
@@ -380,6 +474,9 @@ export default function Baccarat() {
             />
 
             <div className="baccarat-table-felt">
+              <div className="baccarat-dealer-cue" aria-live="polite">
+                <span>{dealerCue}</span>
+              </div>
               <div className="baccarat-duel-grid">
                 <BaccaratHandPanel
                   title="Banker"
@@ -390,12 +487,20 @@ export default function Baccarat() {
                   winner={winner}
                   winnerKey="Banker"
                   concealed={concealed}
+                  dealSeed={dealAnimationSeed}
                   onCardRevealed={() => setRevealedCount((n) => n + 1)}
                 />
 
-                <div className={['baccarat-vs-medallion', winner ? `is-${winner.toLowerCase()}` : ''].join(' ')} aria-hidden="true">
-                  <span>{winner ? BET_LABELS[winner]?.split(' ')[0] : 'VS'}</span>
-                  <small>{winner ? 'Winner' : 'Tie pays 8:1'}</small>
+                <div className="baccarat-duel-center">
+                  <div className={['baccarat-vs-medallion', winner ? `is-${winner.toLowerCase()}` : ''].join(' ')} aria-hidden="true">
+                    <span>{winner ? BET_LABELS[winner]?.split(' ')[0] : 'VS'}</span>
+                    <small>{winner ? '勝出' : '和局賠 8:1'}</small>
+                  </div>
+                  {concealed && (
+                    <button type="button" onClick={handleRevealAll} className="baccarat-squeeze-toggle baccarat-reveal-center-button">
+                      直接開牌
+                    </button>
+                  )}
                 </div>
 
                 <BaccaratHandPanel
@@ -407,6 +512,7 @@ export default function Baccarat() {
                   winner={winner}
                   winnerKey="Player"
                   concealed={concealed}
+                  dealSeed={dealAnimationSeed}
                   onCardRevealed={() => setRevealedCount((n) => n + 1)}
                 />
               </div>
@@ -416,9 +522,8 @@ export default function Baccarat() {
                 selectedBet={selectedBet}
                 disabled={locked}
                 onPlaceBet={handlePlaceBet}
+                chipFlight={chipFlight}
               />
-
-              <BaccaratSideBets />
 
               <BaccaratChipTray
                 amount={betAmount}
@@ -437,6 +542,19 @@ export default function Baccarat() {
                 onSubmit={handleDeal}
               />
 
+              <BaccaratSideBets
+                selectedSideBets={selectedSideBets}
+                disabled={locked}
+                phase={phase}
+                playerCards={playerCards}
+                bankerCards={bankerCards}
+                playerScore={playerScore}
+                bankerScore={bankerScore}
+                winner={winner}
+                onToggleSideBet={handleToggleSideBet}
+                onClearSideBets={handleClearSideBets}
+              />
+
               <BaccaratSettlementPanel
                 phase={phase}
                 winner={winner}
@@ -448,41 +566,14 @@ export default function Baccarat() {
                 rebate={roundBet?.rebate}
                 resultMessage={resultMessage}
                 roundId={roundId}
+                sideBetCount={selectedSideBets.length}
               />
             </div>
-          </div>
 
-          <aside className="baccarat-side-panel">
-            <MetricCard label="可用星幣" value={balance.toLocaleString()} caption="由 wallet-service 回傳結果更新" tone="light" />
-            <MetricCard
-              label="本局下注"
-              value={selectedBet ? BET_LABELS[selectedBet] : '-'}
-              caption={selectedBet ? `${formatCoins(numericBetAmount)} 星幣` : '尚未選擇下注區'}
-            />
-            <MetricCard
-              label="本局損益"
-              value={roundProfit === null ? '-' : `${roundProfit >= 0 ? '+' : '-'}${formatCoins(Math.abs(roundProfit))}`}
-              caption={roundBet?.rebate != null ? `返水 +${formatCoins(roundBet.rebate)}` : '結算後顯示派彩與返水'}
-              valueClass={roundProfit === null ? '' : roundProfit >= 0 ? 'text-emerald-300' : 'text-red-300'}
-            />
-            <MetricCard
-              label="本場損益"
-              value={sessionProfit === null ? '-' : `${sessionProfit >= 0 ? '+' : '-'}${formatCoins(Math.abs(sessionProfit))}`}
-              caption={sessionProfit === null ? '本次進場重新計算' : `本場共 ${history.length} 局`}
-              valueClass={sessionProfit === null ? '' : sessionProfit >= 0 ? 'text-emerald-300' : 'text-red-300'}
-            />
-            <BaccaratRoadmap history={history} />
-            <GameRuleCard title="百家樂規則" subtitle="查看點數計算、補牌、賠率與返水。" rules={baccaratRules} payouts={baccaratPayouts} />
-            <div className="baccarat-api-panel">
-              <p>Fairness</p>
-              <h3>公平性驗證</h3>
-              <div>
-                <span>發牌與派彩由 game-service 伺服器結算。</span>
-                <span>星幣餘額以 wallet-service 扣款、派彩與返水後的資料為準。</span>
-                <span>{roundId ? `本局 roundId：${roundId}` : '結算後可用 roundId 至遊戲紀錄核對。'}</span>
-              </div>
-            </div>
-          </aside>
+            <aside className="baccarat-side-panel">
+              <BaccaratRoadmap history={history} />
+            </aside>
+          </div>
         </div>
       </section>
     </AppShell>

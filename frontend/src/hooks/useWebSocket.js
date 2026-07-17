@@ -65,7 +65,7 @@ export function useWebSocket(subscriptions = {}) {
   const dispatch = useDispatch()
   const token = useSelector((state) => state.auth.accessToken)
   const wsUrl = import.meta.env.VITE_WS_URL || '/ws'
-  const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true'
+  const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
   const useMockWs = import.meta.env.VITE_USE_MOCK_WS === 'true' || useMockApi
   const enableRealtimeWs = import.meta.env.VITE_ENABLE_WS === 'true'
 

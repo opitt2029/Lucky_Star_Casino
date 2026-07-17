@@ -1,5 +1,5 @@
-﻿const phaseLabels = {
-  idle: '下注中',
+const phaseLabels = {
+  idle: '等待下注',
   betting: '下注中',
   dealing: '發牌中',
   squeezing: '等待咪牌',
@@ -12,9 +12,9 @@ export default function BaccaratTableHeader({
   roundCount,
   sessionProfit,
   squeezeMode,
-  concealed,
   onToggleSqueeze,
-  onRevealAll,
+  onFullscreen,
+  isFullscreen,
 }) {
   const sessionProfitText =
     sessionProfit === null
@@ -25,13 +25,15 @@ export default function BaccaratTableHeader({
     <header className="baccarat-table-header">
       <div className="baccarat-table-header__title">
         <p>VIP Table 08</p>
-        <h2>Baccarat <span>百家樂</span></h2>
+        <h2>
+          Baccarat <span>百家樂</span>
+        </h2>
       </div>
 
       <div className="baccarat-table-header__metrics">
         <div className="baccarat-table-header__status">
           <span>遊戲狀態</span>
-          <strong>{phaseLabels[phase] || '下注中'}</strong>
+          <strong>{phaseLabels[phase] || '等待下注'}</strong>
         </div>
         <div>
           <span>可用星幣</span>
@@ -56,13 +58,11 @@ export default function BaccaratTableHeader({
           className={['baccarat-squeeze-toggle', squeezeMode ? 'baccarat-squeeze-toggle--on' : ''].join(' ')}
           aria-pressed={squeezeMode}
         >
-          {squeezeMode ? '咪牌模式：開' : '咪牌模式：關'}
+          {squeezeMode ? '咪牌：開' : '咪牌：關'}
         </button>
-        {concealed && (
-          <button type="button" onClick={onRevealAll} className="baccarat-squeeze-toggle">
-            直接開牌
-          </button>
-        )}
+        <button type="button" onClick={onFullscreen} className="baccarat-squeeze-toggle" aria-pressed={isFullscreen}>
+          {isFullscreen ? '退出全螢幕' : '全螢幕'}
+        </button>
       </div>
     </header>
   )

@@ -1,4 +1,14 @@
-# Phase 6 — P2 加值功能
+# Phase 6 — P2 加值功能 ✅ 已完成
+
+> **完成摘要（2026-07-13 複核）**：四項全數完成。
+> - T-045 今日贏幣王：`rank:daily:winnings` ZSet。**只認 `sub_type=WIN`**——曾有 BUG-005，
+>   捕魚退款被記成 WIN 而灌水排行，已修（雷區 18）。
+> - T-054 異常玩家偵測：含 `GET /admin/alerts` 查詢。
+> - T-055 GM 發幣：`GmRewardService` 發 `wallet.credit.request`「指令」（`subType=GM_REWARD`），
+>   **絕不直接寫 wallet**（ADR-002）。
+> - T-073 排行榜廣播：notification-service 訂閱 `rank.update` → `/topic/rank`。
+>
+> 以下為當時的施工計畫，保留作歷史紀錄。
 
 > 含任務：T-045（今日贏幣王）、T-054（異常玩家偵測）、T-055（GM 發幣）、T-073（排行榜廣播）
 > P2 優先級，前置模組（Rank/Admin/Notification）齊全後再做。

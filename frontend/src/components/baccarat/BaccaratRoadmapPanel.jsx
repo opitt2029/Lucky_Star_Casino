@@ -3,27 +3,35 @@ import { useMemo, useState } from 'react'
 const ROWS = 6
 const MAX_HISTORY = 50
 const DOT_LABELS = { Banker: '莊', Player: '閒', Tie: '和' }
+const ROAD_TABS = [
+  ['bead', '珠盤路'],
+  ['big', '大路'],
+  ['eye', '大眼仔'],
+  ['small', '小路'],
+  ['cockroach', '曱甴路'],
+]
+const DERIVED_TITLES = { eye: '大眼仔', small: '小路', cockroach: '曱甴路' }
 
 function buildBigRoad(history) {
   const columns = []
   let lastWinner = null
-  for (const round of history) {
+  history.forEach((round) => {
     if (round.winner === 'Tie') {
-      const lastColumn = columns[columns.length - 1]
-      const lastCell = lastColumn?.[lastColumn.length - 1]
-      if (lastCell) lastCell.ties += 1
+      const column = columns[columns.length - 1]
+      const cell = column?.[column.length - 1]
+      if (cell) cell.ties += 1
       else columns.push([{ winner: 'Tie', ties: 0 }])
-      continue
+      return
     }
     if (round.winner !== lastWinner) {
       columns.push([{ winner: round.winner, ties: 0 }])
       lastWinner = round.winner
-    } else {
-      const column = columns[columns.length - 1]
-      if (column.length < ROWS) column.push({ winner: round.winner, ties: 0 })
-      else columns.push([{ winner: round.winner, ties: 0 }])
+      return
     }
-  }
+    const column = columns[columns.length - 1]
+    if (column.length < ROWS) column.push({ winner: round.winner, ties: 0 })
+    else columns.push([{ winner: round.winner, ties: 0 }])
+  })
   return columns
 }
 
@@ -44,11 +52,11 @@ function RoadDot({ winner, ties = 0, latest = false, small = false }) {
     <span
       className={[
         'baccarat-road-dot',
-        `baccarat-road-dot--${String(winner || '').toLowerCase()}`,
+        'baccarat-road-dot--' + String(winner || '').toLowerCase(),
         small ? 'baccarat-road-dot--small' : '',
         latest ? 'baccarat-road-dot--latest' : '',
       ].join(' ')}
-      title={DOT_LABELS[winner] || winner}
+      title={DOT_LABELS[winner] || '\u672a\u958b\u5c40'}
     >
       {DOT_LABELS[winner] || '-'}
       {ties > 0 && <i>{ties > 1 ? ties : ''}</i>}
@@ -60,7 +68,7 @@ function BeadPlate({ rounds }) {
   return (
     <div className="baccarat-road-grid baccarat-road-grid--bead">
       {rounds.map((round, index) => (
-        <RoadDot key={`${round.winner}-${index}`} winner={round.winner} latest={index === rounds.length - 1} small />
+        <RoadDot key={round.winner + '-' + (round.roundId || index)} winner={round.winner} latest={index === rounds.length - 1} small />
       ))}
     </div>
   )
@@ -73,13 +81,9 @@ function BigRoad({ columns }) {
         <div key={colIndex} className="baccarat-big-road__column">
           {Array.from({ length: ROWS }, (_, rowIndex) => (
             <span key={rowIndex} className="baccarat-big-road__cell">
-              {column[rowIndex] ? (
-                <RoadDot
-                  winner={column[rowIndex].winner}
-                  ties={column[rowIndex].ties}
-                  latest={colIndex === columns.length - 1 && rowIndex === column.length - 1}
-                />
-              ) : null}
+              {column[rowIndex] && (
+                <RoadDot winner={column[rowIndex].winner} ties={column[rowIndex].ties} latest={colIndex === columns.length - 1 && rowIndex === column.length - 1} />
+              )}
             </span>
           ))}
         </div>
@@ -88,16 +92,11 @@ function BigRoad({ columns }) {
   )
 }
 
-function DerivedRoadSkeleton({ title }) {
+function DerivedRoad({ title }) {
   return (
     <div className="baccarat-derived-road">
       <p>{title}</p>
-      <div>
-        {Array.from({ length: 36 }, (_, index) => (
-          <span key={index} />
-        ))}
-      </div>
-      {/* TODO: 補上大眼仔路 / 小路 / 蟑螂路的正式百家樂路單衍生演算法。 */}
+      <div>{Array.from({ length: 36 }, (_, index) => <span key={index} />)}</div>
     </div>
   )
 }
@@ -107,65 +106,33 @@ export default function BaccaratRoadmapPanel({ history = [] }) {
   const rounds = useMemo(() => history.slice(-MAX_HISTORY), [history])
   const bigRoad = useMemo(() => buildBigRoad(rounds), [rounds])
   const streak = useMemo(() => currentStreak(rounds), [rounds])
-
-  const tabs = [
-    { id: 'bead', label: '珠盤路' },
-    { id: 'big', label: '大路' },
-    { id: 'eye', label: '大眼仔' },
-    { id: 'small', label: '小路' },
-    { id: 'cockroach', label: '蟑螂路' },
-  ]
+  const counts = useMemo(() => ({
+    Banker: rounds.filter((round) => round.winner === 'Banker').length,
+    Player: rounds.filter((round) => round.winner === 'Player').length,
+    Tie: rounds.filter((round) => round.winner === 'Tie').length,
+  }), [rounds])
 
   return (
     <section className="baccarat-roadmap-panel">
-      <div className="baccarat-panel-heading">
-        <p>Roadmap</p>
-        <h3>路單</h3>
-      </div>
-
-      {streak.count >= 3 && (
-        <span className={['baccarat-roadmap-panel__streak', `is-${streak.winner?.toLowerCase()}`].join(' ')}>
-          {DOT_LABELS[streak.winner]} {streak.count} 連
-        </span>
-      )}
-
-      <div className="baccarat-roadmap-tabs" role="tablist" aria-label="百家樂路單類型">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-            className={activeTab === tab.id ? 'is-active' : ''}
-            role="tab"
-            aria-selected={activeTab === tab.id}
-          >
-            {tab.label}
-          </button>
+      <div className="baccarat-panel-heading"><p>路單</p><h3>路單分析</h3></div>
+      {streak.count >= 3 && <span className={'baccarat-roadmap-panel__streak is-' + streak.winner?.toLowerCase()}>{DOT_LABELS[streak.winner]} {streak.count} 連</span>}
+      <div className="baccarat-roadmap-tabs" role="tablist" aria-label="百家樂路單切換">
+        {ROAD_TABS.map(([id, label]) => (
+          <button key={id} type="button" onClick={() => setActiveTab(id)} className={activeTab === id ? 'is-active' : ''} role="tab" aria-selected={activeTab === id}>{label}</button>
         ))}
       </div>
-
       <div className="baccarat-roadmap-scroll">
         {rounds.length === 0 ? (
-          <p className="baccarat-roadmap-empty">開局後路單即時更新，最近 50 局會保留在本次進場。</p>
+          <p className="baccarat-roadmap-empty">尚無路單資料，完成第一局後會累積最近 50 局結果。</p>
         ) : activeTab === 'bead' ? (
           <BeadPlate rounds={rounds} />
         ) : activeTab === 'big' ? (
           <BigRoad columns={bigRoad} />
-        ) : activeTab === 'eye' ? (
-          <DerivedRoadSkeleton title="Big Eye Boy / 大眼仔路" />
-        ) : activeTab === 'small' ? (
-          <DerivedRoadSkeleton title="Small Road / 小路" />
         ) : (
-          <DerivedRoadSkeleton title="Cockroach Pig / 蟑螂路" />
+          <DerivedRoad title={DERIVED_TITLES[activeTab]} />
         )}
       </div>
-
-      <div className="baccarat-roadmap-summary">
-        <span>莊 {rounds.filter((round) => round.winner === 'Banker').length}</span>
-        <span>閒 {rounds.filter((round) => round.winner === 'Player').length}</span>
-        <span>和 {rounds.filter((round) => round.winner === 'Tie').length}</span>
-        <span>共 {rounds.length} 局</span>
-      </div>
+      <div className="baccarat-roadmap-summary"><span>莊 {counts.Banker}</span><span>閒 {counts.Player}</span><span>和 {counts.Tie}</span><span>合計 {rounds.length}</span></div>
     </section>
   )
 }

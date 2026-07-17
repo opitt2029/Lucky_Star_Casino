@@ -1,7 +1,7 @@
 import api from './api'
 import { mockApi } from './mockApi'
 
-const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true'
+const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
 
 // 封裝對 game-service（透過 Gateway）真實 API 的呼叫。
 // 玩家身分由 gateway 驗證 JWT 後以 X-User-Id 注入，前端只需帶 access token（api.js 已處理）。
