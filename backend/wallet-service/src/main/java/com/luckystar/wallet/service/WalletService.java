@@ -13,6 +13,7 @@ import com.luckystar.wallet.kafka.WalletCreditEvent;
 import com.luckystar.wallet.kafka.WalletDebitEvent;
 import com.luckystar.wallet.postgres.entity.Wallet;
 import com.luckystar.wallet.postgres.entity.WalletTransaction;
+import com.luckystar.wallet.postgres.repository.WalletDebitDao;
 import com.luckystar.wallet.postgres.repository.WalletRepository;
 import com.luckystar.wallet.postgres.repository.WalletTransactionRepository;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Slf4j
 @Service
@@ -29,6 +32,7 @@ public class WalletService {
 
     private final WalletRepository walletRepository;
     private final WalletTransactionRepository walletTransactionRepository;
+    private final WalletDebitDao walletDebitDao;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
 
@@ -47,97 +51,123 @@ public class WalletService {
         return new WalletBalanceResponse(balance, frozenAmount, availableBalance);
     }
 
+    /**
+     * 下注扣款（T-090 B2 改版：熱路徑 2 次 DB 往返，設計紀錄見
+     * docs/performance/T-090-B2-debit-roundtrip-design.md）。
+     *
+     * <p>冪等與防超扣語意與舊版（4 往返讀改寫）完全等價，差別只在原子性搬進 SQL 語句：
+     * <ol>
+     *   <li><b>往返 1</b>：條件 UPDATE 一次完成冪等預檢＋可用餘額守衛＋扣款＋version 遞增，
+     *       RETURNING 取回扣款後餘額；0 列＝冷路徑（冪等命中/404/餘額不足，補查區分，皆零副作用）。</li>
+     *   <li><b>往返 2</b>：INSERT 流水（ON CONFLICT 原子判定冪等鍵）；空＝極窄併發同鍵競態
+     *       （兩請求同時通過往返 1 預檢）→ 同交易內原地補償回沖、回查贏家紀錄回 idempotent=true。</li>
+     * </ol>
+     *
+     * <p>行為差異（有意為之）：debit 不再拋 ObjectOptimisticLockingFailureException——併發爭搶
+     * 由 wallets 行鎖序列化，後到者夠扣就成功、不夠拋 InsufficientBalanceException；併發同鍵
+     * 重複請求後到者回贏家結果而非 409。其他寫入方（credit/gift）仍走 JPA {@code @Version}，
+     * 本方法每次扣款 version+1，對它們的樂觀鎖防護不變。
+     */
     @Transactional(transactionManager = "postgresTransactionManager")
     public DebitResponse debit(DebitRequest request) {
-        // Step 1: idempotency check — return existing transaction without any side effects
-        var existing = walletTransactionRepository.findByIdempotencyKey(request.getIdempotencyKey());
-        if (existing.isPresent()) {
-            WalletTransaction tx = existing.get();
-            return DebitResponse.builder()
-                    .transactionId(tx.getId())
-                    .playerId(tx.getPlayerId())
-                    .amount(tx.getAmount())
-                    .balanceBefore(tx.getBalanceBefore())
-                    .balanceAfter(tx.getBalanceAfter())
-                    .idempotent(true)
-                    .build();
-        }
+        long amount = request.getAmount();
+        String key = request.getIdempotencyKey();
+        // subType 選填：未帶（如 game-service 下注）預設 BET，商城兌換帶 SHOP_PURCHASE
+        String subType = request.getSubType() != null ? request.getSubType() : "BET";
 
-        // Step 2: load wallet
-        Wallet wallet = walletRepository.findById(request.getPlayerId())
-                .orElseThrow(() -> new WalletNotFoundException(
-                        "Wallet not found for player: " + request.getPlayerId()));
-
-        // Step 3: balance guard — 以可用餘額（balance - frozenAmount）為準，凍結中的金額不可再下注
-        long available = wallet.getBalance() - wallet.getFrozenAmount();
-        if (available < request.getAmount()) {
+        // 往返 1：條件扣款（冪等預檢＋餘額守衛＋扣款＋version 遞增，單一原子語句）
+        var deducted = walletDebitDao.deductIfSufficientAndKeyUnused(request.getPlayerId(), amount, key);
+        if (deducted.isEmpty()) {
+            // 冷路徑（零副作用）：依序區分冪等命中 → 錢包不存在 → 餘額不足
+            var existing = walletTransactionRepository.findByIdempotencyKey(key);
+            if (existing.isPresent()) {
+                return toIdempotentResponse(existing.get(), request);
+            }
+            walletRepository.findById(request.getPlayerId())
+                    .orElseThrow(() -> new WalletNotFoundException(
+                            "Wallet not found for player: " + request.getPlayerId()));
             throw new InsufficientBalanceException("Insufficient balance");
         }
 
-        // Step 4-5: record and deduct
-        long balanceBefore = wallet.getBalance();
-        wallet.setBalance(wallet.getBalance() - request.getAmount());
+        long balanceAfter = deducted.get();
+        long balanceBefore = balanceAfter + amount;
 
-        // Step 6: persist wallet — ObjectOptimisticLockingFailureException propagates as-is → 409
-        walletRepository.save(wallet);
-
-        // Step 7: persist transaction record
-        WalletTransaction tx;
-        try {
-            WalletTransaction txToSave = WalletTransaction.builder()
-                    .playerId(request.getPlayerId())
-                    .type("DEBIT")
-                    // subType 選填：未帶（如 game-service 下注）預設 BET，商城兌換帶 SHOP_PURCHASE
-                    .subType(request.getSubType() != null ? request.getSubType() : "BET")
-                    .amount(request.getAmount())
-                    .balanceBefore(balanceBefore)
-                    .balanceAfter(wallet.getBalance())
-                    .idempotencyKey(request.getIdempotencyKey())
-                    .referenceId(request.getReferenceId())
-                    .build();
-            tx = walletTransactionRepository.save(txToSave);
-        } catch (DataIntegrityViolationException e) {
-            // Two concurrent requests with the same idempotencyKey both passed the Step 1 check.
-            // The DB UNIQUE constraint blocked the second insert — re-query and return the winner's record.
-            return walletTransactionRepository.findByIdempotencyKey(request.getIdempotencyKey())
-                    .map(winner -> DebitResponse.builder()
-                            .transactionId(winner.getId())
-                            .playerId(winner.getPlayerId())
-                            .amount(winner.getAmount())
-                            .balanceBefore(winner.getBalanceBefore())
-                            .balanceAfter(winner.getBalanceAfter())
-                            .idempotent(true)
-                            .build())
-                    .orElseThrow(() -> e); // should not happen: constraint fired, yet record not found
+        // 往返 2：寫流水；空＝併發同鍵競態（雙方都通過了往返 1 的 NOT EXISTS 預檢）
+        var txId = walletDebitDao.insertDebitTransaction(
+                request.getPlayerId(), subType, amount, balanceBefore, balanceAfter,
+                key, request.getReferenceId());
+        if (txId.isEmpty()) {
+            // 原地補償回沖（淨額歸零、不多寫流水），再回查贏家紀錄。不 rollback：
+            // debit 可能 join 外層交易（商城兌換），丟例外會把外層整筆拖垮。
+            walletDebitDao.restoreBalance(request.getPlayerId(), amount);
+            return walletTransactionRepository.findByIdempotencyKey(key)
+                    .map(tx -> toIdempotentResponse(tx, request))
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Idempotency conflict detected but winner transaction not found, key=" + key));
         }
 
-        // Step 8: publish Kafka event — best-effort, debit already committed
+        // 發 Kafka wallet.debit 事件 — best-effort。B2 後改在 commit 後發送：往返 1 起本交易
+        // 就持有 wallets 行鎖，若同步發送，broker 阻塞（producer max.block.ms 預設 60s）會拖住
+        // 該玩家行鎖、後續扣款全排隊；afterCommit 也順帶消除「外層交易回滾但事件已發出」的幽靈事件。
         try {
             WalletDebitEvent event = new WalletDebitEvent(
-                    tx.getId(),
-                    tx.getPlayerId(),
-                    tx.getAmount(),
-                    tx.getBalanceBefore(),
-                    tx.getBalanceAfter(),
-                    tx.getSubType(),
-                    tx.getIdempotencyKey(),
-                    tx.getReferenceId());
+                    txId.get(),
+                    request.getPlayerId(),
+                    amount,
+                    balanceBefore,
+                    balanceAfter,
+                    subType,
+                    key,
+                    request.getReferenceId());
             String payload = objectMapper.writeValueAsString(event);
-            kafkaTemplate.send("wallet.debit", String.valueOf(request.getPlayerId()), payload);
+            long transactionId = txId.get();
+            String kafkaKey = String.valueOf(request.getPlayerId());
+            Runnable publish = () -> {
+                try {
+                    kafkaTemplate.send("wallet.debit", kafkaKey, payload);
+                } catch (Exception e) {
+                    log.warn("Failed to publish wallet.debit event for transactionId={}", transactionId, e);
+                }
+            };
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        publish.run();
+                    }
+                });
+            } else {
+                // 無交易同步時（如純 Mockito 單元測試直呼）直接送，行為與舊版相同
+                publish.run();
+            }
         } catch (JsonProcessingException e) {
-            log.warn("Failed to serialize WalletDebitEvent for transactionId={}", tx.getId(), e);
-        } catch (Exception e) {
-            log.warn("Failed to publish wallet.debit event for transactionId={}", tx.getId(), e);
+            log.warn("Failed to serialize WalletDebitEvent for transactionId={}", txId.get(), e);
         }
 
-        // Step 9: return response
+        return DebitResponse.builder()
+                .transactionId(txId.get())
+                .playerId(request.getPlayerId())
+                .amount(amount)
+                .balanceBefore(balanceBefore)
+                .balanceAfter(balanceAfter)
+                .idempotent(false)
+                .build();
+    }
+
+    private DebitResponse toIdempotentResponse(WalletTransaction tx, DebitRequest request) {
+        if (!tx.getPlayerId().equals(request.getPlayerId())) {
+            // 冪等鍵跨玩家碰撞＝呼叫端鍵命名出 bug（正規鍵都以 playerId 為 namespace）。
+            // 沿用舊版語意回原交易值，但大聲留痕，讓碰撞可被監控發現而非無聲吞掉。
+            log.error("Idempotency key collision across players: key={} requestPlayerId={} txPlayerId={}",
+                    tx.getIdempotencyKey(), request.getPlayerId(), tx.getPlayerId());
+        }
         return DebitResponse.builder()
                 .transactionId(tx.getId())
                 .playerId(tx.getPlayerId())
                 .amount(tx.getAmount())
                 .balanceBefore(tx.getBalanceBefore())
                 .balanceAfter(tx.getBalanceAfter())
-                .idempotent(false)
+                .idempotent(true)
                 .build();
     }
 
