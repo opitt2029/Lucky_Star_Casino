@@ -1,3 +1,46 @@
+## [test] — 2026-07-18 — T-090 壓測前臨發 token 腳本（解 JWT 15 分鐘到期工件）
+
+### Added
+- `tests/performance/refresh-player-tokens.mjs`：壓測起跑前把 `players.csv` 全部玩家重登入一輪、原地換新 JWT。直連 member-service（8081）而非 gateway——繞過 auth 5/s 限流（1,000 名走 gateway 至少 200 秒，臨發失去意義）、也不污染壓測前的 gateway 限流桶/AIMD 窗。任一名失敗即 exit(1) 且不改寫 CSV（JMeter 要求 ≥ threads 列）；舊格式（無 username 欄）CSV 直接拒絕。
+
+### Changed
+- `tests/performance/provision-players.mjs`：CSV 第三欄加 `username` 供重登入（jmx `CSVDataSet` 的 `variableNames` 只映射前兩欄，多欄被 JMeter 忽略，既有壓測計畫不受影響）；頭部註解記載 15 分鐘 JWT 與 refresh SOP。
+- `docs/performance/T-090-load-test-report.md`：07-18 節 401 工件標記已解，E3 SOP＝provision → refresh → 立即起跑。
+
+### Why
+07-18 輪 1,000 併發殘餘 401×1,113 為壓測工件：provisioning ~8 分鐘、JWT 效期 15 分鐘，最早入列玩家 token 輪中到期。三個候選方案中選「分批臨發」：不動正式 JWT 效期設定（暫調效期會讓壓測環境偏離正式行為）、不必為縮短 provisioning 動 auth 限流，壓測工具自己解自己的問題。
+
+### Verification
+- Provision 2 名 → CSV 三欄格式正確 → refresh 0.1 秒完成、解 JWT 驗證 `iat` 前進 14 秒、新 token 效期 900 秒整。
+- 舊格式 CSV：exit=1、檔案未被改寫。
+
+## [fix] — 2026-07-18 — T-090 provision 腳本 admin 密碼改讀 .env 同一真相來源（治本 401）
+
+### Fixed
+- `tests/performance/provision-players.mjs`：`ADMIN_USER`/`ADMIN_PASS` 未由環境變數提供時，改為自動讀 repo 根 `.env` 的 `ADMIN_SEED_USERNAME`/`ADMIN_SEED_PASSWORD`（新增 `readDotEnv()`），最後才退回 `ChangeMe!SuperAdmin123`（＝AdminUserSeeder 未設 `.env` 時的 Java 端預設）。頭部用法註解同步。
+
+### Why
+07-17 夜壓測作廢的根因：腳本寫死的預設密碼與 `.env` 種給 AdminUserSeeder 的 `ADMIN_SEED_PASSWORD` 是兩份會漂移的真相 → 忘帶 `ADMIN_PASS` 必 401。既有防呆只能把「靜默退化」變「大聲失敗」，改讀同一來源才消滅這顆雷。另查證 07-18 3:06 的「用 .env 密碼仍 401」為服務未就緒/指令工件：DB hash 自 07-13 未變，同組密碼現登入 200。
+
+### Verification
+- `PLAYERS=1`、不帶 `ADMIN_PASS` 實跑：admin 登入成功、GM 發幣 1,000,000 到帳、CSV 寫出（1 成功 / 0 失敗）。
+- DB 佐證：`admin_action_logs` GM_GRANT 1,201 筆、1,201 個錢包 ≥500,000（07-18 凌晨輪發幣管線正常）。
+
+## [test] — 2026-07-18 — T-090 E1+E2 對照重跑：150 全綠首達、1,000 併發 503 歸零；provision 腳本防靜默退化
+
+### Changed
+- `tests/performance/provision-players.mjs`：①`fund()` 檢查 `/admin/gm/grant` 回應非 200 即 throw（原本吞掉失敗）；②admin 登入失敗改為直接 `exit(1)`，除非顯式設 `ALLOW_BANKRUPTCY_FALLBACK=1` 才允許退回破產救濟金 1,000/人。
+
+### Added
+- `docs/performance/T-090-load-test-report.md` 新增「2026-07-18 E1+E2 對照重跑」節：150 正式輪（`20260718-031827`）**首次全綠**（P99 393 ms、0 失敗、0 卸載）；1,000 輪（`20260718-033439`）**503 桶 2,024→0、CB 整輪未開路（not_permitted=0）、429 佔比 65.3%→13.2%、accepted 成功率 78.4%→97.7%**（殘餘 401×1,113 為 JWT 到期壓測工件，E3 前需解）；T-091 九項 0 新違規（`accounting-20260718-033833`）。藍圖 03 進度表 E1/E2 標記對照重跑通過。
+
+### Why
+E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、accepted 成功率 ≥90%）。2026-07-17 夜兩輪因 provision 發幣靜默失敗（admin 401 → 默默退化 1,000/人 → 全場 422）作廢，故先修腳本讓失敗 fail-fast，再重跑。跨機與多變因歸因限制見報告內誠實聲明。
+
+### Verification
+- 手動重現 `/admin/gm/grant` 全管線（HTTP 200 → Kafka → wallet 入帳 1,000,100）確認端點無 bug；provision 200/200、1,000/1,000 全成功，DB 驗 `balance>=500000` 錢包數吻合。
+- 兩輪 acceptance report + JTL 落 `tests/performance/results/20260718-*`；T-091 由容器內 psql 執行，3 筆既知 1001–1003 歷史髒資料已逐筆查證非本輪產生。
+
 ## [changed] — 2026-07-17 — T-090 E1+E2：game/wallet CB 改時間窗＋AIMD 延遲窗排除卸載樣本（消滅 CB/AIMD 互踩）
 
 ### Changed
