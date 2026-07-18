@@ -132,7 +132,7 @@
       "id": "A.10",
       "title": "測試 / DevOps / 收尾（組員D + 組長A）",
       "tasks": [
-        { "id": "T-090", "title": "JMeter 高併發壓測腳本", "priority": "P0", "evidence": { "files": ["tests/performance/slot-1000-players.jmx", "tests/performance/run-slot-load-test.ps1", "docs/performance/T-090-load-test-report.md"], "commitGrep": "T-090" }, "override": { "status": "⚠️", "reason": "腳本/報告/1,000 玩家 provisioning 齊備，但 1,000 併發 P99≈2.5s 且大量 5xx，效能 gate 未達標（docs/performance/T-090-load-test-report.md）；gate 通過後移除本 override" } },
+        { "id": "T-090", "title": "JMeter 高併發壓測腳本", "priority": "P0", "evidence": { "files": ["tests/performance/slot-1000-players.jmx", "tests/performance/run-slot-load-test.ps1", "docs/performance/T-090-load-test-report.md"], "commitGrep": "T-090" }, "note": "2026-07-18 E3 結案輪正式驗收通過（D1-c：150 全綠 P99 377ms＋1,000 韌性 PASS 成功率 99.2%＋T-091 0 新違規），報告 Status=CLOSED，原效能 gate 未達標 override 已移除" },
         { "id": "T-091", "title": "帳務一致性對帳腳本", "priority": "P0", "evidence": { "files": ["tests/performance/accounting-reconciliation.sql", "tests/performance/run-accounting-reconciliation.ps1"], "commitGrep": "T-091" } },
         { "id": "T-092", "title": "Swagger UI API 文件", "priority": "P1", "evidence": { "files": ["tests/infra/swagger.test.js"], "commitGrep": "T-092" } },
         { "id": "T-093", "title": "End-to-End 整合測試", "priority": "P0", "evidence": { "files": ["playwright.config.js"], "commitGrep": "T-093" }, "override": { "status": "⚠️", "reason": "後端已實作、Playwright E2E 已存在（playwright.config.js），但尚未涵蓋跨服務全鏈路（下注→帳務→排行→通知）整合驗證；補齊後移除本 override" } },

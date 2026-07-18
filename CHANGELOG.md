@@ -30,6 +30,18 @@ B1 JFR 定案：單機 Postgres debit 容量 ≈550–600 交易/秒，往返數
   B2 **387 ms（−21.7%，驗收模式全 gate PASS）**；debit 平均 10.86→8.57 ms；每輪 0 失敗/0 429/0 5xx、帳務斷言 0。
   與歷輪 393 ms（weiyu 機器）跨機不可比，達標判定以原機器複測為準。
 - 未完項（交接）：1,000 韌性輪＋T-091 對帳＋報告收尾，見 `docs/performance/T-090-B2-工作紀錄-20260718.md`。
+=======
+## [docs] — 2026-07-18 — AUDIT_REPORT：T-090 ⚠️→✅（E3 驗收通過，移除 override）
+
+### Changed
+- `tools/audit/tasks.json`：T-090 移除「效能 gate 未達標」override（override 自述「gate 通過後移除」的條件已成立），改留 note 記載 E3 結案驗收結果；重跑 `generate-audit-snapshot.mjs`，標記區塊 T-090 轉 ✅（檔案 3/3＋54 筆 commit），`--check` 一致，快照落 `docs/report/audit-snapshot-20260718.md`。
+- `AUDIT_REPORT.md` 標記區塊外人工敘述同步：變動紀錄補 2026-07-18 條、模組概覽把 T-090/T-091 移入「完成度高」、「進行中」移除壓測 gate 重測。
+
+### Why
+PR #218 合併後 T-090 已於 E3 結案輪在 D1-c 語意下正式驗收通過（報告 Status=CLOSED），AUDIT_REPORT 的 ⚠️ 與人工敘述若不更正即成為過時快照（AGENTS.md §1 的已知問題）。
+
+### Verification
+
 
 ## [test] — 2026-07-18 — T-090 E3 結案輪：150 全綠驗收 PASS＋1,000 韌性 PASS＋T-091 乾淨，第二輪閉環
 
