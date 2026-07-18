@@ -1,3 +1,32 @@
+## [test] — 2026-07-18 — T-084/T-093 端對端驗收補齊：全鏈路 e2e ＋ 前端 WS 真後端驗收，兩筆 audit override 移除
+
+### Added
+- `tests/e2e/full-chain.mjs`（T-093）：跨服務全鏈路整合測試——「下注→帳務→排行→通知」18 斷言，
+  同一局 roundId 於遊戲回應/帳務流水/WS 推播三處一致性對帳；含無效 JWT 連線必拒的反向驗證。
+  Node 零依賴（內建 WebSocket + 手組 STOMP 帧，走 gateway /ws）。實測連跑兩輪 18/18 全 PASS。
+- `frontend/e2e/realtime-ws.spec.js` + `frontend/playwright.realws.config.js` + `frontend/.env.realws`（T-084）：
+  前端 WS 端對端驗收（真後端）——UI 登入→SockJS/STOMP CONNECTED 帧（Playwright 攔截 WS 斷言交握）→
+  API 觸發 spin→通知鈴鐺 badge→通知中心顯示「遊戲結果通知」。實測 PASS（2.8s）。
+  以 `E2E_REAL_BACKEND=1` 為閘：預設 mock e2e 跑到即整組 skip，CI 不受影響。新增 npm script `e2e:realws`。
+- `docs/report/T-084-T-093-端對端驗收報告-20260718.md`：驗收留存紀錄（環境/結果表/發現/限制）。
+
+### Changed
+- `frontend/vite.config.js`：`/api`、`/ws` dev proxy 轉發時剝除 `Origin` header（`proxyReq`＋`proxyReqWs` 皆掛，
+  WS upgrade 走後者）。驗收實測發現：瀏覽器對同源 POST 仍帶 Origin，proxy 原樣轉發會被 gateway CORS
+  白名單（只認 5173/5174）403 拒絕；經 proxy 的請求本就同源，剝除後任何 dev/e2e port 通用。
+  預設 dev（5173 直連 8080）與 mock e2e 不走此路徑，行為不變。
+- `tools/audit/tasks.json`：T-084/T-093 移除 ⚠️ override（其自述的移除條件——「實測通過」「補齊全鏈路」——均已成立），
+  補證據檔與 commitGrep，改留 note 記載驗收結果。
+
+### Why
+AUDIT_REPORT 附錄 A 僅剩的兩筆前端/測試 ⚠️ 即這兩項的「驗收缺口」（程式碼早已齊備）：T-093 缺跨服務
+事件鏈的資料一致性驗證、T-084 缺端對端驗收留存紀錄。補實測而非只補文件，順帶修掉 proxy Origin 這顆
+會擋住所有非 5173 port 真後端聯調的雷。
+
+### Verification
+- `node tests/e2e/full-chain.mjs`：18 PASS / 0 WARN / 0 FAIL，連跑兩輪全綠（docker compose 15 容器拓樸，develop fd3b465）。
+- `npm run e2e:realws`：1 passed（2.8s）。
+- 迴歸：`npm run lint` 乾淨；`npm run e2e`（mock）2 passed / 2 skipped（realtime-ws 正確 skip、fishing skip 為既有）。
 ## [docs] — 2026-07-18 — T-090 B2 收尾：1,000 韌性輪＋T-091 對帳完成，B2 列 ✅
 
 ### Added
