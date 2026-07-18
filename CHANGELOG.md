@@ -1,3 +1,19 @@
+## [changed] — 2026-07-18 — T-090 D1-final 拍板（選 c）＋ D2 落地：gate 與拓樸宣告綁定
+
+### Changed
+- `docs/plans/03-T-090-第二輪效能調校藍圖.md`：D1-final 拍板記錄（選 **c 承認單機**）——①中繼目標維持 150 全綠、門檻 500 ms 不降格（實測 393 ms 已達標），**宣告容量＝150 併發**；②429 gate 綁宣告容量：容量內 429=0 硬 gate，超容量輪不設 429 佔比 gate、判準改 accepted 成功率 ≥95%＋帳務 0 違規；③1,000 併發定位為韌性驗證，b（DB 隔離）降選配、a（雲端多機）不做。D1-final/D2 進度表標 ✅。
+- `tests/performance/analyze-jtl.mjs`：依 D1-final 語意改為**雙模式 gate**——`THREADS` ≤/> `DECLARED_CAPACITY`（預設 150）自動判驗收/韌性模式；驗收模式 gate＝P99<500、5xx=0、失敗=0、**429=0**；韌性模式 gate＝accepted 成功率 ≥ `MIN_ACCEPTED_SUCCESS`（預設 0.95），429/P99/5xx 降為趨勢紀錄；帳務（冪等/超扣）兩模式皆 0 硬 gate。移除 `MAX_429_RATIO` 標量上限。報告模板加宣告容量/Round threads/Gate mode/成功率欄。
+- `tests/performance/run-slot-load-test.ps1`：`-Max429Ratio` 參數移除，改 `-DeclaredCapacity`（預設 150），並把 `THREADS` 傳給 analyzer 判模式。
+- `tests/infra/jmeter.test.js`：新增「gate mode binds to declared capacity」契約測試（守住雙模式判定、禁止 `MAX_429_RATIO` 回歸、runner 必傳兩參數）。
+- `docs/performance/T-090-壓測前準備清單.md` §8：更新為拍板後語意，並補 1,000 輪起跑前跑 `refresh-player-tokens.mjs` 的檢查項。
+
+### Why
+D1 三懸案不拍板則「上線標準」無法閉環。選 c 的理由（藍圖 D1-final 節）：學習優先專案，1,000 併發下「帳務零違規＋有序卸載＋成功率單調改善」的證據鏈比絕對 P99 更有價值；單機 1,000 併發 P99<500 是物理不可能（B1 JFR 已定案 DB 天花板），設 gate 只會誘發指標作弊。拆「卸載多少」（容量問題，不 gate）與「卸載得乾不乾淨」（機制問題，gate 成功率）。
+
+### Verification
+- 07-18 歷史 JTL 迴放：150 輪（`20260718-031827`）驗收模式 **PASS**（P99 393 ms/429=0）；1,000 輪（`20260718-033439`）韌性模式 **PASS**（成功率 97.7% ≥95%、帳務 0）；反向驗證＝同一 1,000 輪 JTL 用驗收模式判 **FAIL** exit 1（gate 有效）、非法參數 exit 2。
+- `node --test tests/infra/jmeter.test.js`：11/11 綠。
+
 ## [test] — 2026-07-18 — T-090 壓測前臨發 token 腳本（解 JWT 15 分鐘到期工件）
 
 ### Added
