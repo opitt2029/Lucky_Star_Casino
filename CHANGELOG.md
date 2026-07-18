@@ -1,3 +1,78 @@
+## [test] — 2026-07-18 — T-090 E3 結案輪：150 全綠驗收 PASS＋1,000 韌性 PASS＋T-091 乾淨，第二輪閉環
+
+### Added
+- `docs/performance/T-090-load-test-report.md` 新增「2026-07-18 E3 最終驗收重跑（第二輪結案）」節，Status 改 **CLOSED**：
+  - 150 正式輪 `20260718-104301`（驗收模式）**全綠 PASS**：P99 377 ms、23,968 樣本、0 失敗/0 卸載/0 5xx——與凌晨輪同機對照全綠可重現。D1-c 語意下＝**T-090 正式驗收通過**。
+  - 1,000 輪 `20260718-104705`（韌性模式）**PASS**：accepted 成功率 **99.2%**（gate ≥95%）、**401 工件 1,113→0**（`refresh-player-tokens.mjs` 首次實戰生效）、429 卸載 11.6%（趨勢）、殘餘 375 筆 `HttpHostConnectException` 全集中起跑 0–5 秒（1s ramp-up 連線風暴，單機工件）＋1 筆 502。
+  - T-091 `accounting-20260718-104929`：9 項 **0 新違規**（3 筆＝既知 player 1001–1003 歷史孤兒錢包，逐筆查證同凌晨輪）。
+- 藍圖 03 進度表 E3 標 ✅——E1/E2/D1/D2/E3 全數完成，**第二輪結案**；B2/D1-b 降選配遺留。
+
+### Why
+E3 是第二輪藍圖的結案輪：首輪套用 D1-final（選 c）＋D2 雙模式 gate 的正式判定，同時實戰驗證 token 臨發方案。SOP 全程照準備清單（暖機棄置 `20260718-103855`、輪距 2.5 分、每輪前 refresh token）。
+
+### Verification
+- provisioning 947/1,000（auth 限流 429 缺 53）→ 補量 60 名合併 1,007 列；refresh 1,007 名僅 6.4 秒。
+- 兩輪 acceptance report（新模板含宣告容量/Gate mode/成功率欄）＋ JTL ＋ HTML 落 `tests/performance/results/20260718-10*`；T-091 報告落 `accounting-20260718-104929`。
+
+## [changed] — 2026-07-18 — T-090 D1-final 拍板（選 c）＋ D2 落地：gate 與拓樸宣告綁定
+
+### Changed
+- `docs/plans/03-T-090-第二輪效能調校藍圖.md`：D1-final 拍板記錄（選 **c 承認單機**）——①中繼目標維持 150 全綠、門檻 500 ms 不降格（實測 393 ms 已達標），**宣告容量＝150 併發**；②429 gate 綁宣告容量：容量內 429=0 硬 gate，超容量輪不設 429 佔比 gate、判準改 accepted 成功率 ≥95%＋帳務 0 違規；③1,000 併發定位為韌性驗證，b（DB 隔離）降選配、a（雲端多機）不做。D1-final/D2 進度表標 ✅。
+- `tests/performance/analyze-jtl.mjs`：依 D1-final 語意改為**雙模式 gate**——`THREADS` ≤/> `DECLARED_CAPACITY`（預設 150）自動判驗收/韌性模式；驗收模式 gate＝P99<500、5xx=0、失敗=0、**429=0**；韌性模式 gate＝accepted 成功率 ≥ `MIN_ACCEPTED_SUCCESS`（預設 0.95），429/P99/5xx 降為趨勢紀錄；帳務（冪等/超扣）兩模式皆 0 硬 gate。移除 `MAX_429_RATIO` 標量上限。報告模板加宣告容量/Round threads/Gate mode/成功率欄。
+- `tests/performance/run-slot-load-test.ps1`：`-Max429Ratio` 參數移除，改 `-DeclaredCapacity`（預設 150），並把 `THREADS` 傳給 analyzer 判模式。
+- `tests/infra/jmeter.test.js`：新增「gate mode binds to declared capacity」契約測試（守住雙模式判定、禁止 `MAX_429_RATIO` 回歸、runner 必傳兩參數）。
+- `docs/performance/T-090-壓測前準備清單.md` §8：更新為拍板後語意，並補 1,000 輪起跑前跑 `refresh-player-tokens.mjs` 的檢查項。
+
+### Why
+D1 三懸案不拍板則「上線標準」無法閉環。選 c 的理由（藍圖 D1-final 節）：學習優先專案，1,000 併發下「帳務零違規＋有序卸載＋成功率單調改善」的證據鏈比絕對 P99 更有價值；單機 1,000 併發 P99<500 是物理不可能（B1 JFR 已定案 DB 天花板），設 gate 只會誘發指標作弊。拆「卸載多少」（容量問題，不 gate）與「卸載得乾不乾淨」（機制問題，gate 成功率）。
+
+### Verification
+- 07-18 歷史 JTL 迴放：150 輪（`20260718-031827`）驗收模式 **PASS**（P99 393 ms/429=0）；1,000 輪（`20260718-033439`）韌性模式 **PASS**（成功率 97.7% ≥95%、帳務 0）；反向驗證＝同一 1,000 輪 JTL 用驗收模式判 **FAIL** exit 1（gate 有效）、非法參數 exit 2。
+- `node --test tests/infra/jmeter.test.js`：11/11 綠。
+
+## [test] — 2026-07-18 — T-090 壓測前臨發 token 腳本（解 JWT 15 分鐘到期工件）
+
+### Added
+- `tests/performance/refresh-player-tokens.mjs`：壓測起跑前把 `players.csv` 全部玩家重登入一輪、原地換新 JWT。直連 member-service（8081）而非 gateway——繞過 auth 5/s 限流（1,000 名走 gateway 至少 200 秒，臨發失去意義）、也不污染壓測前的 gateway 限流桶/AIMD 窗。任一名失敗即 exit(1) 且不改寫 CSV（JMeter 要求 ≥ threads 列）；舊格式（無 username 欄）CSV 直接拒絕。
+
+### Changed
+- `tests/performance/provision-players.mjs`：CSV 第三欄加 `username` 供重登入（jmx `CSVDataSet` 的 `variableNames` 只映射前兩欄，多欄被 JMeter 忽略，既有壓測計畫不受影響）；頭部註解記載 15 分鐘 JWT 與 refresh SOP。
+- `docs/performance/T-090-load-test-report.md`：07-18 節 401 工件標記已解，E3 SOP＝provision → refresh → 立即起跑。
+
+### Why
+07-18 輪 1,000 併發殘餘 401×1,113 為壓測工件：provisioning ~8 分鐘、JWT 效期 15 分鐘，最早入列玩家 token 輪中到期。三個候選方案中選「分批臨發」：不動正式 JWT 效期設定（暫調效期會讓壓測環境偏離正式行為）、不必為縮短 provisioning 動 auth 限流，壓測工具自己解自己的問題。
+
+### Verification
+- Provision 2 名 → CSV 三欄格式正確 → refresh 0.1 秒完成、解 JWT 驗證 `iat` 前進 14 秒、新 token 效期 900 秒整。
+- 舊格式 CSV：exit=1、檔案未被改寫。
+
+## [fix] — 2026-07-18 — T-090 provision 腳本 admin 密碼改讀 .env 同一真相來源（治本 401）
+
+### Fixed
+- `tests/performance/provision-players.mjs`：`ADMIN_USER`/`ADMIN_PASS` 未由環境變數提供時，改為自動讀 repo 根 `.env` 的 `ADMIN_SEED_USERNAME`/`ADMIN_SEED_PASSWORD`（新增 `readDotEnv()`），最後才退回 `ChangeMe!SuperAdmin123`（＝AdminUserSeeder 未設 `.env` 時的 Java 端預設）。頭部用法註解同步。
+
+### Why
+07-17 夜壓測作廢的根因：腳本寫死的預設密碼與 `.env` 種給 AdminUserSeeder 的 `ADMIN_SEED_PASSWORD` 是兩份會漂移的真相 → 忘帶 `ADMIN_PASS` 必 401。既有防呆只能把「靜默退化」變「大聲失敗」，改讀同一來源才消滅這顆雷。另查證 07-18 3:06 的「用 .env 密碼仍 401」為服務未就緒/指令工件：DB hash 自 07-13 未變，同組密碼現登入 200。
+
+### Verification
+- `PLAYERS=1`、不帶 `ADMIN_PASS` 實跑：admin 登入成功、GM 發幣 1,000,000 到帳、CSV 寫出（1 成功 / 0 失敗）。
+- DB 佐證：`admin_action_logs` GM_GRANT 1,201 筆、1,201 個錢包 ≥500,000（07-18 凌晨輪發幣管線正常）。
+
+## [test] — 2026-07-18 — T-090 E1+E2 對照重跑：150 全綠首達、1,000 併發 503 歸零；provision 腳本防靜默退化
+
+### Changed
+- `tests/performance/provision-players.mjs`：①`fund()` 檢查 `/admin/gm/grant` 回應非 200 即 throw（原本吞掉失敗）；②admin 登入失敗改為直接 `exit(1)`，除非顯式設 `ALLOW_BANKRUPTCY_FALLBACK=1` 才允許退回破產救濟金 1,000/人。
+
+### Added
+- `docs/performance/T-090-load-test-report.md` 新增「2026-07-18 E1+E2 對照重跑」節：150 正式輪（`20260718-031827`）**首次全綠**（P99 393 ms、0 失敗、0 卸載）；1,000 輪（`20260718-033439`）**503 桶 2,024→0、CB 整輪未開路（not_permitted=0）、429 佔比 65.3%→13.2%、accepted 成功率 78.4%→97.7%**（殘餘 401×1,113 為 JWT 到期壓測工件，E3 前需解）；T-091 九項 0 新違規（`accounting-20260718-033833`）。藍圖 03 進度表 E1/E2 標記對照重跑通過。
+
+### Why
+E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、accepted 成功率 ≥90%）。2026-07-17 夜兩輪因 provision 發幣靜默失敗（admin 401 → 默默退化 1,000/人 → 全場 422）作廢，故先修腳本讓失敗 fail-fast，再重跑。跨機與多變因歸因限制見報告內誠實聲明。
+
+### Verification
+- 手動重現 `/admin/gm/grant` 全管線（HTTP 200 → Kafka → wallet 入帳 1,000,100）確認端點無 bug；provision 200/200、1,000/1,000 全成功，DB 驗 `balance>=500000` 錢包數吻合。
+- 兩輪 acceptance report + JTL 落 `tests/performance/results/20260718-*`；T-091 由容器內 psql 執行，3 筆既知 1001–1003 歷史髒資料已逐筆查證非本輪產生。
+
 ## [changed] — 2026-07-17 — T-090 E1+E2：game/wallet CB 改時間窗＋AIMD 延遲窗排除卸載樣本（消滅 CB/AIMD 互踩）
 
 ### Changed

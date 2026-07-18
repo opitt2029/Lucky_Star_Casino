@@ -8,7 +8,11 @@
  *   3. 等錢包由 member.registered 事件非同步建立（輪詢 /api/v1/wallet/balance 直到 200）
  *   4. 入金：優先用 T-055 GM 發幣（admin-service:8086，需 SUPER_ADMIN）大額發放，
  *      使每名玩家餘額足夠 60 秒持續下注；admin 不可達時退回 /api/v1/wallet/bankruptcy-aid（同步 1000）。
- *   5. 輪詢餘額達門檻後，寫一列 playerId,accessToken 進 CSV。
+ *   5. 輪詢餘額達門檻後，寫一列 playerId,accessToken,username 進 CSV。
+ *
+ * JWT 只有 15 分鐘效期，1,000 名 provisioning 約 8 分鐘 → 本腳本發的 token 到壓測
+ * 中後段會逐批到期（07-18 輪 401×1,113 工件）。跑壓測前務必再跑
+ * refresh-player-tokens.mjs 重發全部 token（見該檔說明）。
  *
  * 冪等鍵一律由伺服器端生成（AGENTS.md §12）；本腳本不傳任何 client 端冪等鍵。
  *
@@ -18,8 +22,9 @@
  * 環境變數：
  *   GATEWAY_URL    預設 http://localhost:8080
  *   ADMIN_URL      預設 http://localhost:8086（GM 發幣，繞過 gateway 用 admin JWT）
- *   ADMIN_USER     預設 superadmin
- *   ADMIN_PASS     預設 ChangeMe!SuperAdmin123（對應 AdminUserSeeder 預設）
+ *   ADMIN_USER     預設讀 .env 的 ADMIN_SEED_USERNAME（再退 superadmin）
+ *   ADMIN_PASS     預設讀 .env 的 ADMIN_SEED_PASSWORD（與 AdminUserSeeder 同一真相來源；
+ *                  再退 ChangeMe!SuperAdmin123＝seeder 未設 .env 時的 Java 端預設）
  *   PLAYERS        預設 1000
  *   GRANT_AMOUNT   預設 1000000（每名玩家 GM 發幣金額）
  *   MIN_BALANCE    預設 500000（CSV 寫入前要求達到的最低餘額）
@@ -27,17 +32,30 @@
  *   OUT           預設 tests/performance/players.csv
  */
 
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '../..')
 
+// 2026-07-17 夜實跑教訓：腳本寫死的預設密碼與 .env 種下去的 superadmin 密碼必然對不上
+// （AdminUserSeeder 以 ADMIN_SEED_PASSWORD 播種）→ 401。改為直接讀 .env 同一真相來源。
+function readDotEnv(key) {
+  try {
+    const line = readFileSync(resolve(root, '.env'), 'utf8')
+      .split(/\r?\n/)
+      .find((l) => l.startsWith(`${key}=`))
+    return line ? line.slice(key.length + 1).trim() : undefined
+  } catch {
+    return undefined
+  }
+}
+
 const GATEWAY = process.env.GATEWAY_URL || 'http://localhost:8080'
 const ADMIN = process.env.ADMIN_URL || 'http://localhost:8086'
-const ADMIN_USER = process.env.ADMIN_USER || 'superadmin'
-const ADMIN_PASS = process.env.ADMIN_PASS || 'ChangeMe!SuperAdmin123'
+const ADMIN_USER = process.env.ADMIN_USER || readDotEnv('ADMIN_SEED_USERNAME') || 'superadmin'
+const ADMIN_PASS = process.env.ADMIN_PASS || readDotEnv('ADMIN_SEED_PASSWORD') || 'ChangeMe!SuperAdmin123'
 const PLAYERS = Number(process.env.PLAYERS || 1000)
 const GRANT_AMOUNT = Number(process.env.GRANT_AMOUNT || 1_000_000)
 const MIN_BALANCE = Number(process.env.MIN_BALANCE || 500_000)
@@ -96,10 +114,14 @@ async function loginAdmin() {
 async function fund(playerId, token) {
   if (adminAvailable) {
     // T-055 GM 發幣：非同步（wallet.credit.request），稍後由 pollBalance 等待入帳。
-    await http(ADMIN, 'POST', '/admin/gm/grant', {
+    const r = await http(ADMIN, 'POST', '/admin/gm/grant', {
       token: adminToken,
       body: { playerId: Number(playerId), amount: GRANT_AMOUNT, reason: 'T-090 load test funding' },
     })
+    // 2026-07-17 夜實跑教訓：grant 失敗被吞掉會讓整輪壓測拿 100 元玩家、全場 422 作廢。
+    if (r.status !== 200) {
+      throw new Error(`gm grant failed status=${r.status} body=${(r.text || '').slice(0, 120)}`)
+    }
   } else {
     // 同步注資 1000（僅在餘額 < 100 時生效）。
     await http(GATEWAY, 'POST', '/api/v1/wallet/bankruptcy-aid', { token })
@@ -146,13 +168,18 @@ async function provisionOne(index) {
   const bal = await pollBalance(token, { min: adminAvailable ? MIN_BALANCE : 100 })
   if (bal < 0) throw new Error(`funding did not reach threshold (min=${adminAvailable ? MIN_BALANCE : 100})`)
 
-  return { playerId: String(playerId), accessToken: token, balance: bal }
+  return { playerId: String(playerId), accessToken: token, username: cred.username, balance: bal }
 }
 
 async function main() {
   console.log(`=== T-090 provisioning: ${PLAYERS} players ===`)
   console.log(`gateway: ${GATEWAY}`)
   await loginAdmin()
+  // 預設不允許退化到 1000/人（會讓壓測輪整場 422 作廢）；要用 fallback 必須顯式開。
+  if (!adminAvailable && process.env.ALLOW_BANKRUPTCY_FALLBACK !== '1') {
+    console.error('[admin] GM 發幣不可用，中止（設 ALLOW_BANKRUPTCY_FALLBACK=1 才允許退回 1000/人）')
+    process.exit(1)
+  }
 
   const rows = []
   const failures = []
@@ -176,7 +203,9 @@ async function main() {
 
   // 依 playerId 數值排序，輸出穩定的 CSV
   rows.sort((a, b) => Number(a.playerId) - Number(b.playerId))
-  const csv = ['playerId,accessToken', ...rows.map((r) => `${r.playerId},${r.accessToken}`)].join('\n') + '\n'
+  // 第三欄 username 供 refresh-player-tokens.mjs 壓測前重登入臨發 token 用；
+  // jmx 的 CSVDataSet variableNames 只取前兩欄，多欄會被 JMeter 忽略，不影響既有壓測計畫。
+  const csv = ['playerId,accessToken,username', ...rows.map((r) => `${r.playerId},${r.accessToken},${r.username}`)].join('\n') + '\n'
   writeFileSync(OUT, csv, 'utf8')
 
   console.log(`\n=== 結果：${rows.length} 成功 / ${failures.length} 失敗（目標 ${PLAYERS}）===`)

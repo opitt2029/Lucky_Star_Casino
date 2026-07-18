@@ -65,6 +65,19 @@ describe('T-090 JMeter pressure test contract', () => {
     assert.match(analyzer, /fiveXx\.length === 0/)
   })
 
+  test('gate mode binds to declared capacity (D1-final, 2026-07-18)', () => {
+    // 驗收模式（容量內）429=0 硬 gate；韌性模式（超容量）判 accepted 成功率，429 只記趨勢。
+    assert.match(analyzer, /DECLARED_CAPACITY/)
+    assert.match(analyzer, /resilienceMode/)
+    assert.match(analyzer, /successRate >= minAcceptedSuccess/)
+    assert.match(analyzer, /shed\.length === 0/)
+    // 舊標量上限已被 D1-final 拓樸綁定語意取代，不得回歸。
+    assert.doesNotMatch(analyzer, /MAX_429_RATIO/)
+    // runner 必須把兩個判模式參數傳給 analyzer。
+    assert.match(runner, /\$env:DECLARED_CAPACITY = \$DeclaredCapacity/)
+    assert.match(runner, /\$env:THREADS = \$Threads/)
+  })
+
   test('report documents the real contract and records measured results honestly', () => {
     // 報告須對齊真實契約，並以實測數據記錄結果（AGENTS.md §12：不得捏造 P99）。
     assert.match(report, /POST \/api\/v1\/game\/slot\/spin/)

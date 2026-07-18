@@ -9,9 +9,10 @@ param(
     [int]$RampUpSeconds = 1,
     [int]$Bet = 100,
     [int]$PacingMs = 1000,
-    # 429 卸載佔比上限（0..1），傳給 analyze-jtl.mjs 的 MAX_429_RATIO。
-    # 容量內迴歸基準（150 併發）應設 0（不准卸載）；1,000 併發趨勢照預設 0.40。
-    [double]$Max429Ratio = -1
+    # D1-final（2026-07-18）：gate 與拓樸宣告綁定。Threads <= DeclaredCapacity 走驗收模式
+    # （429=0 硬 gate）；Threads > DeclaredCapacity 走韌性模式（accepted 成功率 >= 95%，
+    # 429/P99 只記趨勢）。模式由 analyze-jtl.mjs 依兩值自動判定，無須另傳參數。
+    [int]$DeclaredCapacity = 150
 )
 
 $ErrorActionPreference = "Stop"
@@ -63,7 +64,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "JMeter exited with code $LASTEXITCODE."
 }
 
-if ($Max429Ratio -ge 0) { $env:MAX_429_RATIO = $Max429Ratio.ToString([System.Globalization.CultureInfo]::InvariantCulture) }
+$env:DECLARED_CAPACITY = $DeclaredCapacity
+$env:THREADS = $Threads
 node (Join-Path $scriptDir "analyze-jtl.mjs") $jtl $report
 if ($LASTEXITCODE -ne 0) {
     throw "T-090 acceptance gates failed. See $report and $htmlDir."
