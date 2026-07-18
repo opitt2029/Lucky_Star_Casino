@@ -74,7 +74,8 @@ class WalletOptimisticLockContainerTest extends AbstractDualDatasourceContainerT
     @Test
     void concurrentDebits_neverOverdraw() throws Exception {
         // 餘額 1000，兩個併發 800 扣款（不同冪等鍵）→ 最多一方成功；
-        // 輸家不是撞樂觀鎖就是重讀後餘額不足，餘額恆 = 1000 - 800 * 成功數 ≥ 0。
+        // T-090 B2 後 debit 走條件 UPDATE：輸家由行鎖序列化後守衛重評估 → 餘額不足
+        // （不再拋樂觀鎖 409；catch 仍保留兩型以相容），餘額恆 = 1000 - 800 * 成功數 ≥ 0。
         int threads = 2;
         long debitAmount = 800L;
         ExecutorService pool = Executors.newFixedThreadPool(threads);

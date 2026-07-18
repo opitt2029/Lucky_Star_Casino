@@ -1,3 +1,33 @@
+## [perf] — 2026-07-18 — T-090 B2：wallet debit 交易 DB 往返 4→2（雷區 8 全套流程）
+
+### Added
+- `backend/wallet-service/.../postgres/repository/WalletDebitDao.java`：debit 熱路徑 2 往返 JDBC DAO——
+  ①條件 UPDATE（可用餘額守衛＋`NOT EXISTS` 冪等預檢摺進 WHERE，`RETURNING balance`）
+  ②流水 INSERT（`ON CONFLICT (idempotency_key) DO NOTHING RETURNING id`）＋競態補償回沖。
+  H2（測試）以 `FINAL TABLE(...)`＋捕捉 `DuplicateKeyException` 等價分流（H2 2.2.224 不支援 RETURNING，已實測）。
+- `docs/performance/T-090-B2-debit-roundtrip-design.md`：設計紀錄（語意等價性逐條論證、H2 相容、驗證計畫）。
+- 測試：`containers/WalletDebitRoundTripContainerTest`（真 PG 5 案：冪等重放/竄改金額/併發同鍵恰一筆流水/10 執行緒不超扣/餘額鏈連續）、`WalletDebitDaoH2Test`（H2 方言分支直測 5 案）。
+
+### Changed
+- `WalletService.debit()`：4 次往返（冪等 SELECT→載入 SELECT→UPDATE→INSERT）改為上述 2 往返；
+  冷路徑（冪等命中/404/餘額不足）補查區分、皆零副作用。**冪等鍵與冪等語意一絲不變**（雷區 8）。
+- **有意的行為變更**：debit 不再拋 `ObjectOptimisticLockingFailureException`（409）——併發扣款由
+  wallets 行鎖序列化，後到者夠扣就成功、不夠拋餘額不足；併發同鍵後到者回贏家結果（idempotent=true）。
+  game-service 無 409 特判（已確認），其他寫入方（credit/gift）的 JPA `@Version` 樂觀鎖不受影響（debit 每次扣款 version+1）。
+- Kafka `wallet.debit` 事件改 **afterCommit 發送**（code review must-fix）：新流程往返 1 起即持有行鎖，
+  交易內同步發送遇 broker 阻塞（`max.block.ms` 預設 60s）會拖住該玩家後續扣款；順帶消除外層交易回滾的幽靈事件。
+- `WalletServiceDebitTest` 改寫為 mock DAO 驗證流程分支（真 SQL 由 containers 測試守門）。
+
+### Why
+B1 JFR 定案：單機 Postgres debit 容量 ≈550–600 交易/秒，往返數直接決定單筆延遲下限（第二輪藍圖 Phase B2，
+150 併發 P99 393ms → 目標 250–350ms）。原子性搬進 SQL 語句後，判定與扣款無讀改寫窗，防超扣更強。
+
+### Verification
+- `mvn -pl backend/wallet-service test`：127 tests 全綠（含 H2 真路徑的 `ShopRedemptionIntegrationTest`）。
+- `mvn -pl backend/wallet-service test -Pcontainers-test`（ADR-007 真 PG/MySQL）：13 tests 全綠。
+- code-reviewer gate：帳務核心無資損路徑；2 must-fix（Kafka 行鎖窗、CHANGELOG）均已修復。
+- 150 併發對照重跑＋T-091 見後續條目（本條 commit 時尚未跑）。
+
 ## [test] — 2026-07-18 — T-090 E3 結案輪：150 全綠驗收 PASS＋1,000 韌性 PASS＋T-091 乾淨，第二輪閉環
 
 ### Added
