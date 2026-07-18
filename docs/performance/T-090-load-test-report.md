@@ -2,11 +2,85 @@
 
 ## Status
 
-**CLOSED — T-090 第二輪於 2026-07-18 E3 結案輪正式驗收通過**（D1-c 語意：150 併發全綠＝驗收 PASS（P99 377 ms）、1,000 併發韌性驗證 PASS（成功率 99.2%、帳務 0 違規）、T-091 乾淨，見最上方 E3 節；first executed 2026-06-16）. The full topology (Docker infra + all 7 backend services) was brought up, 1,000+ distinct funded players were provisioned, and the JMeter plan was run against the real contract. All numbers below are measured; nothing is fabricated.
+**CLOSED — T-090 第二輪於 2026-07-18 E3 結案輪正式驗收通過**（結案後選配 B2 亦於同日完成並驗證，見最上方 B2 節）（D1-c 語意：150 併發全綠＝驗收 PASS（P99 377 ms）、1,000 併發韌性驗證 PASS（成功率 99.2%、帳務 0 違規）、T-091 乾淨，見最上方 E3 節；first executed 2026-06-16）. The full topology (Docker infra + all 7 backend services) was brought up, 1,000+ distinct funded players were provisioned, and the JMeter plan was run against the real contract. All numbers below are measured; nothing is fabricated.
 
 **Headline result (2026-07-08):** the **performance gates FAIL** at both 150 and 1,000 concurrent on this single-host environment (1000-concurrent P99 ≈ 5.1 s, ≈89% failed), but the **accounting-integrity gates PASS** in every run (0 overdraft, 0 double-debit) and the T-091 ledger reconciliation is clean for every player touched by the test. The system **sheds load safely** under saturation rather than corrupting money. Root cause is now pinpointed to a specific, fixable config gap — see below — rather than generic host resource exhaustion.
 
 > ⚠️ The P99 < 500 ms / 5xx = 0 gates were defined for a properly resourced multi-host deployment. On this single host, the dominant factor is that Spring Cloud Gateway's CircuitBreaker has no explicit `timelimiter` configured, so Resilience4j defaults to a **1-second** call timeout — well below the ~0.9–3.6 s latencies seen under concurrent load once risk-control and bet-audit logic were added to the spin path (2026-06-22/24). See "2026-07-08 完整重跑最終結果" for the full Prometheus-backed evidence chain.
+
+## 2026-07-18 B2 對照重跑（Alex 機器）——debit 往返 4→2 落地驗證
+
+E3 結案後的選配收尾：B2（wallet debit 交易 DB 往返 4→2，條件 UPDATE RETURNING＋
+ON CONFLICT 冪等寫入，commit `408261f`、PR #220 已併 develop）落地後的完整驗證輪。
+設計與語意等價論證見 `T-090-B2-debit-roundtrip-design.md`，帳務新約定見 AGENTS.md 雷區 8。
+
+> ⚠️ **跨機聲明**：本節全部輪次在 **Alex 機器**執行（≠ E3/凌晨輪的 weiyu 機器），絕對
+> 延遲數字與歷輪 377/393 ms 不可比。本機自建 pre-B2 基線（develop `d8e576b`）＝494 ms，
+> A/B 比較僅在本機內成立。服務全容器化（docker compose，PR #172 拓樸）。本機 debit
+> 負載 ~240 筆/s 遠低於單機 Postgres 容量 550–600/s（DB 未飽和），故 debit 絕對值
+> （~10 ms）遠小於歷輪飽和時的 194 ms；B2 差距在未飽和下仍成立但幅度較溫和。
+
+### 150 併發同機 A/B（中午輪）——B2 P99 −21.7%
+
+| 輪 | run-id | 版本 | Accepted P99 | 樣本 | 5xx/失敗/429 | debit 平均（Prometheus） |
+|---|---|---|---:|---:|---|---:|
+| 暖機（棄置） | `20260718-115442` | B2 | 1,300 ms | 17,138 | 0/0/0 | — |
+| 過渡（棄置） | `20260718-115800` | B2 | 575 ms | 21,233 | 0/0/0 | 8.6 ms |
+| **B2 正式** | `20260718-120058` | B2 | **387 ms（驗收模式全綠 PASS）** | 22,235 | 0/0/0 | **8.57 ms** |
+| 暖機（棄置） | （FAIL 輪） | pre-B2 | 836 ms | — | — | — |
+| **pre-B2 對照** | `20260718-120541` | develop `d8e576b` | **494 ms（PASS）** | 21,692 | 0/0/0 | **10.86 ms** |
+
+**同機 A/B 結論：B2 讓 150 併發 P99 −21.7%（494→387 ms）、debit 平均 −21%、吞吐 +2.5%。**
+帳務 gate（冪等/超扣）每輪全 0。外推（僅供參考、不作驗收依據）：以本機 A/B 比例外推
+weiyu 機器 393 ms 基線 → 393×0.783 ≈ 308 ms，落在 250–350 目標帶內；需原機實測才能宣告。
+
+### 晚間續跑（Docker 全重啟後）——150 確認輪全綠、水位可重現
+
+服務拓樸整組冷啟（Docker Desktop 重啟、15 容器重拉），照 SOP 暖機棄置後回穩：
+
+| 輪 | run-id | Accepted P99 | 判定 |
+|---|---|---:|---|
+| 暖機 1（棄置） | `20260718-191310` | 2,176 ms | 冷啟觸發 gateway CB（E1 時間窗版）快速拒絕 503×2,361，末 17 秒歸零自癒 |
+| 暖機 2（棄置） | `20260718-191741` | 601 ms | 0 5xx、成功率 100%，僅頭 12 秒殘餘 429×4（過渡樣態） |
+| **150 確認輪** | `20260718-192139` | **390 ms** | **驗收模式全綠 PASS**（22,701 樣本、0/0/0、帳務 0 違規）——與中午正式輪 387 ms 一致，**B2 水位可重現** |
+
+> 註：整組冷啟後需 2 輪暖機才回穩（中午輪僅重建 wallet 容器、1 輪即穩）；冷啟期 503
+> ＝CB 時間窗對慢啟動後端的正常快速失敗，自癒後不復現，非機制退化。
+
+### 1,000 併發韌性輪（`20260718-192559`）——韌性模式 PASS
+
+| 指標 | 實測 | 判定 |
+|---|---:|---|
+| 樣本數 | 38,927（accepted 27,848 / shed 11,079） | — |
+| Accepted 成功率 | **99.7%** | **PASS（gate ≥95%）** |
+| idempotency / overdraw | **0 / 0** | **PASS** |
+| Accepted P99 | 1,554 ms | 趨勢，不設 gate |
+| HTTP 5xx | 2（502） | 趨勢 |
+| 429 shed 佔比 | 28.5% | 趨勢 |
+
+殘餘 84 筆 accepted 失敗＝82 筆 `HttpHostConnectException`（1 秒 ramp-up 起跑連線風暴、
+壓測機端工件，與 E3 輪同型態）＋2 筆 502。429 佔比高於 E3 輪的 11.6% 屬跨機容量差異
+（本機吞吐 ~635/s vs weiyu 機 ~872/s，卸載更多是容量問題非機制問題），韌性模式不設 gate。
+
+### T-091 對帳（`accounting-20260718-192939`）——0 新違規
+
+9 項檢查 8 項 0；`wallet_balance_matches_transaction_sum` 的 3 筆＝player 1001–1003，
+逐筆徹查確認為 **`database/postgres/seed_test_data.sql` 種子錢包**（開帳 10,000、交易數
+0、`created_at=2026-07-07`）：檢查口徑對零交易錢包期望餘額 0，種子錢包必然報違規＝
+**結構性誤報**，與歷輪「孤兒錢包」同源，非本輪產生。**0 筆新違規，PASS。**
+
+> 環境更正 ×2：①交接紀錄稱本機 volume「當日新建」不準確——實查資料自 2026-07-07 起
+> 即存在；②host `localhost:5433` 已被本機原生 `postgresql-x64-17` Windows 服務佔用
+> （PG17 安裝時 5432 被 PG16 佔、預設選 5433，兩服務皆開機自啟），host psql 直連會打到
+> 本機 PG 而非容器 → 對帳改以 `docker exec` 容器內 psql 執行（結果等價）。
+
+### 結論——B2 選配收尾完成
+
+1. **B2 驗證閉環**：150 同機 A/B −21.7% ＋ 重啟後全綠可重現（387/390 ms）＋ 1,000
+   韌性 PASS（99.7%、帳務 0 違規）＋ T-091 乾淨。藍圖 03 B2 列 ✅。
+2. debit 條件 UPDATE 新語意（不再拋 409 樂觀鎖）在兩種負載形態下均無帳務違規，
+   雷區 8 新約定成立。
+3. E3 結案結論不變；D1-b（DB 隔離）與 advisory① 仍為選配遺留。
 
 ## 2026-07-18 E3 最終驗收重跑（第二輪結案）
 
