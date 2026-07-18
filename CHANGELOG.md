@@ -1,3 +1,19 @@
+## [test] — 2026-07-18 — T-090 E3 結案輪：150 全綠驗收 PASS＋1,000 韌性 PASS＋T-091 乾淨，第二輪閉環
+
+### Added
+- `docs/performance/T-090-load-test-report.md` 新增「2026-07-18 E3 最終驗收重跑（第二輪結案）」節，Status 改 **CLOSED**：
+  - 150 正式輪 `20260718-104301`（驗收模式）**全綠 PASS**：P99 377 ms、23,968 樣本、0 失敗/0 卸載/0 5xx——與凌晨輪同機對照全綠可重現。D1-c 語意下＝**T-090 正式驗收通過**。
+  - 1,000 輪 `20260718-104705`（韌性模式）**PASS**：accepted 成功率 **99.2%**（gate ≥95%）、**401 工件 1,113→0**（`refresh-player-tokens.mjs` 首次實戰生效）、429 卸載 11.6%（趨勢）、殘餘 375 筆 `HttpHostConnectException` 全集中起跑 0–5 秒（1s ramp-up 連線風暴，單機工件）＋1 筆 502。
+  - T-091 `accounting-20260718-104929`：9 項 **0 新違規**（3 筆＝既知 player 1001–1003 歷史孤兒錢包，逐筆查證同凌晨輪）。
+- 藍圖 03 進度表 E3 標 ✅——E1/E2/D1/D2/E3 全數完成，**第二輪結案**；B2/D1-b 降選配遺留。
+
+### Why
+E3 是第二輪藍圖的結案輪：首輪套用 D1-final（選 c）＋D2 雙模式 gate 的正式判定，同時實戰驗證 token 臨發方案。SOP 全程照準備清單（暖機棄置 `20260718-103855`、輪距 2.5 分、每輪前 refresh token）。
+
+### Verification
+- provisioning 947/1,000（auth 限流 429 缺 53）→ 補量 60 名合併 1,007 列；refresh 1,007 名僅 6.4 秒。
+- 兩輪 acceptance report（新模板含宣告容量/Gate mode/成功率欄）＋ JTL ＋ HTML 落 `tests/performance/results/20260718-10*`；T-091 報告落 `accounting-20260718-104929`。
+
 ## [changed] — 2026-07-18 — T-090 D1-final 拍板（選 c）＋ D2 落地：gate 與拓樸宣告綁定
 
 ### Changed

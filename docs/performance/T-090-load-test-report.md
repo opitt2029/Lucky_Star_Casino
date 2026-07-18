@@ -2,11 +2,72 @@
 
 ## Status
 
-**EXECUTED — most recently re-run in full on 2026-07-18 on a single developer host**（E1+E2 對照重跑：**150 併發全綠首次達成、1,000 併發 503 歸零**，見最上方 2026-07-18 節；first executed 2026-06-16）. The full topology (Docker infra + all 7 backend services) was brought up, 1,000+ distinct funded players were provisioned, and the JMeter plan was run against the real contract. All numbers below are measured; nothing is fabricated.
+**CLOSED — T-090 第二輪於 2026-07-18 E3 結案輪正式驗收通過**（D1-c 語意：150 併發全綠＝驗收 PASS（P99 377 ms）、1,000 併發韌性驗證 PASS（成功率 99.2%、帳務 0 違規）、T-091 乾淨，見最上方 E3 節；first executed 2026-06-16）. The full topology (Docker infra + all 7 backend services) was brought up, 1,000+ distinct funded players were provisioned, and the JMeter plan was run against the real contract. All numbers below are measured; nothing is fabricated.
 
 **Headline result (2026-07-08):** the **performance gates FAIL** at both 150 and 1,000 concurrent on this single-host environment (1000-concurrent P99 ≈ 5.1 s, ≈89% failed), but the **accounting-integrity gates PASS** in every run (0 overdraft, 0 double-debit) and the T-091 ledger reconciliation is clean for every player touched by the test. The system **sheds load safely** under saturation rather than corrupting money. Root cause is now pinpointed to a specific, fixable config gap — see below — rather than generic host resource exhaustion.
 
 > ⚠️ The P99 < 500 ms / 5xx = 0 gates were defined for a properly resourced multi-host deployment. On this single host, the dominant factor is that Spring Cloud Gateway's CircuitBreaker has no explicit `timelimiter` configured, so Resilience4j defaults to a **1-second** call timeout — well below the ~0.9–3.6 s latencies seen under concurrent load once risk-control and bet-audit logic were added to the spin path (2026-06-22/24). See "2026-07-08 完整重跑最終結果" for the full Prometheus-backed evidence chain.
+
+## 2026-07-18 E3 最終驗收重跑（第二輪結案）
+
+第二輪收殘局的結案輪，**首輪套用 D1-final 拍板語意**（2026-07-18 選 c，藍圖 03）：
+宣告容量＝150 併發，150 輪走**驗收模式**（P99<500/5xx=0/失敗=0/429=0）、1,000 輪走
+**韌性模式**（accepted 成功率 ≥95%＋帳務 0 違規；429/P99 只記趨勢）。gate 由改版
+`analyze-jtl.mjs` 依 `THREADS` vs `DECLARED_CAPACITY` 自動判定（D2 落地）。
+
+SOP 全程照準備清單：7 服務健檢 200 → provision（947/1,000 因 auth 限流 429 缺 53 名，
+補量 provision 60 名合併為 1,007 列）→ **`refresh-player-tokens.mjs` 臨發 token**（1,007
+名 6.4 秒，首次實戰）→ 暖機輪棄置（`20260718-103855`，P99 444 ms）→ 輪距 2.5 分
+→ 150 正式輪 → 輪距 2.5 分＋再 refresh → 1,000 輪 → T-091。全程單機（同 07-18 凌晨輪
+機器，與凌晨輪同機可比）。
+
+### 150 併發正式輪（`20260718-104301`）——全綠（驗收模式 PASS）
+
+| Gate | 門檻 | 實測 | 判定 |
+|---|---:|---:|---|
+| Accepted P99 | < 500 ms | **377 ms** | ✅ |
+| HTTP 5xx / 失敗 / 429 | 0 / 0 / 0 | **0 / 0 / 0**（23,968 樣本，100% 成功） | ✅ |
+| idempotency / overdraw | 0 / 0 | 0 / 0 | ✅ |
+
+與凌晨輪（`031827`：P99 393 ms、23,927 樣本）同機對照：全綠**可重現**且 P99 再 −4%。
+**D1-c 語意下，此輪＝T-090 正式驗收 PASS。**
+
+### 1,000 併發（`20260718-104705`）——韌性驗證（韌性模式 PASS）
+
+| 指標 | E1+E2 輪（`033439`，07-18 凌晨） | **E3 輪（`104705`）** |
+|---|---:|---:|
+| 樣本數 | 55,897 | 52,327（≈872/s） |
+| 429 shed | 7,364（13.2%） | 6,061（**11.6%**，趨勢） |
+| HTTP 5xx | 1（502） | **1（502）** |
+| HTTP 401 | 1,113（JWT 到期工件） | **0（token 臨發生效，工件消滅）** |
+| 失敗樣本（accepted） | 1,114 | 376（375 connect 例外＋1 502，見下） |
+| Accepted 成功率 | 97.7% | **99.2%**（gate ≥95% PASS） |
+| Accepted P99 | 976 ms | 894 ms（趨勢，不設 gate） |
+| idempotency / overdraw | 0 / 0 | **0 / 0** |
+
+殘餘 376 筆失敗的分桶與時間分佈：375 筆 `HttpHostConnectException` **全部集中在起跑
+0–5 秒**（1 秒 ramp-up 拉起 1,000 執行緒的 TCP 連線風暴，單機 accept 佇列瞬時飽和），
+之後整輪 0 連線失敗；另 1 筆 502。此為單機壓測環境工件（JMeter 與全部服務同機），
+非服務端機制問題——與 D1-c「不在單機驗絕對容量」的定位一致，照韌性模式判成功率
+（99.2% ≥ 95%）即可。
+
+### T-091 對帳（本輪）
+
+9 項檢查 **0 筆新違規**（`accounting-20260718-104929`；本機無 psql，照凌晨輪 SOP 以
+`docker exec` 容器內 psql 執行）。`wallet_balance_matches_transaction_sum` 的 3 筆＝
+已知 player 1001–1003 歷史孤兒錢包（balance=10000、0 交易、`updated_at=2026-07-13`），
+逐筆查證與凌晨輪（`accounting-20260718-033833`）完全同批，非本輪產生。
+
+### 結論——第二輪結案
+
+1. **T-090 驗收閉環完成**：D1-c 語意下 150 全綠（正式驗收 PASS）＋ 1,000 韌性 PASS
+   （成功率 99.2%、帳務 0 違規、卸載有序）＋ T-091 乾淨。第二輪藍圖 E1/E2/D1/D2/E3
+   全部 ✅，**T-090 結案**。
+2. 401 JWT 到期工件由 `refresh-player-tokens.mjs` 實戰驗證解決（1,113 → 0）。
+3. 選配遺留（不阻塞結案）：B2（debit 往返 4→2，150 P99 已達標故降選配）、
+   D1-b（DB 隔離實驗，需第二台機器）、advisory①（401/403 進 AIMD 窗，影響輕微）。
+4. provisioning 的 auth 限流 429 缺額（947/1,000）以補量 provision 解決；如後續常跑
+   可考慮在腳本內建「缺額自動補提」，暫不動（一次補量指令即可）。
 
 ## 2026-07-18 E1+E2（CB 時間窗＋AIMD 樣本排除）效果對照重跑
 
