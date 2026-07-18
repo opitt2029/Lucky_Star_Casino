@@ -1,6 +1,6 @@
 # 工作分配表進度快照 — 2026-07-18
 
-> 由 `node tools/audit/generate-audit-snapshot.mjs` 產生（git HEAD：`d8e576b`）。
+> 由 `node tools/audit/generate-audit-snapshot.mjs` 產生（git HEAD：`a162c7d`）。
 > 證據清單：`tools/audit/tasks.json`；判定規則見該工具檔頭註解。
 
 ### A.1 全域 / 基礎建設（S0-W1）
@@ -104,7 +104,7 @@
 | T-081 | P0 | Redux Toolkit 全域狀態 | ✅ | 檔案 5/5 |
 | T-082 | P0 | 遊戲大廳頁面 | ✅ | 檔案 1/1 |
 | T-083 | P0 | 老虎機遊戲頁面 | ✅ | 檔案 2/2；git log --grep "T-083" → 3 筆 |
-| T-084 | P0 | WebSocket 連線管理 | ⚠️ | 人工判定：檔案齊備（useWebSocket.js/RealtimeBridge.jsx）且 notification-service 已完成，但端對端驗收未留存紀錄、dev 預設 VITE_ENABLE_WS=false；實測通過後移除本 override 改回自動判定 |
+| T-084 | P0 | WebSocket 連線管理 | ✅ | 檔案 3/3；git log --grep "T-084" → 1 筆；註：2026-07-18 端對端驗收通過（真後端 Playwright：UI 登入→STOMP CONNECTED→spin 觸發→通知中心收到推播），驗收紀錄見 docs/report/T-084-T-093-端對端驗收報告-20260718.md；原「驗收未留存紀錄」override 已移除 |
 | T-085 | P1 | 排行榜頁面 | ✅ | 檔案 2/2；git log --grep "T-085" → 2 筆 |
 | T-086 | P1 | 帳務明細頁面 | ⚠️ | 檔案 1/2（缺 `frontend/src/pages/Transactions.jsx`）；git log --grep "T-086" → 1 筆 |
 | T-087 | P1 | 百家樂遊戲頁面 | ✅ | 檔案 2/2；git log --grep "T-087" → 3 筆 |
@@ -115,10 +115,10 @@
 
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據（自動產生） |
 |---|:--:|---|:--:|---|
-| T-090 | P0 | JMeter 高併發壓測腳本 | ✅ | 檔案 3/3；git log --grep "T-090" → 54 筆；註：2026-07-18 E3 結案輪正式驗收通過（D1-c：150 全綠 P99 377ms＋1,000 韌性 PASS 成功率 99.2%＋T-091 0 新違規），報告 Status=CLOSED，原效能 gate 未達標 override 已移除 |
-| T-091 | P0 | 帳務一致性對帳腳本 | ✅ | 檔案 2/2；git log --grep "T-091" → 12 筆 |
+| T-090 | P0 | JMeter 高併發壓測腳本 | ✅ | 檔案 3/3；git log --grep "T-090" → 57 筆；註：2026-07-18 E3 結案輪正式驗收通過（D1-c：150 全綠 P99 377ms＋1,000 韌性 PASS 成功率 99.2%＋T-091 0 新違規），報告 Status=CLOSED，原效能 gate 未達標 override 已移除 |
+| T-091 | P0 | 帳務一致性對帳腳本 | ✅ | 檔案 2/2；git log --grep "T-091" → 14 筆 |
 | T-092 | P1 | Swagger UI API 文件 | ✅ | 檔案 1/1；git log --grep "T-092" → 3 筆 |
-| T-093 | P0 | End-to-End 整合測試 | ⚠️ | 人工判定：後端已實作、Playwright E2E 已存在（playwright.config.js），但尚未涵蓋跨服務全鏈路（下注→帳務→排行→通知）整合驗證；補齊後移除本 override |
+| T-093 | P0 | End-to-End 整合測試 | ✅ | 檔案 2/2；git log --grep "T-093" → 2 筆；註：2026-07-18 跨服務全鏈路（下注→帳務→排行→通知）整合驗證補齊：tests/e2e/full-chain.mjs 18 斷言全 PASS（roundId 於帳務流水/遊戲回應/WS 推播三處一致），驗收紀錄見 docs/report/T-084-T-093-端對端驗收報告-20260718.md；原 override 已移除 |
 | T-094 | P0 | README 與部署文件 | ✅ | 檔案 2/2；git log --grep "T-094" → 1 筆 |
 | T-095 | P0 | ADR 整理（ADR-001~005） | ✅ | 檔案 5/5；git log --grep "T-095" → 2 筆 |
 | T-096 | P0 | 結業簡報 | ❌ | 檔案 0/1（缺 `docs/**/*簡報*`） |
@@ -152,8 +152,8 @@
 
 | 狀態 | 任務數 | 占比 |
 |---|:--:|:--:|
-| ✅ 已完成 | 80 | 94% |
-| ⚠️ 部分完成 | 3 | 4% |
+| ✅ 已完成 | 82 | 96% |
+| ⚠️ 部分完成 | 1 | 1% |
 | ❌ 未開始 | 1 | 1% |
 | ❓ 待確認 | 1 | 1% |
 | **總計** | **85** | 100% |
