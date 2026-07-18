@@ -26,7 +26,10 @@ B1 JFR 定案：單機 Postgres debit 容量 ≈550–600 交易/秒，往返數
 - `mvn -pl backend/wallet-service test`：127 tests 全綠（含 H2 真路徑的 `ShopRedemptionIntegrationTest`）。
 - `mvn -pl backend/wallet-service test -Pcontainers-test`（ADR-007 真 PG/MySQL）：13 tests 全綠。
 - code-reviewer gate：帳務核心無資損路徑；2 must-fix（Kafka 行鎖窗、CHANGELOG）均已修復。
-- 150 併發對照重跑＋T-091 見後續條目（本條 commit 時尚未跑）。
+- **150 併發同機 A/B（2026-07-18，Alex 機器、全容器化拓樸、新 volume）**：pre-B2（develop）P99 494 ms →
+  B2 **387 ms（−21.7%，驗收模式全 gate PASS）**；debit 平均 10.86→8.57 ms；每輪 0 失敗/0 429/0 5xx、帳務斷言 0。
+  與歷輪 393 ms（weiyu 機器）跨機不可比，達標判定以原機器複測為準。
+- 未完項（交接）：1,000 韌性輪＋T-091 對帳＋報告收尾，見 `docs/performance/T-090-B2-工作紀錄-20260718.md`。
 
 ## [test] — 2026-07-18 — T-090 E3 結案輪：150 全綠驗收 PASS＋1,000 韌性 PASS＋T-091 乾淨，第二輪閉環
 
