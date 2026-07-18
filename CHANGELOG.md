@@ -1,3 +1,30 @@
+## [docs] — 2026-07-18 — T-090 B2 收尾：1,000 韌性輪＋T-091 對帳完成，B2 列 ✅
+
+### Added
+- `docs/performance/T-090-load-test-report.md`：新增「2026-07-18 B2 對照重跑（Alex 機器）」節——
+  150 同機 A/B（494→387 ms，−21.7%）＋重啟後 150 確認輪 `20260718-192139` 全綠（P99 390 ms，
+  水位可重現）＋1,000 韌性輪 `20260718-192559` PASS（accepted 成功率 99.7%、帳務 0 違規、
+  殘餘失敗＝82 筆起跑連線風暴工件＋2 筆 502）＋T-091（`accounting-20260718-192939`）0 新違規。
+- T-091 既知排除項定性：player 1001–1003 真身＝`database/postgres/seed_test_data.sql` 種子錢包
+  （開帳 10,000、零交易→檢查口徑結構性誤報），非壓測損傷；準備清單 §5 同步此結論。
+
+### Changed
+- `docs/plans/03-T-090-第二輪效能調校藍圖.md`：B2 列 🔶→✅（同機 A/B＋韌性輪＋對帳全數完成）。
+- `docs/performance/T-090-壓測前準備清單.md`：§3/§5 psql 範例帳號更正（`luckystar`/`lucky_star` →
+  實際的 `lucky_user`/`lucky_star_casino`）；§7.4 對帳說明改為事實（腳本走 host psql 直連 5433，
+  非 docker exec），並補「本機原生 PostgreSQL 服務佔用 5433」的替代路徑。
+- `CHANGELOG.md`：移除上一筆合併殘留的孤兒衝突標記 `=======`。
+- `docs/performance/T-090-B2-工作紀錄-20260718.md` → 歸檔至 `docs/_雜物/`（交接內容已全數併入正式報告）。
+
+### Why
+B2 交接的剩餘驗證（1,000 韌性＋T-091）完成，B2 選配收尾閉環；環境註記更正（volume 非當日新建、
+5433 port 衝突）留給下一輪續跑者避雷。
+
+### Verification
+- 1,000 韌性輪 gate：accepted 成功率 99.7% ≥95% PASS、idempotency/overdraw 0/0。
+- T-091：9 項檢查 0 新違規（3 筆種子錢包已逐筆徹查定性，報告見
+  `tests/performance/results/accounting-20260718-192939/`）。
+
 ## [perf] — 2026-07-18 — T-090 B2：wallet debit 交易 DB 往返 4→2（雷區 8 全套流程）
 
 ### Added
@@ -30,7 +57,7 @@ B1 JFR 定案：單機 Postgres debit 容量 ≈550–600 交易/秒，往返數
   B2 **387 ms（−21.7%，驗收模式全 gate PASS）**；debit 平均 10.86→8.57 ms；每輪 0 失敗/0 429/0 5xx、帳務斷言 0。
   與歷輪 393 ms（weiyu 機器）跨機不可比，達標判定以原機器複測為準。
 - 未完項（交接）：1,000 韌性輪＋T-091 對帳＋報告收尾，見 `docs/performance/T-090-B2-工作紀錄-20260718.md`。
-=======
+
 ## [docs] — 2026-07-18 — AUDIT_REPORT：T-090 ⚠️→✅（E3 驗收通過，移除 override）
 
 ### Changed
