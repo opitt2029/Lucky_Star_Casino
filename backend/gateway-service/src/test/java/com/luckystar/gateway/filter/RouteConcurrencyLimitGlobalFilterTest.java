@@ -7,6 +7,7 @@ import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
+import reactor.core.Disposable;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 
@@ -174,7 +175,7 @@ class RouteConcurrencyLimitGlobalFilterTest {
     /** 以 acquire/release 配對灌入一筆指定延遲的樣本，維持在途計數平衡 */
     private void recordSample(AdaptiveInFlightLimiter limiter, long latencyMs) {
         assertThat(limiter.tryAcquire()).isTrue();
-        limiter.release(latencyMs);
+        limiter.release(latencyMs, true);
     }
 
     private AdaptiveInFlightLimiter gameLimiter() {
@@ -251,6 +252,63 @@ class RouteConcurrencyLimitGlobalFilterTest {
         assertThat(limiter.currentMax()).isEqualTo(afterFirst);
     }
 
+    // ---- AIMD 樣本篩選（T-090 E2）----
+
+    /** chain 模擬下游以指定狀態碼完成回應 */
+    private GatewayFilterChain respondingChain(HttpStatus status) {
+        return exchange -> {
+            exchange.getResponse().setStatusCode(status);
+            return Mono.empty();
+        };
+    }
+
+    @Test
+    void okResponse_isCountedInAimdWindow() {
+        // 2xx 快回應是有效樣本：延遲遠低於 target → 放寬 +2
+        filter.filter(gameExchange(), respondingChain(HttpStatus.OK)).block();
+        filter.adjustLimits();
+
+        assertThat(gameLimiter().currentMax()).isEqualTo(4);
+    }
+
+    @Test
+    void rateLimited429_isNotCountedInAimdWindow() {
+        // admitted 後被玩家限流快拒的 429 是「卸載證據」：不得以毫秒級樣本拉低 P95
+        filter.filter(gameExchange(), respondingChain(HttpStatus.TOO_MANY_REQUESTS)).block();
+        filter.adjustLimits();
+
+        assertThat(gameLimiter().currentMax()).isEqualTo(2); // 窗內無有效樣本 → 凍結
+    }
+
+    @Test
+    void allFiveXxWindow_freezesLimit() {
+        // CB 開路期間的毫秒級 503 若進窗，會被誤讀成「延遲達標」而放寬上限
+        //（2026-07-09 輪正回饋根因）；E2 後全 5xx 窗＝無有效樣本，複用「無流量不動」語意
+        filter.filter(gameExchange(), respondingChain(HttpStatus.SERVICE_UNAVAILABLE)).block();
+        filter.filter(gameExchange(), respondingChain(HttpStatus.BAD_GATEWAY)).block();
+        filter.filter(gameExchange(), respondingChain(HttpStatus.INTERNAL_SERVER_ERROR)).block();
+        filter.adjustLimits();
+
+        assertThat(gameLimiter().currentMax()).isEqualTo(2);
+    }
+
+    @Test
+    void cancelledWithoutResponse_releasesSlotButNotCounted() {
+        // client 斷線（cancel 訊號、無狀態碼）：名額必須歸還，但不算有效延遲樣本
+        Disposable inFlightRequest =
+                filter.filter(gameExchange(), pendingChain()).subscribe();
+        inFlightRequest.dispose();
+        filter.adjustLimits();
+
+        assertThat(gameLimiter().currentMax()).isEqualTo(2); // 未被樣本影響
+        AtomicInteger forwarded = new AtomicInteger();
+        filter.filter(gameExchange(), exchange -> {
+            forwarded.incrementAndGet();
+            return Mono.empty();
+        }).block();
+        assertThat(forwarded.get()).isEqualTo(1); // 名額已歸還
+    }
+
     @Test
     void shrinkBelowInFlight_doesNotCorruptCounting() {
         // 收緊到 floor=1 時已有 2 個在途：不得誤放新請求，釋放後計數要回到正確水位
@@ -261,7 +319,7 @@ class RouteConcurrencyLimitGlobalFilterTest {
 
         AdaptiveInFlightLimiter limiter = gameLimiter();
         // 直接灌高延遲樣本觸發收緊（在途 2 不動）
-        limiter.release(TARGET_MS * 5); // 先借用一次 release 記樣本…
+        limiter.release(TARGET_MS * 5, true); // 先借用一次 release 記樣本…
         assertThat(limiter.tryAcquire()).isTrue(); // …再補回計數，維持在途=2
         filter.adjustLimits();
         assertThat(limiter.currentMax()).isEqualTo(1);

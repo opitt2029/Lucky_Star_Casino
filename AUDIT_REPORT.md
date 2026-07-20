@@ -448,11 +448,11 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | T-080 | P0 | 登入/註冊頁面 | ✅ | 檔案 3/3 |
 | T-081 | P0 | Redux Toolkit 全域狀態 | ✅ | 檔案 5/5 |
 | T-082 | P0 | 遊戲大廳頁面 | ✅ | 檔案 1/1 |
-| T-083 | P0 | 老虎機遊戲頁面 | ✅ | 檔案 2/2；git log --grep "T-083" → 2 筆 |
-| T-084 | P0 | WebSocket 連線管理 | ⚠️ | 人工判定：檔案齊備（useWebSocket.js/RealtimeBridge.jsx）且 notification-service 已完成，但端對端驗收未留存紀錄、dev 預設 VITE_ENABLE_WS=false；實測通過後移除本 override 改回自動判定 |
+| T-083 | P0 | 老虎機遊戲頁面 | ✅ | 檔案 2/2；git log --grep "T-083" → 3 筆 |
+| T-084 | P0 | WebSocket 連線管理 | ✅ | 檔案 3/3；git log --grep "T-084" → 1 筆；註：2026-07-18 端對端驗收通過（真後端 Playwright：UI 登入→STOMP CONNECTED→spin 觸發→通知中心收到推播），驗收紀錄見 docs/report/T-084-T-093-端對端驗收報告-20260718.md；原「驗收未留存紀錄」override 已移除 |
 | T-085 | P1 | 排行榜頁面 | ✅ | 檔案 2/2；git log --grep "T-085" → 2 筆 |
-| T-086 | P1 | 帳務明細頁面 | ✅ | 檔案 2/2；git log --grep "T-086" → 1 筆 |
-| T-087 | P1 | 百家樂遊戲頁面 | ✅ | 檔案 2/2；git log --grep "T-087" → 2 筆 |
+| T-086 | P1 | 帳務明細頁面 | ⚠️ | 檔案 1/2（缺 `frontend/src/pages/Transactions.jsx`）；git log --grep "T-086" → 1 筆 |
+| T-087 | P1 | 百家樂遊戲頁面 | ✅ | 檔案 2/2；git log --grep "T-087" → 3 筆 |
 | T-088 | P1 | 個人資料/好友管理頁面 | ✅ | 檔案 2/2 |
 | T-089 | P2 | RWD 響應式優化 | ❓ | 人工判定：無法由檔案結構直接判定，需實機檢視三斷點 |
 
@@ -460,10 +460,10 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 | 任務 | 優先 | 任務名稱 | 狀態 | 盤點依據（自動產生） |
 |---|:--:|---|:--:|---|
-| T-090 | P0 | JMeter 高併發壓測腳本 | ⚠️ | 人工判定：腳本/報告/1,000 玩家 provisioning 齊備，但 1,000 併發 P99≈2.5s 且大量 5xx，效能 gate 未達標（docs/performance/T-090-load-test-report.md）；gate 通過後移除本 override |
-| T-091 | P0 | 帳務一致性對帳腳本 | ✅ | 檔案 2/2；git log --grep "T-091" → 10 筆 |
+| T-090 | P0 | JMeter 高併發壓測腳本 | ✅ | 檔案 3/3；git log --grep "T-090" → 57 筆；註：2026-07-18 E3 結案輪正式驗收通過（D1-c：150 全綠 P99 377ms＋1,000 韌性 PASS 成功率 99.2%＋T-091 0 新違規），報告 Status=CLOSED，原效能 gate 未達標 override 已移除 |
+| T-091 | P0 | 帳務一致性對帳腳本 | ✅ | 檔案 2/2；git log --grep "T-091" → 14 筆 |
 | T-092 | P1 | Swagger UI API 文件 | ✅ | 檔案 1/1；git log --grep "T-092" → 3 筆 |
-| T-093 | P0 | End-to-End 整合測試 | ⚠️ | 人工判定：後端已實作、Playwright E2E 已存在（playwright.config.js），但尚未涵蓋跨服務全鏈路（下注→帳務→排行→通知）整合驗證；補齊後移除本 override |
+| T-093 | P0 | End-to-End 整合測試 | ✅ | 檔案 2/2；git log --grep "T-093" → 2 筆；註：2026-07-18 跨服務全鏈路（下注→帳務→排行→通知）整合驗證補齊：tests/e2e/full-chain.mjs 18 斷言全 PASS（roundId 於帳務流水/遊戲回應/WS 推播三處一致），驗收紀錄見 docs/report/T-084-T-093-端對端驗收報告-20260718.md；原 override 已移除 |
 | T-094 | P0 | README 與部署文件 | ✅ | 檔案 2/2；git log --grep "T-094" → 1 筆 |
 | T-095 | P0 | ADR 整理（ADR-001~005） | ✅ | 檔案 5/5；git log --grep "T-095" → 2 筆 |
 | T-096 | P0 | 結業簡報 | ❌ | 檔案 0/1（缺 `docs/**/*簡報*`） |
@@ -485,7 +485,6 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 
 | 任務 | 任務名稱 | 狀態 | 盤點依據（自動產生） |
 |---|---|:--:|---|
- feature/weiyu-saga-compensation-and-contracts
 | T-108 | 停用玩家即時封鎖（Redis 封鎖 + token min-iat） | ✅ | 檔案 2/2；git log --grep "T-108" → 2 筆 |
 | T-109 | Gateway 補 /api/v1/friends/** 路由 | ✅ | 檔案 1/1 |
 | T-110 | Windows 一鍵啟動腳本（start-all.bat） | ✅ | 人工判定：已完成後由後端容器化取代（docker compose up -d --build，CHANGELOG 2026-07-07），原生腳本已移除；歷史 commit 見 git log --grep start-all |
@@ -493,20 +492,13 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 | T-112 | CasinoShop 頁面 | ✅ | 檔案 1/1 |
 | T-113 | CheckIn 頁面 | ✅ | 檔案 1/1 |
 | T-114 | 統一客服入口（SupportModal / uiSlice） | ✅ | 檔案 2/2；git log --grep "T-114" → 2 筆 |
-| T-108 | 停用玩家即時封鎖（Redis 封鎖 + token min-iat）| ✅ | admin `PlayerBanService` 寫 `disabled:player:` + `token:min-iat:`；gateway filter 新增 min-iat 驗證；member 登入加查封鎖標記（CHANGELOG 2026-06-16）|
-| T-109 | Gateway 補 `/api/v1/friends/**` 路由 | ✅ | `gateway-service/application.yml` 新增 `member-friends` route（CHANGELOG 2026-06-16）|
-| T-110 | Windows 一鍵啟動腳本（start-all.bat） | ✅（已除役） | 曾建立 `start-all.bat` / `stop-all.bat`（CHANGELOG 2026-06-16）；後端容器化（PR #172）後原生啟動腳本全數移除，改由 `docker compose up -d --build` 取代（CHANGELOG 2026-07-07）|
-| T-111 | 捕魚機遊戲（game-service fishing）| ✅ | `frontend/src/pages/Fishing.jsx` 存在；後端捕魚機邏輯（依 AGENTS.md T-038）|
-| T-112 | CasinoShop 頁面 | ✅ | `frontend/src/pages/CasinoShop.jsx` 存在 |
-| T-113 | CheckIn 頁面 | ✅ | `frontend/src/pages/CheckIn.jsx` 存在 |
-| T-114 | 統一客服入口（SupportModal / uiSlice）| ✅ | `SupportModal.jsx` + `uiSlice.js` 抽成 App 根層，QuickToolbar / 頭像下拉統一入口（CHANGELOG 2026-06-16）|
 
 ### A.13 進度統計（自動計算）
 
 | 狀態 | 任務數 | 占比 |
 |---|:--:|:--:|
-| ✅ 已完成 | 80 | 94% |
-| ⚠️ 部分完成 | 3 | 4% |
+| ✅ 已完成 | 82 | 96% |
+| ⚠️ 部分完成 | 1 | 1% |
 | ❌ 未開始 | 1 | 1% |
 | ❓ 待確認 | 1 | 1% |
 | **總計** | **85** | 100% |
@@ -519,13 +511,15 @@ Internal calls: X-Internal-Secret header → InternalSecretFilter
 > - 2026-06-17：T-070~T-073 ❌→✅（notification 全完成）、T-100~T-104 / T-107 ❌→✅（鑽石系統全完成）、新增 T-108~T-114 全部 ✅，✅ 29→46，❌ 37→27，總計 78→85。
 > - 2026-06-24：修正漏記——T-027 ❌→✅、T-028 ⚠️→✅（兩者 2026-06-01 即 commit c945f97/2646cb3 併入 develop+main，含測試，6/17 盤點時誤標未完）。✅ 46→48，⚠️ 11→10，❌ 27→26。**wallet-service T-020~T-028 全數完成。**
 > - 2026-06-30：校正過時標記（以程式碼為準）——T-085 ⚠️→✅（`rankSlice` 已改用 `rankApi`）、T-086 ⚠️→✅（`walletSlice` 已用 `walletApi.getTransactions`）、T-095 ⚠️→✅（`docs/adr/ADR-003~005` 已產出）、T-093 ❌→⚠️（後端已實作 + `feature/e2e-tests` 已有 Playwright e2e，僅缺跨服務全鏈路）。✅ 48→51，⚠️ 10→8，❌ 26→25。
+> - **2026-07-18：T-090 ⚠️→✅**（移除 override 回歸自動判定）：第二輪效能調校於 E3 結案輪正式驗收通過——D1-final 拍板選 c（宣告容量=150），150 併發全綠（P99 377ms/0 失敗/0 卸載）＝正式驗收 PASS、1,000 併發韌性驗證 PASS（accepted 成功率 99.2%）、T-091 九項 0 新違規；報告 Status=CLOSED（PR #218，藍圖 03 E1/E2/D1/D2/E3 全 ✅）。
+> - **2026-07-18：T-084/T-093 ⚠️→✅**（移除 override 回歸自動判定）：兩筆「驗收缺口」實測補齊——T-093 新增 `tests/e2e/full-chain.mjs` 跨服務全鏈路（下注→帳務→排行→通知）18 斷言全 PASS（同局 roundId 於遊戲回應/帳務流水/WS 推播三處一致）；T-084 新增 `frontend/e2e/realtime-ws.spec.js` 真後端 Playwright 驗收 PASS（UI 登入→STOMP CONNECTED→通知中心收到推播）。驗收留存紀錄見 `docs/report/T-084-T-093-端對端驗收報告-20260718.md`。
 
 > 註：本次（2026-06-09）將 T-033~T-037 由 ❌ 改為 ✅（game-service 全數完成），故 ✅ 由 24→29、❌ 由 42→37。
 
 **按模組完成度概覽：**
 
-- ✅ **完成度高**：全域基礎建設、Member Service、Gateway、**Wallet Service（T-020~T-028 全完成）**、Game Service（T-030~T-037）、Rank Service（T-040~T-044）、**Notification Service（T-070~T-073 全完成）**、**鑽石系統（T-100~T-107 全完成）**
-- ⚠️ **進行中**：前端（排行榜/帳務明細已切真實 API；slot/baccarat 仍靠 `VITE_USE_MOCK_API` 切換）、E2E 跨服務全鏈路測試（T-093）、壓測效能 gate 重測（T-090）
+- ✅ **完成度高**：全域基礎建設、Member Service、Gateway、**Wallet Service（T-020~T-028 全完成）**、Game Service（T-030~T-037）、Rank Service（T-040~T-044）、**Notification Service（T-070~T-073 全完成）**、**鑽石系統（T-100~T-107 全完成）**、**壓測與對帳（T-090/T-091，2026-07-18 E3 結案驗收通過）**、**E2E 端對端驗收（T-084/T-093，2026-07-18 實測補齊）**
+- ⚠️ **進行中**：前端（排行榜/帳務明細已切真實 API；slot/baccarat 仍靠 `VITE_USE_MOCK_API` 切換）
 - ❌ **尚未起步**：結業簡報 / Demo 影片（T-096）
 
 > **結論**：認證、帳號、帳務（含破產補助/DLT 後台）、遊戲對局、排行榜、即時推播、鑽石點數卡系統、Admin GM 手動發幣與 Swagger/OpenAPI 聚合皆已完成；**剩餘空白主要集中在收尾驗證/簡報與前端 mock→真實 API 切換**。
