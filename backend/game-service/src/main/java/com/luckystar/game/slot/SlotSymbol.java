@@ -24,7 +24,7 @@ package com.luckystar.game.slot;
  *
  * <p><b>理論值（權重總和 103，中線單線兩階賠付）：</b>
  * <ul>
- *   <li>RTP = Σpᵢ³·Tᵢ（三連）+ Σpᵢ²(1−pᵢ)·Pᵢ（左二同） ≈ <b>93.8%</b></li>
+ *   <li>RTP = Σpᵢ³·Tᵢ（三連）+ Σpᵢ²(1−pᵢ)·Pᵢ（左二同） ≈ <b>93.5%</b></li>
  *   <li>命中率 = Σpᵢ³（三連 ≈11.2%）+ Σpᵢ²(1−pᵢ)（左二同 ≈19.5%） ≈ <b>30.7%</b></li>
  * </ul>
  * 其中 pᵢ = weightᵢ / 103，Tᵢ = tripleMultiplier，Pᵢ = pairMultiplier。此設定把舊版「單中線、
@@ -38,7 +38,7 @@ public enum SlotSymbol {
     CHERRY(45, 1, 5, 0x1F352),
     LEMON(30, 1, 8, 0x1F34B),
     BELL(16, 2, 18, 0x1F514),
-    STAR(7, 3, 50, 0x2B50),
+    STAR(7, 3, 40, 0x2B50),
     SEVEN(5, 5, 70, 0x0037, 0xFE0F, 0x20E3);
 
     private final String display;

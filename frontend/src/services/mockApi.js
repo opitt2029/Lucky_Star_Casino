@@ -1,4 +1,4 @@
-﻿// 玩法契約單一來源（Phase 5）：表格數值一律 import repo 根 contracts/*.json，與後端 enum/常數的
+// 玩法契約單一來源（Phase 5）：表格數值一律 import repo 根 contracts/*.json，與後端 enum/常數的
 // 相等性由 game-service 的 ContractParityTest 守門（漂移＝CI 紅燈）。演算「邏輯」（補牌流程、
 // pCapture 反推、兩階賠付評估）仍鏡像後端程式碼（AGENTS 雷區 14）。
 import slotPaytableContract from '../../../contracts/slot-paytable.json'
@@ -13,7 +13,7 @@ const SESSION_KEY = 'lucky-star-session-v1'
 // 老虎機賠付表（contracts/slot-paytable.json ↔ 後端 SlotSymbol：權重 + 兩階倍率，權重總和 103）。
 // 中線由左到右兩階賠付：三連（三格同符號）派 tripleMultiplier 大獎；
 // 左二同（左二格同、第三格不同）派 pairMultiplier 小獎；右二格相同不賠。
-// 理論 RTP ≈ 93.8%、命中率 ≈ 30.7%（pᵢ = 權重ᵢ / 103）。
+// 理論 RTP ≈ 93.5%、命中率 ≈ 30.7%（pᵢ = 權重ᵢ / 103）。
 const SLOT_PAYTABLE = slotPaytableContract.symbols.map(
   ({ display, weight, pairMultiplier, tripleMultiplier }) => ({
     symbol: display,

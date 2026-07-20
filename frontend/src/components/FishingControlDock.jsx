@@ -23,25 +23,38 @@ export default function FishingControlDock({
       </div>
 
       <div className="fishing-dock-ammo-group" aria-label="本局彈藥">
-        {ammoOptions.map((option) => (
-          <button
-            key={option.key}
-            type="button"
-            disabled={ammoDisabled}
-            aria-pressed={cannonLevel === option.level}
-            aria-disabled={ammoDisabled}
-            className={`fishing-dock-ammo fishing-dock-ammo--${option.tone}`}
-            title={
-              ammoDisabled
-                ? '本局彈藥已鎖定，完成收網結算後可重新選擇'
-                : `${option.description}，每發 ${option.costPerShot.toLocaleString()} 星幣`
-            }
-          >
-            <span className="fishing-dock-ammo__badge">{option.badge}</span>
-            <strong>{option.label}</strong>
-            <span>每發金額 {option.costPerShot.toLocaleString()}</span>
-          </button>
-        ))}
+        {ammoOptions.map((option) => {
+          const hasActiveAmmo = Boolean(activeAmmo?.key || activeAmmo?.costPerShot || activeAmmo?.level)
+          const isActive = hasActiveAmmo
+            ? option.key === activeAmmo?.key ||
+              option.costPerShot === activeAmmo?.costPerShot ||
+              option.level === activeAmmo?.level
+            : option.level === cannonLevel
+
+          return (
+            <button
+              key={option.key}
+              type="button"
+              disabled={ammoDisabled}
+              aria-pressed={isActive}
+              aria-disabled={ammoDisabled}
+              className={[
+                'fishing-dock-ammo',
+                `fishing-dock-ammo--${option.tone}`,
+                isActive ? 'is-active' : '',
+              ].filter(Boolean).join(' ')}
+              title={
+                ammoDisabled
+                  ? '本局彈藥已鎖定，完成收網結算後可重新選擇'
+                  : `${option.description}，每發 ${option.costPerShot.toLocaleString()} 星幣`
+              }
+            >
+              <span className="fishing-dock-ammo__badge">{option.badge}</span>
+              <strong>{option.label}</strong>
+              <span>每發金額 {option.costPerShot.toLocaleString()}</span>
+            </button>
+          )
+        })}
       </div>
 
       <div

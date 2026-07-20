@@ -8,7 +8,6 @@ import FishingControlDock from '../components/FishingControlDock'
 import FishingSettlementPanel from '../components/FishingSettlementPanel'
 import FishingFullscreenButton from '../components/FishingFullscreenButton'
 import FishingFishInfoPanel from '../components/FishingFishInfoPanel'
-import { fishingApi } from '../services/fishingApi'
 import { fetchWallet } from '../store/slices/walletSlice'
 import { useFishingSession, BUYIN_TIERS, BUYIN_MIN, BUYIN_MAX } from '../hooks/useFishingSession'
 import { useSound } from '../casino-fx/sound/useSound'
@@ -21,6 +20,7 @@ import {
   FISHING_JACKPOT,
 } from '../data/fishingGameData'
 import { FISHING_AMMO_OPTIONS, getFishingAmmoByLevel } from '../data/fishingConfig'
+import { decorateFishingFishTable } from '../data/fishingFishConfig'
 
 const FishingCanvas = lazy(() => import('../components/FishingCanvas'))
 
@@ -40,83 +40,72 @@ const fishingPayouts = [
   { label: '稀有與 Boss', value: '水晶魟魚 80x - 120x, 彩金鯨王 200x+' },
 ]
 
-function ShotVerifyPanel({ sessionId, shots, fishTable, play }) {
-  const [results, setResults] = useState({})
-  const nameByCode = useMemo(() => {
-    const map = {}
-    for (const fish of fishTable || []) map[fish.code] = fish.name
-    return map
-  }, [fishTable])
 
-  if (!shots || shots.length === 0) return null
+const SPECIAL_EFFECT_TIMER_CONFIG = {
+  CAISHEN: {
+    label: '財神',
+    title: '高倍率獎勵',
+    durationMs: 15000,
+    tone: 'caishen',
+  },
+  MONEY_TREE: {
+    label: '搖錢樹',
+    title: '浮動倍率',
+    durationMs: 15000,
+    tone: 'money-tree',
+  },
+}
 
-  const verify = async (shot) => {
-    setResults((prev) => ({ ...prev, [shot.shotSeq]: { loading: true } }))
-    play?.('click')
-    try {
-      const data = await fishingApi.verifyShot({
-        sessionId,
-        shotSeq: shot.shotSeq,
-        fishType: shot.fishType,
-        betPerShot: shot.betPerShot,
-      })
-      const consistent = data.hit === Boolean(shot.captured) && Number(data.payout) === Number(shot.payout)
-      setResults((prev) => ({ ...prev, [shot.shotSeq]: { data, consistent } }))
-    } catch (err) {
-      setResults((prev) => ({
-        ...prev,
-        [shot.shotSeq]: { error: err?.response?.data?.message || err.message || '驗證失敗' },
-      }))
-    }
-  }
+function FishingSpecialEffectTimers({ timers }) {
+  if (!timers.length) return null
 
   return (
-    <div className="fishing-verify grid gap-2 text-left">
-      <p className="gold-muted text-xs font-black uppercase tracking-[0.2em]">公平性驗證</p>
-      <p className="text-[11px] font-bold text-yellow-100/56">
-        結算後可用每一發紀錄重新驗證命中與派彩，確認本局結果與伺服器承諾一致。
-      </p>
-      <ul className="grid max-h-56 gap-1 overflow-y-auto pr-1">
-        {shots.map((shot) => {
-          const state = results[shot.shotSeq] || {}
-          return (
-            <li
-              key={shot.shotSeq}
-              className="flex items-center justify-between gap-2 rounded border border-yellow-200/12 bg-red-950/60 px-3 py-2 text-xs font-bold text-yellow-100/76"
-            >
-              <span className="truncate">
-                第 {shot.shotSeq} 發, {nameByCode[shot.fishType] || shot.fishType},
-                {shot.captured ? ` 捕獲 +${shot.payout.toLocaleString()}` : ' 未捕獲'}
-              </span>
-              {state.data ? (
-                <span
-                  className={[
-                    'shrink-0 font-black',
-                    state.data.commitmentValid && state.consistent
-                      ? 'text-emerald-300'
-                      : 'text-red-300',
-                  ].join(' ')}
-                  title={state.data.message}
-                >
-                  {state.data.commitmentValid && state.consistent ? '驗證通過' : '需要檢查'}
-                </span>
-              ) : state.error ? (
-                <span className="shrink-0 font-black text-red-300">{state.error}</span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => verify(shot)}
-                  disabled={state.loading}
-                  className="shrink-0 rounded border border-yellow-200/30 px-3 py-1 font-black text-yellow-100/80 transition hover:border-yellow-200/70 disabled:opacity-50"
-                >
-                  {state.loading ? '驗證中' : '驗證'}
-                </button>
-              )}
-            </li>
-          )
-        })}
-      </ul>
+    <div className="fishing-special-effect-timers" aria-live="polite" aria-label="特殊魚效果時間">
+      <span className="fishing-special-effect-timers__eyebrow">效果時間</span>
+      {timers.map((timer) => (
+        <div
+          key={timer.code}
+          className={`fishing-special-effect-timer fishing-special-effect-timer--${timer.tone}`}
+        >
+          <div className="fishing-special-effect-timer__text">
+            <strong>{timer.label}</strong>
+            <span>{timer.title}</span>
+          </div>
+          <div className="fishing-special-effect-timer__time tabular-nums">
+            {timer.remainingSeconds}s
+          </div>
+          <div className="fishing-special-effect-timer__bar" aria-hidden="true">
+            <span style={{ transform: `scaleX(${timer.progress})` }} />
+          </div>
+        </div>
+      ))}
     </div>
+  )
+}
+
+
+function FishingCatchStatsDrawer({ items, total }) {
+  return (
+    <details className="fishing-catch-stats-drawer">
+      <summary className="fishing-catch-stats-drawer__summary">
+        <span>\u672c\u5c40\u6355\u7372\u7d71\u8a08</span>
+        <strong>{total.toLocaleString()} \u96bb</strong>
+      </summary>
+      <div className="fishing-catch-stats-drawer__panel">
+        {items.length > 0 ? (
+          <ul>
+            {items.map((item) => (
+              <li key={item.key}>
+                <span>{item.name}</span>
+                <strong>{item.count.toLocaleString()} \u96bb</strong>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>\u5c1a\u672a\u6355\u7372\u9b5a\u7a2e</p>
+        )}
+      </div>
+    </details>
   )
 }
 
@@ -134,6 +123,9 @@ export default function Fishing() {
   const [isTopUpModalOpen, setIsTopUpModalOpen] = useState(false)
   const [selectedAmmoLevel, setSelectedAmmoLevel] = useState(1)
   const [sessionBuyIn, setSessionBuyIn] = useState(null)
+  const [caughtFishStats, setCaughtFishStats] = useState({})
+  const [specialEffectTimers, setSpecialEffectTimers] = useState({})
+  const [specialEffectNow, setSpecialEffectNow] = useState(() => Date.now())
   const fullscreenTargetRef = useRef(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [fullscreenMessage, setFullscreenMessage] = useState('')
@@ -189,10 +181,106 @@ export default function Fishing() {
     },
   })
 
-  useBgm(bossActive ? 'boss' : 'fishing', session.phase === 'playing')
+  const decoratedFishTable = useMemo(() => decorateFishingFishTable(session.fishTable), [session.fishTable])
+
+  const fishNameByCode = useMemo(() => {
+    const names = {}
+    for (const fish of decoratedFishTable || []) {
+      if (fish?.code && !names[fish.code]) names[fish.code] = fish.name || fish.code
+    }
+    return names
+  }, [decoratedFishTable])
+
+  const caughtFishStatsItems = useMemo(
+    () =>
+      Object.values(caughtFishStats).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
+    [caughtFishStats]
+  )
+  const caughtFishTotal = caughtFishStatsItems.reduce((sum, item) => sum + item.count, 0)
+
+  const isFishingBgmActive = session.phase === 'idle' || session.phase === 'playing'
+  const fishingBgmTheme = session.phase === 'playing' && bossActive ? 'boss' : 'fishing'
+  const fishingBgmIntensity = session.phase === 'idle' ? 0 : 1
+  useBgm(fishingBgmTheme, isFishingBgmActive, { intensity: fishingBgmIntensity })
+
+
+  const activeSpecialEffectTimers = useMemo(
+    () =>
+      Object.values(specialEffectTimers)
+        .map((timer) => {
+          const remainingMs = Math.max(0, timer.expiresAt - specialEffectNow)
+          return {
+            ...timer,
+            remainingMs,
+            remainingSeconds: Math.ceil(remainingMs / 1000),
+            progress: Math.max(0, Math.min(1, remainingMs / timer.durationMs)),
+          }
+        })
+        .filter((timer) => timer.remainingMs > 0),
+    [specialEffectNow, specialEffectTimers]
+  )
+  const specialEffectTimerCount = Object.keys(specialEffectTimers).length
+
+  useEffect(() => {
+    if (session.phase !== 'playing') {
+      setSpecialEffectTimers({})
+      return undefined
+    }
+    if (specialEffectTimerCount === 0) return undefined
+
+    const timerId = window.setInterval(() => {
+      const now = Date.now()
+      setSpecialEffectNow(now)
+      setSpecialEffectTimers((prev) => {
+        let changed = false
+        const next = {}
+        for (const [code, timer] of Object.entries(prev)) {
+          if (timer.expiresAt > now) {
+            next[code] = timer
+          } else {
+            changed = true
+          }
+        }
+        return changed ? next : prev
+      })
+    }, 250)
+
+    return () => window.clearInterval(timerId)
+  }, [session.phase, specialEffectTimerCount])
+
+  const triggerSpecialEffectTimer = useCallback(({ code, payout, effMult }) => {
+    const config = SPECIAL_EFFECT_TIMER_CONFIG[code]
+    if (!config) return
+
+    const now = Date.now()
+    setSpecialEffectNow(now)
+    setSpecialEffectTimers((prev) => ({
+      ...prev,
+      [code]: {
+        ...config,
+        code,
+        payout,
+        effMult,
+        expiresAt: now + config.durationMs,
+      },
+    }))
+  }, [])
 
   const handleCatch = useCallback(
-    ({ payout, effMult }) => {
+    ({ payout, effMult, code, name }) => {
+      triggerSpecialEffectTimer({ code, payout, effMult })
+      const statCode = code || 'UNKNOWN'
+      const statName = name || fishNameByCode[statCode] || statCode
+      const statKey = `${statCode}:${statName}`
+      setCaughtFishStats((prev) => ({
+        ...prev,
+        [statKey]: {
+          key: statKey,
+          code: statCode,
+          name: statName,
+          count: (prev[statKey]?.count || 0) + 1,
+        },
+      }))
       if (effMult >= 30) {
         play('winEpic')
         announcePlayerWin({
@@ -206,7 +294,7 @@ export default function Fishing() {
         play('winSmall')
       }
     },
-    [play, player]
+    [fishNameByCode, play, player, triggerSpecialEffectTimer]
   )
 
   // 僅供進場前選擇：面額/砲台為 session 級參數（ADR-004 整場固定），hook 在 playing 階段會拒絕變更。
@@ -221,6 +309,7 @@ export default function Fishing() {
   const handleStart = () => {
     if (!canStart) return
     play('click')
+    setCaughtFishStats({})
     setSessionBuyIn(selectedBuyIn)
     session.startSession({
       buyIn: selectedBuyIn,
@@ -282,7 +371,10 @@ export default function Fishing() {
     }
   }, [betPerShot, isTopUpModalOpen, phase, session.session?.buyIn, sessionBalance, sessionBuyIn])
 
-  const roundProfit = sessionBuyIn === null ? null : sessionBalance - sessionBuyIn
+  const roundProfit =
+    (phase === 'playing' || phase === 'settling') && sessionBuyIn !== null
+      ? sessionBalance - sessionBuyIn
+      : null
 
   return (
     <AppShell>
@@ -315,15 +407,29 @@ export default function Fishing() {
         <section className="fishing-page grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_280px]">
           <div
             ref={fullscreenTargetRef}
-            className={`fishing-main fishing-fullscreen-surface grid gap-4 content-start ${isFullscreen ? 'fishing-game--fullscreen' : ''}`}
+            data-phase={phase}
+            className={`fishing-main fishing-fullscreen-surface grid gap-4 ${isFullscreen ? 'fishing-game--fullscreen' : 'content-start'}`}
           >
             <div className="fishing-flowbar">
               <div>
                 <p className="fishing-flowbar__eyebrow">Lucky Fishing</p>
                 <strong>{phase === 'playing' || phase === 'settling' ? '漁場作戰中' : '進場準備'}</strong>
               </div>
+              <div className="fishing-flowbar__actions">
+                <FishingFullscreenButton
+                  isFullscreen={isFullscreen}
+                  disabled={!fullscreenSupported}
+                  message={fullscreenMessage}
+                  onToggle={handleToggleFullscreen}
+                />
+              </div>
 
             </div>
+            {fullscreenMessage && (
+              <div className="fishing-api-alert fishing-api-alert--info" role="status">
+                {fullscreenMessage}
+              </div>
+            )}
             {phase === 'playing' || phase === 'settling' ? (
               <>
                 <div className="fishing-hud">
@@ -355,11 +461,9 @@ export default function Fishing() {
                     <div className="fishing-hud__metric">
                       <span className="fishing-hud__label">本局盈虧</span>
                       <span
-                        className={`fishing-hud__value tabular-nums ${roundProfit >= 0 ? 'text-emerald-300' : 'text-red-300'}`}
+                        className={`fishing-hud__value tabular-nums ${roundProfit > 0 ? 'text-emerald-300' : roundProfit < 0 ? 'text-red-300' : ''}`}
                       >
-                        {roundProfit >= 0
-                          ? `+${roundProfit.toLocaleString()}`
-                          : roundProfit.toLocaleString()}
+                        {roundProfit > 0 ? `+${roundProfit.toLocaleString()}` : roundProfit.toLocaleString()}
                       </span>
                     </div>
                   )}
@@ -404,12 +508,6 @@ export default function Fishing() {
                         >
                           效能 {perfMode ? '開' : '關'}
                         </button>
-                        <FishingFullscreenButton
-                          isFullscreen={isFullscreen}
-                          disabled={!fullscreenSupported}
-                          message={fullscreenMessage}
-                          onToggle={handleToggleFullscreen}
-                        />
                       </div>
                     </div>
                     <div className="fishing-stage-frame">
@@ -427,7 +525,7 @@ export default function Fishing() {
                           betPerShot={betPerShot}
                           cannonLevel={cannonLevel}
                           ammoTone={activeAmmo.tone}
-                          fishTable={session.fishTable}
+                          fishTable={decoratedFishTable}
                           fire={handleFire}
                           play={play}
                           perfMode={perfMode}
@@ -438,6 +536,7 @@ export default function Fishing() {
                           onBossChange={setBossActive}
                         />
                       </Suspense>
+                      <FishingSpecialEffectTimers timers={activeSpecialEffectTimers} />
                     </div>
                     <div className="fishing-stage-controls">
                       <FishingControlDock
@@ -457,11 +556,6 @@ export default function Fishing() {
                         {error.includes('餘額') ? '餘額不足，請先加值或收網結算。' : error}
                       </div>
                     )}
-                    {fullscreenMessage && (
-                      <div className="fishing-api-alert fishing-api-alert--info" role="status">
-                        {fullscreenMessage}
-                      </div>
-                    )}
                     <div className="fishing-stage-footlights" aria-hidden="true">
                       <span />
                       <span />
@@ -470,6 +564,8 @@ export default function Fishing() {
                       <span />
                     </div>
                   </div>
+
+                  <FishingCatchStatsDrawer items={caughtFishStatsItems} total={caughtFishTotal} />
 
                   {isTopUpModalOpen && phase === 'playing' && (
                     <div
@@ -545,16 +641,9 @@ export default function Fishing() {
                     settleResult={settleResult}
                     sessionBuyIn={sessionBuyIn}
                     onNewRound={session.resetToIdle}
-                  >
-                    <ShotVerifyPanel
-                      sessionId={settleResult.sessionId}
-                      shots={settleResult.shots}
-                      fishTable={session.fishTable}
-                      play={play}
-                    />
-                  </FishingSettlementPanel>
+                  />
                 ) : (
-                  <div className="grid w-full max-w-md gap-5">
+                  <div className="fishing-buyin-panel grid w-full max-w-md gap-5">
                     <div>
                       <p className="gold-muted text-xs font-black uppercase tracking-[0.3em]">
                         進場設定
@@ -709,7 +798,7 @@ export default function Fishing() {
         <section className="fishing-bottom-info" aria-label="捕魚機補充資訊">
           <FishingFishInfoPanel
             betPerShot={betPerShot || selectedBet}
-            fishTable={session.fishTable}
+            fishTable={decoratedFishTable}
           />
         </section>
       </main>

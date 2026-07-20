@@ -5,7 +5,7 @@
     { "code": "CHERRY", "display": "🍒", "weight": 45, "pairMultiplier": 1, "tripleMultiplier": 5 },
     { "code": "LEMON", "display": "🍋", "weight": 30, "pairMultiplier": 1, "tripleMultiplier": 8 },
     { "code": "BELL", "display": "🔔", "weight": 16, "pairMultiplier": 2, "tripleMultiplier": 18 },
-    { "code": "STAR", "display": "⭐", "weight": 7, "pairMultiplier": 3, "tripleMultiplier": 50 },
+    { "code": "STAR", "display": "⭐", "weight": 7, "pairMultiplier": 3, "tripleMultiplier": 40 },
     { "code": "SEVEN", "display": "7️⃣", "weight": 5, "pairMultiplier": 5, "tripleMultiplier": 70 }
   ]
 }

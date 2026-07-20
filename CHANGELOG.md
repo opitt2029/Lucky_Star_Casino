@@ -1,3 +1,256 @@
+## [fixed] -- 2026-07-21 -- Expand fishing buy-in and settlement fullscreen surface
+
+### Fixed
+- frontend/src/pages/Fishing.jsx: remove the `content-start` layout constraint while the fishing surface is fullscreen and expose the current phase for fullscreen layout targeting.
+- frontend/src/components/Fishing.css: make the fullscreen fishing surface consume the full viewport and force buy-in/settlement lobby content to span the remaining fullscreen grid area instead of staying in an auto-height row.
+
+### Why
+- Buy-in and settlement could enter fullscreen, but their visible surface was still constrained to the original page-sized content area.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [changed] -- 2026-07-20 -- Fit fishing buy-in and settlement to fullscreen
+
+### Changed
+- frontend/src/pages/Fishing.jsx and frontend/src/components/FishingSettlementPanel.jsx: add stable hooks for fullscreen buy-in and settlement layouts.
+- frontend/src/components/Fishing.css: expand and center buy-in and settlement content inside the fullscreen fishing surface, with responsive desktop/mobile layout rules.
+
+### Why
+- Buy-in and settlement could enter fullscreen, but their content still used compact page sizing instead of adapting to the fullscreen game surface.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [added] -- 2026-07-20 -- Add fishing fullscreen access to buy-in and settlement
+
+### Added
+- frontend/src/pages/Fishing.jsx: move the fullscreen control into the shared fishing flowbar so buy-in, gameplay, and settlement states can all enter fullscreen.
+- frontend/src/components/Fishing.css: add flowbar fullscreen button layout rules, including mobile width handling.
+
+### Why
+- The fishing fullscreen target already wraps the full game flow, but buy-in and settlement screens did not render a fullscreen control.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [removed] -- 2026-07-20 -- Remove fishing settlement verification details
+
+### Removed
+- frontend/src/components/FishingSettlementPanel.jsx: remove the server seed paragraph from the fishing settlement screen.
+- frontend/src/pages/Fishing.jsx: remove the ShotVerifyPanel fairness verification block from settlement and stop rendering it.
+
+### Why
+- The settlement screen should no longer show server seed details or the fairness verification panel.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [added] -- 2026-07-20 -- Add fishing catch statistics drawer
+
+### Added
+- frontend/src/pages/Fishing.jsx and frontend/src/components/Fishing.css: add a collapsible catch statistics drawer below the active fishing game surface, summarizing the current round's captured fish species and counts.
+
+### Why
+- Players need an in-round view of which fish types they have captured and how many of each have been caught.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [fixed] -- 2026-07-20 -- Prevent duplicate fishing defeat animations
+
+### Fixed
+- frontend/src/components/fishingEngine.js: when a fish is already playing the local defeat fade, authoritative backend capture or escape results no longer reset `caughtMs` or switch the same fish into a second defeat/flee animation.
+
+### Why
+- Continuous shooting could locally defeat a fish, then replay the defeat animation when the delayed batch result arrived for the same shot.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [changed] -- 2026-07-20 -- Smooth fishing hit reactions
+
+### Changed
+- frontend/src/components/fishingEngine.js: replaced random shake-like fish hit motion with a short directional recoil easing, softened hit flash timing/color, and reduced hit reaction power so repeated shots feel smoother and less jarring.
+
+### Why
+- Fish hit feedback should respond clearly without looking like unnatural jitter during continuous shooting.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [fixed] -- 2026-07-20 -- Improve fishing defeat responsiveness and blocker effects
+
+### Fixed
+- frontend/src/hooks/useFishingSession.js: shortened fishing shot flushing from 10 shots / 700ms to 4 shots / 180ms so backend capture results return much sooner during play.
+- frontend/src/components/fishingEngine.js: locally fades out fish as soon as the predicted HP reaches zero, then still applies the authoritative backend capture or escape result when the batch response arrives.
+- frontend/src/components/fishingEngine.js: changed blocker fish defeat notices to the requested `?????...??...???` format.
+- frontend/src/components/fishingEngine.js: applies starfish speed boost to all fish currently on the stage, including blockers, instead of excluding blocker fish.
+- docs/game-rules.md: documented the blocker notice wording and all-fish starfish acceleration behavior.
+
+### Why
+- Fish defeat feedback should feel immediate, blocker messages should match the requested copy, and starfish interference should visibly affect every fish species.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [changed] -- 2026-07-20 -- Show fishing special fish effect timers
+
+### Added
+- frontend/src/pages/Fishing.jsx and frontend/src/components/Fishing.css: show Caishen and Money Tree effect countdown timers in the lower-right corner of the active fishing game surface after those special fish are captured.
+
+### Changed
+- frontend/src/components/fishingEngine.js: include captured fish code and name in the onCatch callback so the React HUD can activate fish-specific timers without parsing notice text.
+- docs/game-rules.md: document the 15-second right-bottom effect countdown for Caishen and Money Tree.
+
+### Why
+- Special fish effects need a visible remaining-time indicator inside both normal and fullscreen fishing gameplay.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [changed] -- 2026-07-20 -- Sync game rules to frontend presentation
+
+### Changed
+- backend/game-service/src/main/java/com/luckystar/game/slot/SlotSymbol.java, contracts/slot-paytable.json, and backend/game-service/src/test/java/com/luckystar/game/slot/SlotMachineTest.java: aligned the STAR triple payout with the frontend slot rule card at 40x, changing theoretical slot RTP to 0.93516.
+- docs/game-rules.md: added the frontend-facing game rule specification for Slot, Baccarat, Fishing, Baccarat side-bet tracking, Fishing special fish, and blocker fish effects.
+- frontend/src/services/mockApi.js, backend/game-service/src/main/resources/application.yml, AGENTS.md, docs/game-math/verify_rtp.py, and related project/interview docs: synced rule references and current RTP/math notes.
+
+### Why
+- The frontend presentation is the requested source for player-facing game rules, and settlement-sensitive rule drift such as Slot STAR 40x versus backend 50x must stay aligned across backend, contracts, mock, tests, and documentation.
+
+### Verification
+- mvn -pl backend/game-service test passed.
+- python docs/game-math/verify_rtp.py passed.
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+## [changed] -- 2026-07-20 -- Show top fishing notices for every defeated fish
+
+### Changed
+- frontend/src/components/fishingEngine.js: top-of-stage notices now appear for all captured fish, fish that are killed but escape, and locally defeated blocker fish.
+- frontend/src/components/fishingEngine.js: CAISHEN and MONEY_TREE use effect-based special fish copy instead of fixed star-coin amounts, while blockers show the triggered ink, speed, or armor-break effect.
+
+### Why
+- Fishing feedback should confirm every defeated target, and special/blocker fish notices should describe their gameplay effect instead of behaving like ordinary star-coin payout captions.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+## [changed] -- 2026-07-19 -- Treat Caishen and Money Tree as special fishing targets
+
+### Changed
+- frontend/src/data/fishingFishConfig.js and frontend/src/pages/Fishing.jsx: decorate CAISHEN and MONEY_TREE as SPECIAL display fish before rendering the fishing canvas, so both use the special fish swimming effect while keeping backend payout multipliers, HP, and spawn weights unchanged.
+- frontend/src/components/FishingFishInfoPanel.jsx: hide fixed star-coin value labels for CAISHEN and MONEY_TREE and show a special reward label instead.
+- frontend/src/data/fishingFishConfig.test.js: add coverage for special fish decoration and idempotent Dragon King visual decoration.
+
+### Why
+- 財神與搖錢樹應被視為特殊魚種，資訊卡不應顯示固定星幣價值；實際派彩仍交由後端捕獲結果計算。
+
+### Verification
+- npm.cmd run test --prefix frontend -- fishingFishConfig passed.
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+## [fixed] -- 2026-07-19 -- Fix fishing capture notice names for Boss variants
+
+### Fixed
+- frontend/src/data/fishingFishConfig.js and frontend/src/data/fishingFishConfig.test.js: set explicit display names for the Dragon King visual variants so top-of-stage capture notices show 金星魚王 and 彩金魚王 while preserving the backend DRAGON_KING contract values.
+
+### Why
+- The capture notice already triggers for every captured payout fish, but Boss visual variants were inheriting the backend Dragon King name instead of their visible in-game fish names.
+
+### Verification
+- npm.cmd run test --prefix frontend -- fishingFishConfig passed.
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [changed] -- 2026-07-19 -- Reduce fishing stage spawn density
+
+### Changed
+- frontend/src/components/fishingEngine.js: lowered the active fish cap, slowed normal fish spawning, reduced swarm size/frequency, and reduced blocker pressure so the fishing stage is less crowded during Boss attempts.
+- frontend/src/components/fishingEngine.js: kept the Boss timed spawn cadence unchanged while slightly spacing high-value/special fish, so Boss challenge focuses more on aiming at the Boss and less on screen clutter.
+
+### Why
+- The fishing playfield had too many simultaneous fish, making Boss fish harder to track and shoot because ordinary fish and blockers crowded the stage.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [fixed] -- 2026-07-19 -- Fix fishing session ammo and balance state
+
+### Fixed
+- frontend/src/components/FishingControlDock.jsx and frontend/src/components/FishingControlDock.test.jsx: add and verify an is-active class on the current in-game ammo button, make activeAmmo take priority over cannonLevel, and give copper/silver/gold ammo cards distinct visual treatments.
+- frontend/src/hooks/useFishingSession.js: normalizes fishing start session balance from the API response and falls back to buyIn if sessionBalance is missing, preventing a fresh buy-in from opening with zero local balance.
+- frontend/src/pages/Fishing.jsx: recalculates the in-game 本局盈虧 HUD from current sessionBalance minus sessionBuyIn, so each buy-in starts at 0 and then responds to earned or spent star coins.
+
+### Why
+- The fishing HUD and controls should reflect the selected session ammo immediately, a successful buy-in must seed local session balance before the first shot, and every new buy-in should reset HUD counters while still showing live round profit.
+
+### Verification
+- npm.cmd run test --prefix frontend -- FishingControlDock passed.
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [changed] -- 2026-07-19 -- Center fishing top-up modal in game surface
+
+### Changed
+- frontend/src/components/Fishing.css: changed the temporary top-up modal from viewport-fixed positioning to an absolute overlay inside the fishing play surface, so it opens in the center of the game area in both normal and fullscreen fishing views.
+
+### Why
+- The temporary top-up prompt belongs to the active fishing game surface and should stay visually anchored to the game instead of centering against the whole browser page.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [fixed] -- 2026-07-19 -- Fix fishing buy-in fish guide data
+
+### Fixed
+- frontend/src/components/FishingFishInfoPanel.jsx: changed the buy-in fish guide fallback to generate reward fish cards from contracts/fishing-species.json, so small fish cards now show the correct KOI, GOLDFISH, and LANTERN data before a session exists.
+- frontend/src/components/FishingFishInfoPanel.jsx: added missing guide copy for all current reward fish tiers and kept MONEY_TREE using its special 10-50x payout range.
+
+### Why
+- Before buy-in, the fishing session has no backend fishTable yet, so the lobby was falling back to an outdated static list and the is-small fish-card content did not match the real game fish species.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [changed] -- 2026-07-17 -- Tune fishing hit feedback and rare fish effects
+
+### Changed
+- frontend/src/components/fishingEngine.js: expanded bullet-to-fish hit detection from a center-radius check to image-sized bounds with path sampling, so visible fish bodies count more consistently when a bullet crosses them.
+- frontend/src/components/fishingEngine.js: reduced normal hit shake strength and added a short cooldown while keeping crit feedback more pronounced.
+- frontend/src/components/fishingEngine.js: added tier-specific sparkle dots around high, special, boss, and legendary fish, with elliptical aura bounds rendered behind fish sprites so the effect wraps the whole fish without covering it.
+- frontend/src/components/fishingEngine.js: strengthened the tier-colored aura background fill so high-value fish read as blue, Boss fish as purple, and special fish as gold, while keeping the fill behind the fish sprite.
+- frontend/src/components/fishingEngine.js: added timed premium spawns so high-value/special fish appear regularly and Boss/legendary fish have a longer guaranteed arrival cadence.
+- frontend/src/components/fishingEngine.js: slightly reduced jackpot fish king visual size so it remains readable without dominating the whole playfield.
+- frontend/src/components/fishingEngine.js: changed fish cleanup to use sprite-sized offscreen bounds so fish are removed only after fully leaving the current canvas, including fullscreen.
+- frontend/src/components/fishingEngine.js: removed blocker defeat center hint text and moved successful capture reward text to a top-of-canvas notice.
+- frontend/src/components/fishingEngine.js: removed the remaining center hint text shown when shots hit blocker fish before they are destroyed.
+- frontend/src/hooks/useFishingSession.js: stopped auto-restoring active fishing sessions on page entry so every route into the fishing page opens on the buy-in screen first.
+- frontend/src/pages/Fishing.jsx: starts the ocean-style fishing BGM on the buy-in screen at low intensity while continuing to use the shared Settings volume and BGM controls.
+- frontend/src/components/fishingEngine.js: added the missing fish-caishen preload entry so the Caishen high-value fish can render with its intended asset.
+- frontend/src/components/Fishing.css: hid the browser cursor over the fishing canvas so only the in-game reticle is visible.
+
+### Fixed
+- frontend/src/components/fishingEngine.js: prevented ordinary fish without tier effects from crashing spawn by normalizing missing aura styles before reading effect radius.
+
+### Why
+- Fishing shots should match the visible fish art more closely, hit feedback should feel less noisy during rapid fire, and valuable fish should be easier to distinguish while swimming.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
 ## [changed] -- 2026-07-16 -- Move fishing fullscreen control into stage marquee
 
 ### Changed
