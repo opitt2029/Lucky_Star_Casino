@@ -1,0 +1,32 @@
+.fairness { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; color: #e8ecf5; }
+.fairness__badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+.fairness__badge--real { background: #143d2b; color: #7bffb0; }
+.fairness__badge--mock { background: #3d2f14; color: #ffd27b; }
+.fairness__badge-note { margin-top: 8px; font-size: 12px; line-height: 1.6; color: #9aa4b8; }
+.fairness__tabs { display: flex; gap: 8px; margin: 20px 0; }
+.fairness__tab { padding: 8px 16px; border-radius: 8px; border: 1px solid #2a3550; background: transparent; color: #c8d0e0; cursor: pointer; }
+.fairness__tab--active { background: #2a3550; color: #fff; }
+
+.steprail { display: flex; gap: 4px; margin: 20px 0; }
+.steprail__item { flex: 1; text-align: center; padding: 8px 4px; border-radius: 8px; font-size: 13px; background: #1a2237; color: #6b7690; }
+.steprail__item--done { background: #143d2b; color: #7bffb0; }
+.steprail__item--current { background: #1e3a5f; color: #7bc4ff; font-weight: 700; }
+
+.seedcard { background: #141b2e; border: 1px solid #26314d; border-radius: 10px; padding: 12px 14px; margin: 8px 0; }
+.seedcard__label { font-size: 12px; color: #9aa4b8; margin-bottom: 4px; }
+.seedcard__value { font-family: monospace; font-size: 13px; word-break: break-all; }
+.seedcard__locked { color: #ffb27b; font-style: italic; }
+.seedcard__hex-match { color: #7bffb0; }
+.seedcard__hex-diff { color: #ff7b7b; }
+.seedcard__copy { margin-left: 8px; font-size: 12px; cursor: pointer; color: #7bc4ff; background: none; border: none; }
+
+.verdict { display: flex; gap: 12px; margin: 12px 0; }
+.verdict__lamp { flex: 1; text-align: center; padding: 12px; border-radius: 10px; font-weight: 600; }
+.verdict__lamp--on { background: #143d2b; color: #7bffb0; }
+.verdict__lamp--off { background: #3d1414; color: #ff7b7b; }
+.verdict__message { margin-top: 8px; font-size: 13px; }
+
+.resultdiff { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+.resultdiff__col { background: #141b2e; border: 1px solid #26314d; border-radius: 10px; padding: 12px; }
+.resultdiff__row { font-family: monospace; font-size: 12px; padding: 2px 0; word-break: break-all; }
+.fairness__error { background: #3d1414; color: #ff9b9b; padding: 12px; border-radius: 10px; margin: 12px 0; font-size: 13px; }
