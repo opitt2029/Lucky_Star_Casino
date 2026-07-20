@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { sha256Hex, commit, createStream } from './provablyFairMock'
+import { sha256Hex, commit, createStream, provablyFairMock } from './provablyFairMock'
 
 describe('provablyFairMock crypto core', () => {
   // 已知向量：SHA-256("abc") = ba7816bf... （FIPS 180-2 範例）
@@ -36,5 +36,34 @@ describe('provablyFairMock crypto core', () => {
       expect(v).toBeGreaterThanOrEqual(0)
       expect(v).toBeLessThan(13)
     }
+  })
+})
+
+describe('provablyFairMock 老虎機 round/settle/verify', () => {
+  test('settle 揭露的 serverSeed 雜湊 == round 承諾雜湊', async () => {
+    const round = await provablyFairMock.slotRound({ bet: 100, clientSeed: 'my-seed' })
+    expect(round.serverSeedHash).toMatch(/^[0-9a-f]{64}$/)
+    expect(round.serverSeed).toBeUndefined()
+    const settle = await provablyFairMock.slotSettle({ roundId: round.roundId })
+    expect(await sha256Hex(settle.serverSeed)).toBe(round.serverSeedHash)
+  })
+
+  test('verify 用揭露值 → commitmentValid && resultMatches && valid', async () => {
+    const round = await provablyFairMock.slotRound({ bet: 100, clientSeed: 'my-seed' })
+    await provablyFairMock.slotSettle({ roundId: round.roundId })
+    const v = await provablyFairMock.verifyRound({ roundId: round.roundId })
+    expect(v.commitmentValid).toBe(true)
+    expect(v.resultMatches).toBe(true)
+    expect(v.valid).toBe(true)
+  })
+
+  test('作弊演示：竄改 serverSeed → commitmentValid=false、valid=false', async () => {
+    const round = await provablyFairMock.slotRound({ bet: 100, clientSeed: 'my-seed' })
+    const settle = await provablyFairMock.slotSettle({ roundId: round.roundId })
+    const tampered = settle.serverSeed.slice(0, -1) + (settle.serverSeed.endsWith('0') ? '1' : '0')
+    const v = await provablyFairMock.verifyRound({ roundId: round.roundId, serverSeed: tampered })
+    expect(v.usedProvidedSeed).toBe(true)
+    expect(v.commitmentValid).toBe(false)
+    expect(v.valid).toBe(false)
   })
 })
