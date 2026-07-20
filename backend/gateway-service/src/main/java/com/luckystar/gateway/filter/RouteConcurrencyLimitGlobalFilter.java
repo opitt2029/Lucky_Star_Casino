@@ -6,6 +6,7 @@ import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -61,10 +62,29 @@ public class RouteConcurrencyLimitGlobalFilter implements GlobalFilter, Ordered 
         }
         long startNanos = System.nanoTime();
         // doFinally 涵蓋正常完成/錯誤/取消（client 斷線）三種結束路徑，保證計數歸還；
-        // 耗時一併回報給 AIMD 觀測窗（取消的短樣本屬雜訊，AIMD 下一窗即自我修正）
+        // 耗時是否記入 AIMD 觀測窗另由 isAimdSample 判定（T-090 E2）
         return chain.filter(exchange)
-                .doFinally(signal ->
-                        limiter.release((System.nanoTime() - startNanos) / 1_000_000));
+                .doFinally(signal -> limiter.release(
+                        (System.nanoTime() - startNanos) / 1_000_000,
+                        isAimdSample(exchange)));
+    }
+
+    /**
+     * T-090 E2：只有「後端真的處理過」的回應才進 AIMD 延遲窗。429（玩家限流快拒）與
+     * 一切 5xx（CB fallback 503 等毫秒級快拒）是「系統在卸載」的證據、不是「後端變快」
+     * 的證據——進窗會把 P95 拉低、誘使 AIMD 放寬上限、把流量推向剛 half-open 的後端，
+     * 形成 CB 反覆開闔的正回饋（2026-07-09 輪 503×2,024 的機制根因）。無狀態碼（取消）
+     * 同樣不算有效樣本。
+     *
+     * <p>邊界決策：被 TimeLimiter 腰斬的真慢呼叫最終也以 fallback 503 呈現，在本層
+     * 無法與 CB 快拒 503 低成本區分，故一併排除。安全性由既有「窗內無樣本 → 上限凍結
+     * （無流量不動）」語意保底：全 5xx 期間 AIMD 不放寬也不誤收，CB 仍是災難保險絲。</p>
+     */
+    private static boolean isAimdSample(ServerWebExchange exchange) {
+        HttpStatusCode status = exchange.getResponse().getStatusCode();
+        return status != null
+                && status.value() < 500
+                && status.value() != HttpStatus.TOO_MANY_REQUESTS.value();
     }
 
     /** 每個週期對所有 route 跑一次 AIMD 調整（P95 觀測與調整全在記憶體，無 I/O） */

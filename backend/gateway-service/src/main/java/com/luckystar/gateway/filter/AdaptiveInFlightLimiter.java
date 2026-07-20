@@ -69,9 +69,16 @@ class AdaptiveInFlightLimiter {
         return true;
     }
 
-    /** 歸還名額並記錄本次耗時（只對 admitted 請求呼叫；取消/錯誤也要歸還） */
-    void release(long latencyMs) {
+    /**
+     * 歸還名額，並視 recordSample 決定是否把耗時記入 AIMD 觀測窗
+     * （只對 admitted 請求呼叫；取消/錯誤也要歸還名額——歸還無條件、記樣本有條件，
+     * 進窗判準見 RouteConcurrencyLimitGlobalFilter（T-090 E2））。
+     */
+    void release(long latencyMs, boolean recordSample) {
         inFlight.decrementAndGet();
+        if (!recordSample) {
+            return;
+        }
         int idx = sampleCount.getAndIncrement();
         if (idx < WINDOW_CAPACITY) {
             samples.set(idx, latencyMs);
