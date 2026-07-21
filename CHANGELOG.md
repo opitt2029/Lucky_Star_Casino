@@ -1,3 +1,30 @@
+## [feat] — 2026-07-21 — 藍圖 04 P4：rank Redis DR 重算腳本（可重建性）
+
+### Added
+- `tools/reconciliation/rebuild-rank-redis.mjs`（Node ESM，比照 `reconcile-game-wallet.mjs` 慣例）：
+  從 PostgreSQL 重算 rank 的兩個 ZSET，**用 `ZADD` 絕對值（非 `ZINCRBY`）** 以可重複執行：
+  - 日贏分（`rank:daily:winnings`）＝今日（Asia/Taipei 日界，對齊 `DailyWinningsResetScheduler`）
+    `sub_type='WIN'` 的 CREDIT 依 player_id 聚合。
+  - 全服星幣（`rank:global:coins`）＝`wallets` 現餘額。
+  - `--dry-run` 只印差異不寫入；**兼作 P1 去重成效監測**——若日贏分「Redis 現值 > DB 重算值」
+    代表 Redis 被虛增（去重失效），dry-run 退出碼 1 告警。
+- `tools/reconciliation/package.json`：加 `redis` 依賴與 `rebuild-rank` / `rebuild-rank:dry-run` script
+  （與既有 `reconcile` 共用同一資料夾 node_modules；名稱改為 `reconciliation-tools`）。
+
+### Why
+設計原則「Redis 裡的東西必須能從 DB 重建」目前不成立：`rank:daily:winnings` 只存在 Redis，容器重啟
+（本專案未設 AOF/RDB）或 FLUSHDB 就永久消失、無重算路徑；`rank:global:coins` 雖會被下一筆事件的
+ZADD 修正，但只修正「有活動的玩家」，沒在玩的人會從排行榜消失。放 `tools/` 而非服務內：跨 wallet 的
+DB 與 rank 的 Redis 兩個服務邊界，放任一服務內都破壞邊界（與 ADR-009 對帳 script 同理）。
+
+### Verification
+- `node --check`（語法）通過。
+- 對本機 live 拓撲（compose postgres:5433 + redis:6379）實跑 `--dry-run`：日贏分 DB 2 / Redis 2 一致；
+  全服星幣 DB 60 / Redis 5——**正好印證 P4 要解的漂移**（55 個沒在玩的玩家不在 ZSET 內）。
+  未對 live Redis 執行破壞性重建（僅 dry-run 驗證）。
+
+---
+
 ## [docs] — 2026-07-21 — ADR-010：誠實記錄 Kafka/Redis 過度設計，並訂下「該不該用」的判準
 
 ### Added
