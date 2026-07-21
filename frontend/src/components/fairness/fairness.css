@@ -30,3 +30,7 @@
 .resultdiff__col { background: #141b2e; border: 1px solid #26314d; border-radius: 10px; padding: 12px; }
 .resultdiff__row { font-family: monospace; font-size: 12px; padding: 2px 0; word-break: break-all; }
 .fairness__error { background: #3d1414; color: #ff9b9b; padding: 12px; border-radius: 10px; margin: 12px 0; font-size: 13px; }
+
+.fairness__button { display: inline-block; margin: 10px 8px 10px 0; padding: 10px 20px; border-radius: 8px; border: 1px solid #3a4a70; background: #1e3a5f; color: #fff; font-weight: 600; font-size: 14px; cursor: pointer; }
+.fairness__button:hover:not(:disabled) { background: #29527f; }
+.fairness__button:disabled { opacity: 0.45; cursor: not-allowed; }

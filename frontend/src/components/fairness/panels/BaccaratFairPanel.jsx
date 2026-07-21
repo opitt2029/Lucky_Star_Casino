@@ -83,6 +83,7 @@ export default function BaccaratFairPanel() {
       {error && <div className="fairness__error">{error}</div>}
       <div className="fairness__badge-note">注意：百家樂在下注（bet）時就扣款，與老虎機（結算才扣）不同。</div>
 
+      <SeedCard label="roundId（本局編號）" value={betResp?.roundId ?? null} />
       <SeedCard label="serverSeedHash（承諾）" value={betResp?.serverSeedHash ?? null} />
       <SeedCard label="serverSeed" value={result?.serverSeed ?? null} />
       {!betResp && balance < AMOUNT && <div className="fairness__error">星幣不足，無法下注</div>}
@@ -104,14 +105,14 @@ export default function BaccaratFairPanel() {
             你的 clientSeed（可自訂）
             <input value={clientSeed} onChange={(e) => setClientSeed(e.target.value)} />
           </label>
-          <button type="button" onClick={doBet} disabled={busy || balance < AMOUNT}>
+          <button type="button" className="fairness__button" onClick={doBet} disabled={busy || balance < AMOUNT}>
             下注 {AMOUNT} 到「{area === 'player' ? '閒' : area === 'banker' ? '莊' : '和'}」（此時扣款）
           </button>
         </>
       )}
 
       {betResp && !result && (
-        <button type="button" onClick={doResult} disabled={busy}>
+        <button type="button" className="fairness__button" onClick={doResult} disabled={busy}>
           開獎並揭露
         </button>
       )}
@@ -123,10 +124,10 @@ export default function BaccaratFairPanel() {
           </div>
           <SeedCard label="SHA-256(serverSeed)（應等於承諾）" value={revealHash} revealed matchHex={betResp.serverSeedHash} />
           <div className="fairness__tabs">
-            <button type="button" onClick={() => doVerify(false)} disabled={busy}>
+            <button type="button" className="fairness__button" onClick={() => doVerify(false)} disabled={busy}>
               驗證這一局
             </button>
-            <button type="button" onClick={() => doVerify(true)} disabled={busy}>
+            <button type="button" className="fairness__button" onClick={() => doVerify(true)} disabled={busy}>
               模擬伺服器作弊
             </button>
           </div>
