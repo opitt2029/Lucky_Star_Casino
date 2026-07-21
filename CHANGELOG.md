@@ -1,3 +1,32 @@
+## [docs] — 2026-07-21 — ADR-010：誠實記錄 Kafka/Redis 過度設計，並訂下「該不該用」的判準
+
+### Added
+- `docs/adr/ADR-010.md`：架構決策——**明知規模不需要，仍保留 Kafka 與 Redis**。內容含：
+  - **現況盤點**（以程式碼為準）：8 個 Kafka topic + 3 DLT 的 publisher/consumer 對照表、
+    8 個 Redis 使用點與其資料結構。
+  - **誠實分級**：Kafka 中 `member.registered` / `wallet.credit` / `wallet.debit` / `game.result`
+    為 🟢 真 fanout（2–3 個獨立消費者）；`wallet.credit.request` 等 4 條為 🟡（單一消費者、
+    本質是 RPC）；wallet 自發自收 `wallet.credit` 做 PG→MySQL 讀視圖同步為 🔴（同進程繞 broker）。
+    Redis 8 點中僅 rank ZSET 排行、捕魚 session Lua CAS 為 🟢，其餘 6 點為 🟡（DB 可替代）。
+  - **判準**：Kafka 正當使用的 5 個門檻（1→N fanout / 可用性解耦 / 削峰 / replay / 跨團隊邊界）、
+    Redis 的 3 個門檻（專屬資料結構 / 跨進程暫態共享 / 原子操作），以及觸發重新評估的訊號表。
+  - **延伸討論**：同一判斷邏輯解釋為何不用 k8s，以及中間站建議（服務 Docker 化）。
+
+### Why
+專案七服務、22 條雷區、零真實使用者、單機部署，「這個專案其實不需要 Kafka/Redis 吧」是合理質疑。
+最強的內部反證是 [ADR-009]——game→wallet 的**派彩金流已經繞過 Kafka 走 HTTP**，還自建
+`pending_wallet_credits` 補償表 + 排程重試，等於可靠傳遞是另外手刻的，Kafka 並未承擔其核心職責。
+
+決策是**保留不拆**（學習價值 + 拆除成本 + 四條真 fanout 使收益有限），但把「哪些是真需求、
+哪些只是方便」寫死在文件裡，避免未來誤把既有的過度設計當成新過度設計的正當理由。
+依 AGENTS.md §3「架構級決策另寫 ADR」，故獨立成檔而非只寫進雷區。
+
+### Verification
+- 純文件變更，無程式碼異動。
+- 盤點表對照來源：`kafka/kafka-init.sh` topic 清單、各服務 `@KafkaListener` 註解、
+  各服務對 `RedisTemplate`/`StringRedisTemplate` 的引用，逐項核對。
+- 修正了初次口頭評估的錯誤：並非「所有 topic 都是單一消費者」，實際有 4 條為多消費者 fanout。
+
 ## [test] — 2026-07-18 — T-084/T-093 端對端驗收補齊：全鏈路 e2e ＋ 前端 WS 真後端驗收，兩筆 audit override 移除
 
 ### Added
