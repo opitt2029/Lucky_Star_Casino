@@ -1,6 +1,5 @@
 package com.luckystar.wallet.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.luckystar.wallet.dto.GiftRequest;
 import com.luckystar.wallet.dto.GiftResponse;
 import com.luckystar.wallet.exception.GiftLimitExceededException;
@@ -18,7 +17,6 @@ import org.mockito.quality.Strictness;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.kafka.core.KafkaTemplate;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -28,7 +26,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -39,8 +36,9 @@ import static org.mockito.Mockito.when;
  * {@link GiftService} 單元測試（T-026）。
  *
  * <p>全程 Mockito mock 掉 {@link GiftTransferService}（原子轉帳）、{@link GiftLogService}（稽核）、
- * Redis、Kafka、ObjectMapper 與 repository，聚焦協調邏輯：冪等預檢、Redis 預扣/回補、
- * best-effort 下游失敗不影響金流。
+ * Redis 與 repository，聚焦協調邏輯：冪等預檢、Redis 預扣/回補、best-effort 稽核失敗不影響金流。
+ * 註（藍圖 04 P2）：wallet.debit/credit 事件已移入 {@link GiftTransferService}（寫 outbox），
+ * 故本層不再驗證 Kafka。
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -51,12 +49,10 @@ class GiftServiceTest {
     @Mock WalletTransactionRepository walletTransactionRepository;
     @Mock StringRedisTemplate redisTemplate;
     @Mock ValueOperations<String, String> valueOps;
-    @Mock KafkaTemplate<String, String> kafkaTemplate;
-    @Mock ObjectMapper objectMapper;
 
     private GiftService giftService() {
         return new GiftService(giftTransferService, giftLogService, walletTransactionRepository,
-                redisTemplate, kafkaTemplate, objectMapper);
+                redisTemplate);
     }
 
     private GiftRequest request(Long receiverId, long amount, String key) {
@@ -86,7 +82,7 @@ class GiftServiceTest {
     }
 
     @Test
-    void gift_success_reservesTransfersLogsAndPublishes() throws Exception {
+    void gift_success_reservesTransfersAndLogs() {
         GiftService service = giftService();
         GiftRequest req = request(2L, 500L, "g1");
 
@@ -96,14 +92,11 @@ class GiftServiceTest {
         WalletTransaction credit = tx(11L, 2L, "CREDIT", 500L, 200L, 700L, "g1:gift:credit");
         when(giftTransferService.transfer(1L, 2L, 500L, "g1:gift:debit", "g1:gift:credit"))
                 .thenReturn(new GiftTransferService.Result(debit, credit));
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
 
         GiftResponse resp = service.gift(1L, req);
 
         verify(giftTransferService).transfer(1L, 2L, 500L, "g1:gift:debit", "g1:gift:credit");
         verify(giftLogService).record(1L, 2L, 500L);
-        verify(kafkaTemplate).send(eq("wallet.debit"), eq("1"), anyString());
-        verify(kafkaTemplate).send(eq("wallet.credit"), eq("2"), anyString());
         verify(valueOps, never()).decrement(anyString(), anyLong());
 
         assertThat(resp.isIdempotent()).isFalse();
@@ -120,7 +113,7 @@ class GiftServiceTest {
         assertThatThrownBy(() -> service.gift(1L, request(1L, 500L, "g-self")))
                 .isInstanceOf(InvalidGiftException.class);
 
-        verifyNoInteractions(redisTemplate, giftTransferService, giftLogService, kafkaTemplate);
+        verifyNoInteractions(redisTemplate, giftTransferService, giftLogService);
     }
 
     @Test
@@ -137,7 +130,7 @@ class GiftServiceTest {
         assertThat(resp.getDebitTransactionId()).isEqualTo(10L);
         assertThat(resp.getCreditTransactionId()).isEqualTo(11L);
         assertThat(resp.getReceiverBalanceAfter()).isEqualTo(700L);
-        verifyNoInteractions(redisTemplate, giftTransferService, giftLogService, kafkaTemplate);
+        verifyNoInteractions(redisTemplate, giftTransferService, giftLogService);
     }
 
     @Test
@@ -154,7 +147,7 @@ class GiftServiceTest {
         // 兩個計數都回補
         verify(valueOps, times(1)).decrement("wallet:gift:sent:1:" + today(), 6000L);
         verify(valueOps, times(1)).decrement("wallet:gift:recv:2:" + today(), 6000L);
-        verifyNoInteractions(giftTransferService, giftLogService, kafkaTemplate);
+        verifyNoInteractions(giftTransferService, giftLogService);
     }
 
     @Test
@@ -170,7 +163,7 @@ class GiftServiceTest {
 
         verify(valueOps).decrement("wallet:gift:sent:1:" + today(), 500L);
         verify(valueOps).decrement("wallet:gift:recv:2:" + today(), 500L);
-        verifyNoInteractions(giftTransferService, giftLogService, kafkaTemplate);
+        verifyNoInteractions(giftTransferService, giftLogService);
     }
 
     @Test
@@ -186,7 +179,7 @@ class GiftServiceTest {
 
         verify(valueOps).decrement("wallet:gift:sent:1:" + today(), 500L);
         verify(valueOps).decrement("wallet:gift:recv:2:" + today(), 500L);
-        verifyNoInteractions(giftLogService, kafkaTemplate);
+        verifyNoInteractions(giftLogService);
     }
 
     @Test
@@ -223,11 +216,11 @@ class GiftServiceTest {
         assertThat(resp.getDebitTransactionId()).isEqualTo(10L);
         verify(valueOps).decrement("wallet:gift:sent:1:" + today(), 500L);
         verify(valueOps).decrement("wallet:gift:recv:2:" + today(), 500L);
-        verifyNoInteractions(giftLogService, kafkaTemplate);
+        verifyNoInteractions(giftLogService);
     }
 
     @Test
-    void gift_giftLogFailure_doesNotFailRequest() throws Exception {
+    void gift_giftLogFailure_doesNotFailRequest() {
         GiftService service = giftService();
         when(walletTransactionRepository.findByIdempotencyKey("g7:gift:debit")).thenReturn(Optional.empty());
         stubReserveOk(500L, 500L);
@@ -237,30 +230,11 @@ class GiftServiceTest {
                 .thenReturn(new GiftTransferService.Result(debit, credit));
         org.mockito.Mockito.doThrow(new RuntimeException("MySQL down"))
                 .when(giftLogService).record(anyLong(), anyLong(), anyLong());
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
 
         GiftResponse resp = service.gift(1L, request(2L, 500L, "g7"));
 
-        // 金流已 commit，稽核失敗不影響回應，事件照常發布
-        assertThat(resp.isIdempotent()).isFalse();
-        verify(kafkaTemplate).send(eq("wallet.debit"), eq("1"), anyString());
-        verify(kafkaTemplate).send(eq("wallet.credit"), eq("2"), anyString());
-    }
-
-    @Test
-    void gift_kafkaFailure_doesNotFailRequest() throws Exception {
-        GiftService service = giftService();
-        when(walletTransactionRepository.findByIdempotencyKey("g8:gift:debit")).thenReturn(Optional.empty());
-        stubReserveOk(500L, 500L);
-        WalletTransaction debit = tx(10L, 1L, "DEBIT", 500L, 1000L, 500L, "g8:gift:debit");
-        WalletTransaction credit = tx(11L, 2L, "CREDIT", 500L, 200L, 700L, "g8:gift:credit");
-        when(giftTransferService.transfer(anyLong(), anyLong(), anyLong(), anyString(), anyString()))
-                .thenReturn(new GiftTransferService.Result(debit, credit));
-        when(objectMapper.writeValueAsString(any()))
-                .thenThrow(new com.fasterxml.jackson.core.JsonProcessingException("boom") {});
-
-        GiftResponse resp = service.gift(1L, request(2L, 500L, "g8"));
-
+        // 金流已 commit，gift_logs 稽核失敗（best-effort）不影響回應；
+        // wallet 事件已在 GiftTransferService（此處 mock）內寫 outbox，本層不驗證。
         assertThat(resp.isIdempotent()).isFalse();
         verify(giftLogService).record(1L, 2L, 500L);
     }
