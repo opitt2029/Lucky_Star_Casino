@@ -1,3 +1,4 @@
+feature/weiyu-rank-broadcast-throttle
 ## [perf] — 2026-07-21 — 藍圖 04 P3：排行榜廣播查詢節流改 Redis（閘門前移）
 
 ### Changed
@@ -21,6 +22,87 @@
 ### Verification
 - `mvn -pl backend/rank-service test` → **Tests run: 69, Failures: 0, Errors: 0**
   （`RankServiceTest` 由 24 例增為 25 例）。
+=======
+feature/weiyu-wallet-outbox
+## [feat] — 2026-07-21 — 藍圖 04 P2：wallet Transactional Outbox（事件不再靜默丟失）
+
+### Added
+- `backend/wallet-service/.../postgres/entity/WalletOutbox.java`：outbox 事件列 entity（落在
+  postgres.entity 套件，自動被 Postgres EMF 掃描，免改 packagesToScan）。
+- `.../postgres/repository/WalletOutboxRepository.java`：`findTop100ByStatusOrderByCreatedAtAsc`
+  + 觀測用 `countByStatus`（供 P5 積壓指標）。
+- `.../service/WalletOutboxService.java`：交易內把事件寫進 wallet_outbox（PENDING），序列化留在
+  交易內、失敗拋 `IllegalStateException` 讓交易 rollback（不留無聲缺口）。
+- `.../service/WalletOutboxPoller.java`：`@Scheduled` + `@Transactional(postgresTransactionManager)`
+  撈 PENDING → `send().get(10s)` 同步等 broker 確認才標 SENT；失敗保持 PENDING + `retry_count+1`。
+  抄 member `OutboxPoller`（含單實例假設註解），唯一差異是指定雙資料源的 postgres TM。
+- `database/postgres/migration/V17__add_wallet_outbox.sql` + `database/postgres/init.sql` 的
+  `wallet_outbox` 表（放 Postgres 寫庫，才能與 wallet_transactions 進同一交易）。
+- 測試：`WalletOutboxServiceTest`、`WalletOutboxPollerTest`（H2/mock）、
+  `containers/WalletOutboxContainerTest`（真 PG：schema validate + credit/debit 落 PENDING +
+  交易 rollback 原子性 + poller 送達標 SENT）。
+
+### Changed
+- `.../service/WalletService.java`：credit Step 6 與 debit 的事件發布從「交易外裸發 Kafka」
+  （非同步、未 `.get()`、失敗無聲）改成「交易內寫 outbox 列」。移除 `KafkaTemplate`/`ObjectMapper`
+  依賴，改注入 `WalletOutboxService`。debit 原 B2 的 afterCommit 發送機制一併移除——outbox 只是
+  同庫 INSERT、不觸發 broker I/O，不會拖住 wallets 行鎖，且交易回滾時 outbox 列一起回滾（無幽靈事件）。
+- `.../service/GiftTransferService.java` / `GiftService.java`：贈幣的 wallet.debit/wallet.credit
+  事件從 GiftService 交易外裸發，移進 `GiftTransferService.transfer()` 的轉帳交易內寫 outbox
+  （原子）；GiftService 移除 `KafkaTemplate`/`ObjectMapper`/`publishEvent`。
+- `database/postgres/migration/V15__add_game_rounds_risk_indexes.sql` → `V16__...`：修掉與
+  `V15__add_alert_resolution_audit.sql` 重複的版號（事前必讀 #4，ADR-009 現況校驗已三度點名）。
+- `WalletServiceApplication` 加 `@EnableScheduling`；application.yml 加 `wallet.outbox.poll-interval-ms`
+  （預設 1000ms，比 member 5000ms 短——排行榜/通知體感延遲要求較高；測試 yml 設極長避免背景 poller 干擾）。
+- 既有測試（`WalletServiceCreditTest`/`WalletServiceDebitTest`/`GiftServiceTest`/`GiftTransferServiceTest`）
+  的 Kafka 驗證改為 outbox 驗證。
+- AGENTS.md 新增雷區 23（wallet 事件走 outbox，勿改回裸 send()）。
+
+### Why
+credit/debit 原本在交易 commit **之後**才 `kafkaTemplate.send()`，且該呼叫非同步、未 `.get()` 也未掛
+callback——broker 失敗發生在背景執行緒，連 catch 裡的 `log.warn` 都不會印，事件**完全無聲丟失**。
+後果是三個下游（MySQL 讀視圖 / rank 排行 / admin 流通量報表）同時漂移且無人察覺。Transactional
+Outbox 把「待發事件」與帳務異動寫進同一 Postgres 交易（原子、不會半套），背景 poller 再同步確認送達
+才標 SENT，杜絕丟失。member 早有 `OutboxPoller`、ADR-009 也為 game→wallet 建了補償表——同一問題被解
+兩次，唯獨 wallet 自己的事件發布路徑沒人管，這裡補上。取捨：延遲從「即時（可能丟）」變「poll 間隔
+（不會丟）」；投遞仍是 at-least-once（重送由 P1 rank 去重等下游冪等吸收）。
+
+### Verification
+- `mvn -pl backend/wallet-service test` → **Tests run: 170, Failures: 0, Errors: 0**
+- `mvn -pl backend/wallet-service test -Pcontainers-test`（真 PG/MySQL，ddl-auto=validate）
+  → **Tests run: 17, Failures: 0, Errors: 0**（含新 `WalletOutboxContainerTest` 4 例；schema 無漂移）。
+- 手動端對端（`docker compose stop kafka` → credit 應成功入帳、outbox PENDING → start kafka →
+  數秒轉 SENT）**尚待人工執行**（需完整服務拓撲 + 真 broker）。
+=======
+## [fix] — 2026-07-21 — 藍圖 04 P1：rank 消費去重（修 `addDailyWinnings` 重複累加）
+
+### Changed
+- `backend/rank-service/.../kafka/WalletBalanceChangedConsumer.java`：`wallet.credit`/`wallet.debit`
+  的消費端加去重閘，**只保護不冪等的那一支** `addDailyWinnings`（`ZINCRBY` 累加）：
+  以事件既有的 `transactionId` 為鍵做 Redis `SETNX`（`setIfAbsent`，key=`rank:dedup:daily-win:{txId}`，
+  TTL 48h 對齊日贏分 key），回傳「我是不是第一個消費者」，非首次直接略過。
+  `updatePlayerCoins`（`ZADD` 絕對值、冪等）**不去重**——重送本就無害，去重反而會在
+  「首次 ZADD 後、ack 前崩潰」時把餘額永久卡在錯值。
+  `transactionId` 為 null 時跳過去重、直接執行並 `log.warn`（不可用 null 組 key，否則所有事件共用
+  同一把鍵、第一筆之後全被吃掉）。
+- `backend/rank-service/.../kafka/WalletBalanceChangedConsumerTest.java`：既有 WIN 案例補上
+  `StringRedisTemplate` 的 SETNX stub；新增四例——同 `transactionId` 連送兩次日贏分只累加一次、
+  但 `updatePlayerCoins` 仍執行兩次（冪等操作不受去重影響）、`transactionId` 為 null 仍執行不拋錯、
+  不同 `transactionId` 各自累加。
+
+### Why
+Kafka 是 at-least-once：consumer 在 `ack.acknowledge()` 前崩潰或 group rebalance，同一則
+`wallet.credit` 會重投遞。`addDailyWinnings` 是 `ZINCRBY`（累加、不冪等）→ 玩家日贏分虛增、
+今日贏幣王排行（T-045）失真、可被刷。核心觀念：**冪等操作要的是「可安全重放」，非冪等操作才需
+「只執行一次」**，所以只對後者去重。這是 best-effort 去重（非 exactly-once）——SETNX 成功後、
+ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小於重複累加（虛增可刷），且崩潰窗口微秒級。
+若日後日贏分接入實際獎勵發放，須升級為單一 Lua script 的原子版（比照 ADR-008 CAS）。
+
+### Verification
+- `mvn -pl backend/rank-service test` → **Tests run: 71, Failures: 0, Errors: 0**
+  （`WalletBalanceChangedConsumerTest` 由 6 例增為 9 例，全綠）。
+develop
+ develop
 
 ---
 

@@ -1,19 +1,15 @@
 package com.luckystar.wallet.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.luckystar.wallet.dto.GiftRequest;
 import com.luckystar.wallet.dto.GiftResponse;
 import com.luckystar.wallet.exception.GiftLimitExceededException;
 import com.luckystar.wallet.exception.InvalidGiftException;
-import com.luckystar.wallet.kafka.WalletCreditEvent;
-import com.luckystar.wallet.kafka.WalletDebitEvent;
 import com.luckystar.wallet.postgres.entity.WalletTransaction;
 import com.luckystar.wallet.postgres.repository.WalletTransactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -31,14 +27,15 @@ import java.time.ZoneId;
  *       INCRBY 後若任一超限則 DECRBY 回補並丟 {@link GiftLimitExceededException} → 422。鍵 TTL 到當地午夜。</li>
  *   <li><b>原子轉帳</b>：{@link GiftTransferService#transfer}（單一 PostgreSQL 交易，雙向分錄）。
  *       任何例外都會回補 Redis 預扣再往外拋。</li>
- *   <li><b>best-effort 下游</b>：寫 gift_logs（MySQL 稽核）、發 wallet.debit / wallet.credit 兩個事件。
- *       失敗只記 WARN，不影響已 commit 的金流（已知限制，見類別尾註）。</li>
+ *   <li><b>事件（藍圖 04 P2）</b>：wallet.debit / wallet.credit 由 {@link GiftTransferService} 在轉帳
+ *       交易內寫進 wallet_outbox（原子、不會丟），不再於此裸發 Kafka。</li>
+ *   <li><b>best-effort 下游</b>：寫 gift_logs（MySQL 稽核）失敗只記 WARN，不影響已 commit 的金流。</li>
  * </ol>
  *
  * <h3>已知限制（刻意放棄跨資料源原子性，<b>不</b>引入 XA/JTA）</h3>
  * <ul>
- *   <li>PostgreSQL 雙分錄是唯一金流真相；commit 之後的 gift_logs / Kafka 皆 best-effort。</li>
- *   <li>gift_logs 可能少列（稽核缺口，非餘額錯誤）；Kafka 事件可能掉（rank-service 落後到下次重算）。</li>
+ *   <li>PostgreSQL 雙分錄是唯一金流真相；commit 之後的 gift_logs（MySQL 稽核）為 best-effort。</li>
+ *   <li>gift_logs 可能少列（稽核缺口，非餘額錯誤）；wallet 事件已改走 outbox，不再隨轉帳後步驟丟失。</li>
  *   <li>Redis 預扣只在「JVM 在 INCRBY 後、轉帳 commit 前被硬殺」時可能多計；多計只會讓額度更嚴格、
  *       不會讓玩家超額，且當日午夜 TTL 到期自動歸零。</li>
  * </ul>
@@ -61,8 +58,6 @@ public class GiftService {
     private final GiftLogService giftLogService;
     private final WalletTransactionRepository walletTransactionRepository;
     private final StringRedisTemplate redisTemplate;
-    private final KafkaTemplate<String, String> kafkaTemplate;
-    private final ObjectMapper objectMapper;
 
     public GiftResponse gift(Long senderId, GiftRequest request) {
         Long receiverId = request.getReceiverId();
@@ -107,22 +102,15 @@ public class GiftService {
         WalletTransaction debit = result.debit();
         WalletTransaction credit = result.credit();
 
-        // Step 5: best-effort 下游（轉帳已 commit，下列失敗不回滾金流）
-        // TODO(T-026): consider Outbox for gift_logs/Kafka eventual consistency
+        // Step 5: best-effort 下游（轉帳已 commit，下列失敗不回滾金流）。
+        // 註（藍圖 04 P2）：wallet.debit / wallet.credit 事件已改由 GiftTransferService 在轉帳交易內
+        // 寫進 wallet_outbox（原子、不會丟），故此處不再裸發 Kafka；gift_logs 稽核仍為 best-effort。
         try {
             giftLogService.record(senderId, receiverId, amount);
         } catch (Exception e) {
             log.warn("Failed to write gift_logs audit row: senderId={} receiverId={} amount={}",
                     senderId, receiverId, amount, e);
         }
-        publishEvent("wallet.debit", String.valueOf(senderId), new WalletDebitEvent(
-                debit.getId(), senderId, amount,
-                debit.getBalanceBefore(), debit.getBalanceAfter(),
-                "GIFT", debitKey, debit.getReferenceId()));
-        publishEvent("wallet.credit", String.valueOf(receiverId), new WalletCreditEvent(
-                credit.getId(), receiverId, amount,
-                credit.getBalanceBefore(), credit.getBalanceAfter(),
-                "GIFT", creditKey, credit.getReferenceId()));
 
         return GiftResponse.builder()
                 .senderId(senderId)
@@ -176,14 +164,6 @@ public class GiftService {
         if (ttl != null && ttl == -1L) {
             var nextMidnight = LocalDate.now(ZONE).plusDays(1).atStartOfDay(ZONE).toInstant();
             redisTemplate.expireAt(key, nextMidnight);
-        }
-    }
-
-    private void publishEvent(String topic, String key, Object event) {
-        try {
-            kafkaTemplate.send(topic, key, objectMapper.writeValueAsString(event));
-        } catch (Exception e) {
-            log.warn("Failed to publish {} event for key={}", topic, key, e);
         }
     }
 
