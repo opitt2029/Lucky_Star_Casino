@@ -249,6 +249,19 @@ function createInitialDb() {
       ],
       [TEST_ACCOUNT.player.id]: [],
     },
+    friendRequests: {
+      [player.id]: [
+        {
+          friendshipId: 'mock-request-1',
+          requesterId: 'friend-3',
+          requesterUsername: 'Mika',
+          requesterNickname: 'Mika',
+          requesterAvatarUrl: '',
+          requestedAt: new Date().toISOString(),
+        },
+      ],
+      [TEST_ACCOUNT.player.id]: [],
+    },
     // 後端權威簽到日期（每元素 'yyyy-MM-dd'，台北時區）與月度累計獎勵領取紀錄
     checkinDates: {
       [player.id]: [],
@@ -277,6 +290,7 @@ function ensureTestAccount(db) {
   db.wallets = db.wallets || {}
   db.transactions = db.transactions || {}
   db.friends = db.friends || {}
+  db.friendRequests = db.friendRequests || {}
   db.ranks = db.ranks || []
   db.checkinDates = db.checkinDates || {}
   db.monthlyRewardClaims = db.monthlyRewardClaims || {}
@@ -316,6 +330,11 @@ function ensureTestAccount(db) {
 
   if (!db.friends[TEST_ACCOUNT.player.id]) {
     db.friends[TEST_ACCOUNT.player.id] = []
+    changed = true
+  }
+
+  if (!db.friendRequests[TEST_ACCOUNT.player.id]) {
+    db.friendRequests[TEST_ACCOUNT.player.id] = []
     changed = true
   }
 
@@ -921,6 +940,80 @@ export const mockApi = {
     return db.friends[playerId]
   },
 
+  async getFriendRequests() {
+    await wait(240)
+    const db = getDb()
+    return db.friendRequests?.[currentPlayerId()] || []
+  },
+
+  async sendFriendRequest(receiverId) {
+    await wait(260)
+    const db = getDb()
+    const requesterId = currentPlayerId()
+    const normalizedReceiverId = String(receiverId || '').trim()
+    if (!normalizedReceiverId) throw new Error('請輸入玩家 ID')
+    if (normalizedReceiverId === String(requesterId)) throw new Error('不能邀請自己')
+
+    const existingFriend = (db.friends[requesterId] || []).some(
+      (friend) => String(friend.id ?? friend.friendId) === normalizedReceiverId,
+    )
+    if (existingFriend) throw new Error('已經是好友')
+
+    db.friendRequests = db.friendRequests || {}
+    const receiverRequests = db.friendRequests[normalizedReceiverId] || []
+    const duplicate = receiverRequests.some((request) => String(request.requesterId) === String(requesterId))
+    if (duplicate) throw new Error('好友邀請已送出')
+
+    const requester = db.users.find((item) => String(item.player?.id) === String(requesterId))?.player
+    const request = {
+      friendshipId: `mock-request-${Date.now()}`,
+      requesterId,
+      requesterUsername: requester?.username || String(requesterId),
+      requesterNickname: requester?.nickname || String(requesterId),
+      requesterAvatarUrl: requester?.avatarUrl || '',
+      requestedAt: new Date().toISOString(),
+    }
+    db.friendRequests[normalizedReceiverId] = [request, ...receiverRequests]
+    saveDb(db)
+    return { id: request.friendshipId, requesterId, receiverId: normalizedReceiverId, status: 'PENDING' }
+  },
+
+  async acceptFriendRequest(friendshipId) {
+    await wait(260)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const requests = db.friendRequests?.[playerId] || []
+    const request = requests.find((item) => String(item.friendshipId ?? item.id) === String(friendshipId))
+    if (!request) throw new Error('找不到好友邀請')
+
+    const friend = {
+      id: request.requesterId,
+      username: request.requesterUsername,
+      nickname: request.requesterNickname || request.requesterUsername,
+      avatarUrl: request.requesterAvatarUrl || '',
+      friendSince: new Date().toISOString(),
+    }
+    db.friends[playerId] = [friend, ...(db.friends[playerId] || [])]
+    db.friendRequests[playerId] = requests.filter(
+      (item) => String(item.friendshipId ?? item.id) !== String(friendshipId),
+    )
+    saveDb(db)
+    return { id: friendshipId, requesterId: request.requesterId, receiverId: playerId, status: 'ACCEPTED' }
+  },
+
+  async rejectFriendRequest(friendshipId) {
+    await wait(240)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const requests = db.friendRequests?.[playerId] || []
+    const request = requests.find((item) => String(item.friendshipId ?? item.id) === String(friendshipId))
+    if (!request) throw new Error('找不到好友邀請')
+    db.friendRequests[playerId] = requests.filter(
+      (item) => String(item.friendshipId ?? item.id) !== String(friendshipId),
+    )
+    saveDb(db)
+    return { id: friendshipId, requesterId: request.requesterId, receiverId: playerId, status: 'REJECTED' }
+  },
   async removeFriend(friendId) {
     await wait(260)
     const db = getDb()

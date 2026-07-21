@@ -25,6 +25,7 @@ const Topup = lazy(() => import('./pages/Topup'))
 const ProvablyFair = lazy(() => import('./pages/ProvablyFair'))
 
 const enableDevTools = import.meta.env.VITE_ENABLE_DEV_TOOLS === 'true'
+const Fairness = enableDevTools ? lazy(() => import('./pages/Fairness')) : null
 const IntegrationTestPage = enableDevTools ? lazy(() => import('./pages/IntegrationTestPage')) : null
 
 function RouteFallback() {
@@ -196,6 +197,16 @@ export default function App() {
             }
           />
 
+          {enableDevTools && Fairness && (
+            <Route
+              path="/dev/fairness"
+              element={
+                <ProtectedPage>
+                  <Fairness />
+                </ProtectedPage>
+              }
+            />
+          )}
           {enableDevTools && IntegrationTestPage && (
             <Route
               path="/dev/integration"

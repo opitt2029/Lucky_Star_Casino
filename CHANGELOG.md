@@ -686,6 +686,49 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - `mvn -pl backend/game-service test`：196 個測試全綠（含新增的 3 個 CAS 測試與既有跨批累傷/風控/補償測試迴歸）。
 - 手動雙分頁連打＋top-up 驗證待部署環境進行（ADR-008「驗證」節已列為待辦）。
 
+## [changed] -- 2026-07-22 -- Hide fairness verification from player navigation
+
+### Changed
+- frontend/src/App.jsx: move the fairness verification page from `/fairness` to developer-only `/dev/fairness`, gated by `VITE_ENABLE_DEV_TOOLS=true`.
+- frontend/src/components/AppShell.jsx: remove the fairness verification item from the player navigation.
+
+### Why
+- Fairness verification is intended as a developer/audit utility, not a regular player-facing web page.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+## [added] -- 2026-07-21 -- Add player front-back integration entry points
+
+### Added
+- frontend/src/pages/Fairness.jsx, frontend/src/App.jsx, and frontend/src/components/AppShell.jsx: add a protected fairness verification page, navigation entry, recent-round picker, and `fairnessApi.verifyRound` wiring.
+- frontend/src/pages/Rank.jsx, frontend/src/services/rankApi.js, and frontend/src/store/slices/rankSlice.js: add the daily winnings leaderboard tab and connect it to `/api/v1/rank/daily/winnings` plus the current player's daily rank endpoint.
+- frontend/src/pages/Records.jsx: add source, transaction direction, game type, and date range filters so records query the relevant wallet/game APIs instead of only switching a local merged list.
+
+### Changed
+- frontend/src/services/walletApi.js: add `credit` and `debit` transaction filter aliases for the records page, mapping to the backend wallet transaction type query.
+
+### Why
+- The project already had backend APIs for fairness verification, daily winnings ranking, and record filtering, but the player frontend did not expose or fully pass those filters through.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- mvn -pl backend/member-service test passed.
+## [added] -- 2026-07-21 -- Complete friend request UI flow
+
+### Added
+- backend/member-service: add `FriendRequestView` and `GET /api/v1/friends/requests` so the frontend can list pending incoming friend requests.
+- frontend/src/services/memberApi.js and frontend/src/services/mockApi.js: add friend request list/send/accept/reject API wiring for real and mock modes.
+- frontend/src/components/FriendFloatingPanel.jsx and .css: add friend/request tabs, numeric player ID invite form, pending request cards, and accept/reject actions.
+
+### Why
+- The backend already supported sending, accepting, and rejecting friend requests, but the player frontend only exposed accepted friend list and delete, leaving the friend flow incomplete.
+
+### Verification
+- mvn -pl backend/member-service test passed.
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
 ## [fixed] -- 2026-07-21 -- Expand fishing buy-in and settlement fullscreen surface
 
 ### Fixed

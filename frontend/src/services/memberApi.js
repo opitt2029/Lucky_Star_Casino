@@ -154,6 +154,59 @@ export const memberApi = {
     }))
   },
 
+  // GET /api/v1/friends/requests → 收到、尚未處理的好友邀請。
+  async listFriendRequests() {
+    if (useMockApi) {
+      const requests = await mockApi.getFriendRequests()
+      return (requests || []).map((r) => ({
+        friendshipId: r.friendshipId ?? r.id,
+        requesterId: r.requesterId,
+        name: r.requesterNickname || r.requesterUsername || `玩家${r.requesterId ?? ''}`,
+        username: r.requesterUsername || '',
+        avatarUrl: r.requesterAvatarUrl || '',
+        requestedAt: r.requestedAt || r.createdAt || null,
+      }))
+    }
+
+    const res = await api.get('/api/v1/friends/requests')
+    const list = res.data.data || []
+    return list.map((r) => ({
+      friendshipId: r.friendshipId,
+      requesterId: r.requesterId,
+      name: r.requesterNickname || r.requesterUsername || `玩家${r.requesterId}`,
+      username: r.requesterUsername || '',
+      avatarUrl: r.requesterAvatarUrl || '',
+      requestedAt: r.requestedAt || null,
+    }))
+  },
+
+  // POST /api/v1/friends/request → 以玩家 ID 送出好友邀請。
+  async sendFriendRequest(receiverId) {
+    if (useMockApi) {
+      return mockApi.sendFriendRequest(receiverId)
+    }
+    const res = await api.post('/api/v1/friends/request', { receiverId: Number(receiverId) })
+    return res.data.data
+  },
+
+  // PUT /api/v1/friends/{friendshipId}/accept → 接受好友邀請。
+  async acceptFriendRequest(friendshipId) {
+    if (useMockApi) {
+      return mockApi.acceptFriendRequest(friendshipId)
+    }
+    const res = await api.put(`/api/v1/friends/${friendshipId}/accept`)
+    return res.data.data
+  },
+
+  // PUT /api/v1/friends/{friendshipId}/reject → 拒絕好友邀請。
+  async rejectFriendRequest(friendshipId) {
+    if (useMockApi) {
+      return mockApi.rejectFriendRequest(friendshipId)
+    }
+    const res = await api.put(`/api/v1/friends/${friendshipId}/reject`)
+    return res.data.data
+  },
+
   // DELETE /api/v1/friends/{friendshipId} → 解除好友關係
   async deleteFriend(friendshipId) {
     if (useMockApi) {
