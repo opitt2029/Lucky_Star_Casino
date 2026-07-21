@@ -1,3 +1,31 @@
+## [test] — 2026-07-21 — 捕魚機容量階梯壓測 + 老虎機/捕魚機對照（Prometheus + Grafana）
+
+### Added
+- `tests/performance/fishing-1000-players.jmx`：捕魚機施壓計畫。每個虛擬玩家用 OnceOnly 開一次場
+  （`POST /session/start`，`buyIn=200000/cannonLevel=1/betPerShot=10`），從回應抽 `sessionId` 與
+  `lastShotSeq` 續號（解跨階序號衝突），主負載為單發批次 `POST /{sessionId}/shots`（1 秒 pacing、永不觸
+  射速上限）；`fishInstanceId` 每 5 發輪替讓魚累傷致死。兩個防呆：① Header 用 OnceOnly 釘死的 `authToken`
+  （CSVDataSet 每 iteration 會前進到下一名玩家，不釘會讓後續 shots 拿別人 token 打自己的 session → 404）；
+  ② buy-in 失敗（高併發連線被拒）的 thread 直接 `setStopThread`，避免對 `NO_SESSION` 狂打假 404。
+- `tools/observability/run-fishing-ladder.ps1`：捕魚容量階梯（內聯 JMeter 呼叫，不動既有 slot runner）。
+- `docs/performance/T-090-slot-vs-fishing-ppt-guide-20260721.md`：給人組 PPT 的逐張投影片指南
+  （標題／用哪張圖／一句話重點／口白）。
+- `docs/performance/assets/slot-20260721/`、`docs/performance/assets/fishing-20260721/`：各 13 張 Grafana PNG
+  （light 主題、2 倍解析度），檔名對應以便左右並排對照。
+
+### 為什麼
+既有壓測只涵蓋老虎機。捕魚機的 buy-in + 批次 shots 流程與 Redis session（Lua CAS）是完全不同的熱路徑，
+值得單獨量測，也讓「DB-bound vs Redis-bound」的架構差異有數據佐證。
+
+### 實測結論（單機拓樸，2026-07-21 同一 session 內兩遊戲各跑一輪）
+- **老虎機（DB-bound）**：吞吐爬到 ~818 req/s，但 P99 在 150 併發即達 499ms、300 併發破 1.2 秒；
+  600/1,000 併發 gateway 卸載 5.0%/14.1%。根因＝game-service HikariCP 池頂在 10、等待執行緒尖峰 ~168。
+- **捕魚機（Redis-bound）**：吞吐線性到 837 req/s，P99 全程 ≤ 443ms（1,000 併發僅 199ms）、卸載 ≤ 0.6%；
+  HikariCP 全程 ~0（shots 只改 Redis 局內餘額，不碰 DB／wallet／outbox）。高併發唯一損耗為 buy-in 連線被拒 ~0.3–0.6%。
+- 兩遊戲全程零帳務違規（冪等/超扣皆 0）。
+
+---
+
 ## [test] — 2026-07-21 — 老虎機容量階梯壓測（Prometheus + Grafana 觀測，25→1,000 併發）
 
 ### Added
