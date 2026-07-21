@@ -113,6 +113,15 @@ public class FishingSession {
     @Builder.Default
     private List<String> topUpRequestIds = new ArrayList<>();
 
+    /**
+     * 樂觀鎖版本號（Redis Lua CAS，ADR-008）：每次成功的 {@code FishingSessionStore.saveCas}
+     * 遞增一。「讀→改→整包 save」的併發寫入（shots/top-up）靠比對此欄位偵測衝突並重試，
+     * 取代原本純靠前端 {@code topUpLockRef} 迴避覆寫。舊 session（升級前建立）讀回 null 時
+     * 視同 0。
+     */
+    @Builder.Default
+    private Long version = 0L;
+
     public boolean isActive() {
         return "ACTIVE".equals(state);
     }
