@@ -3,6 +3,7 @@ package com.luckystar.rank.service;
 import com.luckystar.rank.dto.RankEntryResponse;
 import com.luckystar.rank.dto.PlayerCoinBalance;
 import com.luckystar.rank.kafka.RankUpdatePublisher;
+import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -15,12 +16,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.DefaultTypedTuple;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.ZSetOperations;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.lenient;
@@ -39,6 +43,9 @@ class RankServiceTest {
 
     @Mock
     HashOperations<String, String, String> hashOperations;
+
+    @Mock
+    ValueOperations<String, String> valueOperations;
 
     @Mock
     RankUpdatePublisher rankUpdatePublisher;
@@ -347,9 +354,33 @@ class RankServiceTest {
         assertThat(rankService.shouldBroadcast(List.of(7L), 10_000L)).isTrue();
     }
 
+    @Test
+    void maybeBroadcast_throttlesQueryWithinLockWindow() {
+        // 藍圖 04 P3：3 秒節流窗內多次 updatePlayerCoins，昂貴的 ZREVRANGE 查詢只該執行一次
+        // （閘門在查詢之前）。第一次 SETNX 成功、第二次失敗（鎖還在）。
+        when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class)))
+                .thenReturn(true, false);
+        RankService rankService = new RankService(redisTemplate, rankUpdatePublisher);
+
+        rankService.updatePlayerCoins(7L, 9000L);
+        rankService.updatePlayerCoins(8L, 8000L);
+
+        // ZADD 兩次都執行（冪等寫入不受節流影響）
+        verify(zSetOperations, times(1)).add(RankService.GLOBAL_COINS_KEY, "7", 9000.0);
+        verify(zSetOperations, times(1)).add(RankService.GLOBAL_COINS_KEY, "8", 8000.0);
+        // 但查詢（reverseRangeWithScores）只在第一次過鎖時執行一次
+        verify(zSetOperations, times(1)).reverseRangeWithScores(RankService.GLOBAL_COINS_KEY, 0, 9L);
+    }
+
     private RankService buildService() {
         when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
         lenient().when(redisTemplate.<String, String>opsForHash()).thenReturn(hashOperations);
+        // P3：廣播節流鎖預設放行（回 true），讓既有廣播測試維持原語意
+        lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        lenient().when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class)))
+                .thenReturn(true);
         return new RankService(redisTemplate, rankUpdatePublisher);
     }
 }
