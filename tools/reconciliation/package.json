@@ -1,12 +1,15 @@
 {
-  "name": "reconcile-game-wallet",
+  "name": "reconciliation-tools",
   "private": true,
   "type": "module",
-  "description": "game↔wallet 對帳（ADR-009）：盤點遊戲對局與錢包流水/補償單的缺漏，輸出 check_name,violation_count 報表",
+  "description": "對帳/重算工具集：game↔wallet 對帳（ADR-009，reconcile-game-wallet.mjs）、rank Redis DR 重算（藍圖 04 P4，rebuild-rank-redis.mjs）",
   "scripts": {
-    "reconcile": "node reconcile-game-wallet.mjs"
+    "reconcile": "node reconcile-game-wallet.mjs",
+    "rebuild-rank": "node rebuild-rank-redis.mjs",
+    "rebuild-rank:dry-run": "node rebuild-rank-redis.mjs --dry-run"
   },
   "dependencies": {
-    "pg": "^8.12.0"
+    "pg": "^8.12.0",
+    "redis": "^4.7.0"
   }
 }
