@@ -1,3 +1,4 @@
+feature/weiyu-wallet-outbox
 ## [feat] — 2026-07-21 — 藍圖 04 P2：wallet Transactional Outbox（事件不再靜默丟失）
 
 ### Added
@@ -47,6 +48,35 @@ Outbox 把「待發事件」與帳務異動寫進同一 Postgres 交易（原子
   → **Tests run: 17, Failures: 0, Errors: 0**（含新 `WalletOutboxContainerTest` 4 例；schema 無漂移）。
 - 手動端對端（`docker compose stop kafka` → credit 應成功入帳、outbox PENDING → start kafka →
   數秒轉 SENT）**尚待人工執行**（需完整服務拓撲 + 真 broker）。
+=======
+## [fix] — 2026-07-21 — 藍圖 04 P1：rank 消費去重（修 `addDailyWinnings` 重複累加）
+
+### Changed
+- `backend/rank-service/.../kafka/WalletBalanceChangedConsumer.java`：`wallet.credit`/`wallet.debit`
+  的消費端加去重閘，**只保護不冪等的那一支** `addDailyWinnings`（`ZINCRBY` 累加）：
+  以事件既有的 `transactionId` 為鍵做 Redis `SETNX`（`setIfAbsent`，key=`rank:dedup:daily-win:{txId}`，
+  TTL 48h 對齊日贏分 key），回傳「我是不是第一個消費者」，非首次直接略過。
+  `updatePlayerCoins`（`ZADD` 絕對值、冪等）**不去重**——重送本就無害，去重反而會在
+  「首次 ZADD 後、ack 前崩潰」時把餘額永久卡在錯值。
+  `transactionId` 為 null 時跳過去重、直接執行並 `log.warn`（不可用 null 組 key，否則所有事件共用
+  同一把鍵、第一筆之後全被吃掉）。
+- `backend/rank-service/.../kafka/WalletBalanceChangedConsumerTest.java`：既有 WIN 案例補上
+  `StringRedisTemplate` 的 SETNX stub；新增四例——同 `transactionId` 連送兩次日贏分只累加一次、
+  但 `updatePlayerCoins` 仍執行兩次（冪等操作不受去重影響）、`transactionId` 為 null 仍執行不拋錯、
+  不同 `transactionId` 各自累加。
+
+### Why
+Kafka 是 at-least-once：consumer 在 `ack.acknowledge()` 前崩潰或 group rebalance，同一則
+`wallet.credit` 會重投遞。`addDailyWinnings` 是 `ZINCRBY`（累加、不冪等）→ 玩家日贏分虛增、
+今日贏幣王排行（T-045）失真、可被刷。核心觀念：**冪等操作要的是「可安全重放」，非冪等操作才需
+「只執行一次」**，所以只對後者去重。這是 best-effort 去重（非 exactly-once）——SETNX 成功後、
+ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小於重複累加（虛增可刷），且崩潰窗口微秒級。
+若日後日贏分接入實際獎勵發放，須升級為單一 Lua script 的原子版（比照 ADR-008 CAS）。
+
+### Verification
+- `mvn -pl backend/rank-service test` → **Tests run: 71, Failures: 0, Errors: 0**
+  （`WalletBalanceChangedConsumerTest` 由 6 例增為 9 例，全綠）。
+develop
 
 ---
 
