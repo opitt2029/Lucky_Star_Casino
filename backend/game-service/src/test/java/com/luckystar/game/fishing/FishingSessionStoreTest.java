@@ -122,9 +122,6 @@ class FishingSessionStoreTest {
         Map<String, Long> fishDamage = new LinkedHashMap<>();
         fishDamage.put("f1", 15L);
         fishDamage.put("f2", 40L);
-        Map<String, Long> fishRecovery = new LinkedHashMap<>();
-        fishRecovery.put("f1", 210L);
-        fishRecovery.put("f2", 420L);
         List<FishingSession.KillRecord> kills = new ArrayList<>();
         kills.add(new FishingSession.KillRecord(7L, "DRAGON_KING", 1990L, 3));
         List<String> topUpRequestIds = new ArrayList<>();
@@ -132,7 +129,7 @@ class FishingSessionStoreTest {
 
         store.save(baseSession()
                 .fishDamage(fishDamage)
-                .fishRecovery(fishRecovery)
+                .prunedFishDamage(630L)
                 .kills(kills)
                 .topUpRequestIds(topUpRequestIds)
                 .build());
@@ -143,9 +140,8 @@ class FishingSessionStoreTest {
         assertEquals(2, loaded.getFishDamage().size());
         assertEquals(15L, loaded.getFishDamage().get("f1"));
         assertEquals(40L, loaded.getFishDamage().get("f2"));
-        assertEquals(2, loaded.getFishRecovery().size());
-        assertEquals(210L, loaded.getFishRecovery().get("f1"));
-        assertEquals(420L, loaded.getFishRecovery().get("f2"));
+        // 被淘汰魚的累傷（殘血回收的來源之一）必須完整還原，否則那些子彈變沉沒成本
+        assertEquals(630L, loaded.getPrunedFishDamage());
 
         // 致命一擊紀錄必須完整還原（供結算後 verifyShot 重放）
         assertEquals(1, loaded.getKills().size());
@@ -168,7 +164,8 @@ class FishingSessionStoreTest {
         FishingSession loaded = store.find(PLAYER_ID).orElseThrow();
 
         assertTrue(loaded.getFishDamage().isEmpty(), "fishDamage 應為空表");
-        assertTrue(loaded.getFishRecovery().isEmpty(), "fishRecovery 應為空表");
+        assertEquals(0L, loaded.getPrunedFishDamage(), "prunedFishDamage 應為 0");
+        assertEquals(0L, loaded.getLegacyFishRecovery(), "無舊版欄位時 legacyFishRecovery 應為 0");
         assertTrue(loaded.getKills().isEmpty(), "kills 應為空清單");
     }
 

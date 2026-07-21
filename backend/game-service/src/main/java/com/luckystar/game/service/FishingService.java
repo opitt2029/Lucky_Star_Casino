@@ -29,6 +29,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -252,11 +253,6 @@ public class FishingService {
             fishDamage = new LinkedHashMap<>();
             session.setFishDamage(fishDamage);
         }
-        Map<String, Long> fishRecovery = session.getFishRecovery();
-        if (fishRecovery == null) {
-            fishRecovery = new LinkedHashMap<>();
-            session.setFishRecovery(fishRecovery);
-        }
         List<FishingSession.KillRecord> kills = session.getKills();
         if (kills == null) {
             kills = new ArrayList<>();
@@ -340,14 +336,11 @@ public class FishingService {
                     kills.remove(0);
                 }
                 fishDamage.remove(instanceId);
-                fishRecovery.remove(instanceId);
             } else {
                 // 未死：累積傷害（並控管並存 instance 數，淘汰最舊者）。
+                // 殘血回收不在這裡算——逐發 floor 會侵蝕低注額（見 computeResidualRecovery）。
                 fishDamage.put(instanceId, outcome.damageTakenAfter());
-                long recovery = fishRecovery.getOrDefault(instanceId, 0L)
-                        + FishingCombat.recoveryPayout(shot.getBetPerShot(), cannonLevel, outcome.damage());
-                fishRecovery.put(instanceId, recovery);
-                pruneFishDamage(fishDamage);
+                pruneFishDamage(session, fishDamage);
             }
 
             if (payout > 0) {
@@ -674,42 +667,52 @@ public class FishingService {
     }
 
     /**
-     * 殘血部分回收總額（ADR-004）：對結算時仍受傷未死的每條魚（fishDamage 的每個 entry），
-     * 累加 {@link FishingCombat#recoveryPayout}。只需 session 級的 cannonLevel/betPerShot ＋ 累傷值，
-     * 不需查 species/HP（致命一擊後該魚已從 fishDamage 移除，故這裡掃到的都是未死殘血魚）。
+     * 殘血部分回收總額（ADR-004）：把「結算時仍受傷未死的魚」身上累積的傷害全部加總
+     * （{@code fishDamage} 的現存 entry ＋ 期間被淘汰的 {@code prunedFishDamage}），
+     * 再<b>整場只呼叫一次</b> {@link FishingCombat#recoveryPayout}。
+     *
+     * <p><b>為什麼要先加總再算、而不是逐條/逐發算</b>：{@code recoveryPayout} 內含 {@code floor}，
+     * 每呼叫一次就丟掉不到 1 星幣的小數。舊版是「每發子彈算一次」，單發 10 星幣時每發丟掉
+     * 約 0.8 星幣，有效回收率被壓到 <b>0.62</b>、而非設計值 {@code RECOVERY_RATE}=0.70；
+     * 注額越小侵蝕越重（bet=100 以上才回到 0.696）。改成整場加總後只 floor 一次，
+     * 誤差上限固定是「整場 &lt; 1 星幣」，跟注額大小無關。
+     *
+     * <p>只需 session 級的 cannonLevel/betPerShot（兩者進場後固定，ADR-004）＋ 累傷值，
+     * 不需查 species/HP：致命一擊後該魚已從 {@code fishDamage} 移除，故掃到的都是未死殘血魚。
      */
     private long computeResidualRecovery(FishingSession session) {
-        Map<String, Long> fishRecovery = session.getFishRecovery();
-        if (fishRecovery != null && !fishRecovery.isEmpty()) {
-            long total = 0L;
-            for (Long recovery : fishRecovery.values()) {
-                if (recovery != null) total += recovery;
-            }
-            return total;
-        }
-        Map<String, Long> fishDamage = session.getFishDamage();
-        if (fishDamage == null || fishDamage.isEmpty()) {
-            return 0L;
-        }
+        long legacy = session.getLegacyFishRecovery() != null ? session.getLegacyFishRecovery() : 0L;
         Integer cannonLevel = session.getCannonLevel();
         Long betPerShot = session.getBetPerShot();
         if (cannonLevel == null || betPerShot == null) {
-            return 0L;
+            return legacy;
         }
-        long total = 0L;
-        for (Long dmg : fishDamage.values()) {
-            if (dmg != null) {
-                total += FishingCombat.recoveryPayout(betPerShot, cannonLevel, dmg);
+        long totalDamage = session.getPrunedFishDamage() != null ? session.getPrunedFishDamage() : 0L;
+        Map<String, Long> fishDamage = session.getFishDamage();
+        if (fishDamage != null) {
+            for (Long dmg : fishDamage.values()) {
+                if (dmg != null) {
+                    totalDamage += dmg;
+                }
             }
         }
-        return total;
+        return legacy + FishingCombat.recoveryPayout(betPerShot, cannonLevel, totalDamage);
     }
 
-    /** 控管同時追蹤傷害的魚 instance 數：超出上限時淘汰最舊（LinkedHashMap 插入序）者。 */
-    private void pruneFishDamage(Map<String, Long> fishDamage) {
+    /**
+     * 控管同時追蹤傷害的魚 instance 數：超出上限時淘汰最舊（LinkedHashMap 插入序）者。
+     *
+     * <p>淘汰前把該魚的累傷併進 {@code prunedFishDamage}，否則打在牠身上的子彈會變成完全沉沒
+     * ——場次越長（魚 instance 越多）被吃掉越多，殘血回收的地板就守不住。
+     */
+    private void pruneFishDamage(FishingSession session, Map<String, Long> fishDamage) {
         while (fishDamage.size() > MAX_LIVE_FISH) {
-            String eldest = fishDamage.keySet().iterator().next();
-            fishDamage.remove(eldest);
+            Iterator<Map.Entry<String, Long>> it = fishDamage.entrySet().iterator();
+            Map.Entry<String, Long> eldest = it.next();
+            it.remove();
+            long dmg = eldest.getValue() != null ? eldest.getValue() : 0L;
+            long pruned = session.getPrunedFishDamage() != null ? session.getPrunedFishDamage() : 0L;
+            session.setPrunedFishDamage(pruned + dmg);
         }
     }
 

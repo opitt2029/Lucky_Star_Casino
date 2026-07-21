@@ -990,7 +990,6 @@ export const mockApi = {
     // 引擎 remount 後 idSeq 從 0 重置，舊 fishDamage 的 key 會碰撞到新魚 id，
     // 導致新魚繼承舊傷害（初次命中 hpRemaining 異常偏低或直接一擊即死）。
     session.fishDamage = {}
-    session.fishRecovery = {}
     saveDb(db)
     return {
       sessionId: session.sessionId,
@@ -1022,7 +1021,6 @@ export const mockApi = {
       // 同 fishingActive()：引擎 remount 後 idSeq 從 0 重置，舊 fishDamage 的 key
       // 會碰撞到新魚 id，導致新魚繼承舊傷害（初擊即死），故一併歸零。
       existing.fishDamage = {}
-      existing.fishRecovery = {}
       saveDb(db)
       return {
         sessionId: existing.sessionId,
@@ -1124,7 +1122,6 @@ export const mockApi = {
       previousSeq = Number(shot.shotSeq)
     }
     session.fishDamage = session.fishDamage || {}
-    session.fishRecovery = session.fishRecovery || {}
     const results = []
     for (const shot of shots) {
       const requestedFishType = String(shot.fishType || '').trim().toUpperCase()
@@ -1227,8 +1224,8 @@ export const mockApi = {
       if (!killed) {
         hpRemaining = hp - after
         session.fishDamage[instanceId] = after
-        session.fishRecovery[instanceId] =
-          (session.fishRecovery[instanceId] || 0) + fishingRecoveryPayout(bet, cannonLevel, damage)
+        // 殘血回收不在這裡逐發算：fishingRecoveryPayout 含 floor，逐發呼叫會侵蝕低注額
+        // （單發 10 星幣時有效回收率只剩 0.62、非設計值 0.70）。改在結算時整場算一次。
       } else {
         captured = Math.random() < fishingCapture(fish, cannonLevel)
         if (captured) {
@@ -1241,7 +1238,6 @@ export const mockApi = {
           session.totalPayout += payout
         }
         delete session.fishDamage[instanceId]
-        delete session.fishRecovery[instanceId]
       }
       // 記錄逐發結果供結算後 verify-shot 重放（mock 無真正 RNG 種子，改以對局存檔回放）。
       session.shotResults = session.shotResults || {}
@@ -1325,22 +1321,20 @@ export const mockApi = {
 
     // 殘血部分回收（ADR-004）：fishDamage 只剩「受傷但未打死」的魚（致命一擊後已 delete），
     // 退還 RECOVERY_RATE 比例的子彈成本，折入局內餘額與 totalPayout（鏡像後端 settleInternal）。
-    let residualRecovery = 0
-    const recoveryValues = Object.values(session.fishRecovery || {})
-    if (recoveryValues.length > 0) {
-      for (const recovery of recoveryValues) residualRecovery += Number(recovery) || 0
-    } else {
-      const cannonLevel = session.cannonLevel || 1
-      const betPerShot = session.betPerShot || 0
-      for (const dmg of Object.values(session.fishDamage || {})) {
-        residualRecovery += fishingRecoveryPayout(betPerShot, cannonLevel, Number(dmg) || 0)
-      }
+    // 先把整場累傷加總、再算一次回收（含 floor）——逐條/逐發各 floor 一次會侵蝕低注額。
+    let totalResidualDamage = 0
+    for (const dmg of Object.values(session.fishDamage || {})) {
+      totalResidualDamage += Number(dmg) || 0
     }
+    const residualRecovery = fishingRecoveryPayout(
+      session.betPerShot || 0,
+      session.cannonLevel || 1,
+      totalResidualDamage
+    )
     if (residualRecovery > 0) {
       session.sessionBalance += residualRecovery
       session.totalPayout += residualRecovery
       session.fishDamage = {}
-      session.fishRecovery = {}
     }
 
     const credited = session.sessionBalance
