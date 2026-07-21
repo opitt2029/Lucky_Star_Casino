@@ -27,8 +27,9 @@ describe('decorateFishingFishTable', () => {
       'jackpot-fish-king',
     ])
 
+    expect(variants.map((fish) => fish.name)).toEqual(['金星魚王', '彩金魚王'])
+
     for (const variant of variants) {
-      expect(variant.name).toBe('Dragon King')
       expect(variant.multiplier).toBe(120)
       expect(variant.hp).toBe(900)
       expect(variant.tier).toBe('BOSS')
@@ -45,6 +46,56 @@ describe('decorateFishingFishTable', () => {
     })
   })
 
+  test('marks Caishen and Money Tree as special display fish without changing payouts', () => {
+    const caishen = {
+      code: 'CAISHEN',
+      name: 'Caishen',
+      multiplier: 100,
+      hp: 1000,
+      tier: 'HIGH',
+      spawnWeight: 6,
+      assetId: 'fish-caishen',
+    }
+    const moneyTree = {
+      code: 'MONEY_TREE',
+      name: 'Money Tree',
+      multiplier: 30,
+      hp: 300,
+      tier: 'SPECIAL',
+      spawnWeight: 5,
+      assetId: 'fish-money-tree',
+    }
+
+    expect(decorateFishingFishTable([caishen, moneyTree])).toEqual([
+      {
+        ...caishen,
+        tier: 'SPECIAL',
+        visualTier: 'SPECIAL',
+      },
+      {
+        ...moneyTree,
+        tier: 'SPECIAL',
+        visualTier: 'SPECIAL',
+      },
+    ])
+  })
+
+  test('does not split already decorated Dragon King variants again', () => {
+    const backendBoss = {
+      code: 'DRAGON_KING',
+      name: 'Dragon King',
+      multiplier: 120,
+      hp: 900,
+      tier: 'BOSS',
+      spawnWeight: 3,
+      assetId: 'fish-dragon-king',
+    }
+
+    const once = decorateFishingFishTable([backendBoss])
+    const twice = decorateFishingFishTable(once)
+
+    expect(twice).toEqual(once)
+  })
   test('does not decorate non-boss fish', () => {
     const koi = { code: 'KOI', name: 'Koi', multiplier: 2, hp: 20, tier: 'SMALL' }
 

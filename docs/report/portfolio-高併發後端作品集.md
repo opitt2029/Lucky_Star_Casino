@@ -23,10 +23,10 @@
 
 Java 21 + Spring Boot 3.3.5 微服務，Spring Cloud Gateway 作為單一入口；CQRS 讀寫分離（PostgreSQL 寫庫 + MySQL 讀庫）；Kafka 作為事件匯流排；Redis 承擔 Token / Session / 排行榜。
 
-**為何使用Java 21 + Spring Boot 3.3.5 微服務？** 
+**為何使用Java 21 + Spring Boot 3.3.5 微服務？**
 - 因為Java 21生態成熟、Spring Boot對Kafka/Redis/JPA整合都有現成starter，再加上他也是LTS。
 
-**Spring Cloud Gateway 單一入口？** 
+**Spring Cloud Gateway 單一入口？**
 - 因為不想讓JWT驗證、限流、熔斷邏輯在5個服務裡各寫一份（維護太麻煩+容易漏改一處）。Gateway集中做這些橫切關注點，下游服務只信任Gateway注入的X-User-Id/X-User-Role，前端也只認一個host。壓測那次thundering herd問題就出在這層的熔斷設定，這算是集中化的代價：出事會卡住整個入口，但好處只要修一次就可以一次解決(不用再去各個點去修改)。
 
 **CQRS分庫的原因？**

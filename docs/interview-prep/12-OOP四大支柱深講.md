@@ -213,7 +213,7 @@ public enum SlotSymbol {
     CHERRY(45, 1, 5, 0x1F352),
     LEMON(30, 1, 8, 0x1F34B),
     BELL(16, 2, 18, 0x1F514),
-    STAR(7, 3, 50, 0x2B50),
+    STAR(7, 3, 40, 0x2B50),
     SEVEN(5, 5, 70, 0x0037, 0xFE0F, 0x20E3);
 
     public static final int TOTAL_WEIGHT = computeTotalWeight();

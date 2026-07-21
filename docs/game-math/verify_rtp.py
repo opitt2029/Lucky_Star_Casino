@@ -45,7 +45,7 @@ SLOT = [
     ("CHERRY", 45, 1, 5),
     ("LEMON", 30, 1, 8),
     ("BELL", 16, 2, 18),
-    ("STAR", 7, 3, 50),
+    ("STAR", 7, 3, 40),
     ("SEVEN", 5, 5, 70),
 ]
 
@@ -77,7 +77,7 @@ TARGET_RTP = 0.96
 CRIT_CHANCE = 0.20
 CRIT_MULTIPLIER = 2
 HP_PER_MULTIPLIER = 10
-CANNON_DAMAGE = {1: 10, 2: 14, 3: 18}  # 銅/銀/金
+CANNON_DAMAGE = {1: 14, 2: 22, 3: 32}  # 銅/銀/金
 
 
 def expected_shots_to_kill(hp, damage):
@@ -197,7 +197,7 @@ def main():
 
     s = slot_stats()
     print("\n【① 老虎機】(權重總和 %d)" % s["total"])
-    print("  RTP（含本金） = %.5f   (Java Javadoc ≈ 0.938)" % s["rtp"])
+    print("  RTP（含本金） = %.5f   (Java Javadoc ≈ 0.935)" % s["rtp"])
     print("  命中率        = %.5f   (Java Javadoc ≈ 0.307)" % s["hit"])
     print("  單局 SD       = %.4f" % s["sd"])
 

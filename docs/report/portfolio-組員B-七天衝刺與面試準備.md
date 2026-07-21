@@ -16,7 +16,7 @@
 | 賣點句 | 對應素材 | 主讀章節 |
 |---|---|---|
 | 三款遊戲（老虎機/百家樂/捕魚）全部基於 Provably Fair RNG（SHA-256 承諾），玩家可事後驗證，並有 per-game RTP 風控門檻 | PF 承諾-揭露流程、風控誤判改判事故與修法 | `02` 決策 5、雷區 17、`PROJECT_ANALYSIS` §8.4/§8.6 |
-| 遊戲數學有理論根據：老虎機 RTP 封閉式公式寫進 Javadoc（≈93.8%）、捕魚 pCapture 反推公式使 RTP 恆等於設計值 0.96、殘血回收 0.70 當體感地板 | `SlotSymbol` Javadoc、`FishingCombat` Javadoc、ADR-004 | Day 2 / Day 4、`PROJECT_ANALYSIS` §8.5 |
+| 遊戲數學有理論根據：老虎機 RTP 封閉式公式寫進 Javadoc（≈93.5%）、捕魚 pCapture 反推公式使 RTP 恆等於設計值 0.96、殘血回收 0.70 當體感地板 | `SlotSymbol` Javadoc、`FishingCombat` Javadoc、ADR-004 | Day 2 / Day 4、`PROJECT_ANALYSIS` §8.5 |
 | 前端自寫 PixiJS 遊戲引擎（脫離 React 生命週期、物件池、FPS 守門）根治 DOM 渲染當機，玩法數值以 `contracts/*.json` 單一來源＋`ContractParityTest` 守門 | ADR-003、`fishingEngine.js`、雷區 13/14/16 | Day 5、`PROJECT_ANALYSIS` §8.7 |
 
 三句話對應三個主戰場，七天計畫圍繞它們排：**Day 1 全貌、Day 2 RNG＋老虎機、Day 3 百家樂＋風控、Day 4 捕魚後端、Day 5 捕魚前端＋契約、Day 6 跨服務協防（帳務/Kafka/測試）、Day 7 報告演練＋行為題**。
@@ -73,8 +73,8 @@
 
 ### 要能講出來
 - [ ] PF 流程默畫：**server 先給 serverSeed 的 SHA-256 承諾（hash）→ 玩家提交 clientSeed → 結果 = SHA-256(serverSeed + clientSeed + nonce) → 事後揭露 serverSeed → 玩家用 `/verify` 端點重算**。關鍵句：「承諾在前，server 看到 clientSeed 之後已經不可能挑 seed」（`PROJECT_ANALYSIS` §12.6）
-- [ ] 老虎機兩階賠付公式白板寫出：RTP = Σpᵢ³·Tᵢ（三連）+ Σpᵢ²(1−pᵢ)·Pᵢ（左二同）≈ **93.8%**；命中率 = Σpᵢ³ + Σpᵢ²(1−pᵢ) ≈ **30.7%**（含本金口徑、單中線）
-- [ ] 答出「這個 93.8% 怎麼驗證的？」→ 兩層：理論值寫進 Javadoc（封閉式公式）＋ `SlotMachineTest` 用統計帶斷言實測 RTP 落在區間（大數法則，不是斷單一值）
+- [ ] 老虎機兩階賠付公式白板寫出：RTP = Σpᵢ³·Tᵢ（三連）+ Σpᵢ²(1−pᵢ)·Pᵢ（左二同）≈ **93.5%**；命中率 = Σpᵢ³ + Σpᵢ²(1−pᵢ) ≈ **30.7%**（含本金口徑、單中線）
+- [ ] 答出「這個 93.5% 怎麼驗證的？」→ 兩層：理論值寫進 Javadoc（封閉式公式）＋ `SlotMachineTest` 用統計帶斷言實測 RTP 落在區間（大數法則，不是斷單一值）
 - [ ] 答出「改一個符號的權重要動哪裡？」→ 四同步：`SlotSymbol` → `contracts/slot-paytable.json` → `SlotSymbolTest`/`SlotMachineTest` 區間 → Javadoc 理論值；漏了 `ContractParityTest` 會紅（這題展示工程紀律，比數學題更加分）
 - [ ] 答出「冪等鍵誰生成？」→ 老虎機冪等鍵由**伺服器端生成**（非 client 傳入），命名如 `slot-bet-<roundId>` / `slot-win-<roundId>`——確定性命名讓重試天然安全
 
@@ -96,7 +96,7 @@
 ### 要能講出來
 - [ ] 百家樂規則三件套：補牌表（閒 0–5 補、莊依閒第三張查表）、天牌 8/9、**和局押莊/閒 push 退本金**、莊贏扣 **5% 傭金**（結構性 RTP ≈ 0.99 的來源）
 - [ ] 事故完整敘事（2026-06-25 修復）：`game_rounds.win_amount` 存**含本金**派彩 → RTP=win/bet 的正常水位≈各遊戲結構性 RTP → 當初單一標量門檻低於百家樂的 0.99 → **風控每局誤判超限、把結果強制改判「莊家贏」** → 修成 per-game map，並立規範「門檻必須訂在該遊戲結構性 RTP 之上」
-- [ ] 進階版（把事故講出深度）：門檻不是「結構性 RTP + 一點點」就好——老虎機有 70x/50x 重尾，500 局窗口 RTP 標準差 ≈0.107，門檻 0.97 時 36% 的檢查會誤觸、5.9% 贏局被改判；所以 SLOT 訂 **1.30**、BACCARAT **1.20**、FISHING **1.10**（高變異留裕度），誤觸 ≤0.08% 仍攔得住真異常（賠付表 bug 會讓窗口 RTP 持續遠超門檻）
+- [ ] 進階版（把事故講出深度）：門檻不是「結構性 RTP + 一點點」就好——老虎機有 70x/40x 重尾，500 局窗口 RTP 標準差 ≈0.104，門檻 0.97 時仍可能誤觸；所以 SLOT 訂 **1.30**、BACCARAT **1.20**、FISHING **1.10**（高變異留裕度），誤觸 ≤0.08% 仍攔得住真異常（賠付表 bug 會讓窗口 RTP 持續遠超門檻）
 - [ ] 答出「為什麼不把 win_amount 改成不含本金？」→ 口徑是既有帳務契約，改口徑動到全鏈路（wallet/admin 報表/歷史資料）；調門檻語意等價、影響面小——**選影響面小的修法**也是取捨能力
 - [ ] 行為題素材備妥：幸運值保底機制主動移除的故事（正確性/可驗證公平 > 玩家爽感，PF 承諾不能被隱藏參數污染）
 
@@ -180,10 +180,10 @@
 
 ### 上台報告演練（B組 demo 腳本，跑一次全流程）
 - [ ] **開場**（架構 1 分鐘）：貼 `PROJECT_ANALYSIS` §4 架構圖，一句帶過「我負責 game-service 與捕魚前端引擎」
-- [ ] **老虎機**：spin 展示中獎判定 → 講兩階賠付與理論 RTP 93.8%（貼 `contracts/slot-paytable.json` 表格當投影片）
+- [ ] **老虎機**：spin 展示中獎判定 → 講兩階賠付與理論 RTP 93.5%（貼 `contracts/slot-paytable.json` 表格當投影片）
 - [ ] **Provably Fair**：秀下注前的 seed hash 承諾 → 開獎後揭露 serverSeed → 用 `/verify` 端點現場重算给觀眾看——**這是全場最有戲劇性的 demo 點，放中間**
 - [ ] **捕魚**：展示血量條/暴擊/大魚捕獲 → 講 pCapture 反推「RTP 恆 0.96」與殘血回收地板 0.70（貼 `contracts/fishing-species.json` 魚種表）
-- [ ] **收尾**：RTP 理論值 vs 風控門檻表（SLOT 0.938→門檻 1.30、BACCARAT 0.99→1.20、FISHING 0.96→1.10），講 2026-06-25 誤判改判事故 30 秒版
+- [ ] **收尾**：RTP 理論值 vs 風控門檻表（SLOT 0.935→門檻 1.30、BACCARAT 0.99→1.20、FISHING 0.96→1.10），講 2026-06-25 誤判改判事故 30 秒版
 - [ ] **備援方案演練**：後端起不來時，前端 mock 模式（`VITE_USE_MOCK_API=true`）單獨展示——mock 鏡像後端玩法，體驗＝真實規則（`PROJECT_ANALYSIS` §6）；投影片先截好每個 demo 步驟的圖當最後防線
 - [ ] 計時：B組段落控制在分工時限內，PF 驗證與捕魚是重頭戲，老虎機可壓縮
 
@@ -203,7 +203,7 @@
 
 | 問題 | 答題方向 | 證據 |
 |---|---|---|
-| RTP 怎麼算？含本金 vs 不含本金差在哪？ | `win_amount` 含本金 → RTP=win/bet 正常水位≈結構性 RTP（slot 0.938/baccarat 0.99/fishing 0.96）；不含本金口徑水位會低一截，門檻/報表口徑必須一致，否則就是 6/25 那個誤判事故 | 雷區 17、`application.yml` 註解、Day 3 |
+| RTP 怎麼算？含本金 vs 不含本金差在哪？ | `win_amount` 含本金 → RTP=win/bet 正常水位≈結構性 RTP（slot 0.935/baccarat 0.99/fishing 0.96）；不含本金口徑水位會低一截，門檻/報表口徑必須一致，否則就是 6/25 那個誤判事故 | 雷區 17、`application.yml` 註解、Day 3 |
 | Provably Fair 怎麼保證莊家沒作弊？ | 承諾在前：先給 serverSeed hash → 玩家給 clientSeed → SHA-256(server+client+nonce) → 事後揭露＋`/verify` 重算；server 無法在看到 clientSeed 後挑 seed | `02` 決策 5、Day 2 |
 | 捕魚為何把累傷存 Redis 而不是每次重算？ | 累傷是**跨批次事實**不是可重算函數（每批 shots 的隨機暴擊已定案）；高頻短生命週期選 Redis（TTL 24h）；並主動講競態限制與 Lua 演進方向 | ADR-003、Day 4 |
 | 前端 mock 為何要跟後端鏡像？不對齊會怎樣？ | mock 是預設體驗（`VITE_USE_MOCK_API !== 'false'`），不對齊＝玩家練的玩法和真實結算不同世界；演進：紀律雙寫 → contracts 單一來源 + ContractParityTest | 雷區 14、Day 5 |
@@ -229,7 +229,7 @@
 
 **老虎機**（`SlotSymbol`、`contracts/slot-paytable.json`）：
 - 逐格加權抽符號、單中線**兩階賠付**（三連 Tᵢ ＋ 左二同 Pᵢ）、倍率綁符號
-- 理論 **RTP ≈ 93.8%**、**命中率 ≈ 30.7%**（含本金口徑）；公式 RTP=Σpᵢ³Tᵢ+Σpᵢ²(1−pᵢ)Pᵢ
+- 理論 **RTP ≈ 93.5%**、**命中率 ≈ 30.7%**（含本金口徑）；公式 RTP=Σpᵢ³Tᵢ+Σpᵢ²(1−pᵢ)Pᵢ
 - API：`POST /api/v1/game/slot/spin`，冪等鍵伺服器端生成（`slot-bet-<roundId>`/`slot-win-<roundId>`）
 
 **百家樂**：補牌表（閒 0–5 補；莊查閒第三張）、天牌 8/9、和局押莊/閒 **push 退本金**、莊贏扣 **5% 傭金** → 結構性 RTP ≈ **0.99**

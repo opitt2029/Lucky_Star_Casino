@@ -4,6 +4,7 @@ export const JACKPOT_FISH_KING_ASSET =
 export const JACKPOT_FISH_KING_DISPLAY_MULTIPLIER = 500
 export const JACKPOT_FISH_KING_DISPLAY_HP = 5000
 export const JACKPOT_FISH_KING_VISUAL_SCALE = 1.36
+export const SPECIAL_FISH_CODES = new Set(['CAISHEN', 'MONEY_TREE'])
 
 export const FISHING_FISH_INFO = [
   {
@@ -123,22 +124,32 @@ export const FISHING_FISH_INFO = [
 
 export function decorateFishingFishTable(fishTable = []) {
   return fishTable.flatMap((fish) => {
-    if (fish.code !== 'DRAGON_KING') return [fish]
+    const displayFish = SPECIAL_FISH_CODES.has(fish.code)
+      ? {
+          ...fish,
+          tier: 'SPECIAL',
+          visualTier: 'SPECIAL',
+        }
+      : fish
 
-    const backendWeight = Number(fish.spawnWeight)
+    if (displayFish.code !== 'DRAGON_KING' || displayFish.visualKey) return [displayFish]
+
+    const backendWeight = Number(displayFish.spawnWeight)
     const totalWeight = Number.isFinite(backendWeight) && backendWeight > 0 ? backendWeight : 0
     const jackpotWeight = totalWeight > 1 ? 1 : 0
     const bossWeight = Math.max(0, totalWeight - jackpotWeight)
 
     return [
       {
-        ...fish,
+        ...displayFish,
+        name: '金星魚王',
         visualKey: 'gold-star-fish-king',
-        assetId: fish.assetId || 'fish-dragon-king',
+        assetId: displayFish.assetId || 'fish-dragon-king',
         spawnWeight: bossWeight,
       },
       {
-        ...fish,
+        ...displayFish,
+        name: '彩金魚王',
         visualKey: 'jackpot-fish-king',
         assetId: 'fish-rainbow-jackpot-fish-king',
         spawnWeight: jackpotWeight,

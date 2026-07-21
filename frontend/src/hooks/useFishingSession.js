@@ -20,8 +20,8 @@ export const CANNON_DAMAGE = [0, 14, 22, 32]
 const SHOTS_PER_SEC = 8
 const BURST_CAPACITY = 15
 // flush 節奏：滿 10 發或每 700ms（單批上限 30，對齊後端 DTO 驗證）。
-const FLUSH_SIZE = 10
-const FLUSH_INTERVAL_MS = 700
+const FLUSH_SIZE = 4
+const FLUSH_INTERVAL_MS = 180
 const MAX_BATCH = 30
 // 逐發紀錄上限：結算頁只需展示近期數十發供驗證，避免長場次記憶體無上限成長。
 const SHOT_LOG_CAP = 50
@@ -75,6 +75,22 @@ export function useFishingSession({ onResults } = {}) {
     setSessionBalance(next)
   }, [])
 
+  function validNumberOrNull(value) {
+    if (value === null || value === undefined || value === '') return null
+    const next = Number(value)
+    return Number.isFinite(next) ? next : null
+  }
+
+  function sessionBalanceFromView(view) {
+    return (
+      validNumberOrNull(view?.sessionBalance) ??
+      validNumberOrNull(view?.balance) ??
+      validNumberOrNull(view?.remainingBalance) ??
+      validNumberOrNull(view?.buyIn) ??
+      0
+    )
+  }
+
   function applySessionView(view, resumed) {
     sessionIdRef.current = view.sessionId
     cannonLevelRef.current = view.cannonLevel || 1
@@ -82,8 +98,8 @@ export function useFishingSession({ onResults } = {}) {
     shotSeqRef.current = view.lastShotSeq || 0
     shotLogRef.current = []
     caughtCountRef.current = 0
-    setBalanceBoth(view.sessionBalance ?? 0)
-    setStats({ totalShots: view.totalShots || 0, totalPayout: 0, caughtCount: 0 })
+    setBalanceBoth(sessionBalanceFromView(view))
+    setStats({ totalShots: 0, totalPayout: 0, caughtCount: 0 })
     setSession({
       sessionId: view.sessionId,
       cannonLevel: view.cannonLevel || 1,
@@ -100,33 +116,12 @@ export function useFishingSession({ onResults } = {}) {
     startFlushLoop()
   }
 
-  // 進場查進行中場次（斷線重連恢復）。
+  // 每次進入捕魚頁都先停在 buy-in 畫面；不自動恢復舊場次，避免從任一入口進來時跳過進場設定。
   useEffect(() => {
-    let cancelled = false
-
-    async function restoreActiveSession() {
-      setPhase('loading')
-      try {
-        const view = await fishingApi.active()
-        if (cancelled) return
-        if (view?.sessionId) {
-          applySessionView(view, true)
-        } else {
-          setPhase('idle')
-        }
-      } catch (err) {
-        if (cancelled) return
-        setError(err?.response?.data?.message || err.message || '讀取捕魚場次失敗')
-        setPhase('idle')
-      }
-    }
-
-    restoreActiveSession()
+    setPhase('idle')
     return () => {
-      cancelled = true
       if (flushTimerRef.current) window.clearInterval(flushTimerRef.current)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const startSession = useCallback(
