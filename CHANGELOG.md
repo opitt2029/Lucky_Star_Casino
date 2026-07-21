@@ -1,3 +1,40 @@
+## [fix] — 2026-07-21 — 捕魚機殘血回收改「整場一次 floor」，修正低注額有效回收率只有 0.62
+
+### Changed
+- `backend/game-service/.../fishing/FishingSession.java`：移除 `fishRecovery`（逐發 floor 後的回收星幣表），改為 `prunedFishDamage`（被淘汰魚 instance 的累傷總和）＋ `legacyFishRecovery`（相容欄位，見下）。
+- `backend/game-service/.../service/FishingService.java`
+  - `applyShots()` 不再逐發呼叫 `FishingCombat.recoveryPayout()`。
+  - `pruneFishDamage()` 改簽章為 `(session, fishDamage)`：淘汰最舊 entry 前把牠的累傷併進 `prunedFishDamage`。
+  - `computeResidualRecovery()` 改為「先把 `fishDamage` 現存值 ＋ `prunedFishDamage` 全部加總，再整場呼叫一次 `recoveryPayout()`」。
+- `backend/game-service/.../fishing/FishingSessionStore.java`：`toHash`/`fromHash` 改寫 `prunedFishDamage`；舊欄位 `fishRecovery` 只讀不寫，載入時加總成 `legacyFishRecovery`。
+- `frontend/src/services/mockApi.js`：鏡像同一改動（移除 `session.fishRecovery`，結算時整場一次計算）。
+- 測試：`FishingSessionStoreTest` 改為守 `prunedFishDamage` / `legacyFishRecovery` 的 round-trip；`FishingServiceCrossBatchTest` 新增 `residualRecoveryIsFlooredOncePerSession`。
+
+### Fixed
+- **低注額的殘血回收被 floor 侵蝕**。`recoveryPayout()` 內含 `Math.floor`，舊版每發子彈都呼叫一次，每次丟掉不到 1 星幣的小數：
+
+  | 單發注額 | 每發期望回收 | 有效回收率 |
+  |---|---|---|
+  | 10（MIN_BET） | 6.20 | **0.620** |
+  | 20 | 13.40 | 0.670 |
+  | 50 | 34.80 | 0.696 |
+  | 100 以上 | — | 0.696～0.700 |
+
+  設計值 `RECOVERY_RATE = 0.70` 是 ADR-004 的「體感 RTP 地板」，最低注額玩家實際只拿到 0.62，**注額越小虧越多**——與「地板」的用意相反。改成整場加總後只 floor 一次，誤差上限固定是「整場 < 1 星幣」，與注額大小無關。
+- **順帶修掉 `pruneFishDamage` 的沉沒成本**：`fishDamage` 有 `MAX_LIVE_FISH = 80` 的並存上限，超量時淘汰最舊 entry。舊版淘汰後那條魚的累傷就消失，打在牠身上的子彈完全拿不回來（場次越長、魚 instance 越多，被吃掉越多）。現在淘汰前先把累傷併進 `prunedFishDamage`。
+
+### 為什麼這樣改（而不是把 floor 改成 round）
+- `round` 會讓回收有機會**超過**實際投入的子彈成本，破壞 ADR-004 的「回收恆 ≤ 投入成本 → 整體 RTP 不超過 `TARGET_RTP` 0.96」保證（莊家安全性）。先加總再 floor 則永遠只會少拿、不會多拿，天花板不動。
+- 回收金額本來就是結算時**單一筆** credit（`REFUND`），沒有必要逐發、逐條各取整。
+
+### 相容性
+- `legacyFishRecovery`：部署當下仍存活的舊 session，其 Redis hash 裡的 `fishRecovery`（已 floor 的星幣表）會被讀進來、結算時原額加回，不會憑空消失也不會重複計。新版**不再寫入**該欄位；舊 session 因 TTL / 閒置回收結清後，此欄位與相關程式碼即可移除。
+
+### 如何驗證
+- `mvn -pl backend/game-service test` → **Tests run: 197, Failures: 0, Errors: 0**。
+- 新增回歸測試 `FishingServiceCrossBatchTest#residualRecoveryIsFlooredOncePerSession`（單發 10 星幣、銅炮、對龍王打 30 發不致死）同時斷言三件事：① 回收額精確等於「整場累傷一次換算」② 嚴格大於舊版逐發 floor 的加總 ③ 有效回收率貼齊 0.70 且不超過 0.70。
+- `cd frontend && npx vitest run` → 56 passed；`npx eslint src/services/mockApi.js` 無錯誤。
+
 ## [fix] — 2026-07-21 — 捕魚機命中判定改逐魚種橢圓＋解析解，命中框與圖案對齊
 
 ### Changed

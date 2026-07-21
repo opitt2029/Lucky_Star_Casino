@@ -82,7 +82,9 @@ public class FishingSessionStore {
     private static final String F_LAST_ACTIVITY_AT = "lastActivityAt";
     private static final String F_INTERCEPTED = "intercepted";
     private static final String F_FISH_DAMAGE = "fishDamage";
-    private static final String F_FISH_RECOVERY = "fishRecovery";
+    private static final String F_PRUNED_FISH_DAMAGE = "prunedFishDamage";
+    /** 舊版欄位（逐發 floor 的回收星幣表），只讀不寫，供跨版本存活的 session 結算用。 */
+    private static final String F_LEGACY_FISH_RECOVERY = "fishRecovery";
     private static final String F_KILLS = "kills";
     private static final String F_TOP_UP_REQUEST_IDS = "topUpRequestIds";
     private static final String F_VERSION = "version";
@@ -218,7 +220,8 @@ public class FishingSessionStore {
         putIfNotNull(h, F_INTERCEPTED, s.getIntercepted());
         // 血量/傷害模型的跨批狀態：以 JSON 持久化，缺了會讓每批重讀後累傷歸零（魚永遠打不死）。
         writeJson(h, F_FISH_DAMAGE, s.getFishDamage());
-        writeJson(h, F_FISH_RECOVERY, s.getFishRecovery());
+        putIfNotNull(h, F_PRUNED_FISH_DAMAGE, s.getPrunedFishDamage());
+        // legacyFishRecovery 刻意不回寫：舊 session 讀進來後只用於本場結算，不再累加。
         writeJson(h, F_KILLS, s.getKills());
         writeJson(h, F_TOP_UP_REQUEST_IDS, s.getTopUpRequestIds());
         putIfNotNull(h, F_VERSION, s.getVersion());
@@ -260,7 +263,8 @@ public class FishingSessionStore {
                 .lastActivityAt(parseInstant(h.get(F_LAST_ACTIVITY_AT)))
                 .intercepted(parseBoolean(h.get(F_INTERCEPTED)))
                 .fishDamage(readFishDamage(h.get(F_FISH_DAMAGE)))
-                .fishRecovery(readFishDamage(h.get(F_FISH_RECOVERY)))
+                .prunedFishDamage(parseLongOrZero(h.get(F_PRUNED_FISH_DAMAGE)))
+                .legacyFishRecovery(sumValues(readFishDamage(h.get(F_LEGACY_FISH_RECOVERY))))
                 .kills(readKills(h.get(F_KILLS)))
                 .topUpRequestIds(readTopUpRequestIds(h.get(F_TOP_UP_REQUEST_IDS)))
                 .version(parseLong(h.get(F_VERSION)))
@@ -279,6 +283,26 @@ public class FishingSessionStore {
             log.warn("反序列化 fishing fishDamage 失敗，改用空表: {}", ex.toString());
             return new LinkedHashMap<>();
         }
+    }
+
+    /** 缺欄位／格式錯誤時回 0（而非 null），讓結算的加總不必再做 null 判斷。 */
+    private static Long parseLongOrZero(String value) {
+        Long parsed = parseLong(value);
+        return parsed != null ? parsed : 0L;
+    }
+
+    /** 舊版 fishRecovery 表（fishInstanceId → 已 floor 的回收星幣）加總成單一數字。 */
+    private static Long sumValues(Map<String, Long> map) {
+        if (map == null || map.isEmpty()) {
+            return 0L;
+        }
+        long total = 0L;
+        for (Long value : map.values()) {
+            if (value != null) {
+                total += value;
+            }
+        }
+        return total;
     }
 
     /** 還原場中加值 idempotency key 清單；欄位缺失或 JSON 毀損時保守回空 List。 */
