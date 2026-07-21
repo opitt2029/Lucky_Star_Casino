@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useDispatch } from 'react-redux'
 import { fairnessApi } from '../services/fairnessApi'
+import { fetchWallet } from '../store/slices/walletSlice'
 import SlotFairPanel from '../components/fairness/panels/SlotFairPanel'
 import BaccaratFairPanel from '../components/fairness/panels/BaccaratFairPanel'
 import FishingFairPanel from '../components/fairness/panels/FishingFairPanel'
@@ -12,9 +14,16 @@ const GAMES = [
 ]
 
 export default function ProvablyFair() {
+  const dispatch = useDispatch()
   const [game, setGame] = useState('slot')
   const isMock = fairnessApi.isMock
   const { Panel } = GAMES.find((g) => g.key === game)
+
+  // 這頁沒包 AppShell（其他遊戲頁的餘額刷新來源），單獨直接進來或整頁重整時
+  // redux wallet.balance 還是初始值 0，三個面板會誤判「星幣不足」。
+  useEffect(() => {
+    dispatch(fetchWallet())
+  }, [dispatch])
 
   return (
     <div className="fairness">
