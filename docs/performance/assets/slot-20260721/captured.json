@@ -1,0 +1,72 @@
+{
+  "dashboard": "Lucky Star — 壓測儀表板（老虎機高併發）",
+  "uid": "lucky-star-loadtest",
+  "from": "1784636856532",
+  "to": "1784637547589",
+  "captured": [
+    {
+      "file": "00-dashboard-overview.png",
+      "title": "Lucky Star — 壓測儀表板（老虎機高併發）"
+    },
+    {
+      "file": "panel-01-①-吞吐量-業務請求-reqs-by-service.png",
+      "title": "① 吞吐量 — 業務請求 req/s（by service）",
+      "id": 1
+    },
+    {
+      "file": "panel-02-②-端到端延遲-gateway-P50-P95-P99-秒.png",
+      "title": "② 端到端延遲 — gateway P50 / P95 / P99（秒）",
+      "id": 2
+    },
+    {
+      "file": "panel-03-③-回應碼分布-2xx-4xx-429-卸載-5xx-gateway.png",
+      "title": "③ 回應碼分布 — 2xx / 4xx / 429 卸載 / 5xx（gateway）",
+      "id": 3
+    },
+    {
+      "file": "panel-04-④-各服務-P99-延遲拆解-秒-瓶頸在哪一層.png",
+      "title": "④ 各服務 P99 延遲拆解（秒）— 瓶頸在哪一層",
+      "id": 4
+    },
+    {
+      "file": "panel-05-⑤-帳務熱路徑-wallet-debit-credit-平均耗時-秒.png",
+      "title": "⑤ 帳務熱路徑 — wallet debit / credit 平均耗時（秒）",
+      "id": 5
+    },
+    {
+      "file": "panel-06-⑥-DB-連線池-HikariCP-使用中-等待中-by-service.png",
+      "title": "⑥ DB 連線池 HikariCP — 使用中 / 等待中（by service）",
+      "id": 6
+    },
+    {
+      "file": "panel-07-⑦-JVM-Heap-使用量-by-service.png",
+      "title": "⑦ JVM Heap 使用量（by service）",
+      "id": 7
+    },
+    {
+      "file": "panel-08-⑧-CPU-使用率-by-service.png",
+      "title": "⑧ CPU 使用率（by service）",
+      "id": 8
+    },
+    {
+      "file": "panel-09-⑨-Kafka-消費延遲-lag-未消費筆數.png",
+      "title": "⑨ Kafka 消費延遲 lag（未消費筆數）",
+      "id": 9
+    },
+    {
+      "file": "panel-10-⑩-wallet-Outbox-積壓-PENDING-事件筆數.png",
+      "title": "⑩ wallet Outbox 積壓（PENDING 事件筆數）",
+      "id": 10
+    },
+    {
+      "file": "panel-11-⑪-熔斷器-被拒呼叫-熔斷狀態-gateway-卸載機制.png",
+      "title": "⑪ 熔斷器 — 被拒呼叫 / 熔斷狀態（gateway 卸載機制）",
+      "id": 11
+    },
+    {
+      "file": "panel-12-⑫-同時在處理中的請求數-並發水位-by-service.png",
+      "title": "⑫ 同時在處理中的請求數（並發水位，by service）",
+      "id": 12
+    }
+  ]
+}

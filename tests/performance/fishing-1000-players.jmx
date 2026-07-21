@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Fishing Concurrent Players Load Test" enabled="true">
+      <stringProp name="TestPlan.comments">Concurrent players buy in once (POST /api/v1/game/fishing/session/start) then continuously fire single-shot batches (POST /api/v1/game/fishing/{sessionId}/shots) for the configured duration. shotSeq is resumed from the session's lastShotSeq so re-runs against the same players never trip the strictly-increasing guard. fishInstanceId rotates every 5 shots so fish accumulate damage and die, exercising the capture -> wallet credit -> outbox -> rank path.</stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.tearDown_on_shutdown">true</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="Test Variables" enabled="true">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+      <ConfigTestElement guiclass="HttpDefaultsGui" testclass="ConfigTestElement" testname="Gateway HTTP Defaults" enabled="true">
+        <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+          <collectionProp name="Arguments.arguments"/>
+        </elementProp>
+        <stringProp name="HTTPSampler.domain">${__P(host,localhost)}</stringProp>
+        <stringProp name="HTTPSampler.port">${__P(port,8080)}</stringProp>
+        <stringProp name="HTTPSampler.protocol">${__P(protocol,http)}</stringProp>
+        <stringProp name="HTTPSampler.contentEncoding">UTF-8</stringProp>
+        <stringProp name="HTTPSampler.path"/>
+        <stringProp name="HTTPSampler.connect_timeout">${__P(connect_timeout_ms,2000)}</stringProp>
+        <stringProp name="HTTPSampler.response_timeout">${__P(response_timeout_ms,5000)}</stringProp>
+      </ConfigTestElement>
+      <hashTree/>
+      <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Authenticated JSON Headers" enabled="true">
+        <collectionProp name="HeaderManager.headers">
+          <elementProp name="" elementType="Header">
+            <stringProp name="Header.name">Accept</stringProp>
+            <stringProp name="Header.value">application/json</stringProp>
+          </elementProp>
+          <elementProp name="" elementType="Header">
+            <stringProp name="Header.name">Content-Type</stringProp>
+            <stringProp name="Header.value">application/json</stringProp>
+          </elementProp>
+          <elementProp name="" elementType="Header">
+            <stringProp name="Header.name">Authorization</stringProp>
+            <stringProp name="Header.value">Bearer ${authToken}</stringProp>
+          </elementProp>
+        </collectionProp>
+      </HeaderManager>
+      <hashTree/>
+      <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="Funded Player Credentials" enabled="true">
+        <stringProp name="delimiter">,</stringProp>
+        <stringProp name="fileEncoding">UTF-8</stringProp>
+        <stringProp name="filename">${__P(players_csv,tests/performance/players.csv)}</stringProp>
+        <boolProp name="ignoreFirstLine">true</boolProp>
+        <boolProp name="quotedData">true</boolProp>
+        <boolProp name="recycle">true</boolProp>
+        <stringProp name="shareMode">shareMode.all</stringProp>
+        <boolProp name="stopThread">false</boolProp>
+        <stringProp name="variableNames">playerId,accessToken,username</stringProp>
+      </CSVDataSet>
+      <hashTree/>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Concurrent Fishing Players" enabled="true">
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Continuous Shots" enabled="true">
+          <boolProp name="LoopController.continue_forever">true</boolProp>
+          <stringProp name="LoopController.loops">-1</stringProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">${__P(threads,1000)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">${__P(ramp_up_seconds,1)}</stringProp>
+        <boolProp name="ThreadGroup.scheduler">true</boolProp>
+        <stringProp name="ThreadGroup.duration">${__P(duration_seconds,60)}</stringProp>
+        <stringProp name="ThreadGroup.delay">0</stringProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+      </ThreadGroup>
+      <hashTree>
+        <OnceOnlyController guiclass="OnceOnlyControllerGui" testclass="OnceOnlyController" testname="Buy In Once Per Player" enabled="true"/>
+        <hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="00 Start Fishing Session" enabled="true">
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="Start Body" enabled="true">
+              <collectionProp name="Arguments.arguments">
+                <elementProp name="" elementType="HTTPArgument">
+                  <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                  <stringProp name="Argument.value"><![CDATA[{"buyIn":${__P(buy_in,200000)},"cannonLevel":${__P(cannon_level,1)},"betPerShot":${__P(bet_per_shot,10)},"clientSeed":"${clientSeed}"}]]></stringProp>
+                  <stringProp name="Argument.metadata">=</stringProp>
+                </elementProp>
+              </collectionProp>
+            </elementProp>
+            <stringProp name="HTTPSampler.path">${__P(start_path,/api/v1/game/fishing/session/start)}</stringProp>
+            <stringProp name="HTTPSampler.method">POST</stringProp>
+            <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+            <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+            <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Create Client Seed" enabled="true">
+              <stringProp name="cacheKey">fishing-create-client-seed</stringProp>
+              <stringProp name="filename"/>
+              <stringProp name="parameters"/>
+              <stringProp name="script"><![CDATA[
+// Pin this thread's player identity for the whole session. The CSVDataSet advances
+// to the next row on every iteration, but sessionId is bound to the player who bought
+// in on the first iteration; without pinning the token, later shots authenticate as a
+// different player and get 404 (session not owned). authToken is set once here (inside
+// the OnceOnly buy-in) and reused by the HeaderManager on every subsequent shot.
+vars.put('authToken', vars.get('accessToken'))
+def playerId = vars.get('playerId')
+def suffix = "${ctx.getThreadNum()}-${System.currentTimeMillis()}"
+vars.put('clientSeed', "fish-${playerId}-${suffix}")
+]]></stringProp>
+              <stringProp name="scriptLanguage">groovy</stringProp>
+            </JSR223PreProcessor>
+            <hashTree/>
+            <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Start Must Return 2xx" enabled="true">
+              <collectionProp name="Asserion.test_strings">
+                <stringProp name="2xx">2\d\d</stringProp>
+              </collectionProp>
+              <stringProp name="Assertion.custom_message">Fishing session start must return 2xx; buy-in failed otherwise.</stringProp>
+              <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+              <boolProp name="Assertion.assume_success">false</boolProp>
+              <intProp name="Assertion.test_type">1</intProp>
+            </ResponseAssertion>
+            <hashTree/>
+            <JSONPostProcessor guiclass="JSONPostProcessorGui" testclass="JSONPostProcessor" testname="Extract sessionId And lastShotSeq" enabled="true">
+              <stringProp name="JSONPostProcessor.referenceNames">sessionId;lastShotSeq</stringProp>
+              <stringProp name="JSONPostProcessor.jsonPathExprs">$.data.sessionId;$.data.lastShotSeq</stringProp>
+              <stringProp name="JSONPostProcessor.match_numbers">1;1</stringProp>
+              <stringProp name="JSONPostProcessor.defaultValues">NO_SESSION;0</stringProp>
+            </JSONPostProcessor>
+            <hashTree/>
+            <JSR223PostProcessor guiclass="TestBeanGUI" testclass="JSR223PostProcessor" testname="Stop Thread If Buy-In Failed" enabled="true">
+              <stringProp name="cacheKey">fishing-stop-if-no-session</stringProp>
+              <stringProp name="filename"/>
+              <stringProp name="parameters"/>
+              <stringProp name="script"><![CDATA[
+// If buy-in failed (e.g. connection refused when the gateway connection layer saturates
+// at high concurrency), this thread has no session and every subsequent shot would be a
+// phantom 404 against /fishing/NO_SESSION/shots -- one failed start amplifies into ~55
+// bogus 404s, and an IfController guard alone would busy-loop the dead thread. Stopping
+// the thread cleanly keeps the shot metrics honest; the number of stopped threads is
+// itself the connection-ceiling signal we want to see at 600/1000 concurrency.
+if (vars.get('sessionId') == null || vars.get('sessionId') == 'NO_SESSION') {
+    prev.setStopThread(true)
+}
+]]></stringProp>
+              <stringProp name="scriptLanguage">groovy</stringProp>
+            </JSR223PostProcessor>
+            <hashTree/>
+          </hashTree>
+        </hashTree>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="01 Fishing Shot" enabled="true">
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="Shots Body" enabled="true">
+            <collectionProp name="Arguments.arguments">
+              <elementProp name="" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                <stringProp name="Argument.value"><![CDATA[{"shots":[{"shotSeq":${shotSeq},"betPerShot":${__P(bet_per_shot,10)},"cannonLevel":${__P(cannon_level,1)},"fishType":"KOI","fishInstanceId":"${fishInstanceId}"}]}]]></stringProp>
+                <stringProp name="Argument.metadata">=</stringProp>
+              </elementProp>
+            </collectionProp>
+          </elementProp>
+          <stringProp name="HTTPSampler.path">/api/v1/game/fishing/${sessionId}/shots</stringProp>
+          <stringProp name="HTTPSampler.method">POST</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+          <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Advance shotSeq And Rotate Fish" enabled="true">
+            <stringProp name="cacheKey">fishing-advance-shotseq</stringProp>
+            <stringProp name="filename"/>
+            <stringProp name="parameters"/>
+            <stringProp name="script"><![CDATA[
+// shotSeq resumes from the session's lastShotSeq (read once at start) plus a
+// per-thread running counter, so it is strictly increasing across ladder re-runs.
+def base = (vars.get('lastShotSeq') ?: '0').toLong()
+def seq = (vars.get('threadSequence') ?: '0').toLong() + 1
+vars.put('threadSequence', seq.toString())
+def shotSeq = base + seq
+vars.put('shotSeq', shotSeq.toString())
+// Rotate the target fish every 5 shots so accumulated damage eventually kills it,
+// exercising the capture -> payout -> wallet-credit -> outbox path.
+def bucket = ((shotSeq - 1) / 5) as long
+vars.put('fishInstanceId', "fi-${ctx.getThreadNum()}-${bucket}")
+]]></stringProp>
+            <stringProp name="scriptLanguage">groovy</stringProp>
+          </JSR223PreProcessor>
+          <hashTree/>
+          <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="One Shot Per Player Per Second" enabled="true">
+            <stringProp name="ConstantTimer.delay">${__P(pacing_ms,1000)}</stringProp>
+          </ConstantTimer>
+          <hashTree/>
+          <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Shot Must Return 2xx" enabled="true">
+            <collectionProp name="Asserion.test_strings">
+              <stringProp name="2xx">2\d\d</stringProp>
+            </collectionProp>
+            <stringProp name="Assertion.custom_message">Fishing shot must return 2xx; 4xx/5xx are test failures.</stringProp>
+            <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+            <boolProp name="Assertion.assume_success">false</boolProp>
+            <intProp name="Assertion.test_type">1</intProp>
+          </ResponseAssertion>
+          <hashTree/>
+          <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="Reject Negative Session Balance" enabled="true">
+            <stringProp name="cacheKey">fishing-shot-assertion</stringProp>
+            <stringProp name="filename"/>
+            <stringProp name="parameters"/>
+            <stringProp name="script"><![CDATA[
+import groovy.json.JsonSlurper
+
+if (prev.getResponseCode()?.startsWith('5')) {
+    AssertionResult.setFailure(true)
+    AssertionResult.setFailureMessage("5xx response from fishing shot: ${prev.getResponseCode()}")
+    return
+}
+
+try {
+    def json = new JsonSlurper().parseText(prev.getResponseDataAsString())
+    def root = json?.data != null ? json.data : json
+    def balance = root?.sessionBalance
+    if (balance != null && new BigDecimal(balance.toString()) < 0) {
+        AssertionResult.setFailure(true)
+        AssertionResult.setFailureMessage("Negative session balance returned by fishing shot: ${balance}")
+    }
+} catch (Exception exception) {
+    AssertionResult.setFailure(true)
+    AssertionResult.setFailureMessage("Fishing shot response is not valid JSON: ${exception.message}")
+}
+]]></stringProp>
+            <stringProp name="scriptLanguage">groovy</stringProp>
+          </JSR223Assertion>
+          <hashTree/>
+        </hashTree>
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>
