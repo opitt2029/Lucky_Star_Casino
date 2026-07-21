@@ -1,3 +1,44 @@
+## [test] — 2026-07-21 — 老虎機容量階梯壓測（Prometheus + Grafana 觀測，25→1,000 併發）
+
+### Added
+- `docs/performance/T-090-capacity-ladder-report-20260721.md`：本輪壓測報告（含簡報用的 8 頁圖表對照表）。
+- `docs/performance/assets/loadtest-20260721/`：13 張 Grafana PNG（1 全景 + 12 面板，2 倍解析度）＋ 階梯統計 JSON/Markdown。
+- `observability/grafana/provisioning/dashboards/lucky-star-loadtest.json`：壓測專用 dashboard，12 面板
+  （吞吐／P50-P95-P99／回應碼分布／各服務延遲拆解／wallet 帳務熱路徑／HikariCP／Heap／CPU／Kafka lag／
+  Outbox 積壓／熔斷器／同時處理中請求數），全部排除 `/actuator/*` 自我觀測流量以免稀釋業務數字。
+- `tools/observability/capture-grafana.mjs`：用既有的 Playwright（Chromium headless）把面板截成 PNG，
+  免裝 `grafana-image-renderer` 外掛。
+- `tools/observability/import-dashboard.mjs`：走 Grafana API 匯入 dashboard，並自動把面板的 datasource uid
+  換成本機實際值（provisioning 產生的 uid 每台機器不同，硬編會變空面板）。
+- `tools/observability/summarize-jtl.mjs`：直接從 `.jtl` 重算統計輸出 JSON（不解析 `analyze-jtl.mjs` 的
+  markdown——那是給人看的，格式一改就爆）。
+- `tools/observability/run-capacity-ladder.ps1`：階梯加壓主腳本（自動每 3 階重發 JWT、逐階彙總）。
+- `tools/observability/run-loadtest-with-charts.ps1`：單輪壓測 + 依該輪實際時間窗自動截圖。
+
+### Changed
+- `AGENTS.md`：新增雷區 26（舊 DB volume 缺 migration → 服務開機即死；`AdminUserSeeder` 只在帳號不存在時
+  播種；容器與 network 脫鉤要整組 `down`/`up`）與雷區 27（`*.ps1` 必須 UTF-8 with BOM；陣列參數不能經
+  `powershell -File` 傳）。
+
+### 為什麼
+既有的 T-090 報告只驗「150 / 1,000 兩個併發點過不過 gate」，回答不了「容量到底在哪、瓶頸是誰」。
+改用容量階梯（25→1,000，同一套服務不重啟）就能畫出「吞吐觸頂 → 延遲翻倍 → 開始卸載」的轉折點。
+
+### 實測結論（單機拓樸）
+- 吞吐天花板 ≈ 200 req/s，100 併發即觸頂；P99 < 500 ms 的可服務併發約 50–75。
+- **瓶頸是 HikariCP 連線池不是 CPU**：game 池 10/10 滿載、排隊尖峰 49、取連線最長 1.19 s；
+  wallet Postgres 池 15/15、排隊 18；而各服務 process CPU 平均僅 1.4–9.6%。
+- 超載時走 gateway AIMD 併發限制器主動卸載（429 共 32,626 筆，熔斷器全程未開），**不是崩潰**。
+- 35,255 局、46,058 筆帳務、55,742 筆 Outbox 事件全數 SENT；T-091 對帳**本輪 0 新違規**
+  （唯一 3 筆為 `seed_test_data.sql` 種子錢包的既知結構性誤報）。實測 RTP 92.5%（理論 93.5%）。
+
+### 如何驗證
+`powershell -File tools/observability/run-capacity-ladder.ps1 -JMeter <jmeter.bat> -Steps @(25,50,100,150,300,600,1000)`
+→ 產出 `tests/performance/results/ladder-<ts>/ladder-summary.{json,md}`；帳務以
+`docker exec -i lucky-star-postgres psql ... < tests/performance/accounting-reconciliation.sql` 驗證。
+
+---
+
 ## [feat] — 2026-07-21 — 藍圖 04 P5：事件系統可觀測（consumer lag + wallet outbox 積壓）
 
 ### Added
