@@ -77,6 +77,12 @@ management:
 internal:
   secret: ${INTERNAL_SECRET:?INTERNAL_SECRET environment variable is required}
 
+# Transactional Outbox（藍圖 04 P2）：WalletOutboxPoller 輪詢間隔（毫秒）。
+# 比 member 的 5000ms 更短（1000ms），因排行榜/通知體感延遲要求較高——延遲換可靠的自覺取捨。
+wallet:
+  outbox:
+    poll-interval-ms: ${WALLET_OUTBOX_POLL_INTERVAL_MS:1000}
+
 # 鑽石測試帳號：列入清單者視為「無限鑽石」，鑽石換星幣不檢查餘額也不實際扣款（僅供測試/展示）
 # 1172=tadge003、1175=weiyu10366。可由 DIAMOND_UNLIMITED_PLAYER_IDS 逗號分隔覆寫
 diamond:
