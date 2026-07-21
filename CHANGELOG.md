@@ -1,3 +1,22 @@
+## [feat] — 2026-07-21 — Provably Fair 公平性驗證展示頁（Task 5–9，接續 PR #225）
+
+### Added
+- `frontend/src/pages/ProvablyFair.jsx`（路由 `/provably-fair`，lazy + `ProtectedPage`）：模式徽章（含誠實性說明）+ 三遊戲 tab 切換 + 掛載對應面板。
+- `frontend/src/components/fairness/panels/SlotFairPanel.jsx`（+ 測試）、`BaccaratFairPanel.jsx`、`FishingFairPanel.jsx`：三遊戲各自的五步驟狀態機（承諾→下注→開獎→揭露→驗證），含「模擬伺服器作弊」演示與餘額守門。
+- `frontend/src/theme/backgroundTheme.js`：`gameCatalog` 新增公平性驗證入口卡片、`decorativeAssets.provablyFair` 視覺樣式，Lobby 資料驅動卡片自動列出。
+
+### Changed
+- `frontend/src/App.jsx`：註冊 `/provably-fair` 受保護路由。
+
+### 為什麼
+- PR #225（`feature/weiyu-provably-fair-demo`）只落地了 Task 1–4（mock 密碼學核心、三遊戲確定性推導、`fairnessApi` 真/mock 切換層、共用展示元件），頁面本體、三個遊戲面板、路由與 Lobby 入口都還沒接上，玩家看不到這頁。本次接續 `docs/superpowers/plans/2026-07-20-provably-fair-demo-page.md` 的 Task 5–9 補完。
+- Lobby 卡片改走資料驅動的 `gameCatalog`（PR225 之後的重構），故 Task 9 原計畫「直接改 `Lobby.jsx` JSX」改為在 `backgroundTheme.js` 新增一筆資料，行為等價、符合現行架構。
+- `SlotFairPanel`/`BaccaratFairPanel`/`FishingFairPanel` 的餘額不足提示改成無條件顯示（不只在 disabled 按鈕的 click handler 內才設錯誤訊息，因為 disabled 的 button 在瀏覽器/jsdom 中本就不會觸發 click 事件），比照既有 `SlotGame.jsx`/`Baccarat.jsx` 的作法。
+
+### 如何驗證
+- `cd frontend && npx vitest run src/services/provablyFairMock.test.js src/components/fairness/panels/SlotFairPanel.test.jsx` 全綠。
+- `cd frontend && npx eslint src/pages/ProvablyFair.jsx src/components/fairness/panels/*.jsx` 無錯誤。
+
 ## [fixed] -- 2026-07-21 -- Expand fishing buy-in and settlement fullscreen surface
 
 ### Fixed

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useSelector } from 'react-redux'
 import { fairnessApi } from '../../../services/fairnessApi'
-import fishingSpecies from '../../../../contracts/fishing-species.json'
+import fishingSpecies from '../../../../../contracts/fishing-species.json'
 import StepRail from '../StepRail'
 import SeedCard from '../SeedCard'
 import VerdictPanel from '../VerdictPanel'

@@ -22,6 +22,7 @@ const Inventory = lazy(() => import('./pages/Inventory'))
 const CheckIn = lazy(() => import('./pages/CheckIn'))
 const Diamond = lazy(() => import('./pages/Diamond'))
 const Topup = lazy(() => import('./pages/Topup'))
+const ProvablyFair = lazy(() => import('./pages/ProvablyFair'))
 
 const enableDevTools = import.meta.env.VITE_ENABLE_DEV_TOOLS === 'true'
 const IntegrationTestPage = enableDevTools ? lazy(() => import('./pages/IntegrationTestPage')) : null
@@ -183,6 +184,14 @@ export default function App() {
             element={
               <ProtectedPage>
                 <Records />
+              </ProtectedPage>
+            }
+          />
+          <Route
+            path="/provably-fair"
+            element={
+              <ProtectedPage>
+                <ProvablyFair />
               </ProtectedPage>
             }
           />

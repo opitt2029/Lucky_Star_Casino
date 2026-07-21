@@ -33,6 +33,14 @@ export const gameCatalog = [
     meta: '街機局',
     assetKey: 'fishingGame',
   },
+  {
+    id: 'provably-fair',
+    to: '/provably-fair',
+    title: '公平性驗證',
+    caption: '看見每一局如何被鎖定與驗證',
+    meta: '透明局',
+    assetKey: 'provablyFair',
+  },
 ]
 
 export const shopCatalog = [
@@ -115,6 +123,14 @@ export const decorativeAssets = {
     caption: '深海藍光與金幣魚群呈現街機捕魚的爽快節奏。',
     overlay:
       'linear-gradient(135deg, rgba(6, 40, 61, 0.62) 0%, rgba(2, 21, 34, 0.86) 100%), radial-gradient(circle at 24% 20%, rgba(120, 220, 255, 0.16), transparent 32%)',
+  },
+  provablyFair: {
+    image: 'casino-game-hall.png',
+    meta: 'Provably Fair',
+    label: '公平性驗證展示',
+    caption: '承諾／揭露／驗證五步驟拆解，逐步看見每一局怎麼被鎖定與驗算。',
+    overlay:
+      'linear-gradient(135deg, rgba(6, 61, 43, 0.5) 0%, rgba(2, 21, 34, 0.86) 100%), radial-gradient(circle at 24% 20%, rgba(123, 255, 176, 0.14), transparent 32%)',
   },
   shopHero: {
     image: 'casino-rewards-showcase.png',
