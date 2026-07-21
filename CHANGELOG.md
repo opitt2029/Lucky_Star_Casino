@@ -1,3 +1,55 @@
+## [docs] — 2026-07-21 — ADR-010：誠實記錄 Kafka/Redis 過度設計，並訂下「該不該用」的判準
+
+### Added
+- `docs/adr/ADR-010.md`：架構決策——**明知規模不需要，仍保留 Kafka 與 Redis**。內容含：
+  - **現況盤點**（以程式碼為準）：8 個 Kafka topic + 3 DLT 的 publisher/consumer 對照表、
+    8 個 Redis 使用點與其資料結構。
+  - **誠實分級**：Kafka 中 `member.registered` / `wallet.credit` / `wallet.debit` / `game.result`
+    為 🟢 真 fanout（2–3 個獨立消費者）；`wallet.credit.request` 等 4 條為 🟡（單一消費者、
+    本質是 RPC）；wallet 自發自收 `wallet.credit` 做 PG→MySQL 讀視圖同步為 🔴（同進程繞 broker）。
+    Redis 8 點中僅 rank ZSET 排行、捕魚 session Lua CAS 為 🟢，其餘 6 點為 🟡（DB 可替代）。
+  - **判準**：Kafka 正當使用的 5 個門檻（1→N fanout / 可用性解耦 / 削峰 / replay / 跨團隊邊界）、
+    Redis 的 3 個門檻（專屬資料結構 / 跨進程暫態共享 / 原子操作），以及觸發重新評估的訊號表。
+  - **延伸討論**：同一判斷邏輯解釋為何不用 k8s，以及中間站建議（服務 Docker 化）。
+- `docs/plans/04-事件可靠性與消費冪等強化藍圖.md`：ADR-010 盤點過程查出**兩個實作層級真缺口**，
+  化為 5 個 Phase 的施工藍圖（含相依關係、共用地雷、否決方案、逐 Phase 驗證步驟）：
+  - **P1（P0，S）rank 消費去重**：`RankService.addDailyWinnings` 用 `ZINCRBY` 累加且無去重，
+    Kafka at-least-once 重送會虛增今日贏幣王排行（T-045）。同一 consumer 內的 `updatePlayerCoins`
+    走 `ZADD` 絕對值反而安全——一支安全一支不安全的不對稱最易漏。修法為 Redis `SETNX`
+    以 `transactionId` 去重（48h TTL，對齊日贏分 key 的 TTL），**只保護非冪等操作**。
+  - **P2（P0，L）wallet Outbox**：`WalletService` credit/debit 在交易 commit **之後**才發 Kafka，
+    且 `kafkaTemplate.send()` 為非同步、未 `.get()` 也未掛 callback ——broker 失敗發生在背景執行緒，
+    **連 catch 裡的 log.warn 都不會印**，事件完全無聲丟失，導致 MySQL 讀視圖 / rank 排行 / admin
+    流通量報表三方同時漂移。修法為 Postgres `wallet_outbox` + poller，比照 member 既有 `OutboxPoller`。
+  - **P3（P2，S）排行榜廣播節流**：`maybeBroadcastTop10` 已有節流，但閘門在 `ZREVRANGE` 查詢**之後**
+    （每筆事件都打一次 Redis），且節流狀態存 JVM 記憶體（多副本失效）。修法為閘門前移 + 改 Redis 鎖。
+  - **P4（P2，M）Redis 可重建性**：新增 `tools/reconciliation/rebuild-rank-redis.mjs` 從
+    `wallet_transactions` 重算日贏分（用 `ZADD` 非 `ZINCRBY` 以可重複執行），`--dry-run` 兼作 P1 監測。
+  - **P5（P3，S/M）觀測**：consumer lag + outbox PENDING 積壓指標。
+
+### Why
+專案七服務、22 條雷區、零真實使用者、單機部署，「這個專案其實不需要 Kafka/Redis 吧」是合理質疑。
+最強的內部反證是 [ADR-009]——game→wallet 的**派彩金流已經繞過 Kafka 走 HTTP**，還自建
+`pending_wallet_credits` 補償表 + 排程重試，等於可靠傳遞是另外手刻的，Kafka 並未承擔其核心職責。
+
+決策是**保留不拆**（學習價值 + 拆除成本 + 四條真 fanout 使收益有限），但把「哪些是真需求、
+哪些只是方便」寫死在文件裡，避免未來誤把既有的過度設計當成新過度設計的正當理由。
+依 AGENTS.md §3「架構級決策另寫 ADR」，故獨立成檔而非只寫進雷區。
+
+### Verification
+- 純文件變更，無程式碼異動。
+- 盤點表對照來源：`kafka/kafka-init.sh` topic 清單、各服務 `@KafkaListener` 註解、
+  各服務對 `RedisTemplate`/`StringRedisTemplate` 的引用，逐項核對。
+- 藍圖的每個 Phase 均先實查原始碼再落筆，過程修正三處初步誤判（皆已反映在文件）：
+  ① 並非「所有 topic 都是單一消費者」——實際有 4 條為多消費者 fanout；
+  ② DLT 覆蓋比預期完整——member/rank/wallet 皆有 `DefaultErrorHandler` + `DeadLetterPublishingRecoverer`，
+     admin 是**刻意不設**（原始碼有註解）、notification 為 best-effort（AGENTS.md §2.10 明載），
+     故原本規劃的「補 DLT」縮減為「確認現況 + 改做 consumer lag 觀測」；
+  ③ producer 可靠性設定無問題——Kafka 3.x client 預設即 `acks=all` + `enable.idempotence=true`，
+     問題純在「發送失敗後無補救」，不在 producer 參數。
+- P3 亦因實查而改寫：`maybeBroadcastTop10` 已有節流機制，真缺口是「閘門位置在昂貴查詢之後」
+  與「節流狀態存 JVM 記憶體」，而非「完全沒有節流」。
+
 ## [fix] — 2026-07-21 — 捕魚機殘血回收改「整場一次 floor」，修正低注額有效回收率只有 0.62
 
 ### Changed
