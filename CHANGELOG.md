@@ -1,3 +1,25 @@
+## [feat] — 2026-07-21 — 捕魚機 Redis session 原子化（Lua CAS，ADR-008）：八項架構改進全數完成
+
+### Added
+- `backend/game-service/.../fishing/FishingSession.java`：新增 `Long version`（`@Builder.Default = 0L`）樂觀鎖欄位。
+- `FishingSessionStore.saveCas(session, expectedVersion)`：新 Lua script（`SAVE_CAS_SCRIPT`，比照 `RiskControlService` 既有 inline text-block 風格）——`HGET version` 比對相符才整包 `HSET`＋`PEXPIRE`＋`version+1`，否則不動 key 回傳 0；缺 `version` 欄位（升級前舊 session）視同 0。`toHash()/fromHash()` 同步序列化該欄位。
+- `com.luckystar.game.exception.SessionConflictException` + `GlobalExceptionHandler` 對應 409：CAS 重試用盡時的例外映射。
+- `docs/adr/ADR-008.md`：完整決策記錄（選型理由、否決方案、已知限制）。
+- 測試：`FishingSessionStoreTest` 新增 `saveCasSucceedsWhenVersionMatches`/`saveCasDetectsLostUpdate`（併發 lost-update 回歸守門）/`saveCasTreatsMissingVersionAsZero`；`FishingServiceCrossBatchTest` 同步補 CAS mock。
+
+### Changed
+- `FishingSessionStore.save()`：改為僅供 `FishingService.start()` 建立全新 session 使用（無併發風險）；既有 session 的讀改寫改走 `saveCas`。
+- `FishingService.shots()`：整批判定邏輯抽成 `applyShots()`（純計算不落地），外層改為「重讀→重放→CAS」重試迴圈（`SESSION_CAS_MAX_RETRIES=3`），CAS 失敗即整批基於最新 session 重算，不沿用舊快照。
+- `FishingService.topUp()`：wallet `debit()` 改為只在重試迴圈外呼叫一次（冪等鍵固定，安全根基見 ADR-009）；「把加值套進 session」的部分改走 CAS 重試迴圈，CAS 用盡/Redis 例外/session 中途被結算都視為「錢扣了但套用失敗」走既有 REFUND 補償路徑。
+- `AGENTS.md` 雷區 16：Redis session 原子化狀態由「唯一未動工項」改為「已完成」，補充 CAS/重試模式的維護說明；`docs/plans/01-八項架構改進施工藍圖.md`：Phase 3 狀態 ⬜→✅，八項架構改進進度總覽全數完成。
+
+### Why
+`FishingSessionStore` 原本的「整包 HGETALL 讀出→Java 算完→整包 HSET 寫回」不是原子操作，雙分頁/斷線重連殘留分頁/伺服器閒置結算排程與玩家請求併發時會丟失更新——舊防線只有前端 `topUpLockRef`，防不住跨分頁或伺服器端排程的併發窗口。這是總體檢報告 8 項架構改進中唯一未動工項（`docs/plans/01-八項架構改進施工藍圖.md` Phase 3），本次依既有施工說明落地，完整取捨記於 ADR-008。
+
+### Verification
+- `mvn -pl backend/game-service test`：196 個測試全綠（含新增的 3 個 CAS 測試與既有跨批累傷/風控/補償測試迴歸）。
+- 手動雙分頁連打＋top-up 驗證待部署環境進行（ADR-008「驗證」節已列為待辦）。
+
 ## [fixed] -- 2026-07-21 -- Expand fishing buy-in and settlement fullscreen surface
 
 ### Fixed
@@ -471,6 +493,7 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### Verification
 - `mvn -pl backend/gateway-service test`：47/47 全綠（原 41 ＋ 新增 6）。
 - 對照重跑（150/1,000 併發）排定於落地後執行，判準＝503 桶 2,024 → 趨近 0、accepted 成功率 78.4% → 90%+。
+
 ## [changed] -- 2026-07-16 -- Restore baccarat side panel and move rules to page top
 
 ### Changed

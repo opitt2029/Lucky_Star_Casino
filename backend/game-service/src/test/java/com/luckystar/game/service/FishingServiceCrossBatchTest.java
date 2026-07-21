@@ -64,6 +64,29 @@ class FishingServiceCrossBatchTest {
         when(hashOps.entries(anyString()))
                 .thenAnswer(inv -> new HashMap<>(backing.getOrDefault(inv.getArgument(0), new HashMap<>())));
 
+        // 模擬 FishingSessionStore.SAVE_CAS_SCRIPT（ADR-008）：shots() 的整包寫回改走 saveCas，
+        // 沒有這個 stub 時 redisTemplate.execute(...) 會回傳 null（未 stub 的預設值），
+        // 導致每次 CAS 都判定失敗、shots() 重試 3 次後拋 SessionConflictException。
+        when(redisTemplate.execute(
+                        org.mockito.Mockito.<org.springframework.data.redis.core.script.RedisScript<Long>>any(),
+                        org.mockito.ArgumentMatchers.anyList(),
+                        any(Object[].class)))
+                .thenAnswer(inv -> {
+                    Object[] raw = inv.getArguments();
+                    List<String> keys = (List<String>) raw[1];
+                    String key = keys.get(0);
+                    String expectedVersion = String.valueOf(raw[2]);
+                    Map<String, String> hash = backing.computeIfAbsent(key, k -> new HashMap<>());
+                    String current = hash.getOrDefault("version", "0");
+                    if (!current.equals(expectedVersion)) {
+                        return 0L;
+                    }
+                    for (int i = 4; i < raw.length; i += 2) {
+                        hash.put(String.valueOf(raw[i]), String.valueOf(raw[i + 1]));
+                    }
+                    return 1L;
+                });
+
         FishingSessionStore sessionStore = new FishingSessionStore(redisTemplate, new ObjectMapper());
 
         WalletClient walletClient = mock(WalletClient.class);

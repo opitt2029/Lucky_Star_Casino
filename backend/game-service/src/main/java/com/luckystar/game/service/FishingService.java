@@ -14,6 +14,7 @@ import com.luckystar.game.dto.FishingTopUpResponse;
 import com.luckystar.game.dto.WalletView;
 import com.luckystar.game.entity.GameRound;
 import com.luckystar.game.exception.RoundNotFoundException;
+import com.luckystar.game.exception.SessionConflictException;
 import com.luckystar.game.fishing.FishSpecies;
 import com.luckystar.game.fishing.FishingCombat;
 import com.luckystar.game.fishing.FishingSession;
@@ -95,6 +96,13 @@ public class FishingService {
 
     /** 致命一擊紀錄保留上限（供 verifyShot 重放近期捕獲；超出時淘汰最舊，避免 result_data 無限膨脹）。 */
     static final int KILL_LOG_CAP = 300;
+
+    /**
+     * Session 樂觀鎖 CAS 衝突重試上限（ADR-008）：shots/top-up 是「讀→改→整包 save」，
+     * 併發窗口極窄（同玩家正常不會真併發，僅雙分頁/重連瞬間可能撞上），3 次已足夠吸收；
+     * 用盡仍衝突視為異常（回 409 讓前端提示重試），不可無限重試卡住請求執行緒。
+     */
+    static final int SESSION_CAS_MAX_RETRIES = 3;
 
     private final ProvablyFairRng rng;
     private final WalletClient walletClient;
@@ -203,15 +211,36 @@ public class FishingService {
      */
     public FishingShotsResponse shots(long playerId, String sessionId,
                                       List<FishingShotsRequest.Shot> shots) {
-        FishingSession session = requireActiveSession(playerId, sessionId);
+        // 讀→改→整包 save 的樂觀鎖重試（ADR-008）：CAS 失敗代表期間有其他請求（另一分頁/
+        // 閒置排程結算）動過同一 session，須重讀最新狀態後重新計算整批，不可沿用舊快照續算。
+        for (int attempt = 1; attempt <= SESSION_CAS_MAX_RETRIES; attempt++) {
+            FishingSession session = requireActiveSession(playerId, sessionId);
+            validateBatch(session, shots);
+            long expectedVersion = session.getVersion() == null ? 0L : session.getVersion();
 
-        validateBatch(session, shots);
+            // 風控攔截：整批子彈共用同一攔截結果，避免逐發查詢 DB。
+            // shouldIntercept 佔用並發閘；本次嘗試的 finally 必須釋放（CAS 失敗重試會重新佔用）。
+            boolean intercepted = riskControlService.shouldIntercept(session.getPlayerId(), GAME_TYPE);
+            FishingShotsResponse response;
+            try {
+                response = applyShots(session, sessionId, shots, intercepted);
+            } finally {
+                riskControlService.releaseRiskSlot(session.getPlayerId());
+            }
 
-        // 風控攔截：整批子彈共用同一攔截結果，避免逐發查詢 DB。
-        // shouldIntercept 佔用並發閘；shots() 最後的 finally 必須釋放。
-        boolean intercepted = riskControlService.shouldIntercept(session.getPlayerId(), GAME_TYPE);
-        try {
+            if (sessionStore.saveCas(session, expectedVersion)) {
+                return response;
+            }
+            log.warn("fishing shots CAS 衝突，重試 playerId={} sessionId={} attempt={}",
+                    playerId, sessionId, attempt);
+        }
+        throw new SessionConflictException(
+                "捕魚場次更新頻繁衝突，請重試 (sessionId=" + sessionId + ")");
+    }
 
+    /** 對單批子彈套用血量/傷害模型並更新局內餘額；不落地（呼叫端負責 CAS 寫回）。 */
+    private FishingShotsResponse applyShots(FishingSession session, String sessionId,
+                                            List<FishingShotsRequest.Shot> shots, boolean intercepted) {
         long balance = session.getSessionBalance();
         long totalBet = session.getTotalBet();
         long totalPayout = session.getTotalPayout();
@@ -349,7 +378,6 @@ public class FishingService {
         session.setTotalShots(totalShots);
         session.setLastShotSeq(lastShotSeq);
         session.setLastActivityAt(Instant.now());
-        sessionStore.save(session);
 
         return FishingShotsResponse.builder()
                 .sessionId(sessionId)
@@ -358,9 +386,6 @@ public class FishingService {
                 .totalShots(totalShots)
                 .lastShotSeq(lastShotSeq)
                 .build();
-        } finally {
-            riskControlService.releaseRiskSlot(session.getPlayerId());
-        }
     }
 
     /**
@@ -382,7 +407,6 @@ public class FishingService {
      * add the same wallet debit into the table twice.
      */
     public FishingTopUpResponse topUp(long playerId, String sessionId, long amount, String clientRequestId) {
-        FishingSession session = requireActiveSession(playerId, sessionId);
         if (amount < MIN_BUYIN || amount > MAX_BUYIN) {
             throw new IllegalArgumentException("top-up amount must be between " + MIN_BUYIN + " and " + MAX_BUYIN);
         }
@@ -390,34 +414,63 @@ public class FishingService {
             throw new IllegalArgumentException("clientRequestId is required");
         }
         String requestId = clientRequestId.trim();
-        List<String> processed = session.getTopUpRequestIds();
-        if (processed == null) {
-            processed = new ArrayList<>();
-            session.setTopUpRequestIds(processed);
-        }
-        if (processed.contains(requestId)) {
-            return FishingTopUpResponse.builder()
-                    .sessionId(sessionId)
-                    .amount(0L)
-                    .buyIn(session.getBuyIn() == null ? 0L : session.getBuyIn())
-                    .sessionBalance(session.getSessionBalance() == null ? 0L : session.getSessionBalance())
-                    .wallet(null)
-                    .build();
+
+        FishingSession probe = requireActiveSession(playerId, sessionId);
+        if (isTopUpProcessed(probe, requestId)) {
+            return alreadyProcessedTopUpResponse(sessionId, probe);
         }
 
+        // debit 只呼叫這一次（冪等鍵固定）；之後把加值反映進 session 的部分改用 CAS 重試，
+        // 不重打 wallet——重試的是「儲存」，不是整筆 top-up 流程。
         String idempotencyKey = "fishing-topup-" + sessionId + "-" + requestId;
         WalletDebitResponse debit = walletClient.debit(playerId, amount, idempotencyKey, sessionId);
 
-        long buyIn = session.getBuyIn() == null ? 0L : session.getBuyIn();
-        long tableBalance = session.getSessionBalance() == null ? 0L : session.getSessionBalance();
-        session.setBuyIn(buyIn + amount);
-        session.setSessionBalance(tableBalance + amount);
-        processed.add(requestId);
-        session.setLastActivityAt(Instant.now());
         try {
-            sessionStore.save(session);
+            // 讀→改→整包 save 的樂觀鎖重試（ADR-008）：CAS 失敗代表期間有其他請求（另一分頁的
+            // shots/top-up）動過同一 session，須重讀最新狀態後重新套用本次加值再試。
+            for (int attempt = 1; attempt <= SESSION_CAS_MAX_RETRIES; attempt++) {
+                FishingSession session = requireActiveSession(playerId, sessionId);
+                List<String> processed = session.getTopUpRequestIds();
+                if (processed == null) {
+                    processed = new ArrayList<>();
+                    session.setTopUpRequestIds(processed);
+                }
+                if (processed.contains(requestId)) {
+                    // 上一輪嘗試的 CAS 其實已成功、只是回應途中失聯而重入：直接回目前狀態，不重複加值。
+                    return alreadyProcessedTopUpResponse(sessionId, session);
+                }
+                long expectedVersion = session.getVersion() == null ? 0L : session.getVersion();
+
+                long buyIn = session.getBuyIn() == null ? 0L : session.getBuyIn();
+                long tableBalance = session.getSessionBalance() == null ? 0L : session.getSessionBalance();
+                session.setBuyIn(buyIn + amount);
+                session.setSessionBalance(tableBalance + amount);
+                processed.add(requestId);
+                session.setLastActivityAt(Instant.now());
+
+                if (sessionStore.saveCas(session, expectedVersion)) {
+                    WalletView wallet = WalletView.builder()
+                            .balance(debit.balanceAfter())
+                            .frozenAmount(0L)
+                            .build();
+                    log.info("fishing session topped up playerId={} sessionId={} amount={} buyIn={} sessionBalance={}",
+                            playerId, sessionId, amount, session.getBuyIn(), session.getSessionBalance());
+                    return FishingTopUpResponse.builder()
+                            .sessionId(sessionId)
+                            .amount(amount)
+                            .buyIn(session.getBuyIn())
+                            .sessionBalance(session.getSessionBalance())
+                            .wallet(wallet)
+                            .build();
+                }
+                log.warn("fishing top-up CAS 衝突，重試 playerId={} sessionId={} attempt={}",
+                        playerId, sessionId, attempt);
+            }
+            throw new SessionConflictException(
+                    "捕魚場次加值更新頻繁衝突，請重試 (sessionId=" + sessionId + ")");
         } catch (RuntimeException ex) {
-            log.error("fishing top-up session save failed, refunding playerId={} sessionId={} amount={}",
+            // 涵蓋 CAS 重試用盡、Redis 例外、session 中途被結算等：wallet 已扣款但加值沒能套用，退款。
+            log.error("fishing top-up session update failed, refunding playerId={} sessionId={} amount={}",
                     playerId, sessionId, amount, ex);
             try {
                 walletClient.credit(playerId, amount, "REFUND", "fishing-topup-refund-" + sessionId + "-" + requestId, sessionId);
@@ -429,19 +482,19 @@ public class FishingService {
             }
             throw ex;
         }
+    }
 
-        WalletView wallet = WalletView.builder()
-                .balance(debit.balanceAfter())
-                .frozenAmount(0L)
-                .build();
-        log.info("fishing session topped up playerId={} sessionId={} amount={} buyIn={} sessionBalance={}",
-                playerId, sessionId, amount, session.getBuyIn(), session.getSessionBalance());
+    private boolean isTopUpProcessed(FishingSession session, String requestId) {
+        return session.getTopUpRequestIds() != null && session.getTopUpRequestIds().contains(requestId);
+    }
+
+    private FishingTopUpResponse alreadyProcessedTopUpResponse(String sessionId, FishingSession session) {
         return FishingTopUpResponse.builder()
                 .sessionId(sessionId)
-                .amount(amount)
-                .buyIn(session.getBuyIn())
-                .sessionBalance(session.getSessionBalance())
-                .wallet(wallet)
+                .amount(0L)
+                .buyIn(session.getBuyIn() == null ? 0L : session.getBuyIn())
+                .sessionBalance(session.getSessionBalance() == null ? 0L : session.getSessionBalance())
+                .wallet(null)
                 .build();
     }
 
