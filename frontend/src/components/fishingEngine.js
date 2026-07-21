@@ -248,6 +248,42 @@ const TIER_EFFECTS = {
   legendary: { color: 0xffe46b, sparkle: 0xffffff, alpha: 0.92, fillAlpha: 0.5, radius: 1.04, width: 5, pulse: 0.3, spin: -0.82, dots: 10 },
 }
 
+// 各魚種的命中橢圓（相對 sprite 顯示寬/高的比例；ox/oy 是橢圓中心相對 sprite 中心的偏移）。
+//
+// 為什麼要逐魚種：舊版對所有魚一律用「半寬 0.5 / 半高 0.44 的橢圓」，但貼圖是 1254×1254 的方形，
+// 魚身在方框裡的比例每種都不同（河豚扁、金龍瘦長、魔鬼魚寬）。實測（對 PNG alpha 逐像素統計）
+// 舊版命中區面積是魚身實際像素面積的 1.9~2.8 倍——約 6 成的「命中」其實打在透明區，
+// 玩家會覺得「明明沒打到卻算命中」。
+//
+// 下表由 alpha bbox 的形心與半徑反推，門檻是「魚身漏在命中區外 ≤ 4%」，
+// 收斂後面積比降到 1.1~2.0（魔鬼魚最高，因為翅膀展開、橢圓本來就套不緊）。
+// 換圖（registry.js 的 ART_OVERRIDES）時要重新量測本表，否則會回到鬆垮的 fallback。
+const FISH_HITBOX = {
+  'fish-koi': { rx: 0.397, ry: 0.459, ox: -0.035, oy: -0.008 },
+  'fish-goldfish': { rx: 0.466, ry: 0.392, ox: -0.025, oy: -0.007 },
+  'fish-lantern': { rx: 0.456, ry: 0.368, ox: -0.002, oy: 0.017 },
+  'fish-puffer': { rx: 0.442, ry: 0.332, ox: 0.02, oy: -0.007 },
+  'fish-angelfish': { rx: 0.391, ry: 0.456, ox: 0.01, oy: -0.044 },
+  'fish-devil-ray': { rx: 0.48, ry: 0.42, ox: 0.045, oy: 0 },
+  'fish-gold-dragon': { rx: 0.392, ry: 0.494, ox: 0.012, oy: 0.013 },
+  'fish-pixiu': { rx: 0.437, ry: 0.476, ox: 0, oy: 0.03 },
+  'fish-caishen': { rx: 0.468, ry: 0.456, ox: -0.005, oy: 0.025 },
+  'fish-dragon-king': { rx: 0.439, ry: 0.438, ox: -0.032, oy: 0.002 },
+  'fish-money-tree': { rx: 0.477, ry: 0.478, ox: 0, oy: 0.012 },
+  'fish-rainbow-jackpot-fish-king': { rx: 0.469, ry: 0.468, ox: -0.044, oy: 0.025 },
+  'fish-blocker-octopus': { rx: 0.471, ry: 0.41, ox: 0.004, oy: -0.003 },
+  'fish-blocker-starfish': { rx: 0.442, ry: 0.444, ox: 0.003, oy: 0.008 },
+  'fish-blocker-turtle': { rx: 0.475, ry: 0.45, ox: 0.022, oy: 0.003 },
+}
+// 未量測的 assetId（新圖、SVG fallback）用的保守值：比舊版略緊，但仍寬鬆到不會讓玩家打不到。
+const FISH_HITBOX_FALLBACK = { rx: 0.46, ry: 0.42, ox: 0, oy: 0 }
+// 邪惡版擋路怪沿用同一張圖，命中框直接共用。
+const HITBOX_ASSET_ALIAS = {
+  'fish-evil-blocker-octopus': 'fish-blocker-octopus',
+  'fish-evil-blocker-starfish': 'fish-blocker-starfish',
+  'fish-evil-blocker-turtle': 'fish-blocker-turtle',
+}
+
 const LEFT_FACING_FISH_ASSETS = new Set([
   'fish-gold-dragon',
   'fish-pixiu',
@@ -1055,6 +1091,7 @@ export class FishingEngine {
       backendMultiplier: pick.multiplier,
       bossLike: meta.bossLike,
       tier: meta.tier,
+      assetId: pick.assetId,
       sprite,
       dir,
       baseScale,
@@ -1166,6 +1203,7 @@ export class FishingEngine {
       multiplier: 0,
       tier: 'blocker',
       blocker: true,
+      assetId: kind.asset,
       sprite,
       dir: fromLeft ? 'ltr' : 'rtl',
       baseScale,
@@ -1467,40 +1505,59 @@ export class FishingEngine {
     return { x: sx + ux * distance, y: sy + uy * distance }
   }
 
+  // 命中橢圓：半徑取自 FISH_HITBOX（逐魚種量測），中心可相對 sprite 中心偏移；
+  // 子彈半徑 bulletPad 再往外放一圈（子彈是圓的，邊緣擦到也該算命中）。
   _fishHitBounds(f) {
     const bulletPad = Math.max(6, this.cannonStyle.bulletR || 0)
-    const visualW = Math.abs(f.sprite?.width || f.dispSize || 0)
-    const visualH = Math.abs(f.sprite?.height || f.dispSize || 0)
-    const fallback = Math.max(14, f.dispSize || 24)
-    const tierPad = f.tier === 'legendary' || f.tier === 'boss' ? 1.08 : f.tier === 'high' || f.tier === 'special' ? 1.04 : 1
+    const fallbackSize = Math.max(14, f.dispSize || 24)
+    const visualW = Math.abs(f.sprite?.width || 0) || fallbackSize
+    const visualH = Math.abs(f.sprite?.height || 0) || fallbackSize
+    const assetId = HITBOX_ASSET_ALIAS[f.assetId] || f.assetId
+    const box = FISH_HITBOX[assetId] || FISH_HITBOX_FALLBACK
+    // sprite.scale.x 為負代表左右翻面（fishScaleX），橢圓中心的水平偏移要跟著鏡射。
+    const flipped = (f.sprite?.scale?.x ?? 1) < 0
     return {
-      rx: Math.max(14, (visualW || fallback) * 0.5 * tierPad + bulletPad),
-      ry: Math.max(12, (visualH || fallback) * 0.44 * tierPad + bulletPad),
+      rx: Math.max(10, visualW * box.rx + bulletPad),
+      ry: Math.max(9, visualH * box.ry + bulletPad),
+      cx: f.x + visualW * box.ox * (flipped ? -1 : 1),
+      cy: f.y + visualH * box.oy,
     }
   }
 
-  _pathIntersectsFish(f, sx, sy, dx, dy, lenSq) {
-    const { rx, ry } = this._fishHitBounds(f)
-    const samples = [
-      { x: f.x, y: f.y, weight: 1 },
-      { x: f.x - rx * 0.42, y: f.y, weight: 0.7 },
-      { x: f.x + rx * 0.42, y: f.y, weight: 0.7 },
-    ]
-    let best = null
-    for (const point of samples) {
-      const fx = point.x - sx
-      const fy = point.y - sy
-      const t = (fx * dx + fy * dy) / lenSq
-      if (t < 0.02 || t > 1) continue
+  /**
+   * 線段（砲口 → 射線終點）與魚的命中橢圓求交，回傳最靠近砲口的交點。
+   *
+   * 做法：把座標各自除以 (rx, ry)，橢圓就變成單位圓，於是「線段 vs 橢圓」化簡成解一元二次
+   * |o + t·d|² = 1。舊版是拿橢圓中心 ±0.42rx 三個取樣點各做一次「點到線距離」近似，
+   * 斜射時會漏判，又把水平命中範圍多撐到 1.12rx；改成解析解後既精確也更省。
+   */
+  _pathIntersectsFish(f, sx, sy, dx, dy) {
+    const { rx, ry, cx, cy } = this._fishHitBounds(f)
+    // 單位圓空間：射線起點相對橢圓中心、方向向量，各自除以半徑
+    const ox = (sx - cx) / rx
+    const oy = (sy - cy) / ry
+    const ux = dx / rx
+    const uy = dy / ry
 
-      const px = sx + dx * t
-      const py = sy + dy * t
-      const nx = (point.x - px) / (rx * point.weight)
-      const ny = (point.y - py) / ry
-      const score = nx * nx + ny * ny
-      if (score <= 1 && (!best || t < best.t)) best = { t, x: px, y: py }
-    }
-    return best
+    const a = ux * ux + uy * uy
+    if (a < 1e-9) return null
+    const b = 2 * (ox * ux + oy * uy)
+    const c = ox * ox + oy * oy - 1
+    const disc = b * b - 4 * a * c
+    if (disc < 0) return null // 射線完全沒穿過橢圓
+
+    const sqrtDisc = Math.sqrt(disc)
+    const t0 = (-b - sqrtDisc) / (2 * a)
+    const t1 = (-b + sqrtDisc) / (2 * a)
+    // t 是線段參數（0＝砲口、1＝射線終點）：取第一個落在有效區間的解。
+    // t0 < 0.02 而 t1 > 1 代表砲口本身就在魚體內（貼臉），用 0.02 當進入點。
+    let t = null
+    if (t0 >= 0.02 && t0 <= 1) t = t0
+    else if (t1 >= 0.02 && t1 <= 1) t = t1
+    else if (t0 < 0.02 && t1 > 1) t = 0.02
+    if (t === null) return null
+
+    return { t, x: sx + dx * t, y: sy + dy * t }
   }
 
   _firstFishOnPath(tx, ty) {
@@ -1514,7 +1571,7 @@ export class FishingEngine {
     let bestT = Infinity
     for (const f of this.fish) {
       if (f.caught || f.fleeing) continue
-      const hit = this._pathIntersectsFish(f, sx, sy, dx, dy, lenSq)
+      const hit = this._pathIntersectsFish(f, sx, sy, dx, dy)
       if (hit && hit.t < bestT) {
         bestT = hit.t
         best = { fish: f, x: hit.x, y: hit.y }
