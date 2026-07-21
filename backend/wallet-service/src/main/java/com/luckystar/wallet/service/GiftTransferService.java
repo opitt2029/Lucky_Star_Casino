@@ -2,6 +2,8 @@ package com.luckystar.wallet.service;
 
 import com.luckystar.wallet.exception.InsufficientBalanceException;
 import com.luckystar.wallet.exception.WalletNotFoundException;
+import com.luckystar.wallet.kafka.WalletCreditEvent;
+import com.luckystar.wallet.kafka.WalletDebitEvent;
 import com.luckystar.wallet.postgres.entity.Wallet;
 import com.luckystar.wallet.postgres.entity.WalletTransaction;
 import com.luckystar.wallet.postgres.repository.WalletRepository;
@@ -33,6 +35,7 @@ public class GiftTransferService {
 
     private final WalletRepository walletRepository;
     private final WalletTransactionRepository walletTransactionRepository;
+    private final WalletOutboxService walletOutboxService;
 
     /**
      * 在單一 PostgreSQL 交易內完成雙向轉帳並寫兩筆分錄。
@@ -88,6 +91,17 @@ public class GiftTransferService {
                 .idempotencyKey(creditKey)
                 .referenceId("gift-from:" + senderId)
                 .build());
+
+        // 藍圖 04 P2：把兩個事件寫進同一交易的 outbox（原子），取代 GiftService 在交易外的裸 send()。
+        // 放這裡（而非 GiftService 的 best-effort 尾段）才能與雙分錄同交易 commit——大門補了側門也補。
+        walletOutboxService.save("wallet.debit", String.valueOf(senderId), new WalletDebitEvent(
+                debit.getId(), senderId, amount,
+                debit.getBalanceBefore(), debit.getBalanceAfter(),
+                "GIFT", debitKey, debit.getReferenceId()));
+        walletOutboxService.save("wallet.credit", String.valueOf(receiverId), new WalletCreditEvent(
+                credit.getId(), receiverId, amount,
+                credit.getBalanceBefore(), credit.getBalanceAfter(),
+                "GIFT", creditKey, credit.getReferenceId()));
 
         return new Result(debit, credit);
     }
