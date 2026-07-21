@@ -1,3 +1,28 @@
+feature/weiyu-rank-broadcast-throttle
+## [perf] — 2026-07-21 — 藍圖 04 P3：排行榜廣播查詢節流改 Redis（閘門前移）
+
+### Changed
+- `backend/rank-service/.../service/RankService.java`：`maybeBroadcastTop10()` 在昂貴的
+  `getTopGlobalCoins()`（Redis `ZREVRANGE`）**之前**加一道 Redis SETNX 節流鎖
+  （`rank:broadcast:lock`，TTL 3s）。過鎖才查詢；未過鎖直接返回。保留既有 `shouldBroadcast`
+  的內容比對（名單有變才發）與 1s 時間節流作為第二層過濾（時間窗 + 內容變動兩層最省）。
+- `RankServiceTest`：既有廣播測試在 `buildService()` 補 SETNX 放行 stub；新增
+  `maybeBroadcast_throttlesQueryWithinLockWindow`——3s 窗內兩次 `updatePlayerCoins`，
+  `ZADD` 兩次都執行（冪等寫入不受節流），但 `ZREVRANGE` 查詢只執行一次。
+
+### Why
+`maybeBroadcastTop10` 已有節流，但閘門在 `ZREVRANGE` 查詢**之後**——**每一筆**
+`wallet.credit`/`wallet.debit` 事件都先打一次 Redis 查詢，T-090 壓測 1,000 併發時是流量放大器
+（節流的是「發布」，不是「查詢」）。且節流狀態存 JVM 記憶體（instance field），rank 若水平擴展成
+多副本，每副本各自節流、廣播量乘以副本數。改用 Redis SETNX 把閘門前移到查詢之前，一次解決兩者：
+查詢也被節流、且節流跨副本共用。取捨：最後一筆更新可能落在節流窗內不觸發廣播，下一筆事件就會帶上
+（本階段不做尾隨補發）。**新增 Redis 使用點 `rank:broadcast:lock`**（ADR-010 盤點表待各 Phase
+併入後統一補）。
+
+### Verification
+- `mvn -pl backend/rank-service test` → **Tests run: 69, Failures: 0, Errors: 0**
+  （`RankServiceTest` 由 24 例增為 25 例）。
+=======
 feature/weiyu-wallet-outbox
 ## [feat] — 2026-07-21 — 藍圖 04 P2：wallet Transactional Outbox（事件不再靜默丟失）
 
@@ -77,6 +102,7 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - `mvn -pl backend/rank-service test` → **Tests run: 71, Failures: 0, Errors: 0**
   （`WalletBalanceChangedConsumerTest` 由 6 例增為 9 例，全綠）。
 develop
+ develop
 
 ---
 

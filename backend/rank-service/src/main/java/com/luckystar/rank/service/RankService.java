@@ -38,6 +38,11 @@ public class RankService {
     public static final int GLOBAL_TOP10_LIMIT = 10;
     private static final long MIN_BROADCAST_INTERVAL_MS = 1000L;
 
+    // 藍圖 04 P3：廣播查詢節流鎖。放在 ZREVRANGE 查詢「之前」，讓每筆事件不都打一次 Redis 查詢；
+    // 用 Redis SETNX 而非 JVM 記憶體，讓多副本共用同一把節流閘（單副本亦正確）。
+    private static final String BROADCAST_LOCK_KEY = "rank:broadcast:lock";
+    private static final Duration BROADCAST_LOCK_TTL = Duration.ofSeconds(3);
+
     private final StringRedisTemplate redisTemplate;
     private final RankUpdatePublisher rankUpdatePublisher;
 
@@ -102,6 +107,13 @@ public class RankService {
     }
 
     private void maybeBroadcastTop10() {
+        // 先過 Redis 節流鎖：3 秒內只有一個呼叫（跨副本）能進來，避免每筆事件都打一次 ZREVRANGE。
+        // 閘門要放在昂貴操作「之前」，不是之後（與前端 SoundEngine 的 per-id 節流同一概念）。
+        if (!Boolean.TRUE.equals(
+                redisTemplate.opsForValue().setIfAbsent(BROADCAST_LOCK_KEY, "1", BROADCAST_LOCK_TTL))) {
+            return;
+        }
+        // 保留既有「名單有變才發」的內容比對：與時間節流互補（時間窗 + 內容變動兩層過濾最省）。
         List<RankEntryResponse> top10 = getTopGlobalCoins(GLOBAL_TOP10_LIMIT);
         List<Long> ids = top10.stream().map(RankEntryResponse::playerId).toList();
         long now = System.currentTimeMillis();
