@@ -16,6 +16,8 @@ import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -26,6 +28,11 @@ import org.springframework.util.StringUtils;
  * <p>TTL 取 24 小時作為安全網——實際回收由 {@link FishingService} 的閒置排程在
  * 閒置 10 分鐘時主動結算（把剩餘局內餘額還回 wallet），TTL 只防排程長期失效時 Redis 堆積。
  * 比照 {@code GameSessionService} 的 Hash 儲存風格。
+ *
+ * <p><b>寫入原子化（ADR-008）</b>：{@link #save} 為單純覆寫（僅供建立全新 session 的
+ * {@code FishingService.start} 使用，無併發改寫風險）。凡「讀→改→整包寫回」的路徑
+ * （shots/top-up）一律走 {@link #saveCas}——以 {@code version} 欄位做樂觀鎖，取代舊版單純
+ * 依賴前端 {@code topUpLockRef} 迴避覆寫（該鎖仍保留作 UX 最佳化，見 AGENTS.md 雷區 16）。
  */
 @Slf4j
 @Component
@@ -33,6 +40,26 @@ public class FishingSessionStore {
 
     static final String KEY_PREFIX = "game:fishing:session:";
     private static final Duration TTL = Duration.ofHours(24);
+
+    /**
+     * 樂觀鎖 CAS：{@code version} 欄位與 {@code ARGV[1]} 相符才整包覆寫（含新 version）＋續 TTL，
+     * 否則不動 key、回傳 0。缺 {@code version} 欄位（升級前的舊 session）視同 0。
+     * ARGV 版面：[1]=期望舊版本, [2]=TTL 毫秒, [3..]=field/value 成對清單（含新 version）。
+     */
+    private static final RedisScript<Long> SAVE_CAS_SCRIPT = new DefaultRedisScript<>("""
+            local current = redis.call('HGET', KEYS[1], 'version')
+            if current == false then
+                current = '0'
+            end
+            if current ~= ARGV[1] then
+                return 0
+            end
+            for i = 3, #ARGV, 2 do
+                redis.call('HSET', KEYS[1], ARGV[i], ARGV[i + 1])
+            end
+            redis.call('PEXPIRE', KEYS[1], ARGV[2])
+            return 1
+            """, Long.class);
 
     private static final String F_SESSION_ID = "sessionId";
     private static final String F_PLAYER_ID = "playerId";
@@ -58,6 +85,7 @@ public class FishingSessionStore {
     private static final String F_FISH_RECOVERY = "fishRecovery";
     private static final String F_KILLS = "kills";
     private static final String F_TOP_UP_REQUEST_IDS = "topUpRequestIds";
+    private static final String F_VERSION = "version";
 
     private static final TypeReference<LinkedHashMap<String, Long>> FISH_DAMAGE_TYPE =
             new TypeReference<>() {};
@@ -76,11 +104,46 @@ public class FishingSessionStore {
         this.objectMapper = objectMapper;
     }
 
-    /** 寫入（覆蓋）整個 Session 並重設 TTL。 */
+    /**
+     * 寫入（覆蓋）整個 Session 並重設 TTL——無版本檢查，僅供 {@code FishingService.start}
+     * 建立全新 session 使用（該 key 前一刻不存在，無併發改寫可覆蓋）。
+     * 既有 session 的讀改寫請一律改用 {@link #saveCas}。
+     */
     public void save(FishingSession session) {
         String key = key(session.getPlayerId());
         hashOps.putAll(key, toHash(session));
         redisTemplate.expire(key, TTL);
+    }
+
+    /**
+     * 樂觀鎖寫入：僅當 Redis 目前的 {@code version} 等於 {@code expectedVersion} 才整包覆寫
+     * （成功時 {@code session.version} 會被設為 {@code expectedVersion + 1}，供呼叫端沿用同一物件）。
+     * 失敗（版本不符，代表期間有其他寫入）回傳 false 且不動 Redis 內容——呼叫端應重讀最新
+     * session、重放本次異動、再試（上限見 {@code FishingService} 的重試迴圈）。
+     *
+     * @return true=寫入成功；false=版本衝突（CAS 失敗，未落地）
+     */
+    public boolean saveCas(FishingSession session, long expectedVersion) {
+        long newVersion = expectedVersion + 1;
+        session.setVersion(newVersion);
+        Map<String, String> hash = toHash(session);
+
+        List<String> args = new ArrayList<>(2 + hash.size() * 2);
+        args.add(String.valueOf(expectedVersion));
+        args.add(String.valueOf(TTL.toMillis()));
+        for (Map.Entry<String, String> entry : hash.entrySet()) {
+            args.add(entry.getKey());
+            args.add(entry.getValue());
+        }
+
+        Long result = redisTemplate.execute(SAVE_CAS_SCRIPT,
+                List.of(key(session.getPlayerId())), args.toArray());
+        boolean success = result != null && result == 1L;
+        if (!success) {
+            // CAS 失敗：還原記憶體內物件的 version，避免呼叫端誤把「期望值」當成已落地的新版本再往下用。
+            session.setVersion(expectedVersion);
+        }
+        return success;
     }
 
     /** 取得玩家目前的捕魚 Session（不存在/毀損回空）。 */
@@ -158,6 +221,7 @@ public class FishingSessionStore {
         writeJson(h, F_FISH_RECOVERY, s.getFishRecovery());
         writeJson(h, F_KILLS, s.getKills());
         writeJson(h, F_TOP_UP_REQUEST_IDS, s.getTopUpRequestIds());
+        putIfNotNull(h, F_VERSION, s.getVersion());
         return h;
     }
 
@@ -199,6 +263,7 @@ public class FishingSessionStore {
                 .fishRecovery(readFishDamage(h.get(F_FISH_RECOVERY)))
                 .kills(readKills(h.get(F_KILLS)))
                 .topUpRequestIds(readTopUpRequestIds(h.get(F_TOP_UP_REQUEST_IDS)))
+                .version(parseLong(h.get(F_VERSION)))
                 .build();
     }
 
