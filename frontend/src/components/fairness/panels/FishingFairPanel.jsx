@@ -119,14 +119,14 @@ export default function FishingFairPanel() {
             你的 clientSeed（可自訂）
             <input value={clientSeed} onChange={(e) => setClientSeed(e.target.value)} />
           </label>
-          <button type="button" onClick={doStart} disabled={busy || balance < BUY_IN}>
+          <button type="button" className="fairness__button" onClick={doStart} disabled={busy || balance < BUY_IN}>
             入場（buy-in {BUY_IN}，每發 {BET_PER_SHOT}）
           </button>
         </>
       )}
 
       {session && !ended && (
-        <button type="button" onClick={doShoot} disabled={busy}>
+        <button type="button" className="fairness__button" onClick={doShoot} disabled={busy}>
           開火 {SHOT_COUNT} 發（目標：{DEMO_FISH}）
         </button>
       )}
@@ -143,7 +143,7 @@ export default function FishingFairPanel() {
       )}
 
       {session && shots.length > 0 && !ended && (
-        <button type="button" onClick={doEnd} disabled={busy}>
+        <button type="button" className="fairness__button" onClick={doEnd} disabled={busy}>
           收網並揭露 serverSeed
         </button>
       )}
@@ -158,7 +158,7 @@ export default function FishingFairPanel() {
               onChange={(e) => setVerifySeq(Number(e.target.value))}
             />
           </label>
-          <button type="button" onClick={doVerify} disabled={busy}>
+          <button type="button" className="fairness__button" onClick={doVerify} disabled={busy}>
             逐發驗證
           </button>
         </div>

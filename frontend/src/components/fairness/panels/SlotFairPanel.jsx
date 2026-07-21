@@ -89,13 +89,13 @@ export default function SlotFairPanel() {
       </label>
       {!round && balance < bet && <div className="fairness__error">星幣不足，無法下注</div>}
       {!round && (
-        <button type="button" onClick={doCommit} disabled={busy || balance < bet}>
+        <button type="button" className="fairness__button" onClick={doCommit} disabled={busy || balance < bet}>
           鎖定本局（下注 {bet}）
         </button>
       )}
 
       {round && !settle && (
-        <button type="button" onClick={doSettle} disabled={busy}>
+        <button type="button" className="fairness__button" onClick={doSettle} disabled={busy}>
           下注並開獎（此時才扣款）
         </button>
       )}
@@ -108,10 +108,10 @@ export default function SlotFairPanel() {
 
       {settle && (
         <div className="fairness__tabs">
-          <button type="button" onClick={() => doVerify(false)} disabled={busy}>
+          <button type="button" className="fairness__button" onClick={() => doVerify(false)} disabled={busy}>
             驗證這一局
           </button>
-          <button type="button" onClick={() => doVerify(true)} disabled={busy}>
+          <button type="button" className="fairness__button" onClick={() => doVerify(true)} disabled={busy}>
             模擬伺服器作弊
           </button>
         </div>
