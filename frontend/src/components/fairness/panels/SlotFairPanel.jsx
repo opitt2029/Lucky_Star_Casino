@@ -81,6 +81,7 @@ export default function SlotFairPanel() {
       <StepRail steps={STEPS} current={current} />
       {error && <div className="fairness__error">{error}</div>}
 
+      <SeedCard label="roundId（本局編號）" value={round?.roundId ?? null} />
       <SeedCard label="serverSeedHash（承諾）" value={round?.serverSeedHash ?? null} />
       <SeedCard label="serverSeed" value={settle?.serverSeed ?? null} />
       <label className="seedcard__label">

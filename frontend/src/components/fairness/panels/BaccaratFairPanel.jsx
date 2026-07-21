@@ -83,6 +83,7 @@ export default function BaccaratFairPanel() {
       {error && <div className="fairness__error">{error}</div>}
       <div className="fairness__badge-note">注意：百家樂在下注（bet）時就扣款，與老虎機（結算才扣）不同。</div>
 
+      <SeedCard label="roundId（本局編號）" value={betResp?.roundId ?? null} />
       <SeedCard label="serverSeedHash（承諾）" value={betResp?.serverSeedHash ?? null} />
       <SeedCard label="serverSeed" value={result?.serverSeed ?? null} />
       {!betResp && balance < AMOUNT && <div className="fairness__error">星幣不足，無法下注</div>}

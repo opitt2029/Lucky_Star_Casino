@@ -110,6 +110,7 @@ export default function FishingFairPanel() {
       <StepRail steps={STEPS} current={current} />
       {error && <div className="fairness__error">{error}</div>}
 
+      <SeedCard label="sessionId（本場編號）" value={session?.sessionId ?? null} />
       <SeedCard label="serverSeedHash（承諾）" value={session?.serverSeedHash ?? null} />
       <SeedCard label="serverSeed" value={ended?.serverSeed ?? null} />
       {!session && balance < BUY_IN && <div className="fairness__error">星幣不足，無法入場</div>}
