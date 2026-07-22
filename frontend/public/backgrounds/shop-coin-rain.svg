@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">Coin rain entrance effect</title><desc id="desc">Falling gold coins with a spotlight stage.</desc>
+  <defs><radialGradient id="bg" cx="50%" cy="46%" r="74%"><stop stop-color="#78350f"/><stop offset="1" stop-color="#160801"/></radialGradient><linearGradient id="gold" x1="0" x2="1"><stop stop-color="#fff7c2"/><stop offset="1" stop-color="#d97706"/></linearGradient></defs>
+  <rect width="640" height="420" fill="url(#bg)"/>
+  <path d="M236 72h168l80 276H156l80-276Z" fill="#fde68a" opacity=".08"/>
+  <ellipse cx="320" cy="330" rx="156" ry="34" fill="#facc15" opacity=".22"/>
+  <g fill="url(#gold)" stroke="#92400e" stroke-width="3">
+    <circle cx="138" cy="82" r="22"/><circle cx="246" cy="132" r="18"/><circle cx="402" cy="92" r="24"/><circle cx="514" cy="150" r="18"/><circle cx="188" cy="230" r="20"/><circle cx="460" cy="252" r="22"/><circle cx="320" cy="186" r="26"/>
+  </g>
+  <g stroke="#7c2d12" stroke-width="3" opacity=".5"><path d="M126 82h24"/><path d="M234 132h24"/><path d="M388 92h28"/><path d="M500 150h24"/><path d="M304 186h32"/></g>
+  <path d="M252 316c28-34 108-34 136 0" fill="none" stroke="#fde68a" stroke-width="10" stroke-linecap="round"/>
+</svg>

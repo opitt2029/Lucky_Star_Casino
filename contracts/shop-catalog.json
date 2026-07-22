@@ -1,8 +1,15 @@
 {
-  "$comment": "禮品商城 mock 目錄（Phase 5，ADR-006）。注意：此檔僅供前端 mock（mockApi.SHOP_CATALOG）；正式目錄的單一真相在 MySQL shop_items（admin 後台 CRUD，AGENTS 雷區 20），後端不讀本檔、ContractParityTest 也不守門。改 database/mysql/init.sql 的 shop_items seed 時同步本檔。",
+  "$comment": "禮品商城 mock 目錄（ADR-006）。正式目錄的單一真相在 MySQL shop_items；改 database/mysql/init.sql 的 shop_items seed 時需同步本檔。",
   "items": [
-    { "itemCode": "vip-ticket", "name": "VIP 入場券", "caption": "可兌換活動或限時桌台資格", "cost": 12000, "assetKey": "shopPrizeA" },
-    { "itemCode": "avatar-frame", "name": "會員頭像框", "caption": "讓會員頭像更有辨識度", "cost": 8000, "assetKey": "shopPrizeB" },
-    { "itemCode": "bonus-box", "name": "幸運禮盒", "caption": "適合兌換活動獎勵或驚喜禮品", "cost": 20000, "assetKey": "shopPrizeC" }
+    { "itemCode": "vip-ticket", "name": "VIP 入場券", "caption": "可收藏的活動通行券，適合兌換限時桌台資格。", "cost": 12000, "assetKey": "shopPrizeA" },
+    { "itemCode": "avatar-frame", "name": "會員頭像框", "caption": "會員中心展示用頭像框，讓帳戶更有辨識度。", "cost": 8000, "assetKey": "shopPrizeB" },
+    { "itemCode": "bonus-box", "name": "幸運禮盒", "caption": "適合活動獎勵或驚喜收藏的禮盒。", "cost": 20000, "assetKey": "shopPrizeC" },
+    { "itemCode": "royal-nameplate", "name": "皇家暱稱牌", "caption": "會員中心展示用裝飾名牌，讓暱稱更有主角感。", "cost": 15000, "assetKey": "shopRoyalNameplate" },
+    { "itemCode": "star-title-badge", "name": "星耀稱號徽章", "caption": "可收藏的帳戶稱號裝飾，適合活動或排行獎勵展示。", "cost": 10000, "assetKey": "shopTitleBadge" },
+    { "itemCode": "profile-backdrop", "name": "星河會員背景", "caption": "會員中心展示用背景收藏，適合打造專屬風格。", "cost": 18000, "assetKey": "shopProfileBackdrop" },
+    { "itemCode": "coin-rain-entry", "name": "金幣雨入場特效", "caption": "帳戶展示用入場特效收藏，讓會員頁更有儀式感。", "cost": 16000, "assetKey": "shopCoinRain" },
+    { "itemCode": "daily-luck-pass", "name": "每日幸運券", "caption": "適合活動發放的輕量獎勵券，可先收藏到背包。", "cost": 6000, "assetKey": "shopLuckPass" },
+    { "itemCode": "high-roller-invite", "name": "高額桌邀請函", "caption": "收藏型活動邀請函，適合兌換專屬活動資格。", "cost": 30000, "assetKey": "shopHighRollerInvite" },
+    { "itemCode": "lucky-charm", "name": "幸運星護符", "caption": "低門檻收藏獎勵，適合新手完成任務後兌換。", "cost": 5000, "assetKey": "shopLuckyCharm" }
   ]
 }

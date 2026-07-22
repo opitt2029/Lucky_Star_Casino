@@ -13,24 +13,24 @@ export const gameCatalog = [
     id: 'slot',
     to: '/game/slot',
     title: '老虎機',
-    caption: '三排轉輪，100 星幣起注',
-    meta: '快速局',
+    caption: '單線拉霸，100 星幣起玩。',
+    meta: 'Slot',
     assetKey: 'slotGame',
   },
   {
     id: 'baccarat',
     to: '/game/baccarat',
     title: '百家樂',
-    caption: '可押閒家、莊家或和局',
-    meta: '牌桌局',
+    caption: '押莊、押閒或和局，節奏俐落。',
+    meta: 'Baccarat',
     assetKey: 'baccaratGame',
   },
   {
     id: 'fishing',
     to: '/game/fishing',
     title: '捕魚機',
-    caption: 'buy-in 進場，點擊射擊捕魚派彩',
-    meta: '街機局',
+    caption: 'Buy-in 進場，瞄準魚群累積戰果。',
+    meta: 'Fishing',
     assetKey: 'fishingGame',
   },
   {
@@ -47,23 +47,72 @@ export const shopCatalog = [
   {
     id: 'vip-ticket',
     title: 'VIP 入場券',
-    caption: '可兌換活動或限時桌台資格',
+    caption: '可收藏的活動通行券，適合兌換限時桌台資格。',
     cost: 12000,
     assetKey: 'shopPrizeA',
   },
   {
     id: 'avatar-frame',
     title: '會員頭像框',
-    caption: '讓會員頭像更有辨識度',
+    caption: '會員中心展示用頭像框，讓帳戶更有辨識度。',
     cost: 8000,
     assetKey: 'shopPrizeB',
   },
   {
     id: 'bonus-box',
     title: '幸運禮盒',
-    caption: '適合兌換活動獎勵或驚喜禮品',
+    caption: '適合活動獎勵或驚喜收藏的禮盒。',
     cost: 20000,
     assetKey: 'shopPrizeC',
+  },
+  {
+    id: 'royal-nameplate',
+    title: '皇家暱稱牌',
+    caption: '會員中心展示用裝飾名牌，讓暱稱更有主角感。',
+    cost: 15000,
+    assetKey: 'shopRoyalNameplate',
+  },
+  {
+    id: 'star-title-badge',
+    title: '星耀稱號徽章',
+    caption: '可收藏的帳戶稱號裝飾，適合活動或排行獎勵展示。',
+    cost: 10000,
+    assetKey: 'shopTitleBadge',
+  },
+  {
+    id: 'profile-backdrop',
+    title: '星河會員背景',
+    caption: '會員中心展示用背景收藏，適合打造專屬風格。',
+    cost: 18000,
+    assetKey: 'shopProfileBackdrop',
+  },
+  {
+    id: 'coin-rain-entry',
+    title: '金幣雨入場特效',
+    caption: '帳戶展示用入場特效收藏，讓會員頁更有儀式感。',
+    cost: 16000,
+    assetKey: 'shopCoinRain',
+  },
+  {
+    id: 'daily-luck-pass',
+    title: '每日幸運券',
+    caption: '適合活動發放的輕量獎勵券，可先收藏到背包。',
+    cost: 6000,
+    assetKey: 'shopLuckPass',
+  },
+  {
+    id: 'high-roller-invite',
+    title: '高額桌邀請函',
+    caption: '收藏型活動邀請函，適合兌換專屬活動資格。',
+    cost: 30000,
+    assetKey: 'shopHighRollerInvite',
+  },
+  {
+    id: 'lucky-charm',
+    title: '幸運星護符',
+    caption: '低門檻收藏獎勵，適合新手完成任務後兌換。',
+    cost: 5000,
+    assetKey: 'shopLuckyCharm',
   },
 ]
 
@@ -71,48 +120,48 @@ export const decorativeAssets = {
   homeHero: {
     image: 'casino-city-hero.png',
     meta: 'Neon Boulevard',
-    label: '霓虹賭城入口',
-    caption: '金色燈海、紅毯大道與高級賭場門面，作為幸運星幣城的主視覺。',
+    label: '幸運星幣城',
+    caption: '在霓虹賭城中累積星幣、挑戰遊戲，打造你的會員旅程。',
     overlay:
       'linear-gradient(90deg, rgba(32, 1, 5, 0.72) 0%, rgba(92, 5, 12, 0.3) 46%, rgba(8, 1, 3, 0.76) 100%), radial-gradient(circle at 82% 18%, rgba(255, 230, 148, 0.12), transparent 34%)',
   },
   homeGames: {
     image: 'casino-game-hall.png',
     meta: 'Game Hall',
-    label: '豪華遊戲大廳',
-    caption: '老虎機、牌桌與水晶吊燈構成明亮的遊戲入口氛圍。',
+    label: '熱門遊戲大廳',
+    caption: '從老虎機、百家樂到捕魚機，快速找到你的下一場挑戰。',
     overlay:
       'linear-gradient(135deg, rgba(72, 3, 8, 0.56) 0%, rgba(12, 1, 3, 0.78) 100%), radial-gradient(circle at 18% 20%, rgba(248, 213, 106, 0.12), transparent 32%)',
   },
   memberHero: {
     image: 'casino-city-hero.png',
     meta: 'Member Gate',
-    label: '尊榮會員入口',
-    caption: '從賭城門面進入會員中心，登入後開啟遊戲與商城權限。',
+    label: '會員中心入口',
+    caption: '管理個人資料、好友、簽到與帳戶狀態。',
     overlay:
       'linear-gradient(180deg, rgba(64, 3, 8, 0.48) 0%, rgba(12, 1, 3, 0.82) 100%), radial-gradient(circle at 70% 16%, rgba(255, 234, 160, 0.14), transparent 30%)',
   },
   gamesGallery: {
     image: 'casino-game-hall.png',
     meta: 'Game Directory',
-    label: '遊戲大全視覺',
-    caption: '把遊戲機台與牌桌整合成明確的遊戲瀏覽入口。',
+    label: '遊戲目錄',
+    caption: '瀏覽所有可玩的遊戲，選擇適合當下節奏的玩法。',
     overlay:
       'linear-gradient(135deg, rgba(70, 3, 8, 0.5) 0%, rgba(10, 1, 3, 0.82) 100%), radial-gradient(circle at 78% 24%, rgba(248, 213, 106, 0.12), transparent 32%)',
   },
   slotGame: {
     image: 'casino-game-hall.png',
     meta: 'Slot Game',
-    label: '老虎機燈海',
-    caption: '金色燈光與轉輪機台強化快速局的刺激感。',
+    label: '老虎機挑戰',
+    caption: '簡單直接的轉輪節奏，適合快速累積遊戲回合。',
     overlay:
       'linear-gradient(135deg, rgba(188, 11, 21, 0.2) 0%, rgba(12, 1, 3, 0.8) 100%), radial-gradient(circle at 22% 18%, rgba(255, 234, 160, 0.12), transparent 28%)',
   },
   baccaratGame: {
     image: 'casino-game-hall.png',
     meta: 'Baccarat',
-    label: '百家樂牌桌',
-    caption: '紅色牌桌與金色星幣呈現經典賭場桌局。',
+    label: '百家樂牌局',
+    caption: '押莊、押閒或和局，用直覺判斷下一手。',
     overlay:
       'linear-gradient(135deg, rgba(132, 7, 14, 0.26) 0%, rgba(12, 1, 3, 0.8) 100%), radial-gradient(circle at 76% 18%, rgba(248, 213, 106, 0.12), transparent 30%)',
   },
@@ -120,7 +169,7 @@ export const decorativeAssets = {
     image: 'casino-game-hall.png',
     meta: 'Fishing',
     label: '深海捕魚場',
-    caption: '深海藍光與金幣魚群呈現街機捕魚的爽快節奏。',
+    caption: '鎖定魚群、累積傷害，享受節奏明快的射擊體驗。',
     overlay:
       'linear-gradient(135deg, rgba(6, 40, 61, 0.62) 0%, rgba(2, 21, 34, 0.86) 100%), radial-gradient(circle at 24% 20%, rgba(120, 220, 255, 0.16), transparent 32%)',
   },
@@ -135,34 +184,90 @@ export const decorativeAssets = {
   shopHero: {
     image: 'casino-rewards-showcase.png',
     meta: 'Reward Shop',
-    label: '賭場獎品櫃',
-    caption: '禮盒、鑽石與會員卡呈現商城兌換的獎勵期待感。',
+    label: '星幣禮品商城',
+    caption: '把累積的星幣換成收藏獎勵、活動資格與會員裝飾。',
     overlay:
       'linear-gradient(90deg, rgba(20, 1, 4, 0.72) 0%, rgba(110, 6, 13, 0.22) 58%, rgba(12, 1, 3, 0.78) 100%), radial-gradient(circle at 72% 24%, rgba(255, 234, 160, 0.14), transparent 34%)',
   },
   shopPrizeA: {
-    image: 'casino-rewards-showcase.png',
+    image: 'shop-vip-ticket.svg',
     meta: 'VIP Reward',
     label: 'VIP 入場券',
-    caption: '兌換限時活動與尊榮桌台資格。',
+    caption: '活動通行收藏，為限時桌台或專屬活動預留席位。',
     overlay:
-      'linear-gradient(135deg, rgba(255, 214, 86, 0.14) 0%, rgba(24, 1, 4, 0.78) 100%)',
+      'linear-gradient(135deg, rgba(255, 214, 86, 0.08) 0%, rgba(24, 1, 4, 0.68) 100%)',
   },
   shopPrizeB: {
-    image: 'casino-rewards-showcase.png',
+    image: 'shop-avatar-frame.svg',
     meta: 'Avatar Reward',
     label: '會員頭像框',
-    caption: '替會員中心增加更亮眼的個人識別。',
+    caption: '帳戶展示裝飾，讓會員中心更有辨識度。',
     overlay:
-      'linear-gradient(135deg, rgba(248, 213, 106, 0.12) 0%, rgba(28, 1, 5, 0.78) 100%)',
+      'linear-gradient(135deg, rgba(248, 213, 106, 0.08) 0%, rgba(28, 1, 5, 0.7) 100%)',
   },
   shopPrizeC: {
-    image: 'casino-rewards-showcase.png',
+    image: 'shop-bonus-box.svg',
     meta: 'Lucky Box',
     label: '幸運禮盒',
-    caption: '承接活動兌換、抽獎與稀有獎勵。',
+    caption: '活動收藏禮盒，適合兌換驚喜獎勵。',
     overlay:
-      'linear-gradient(135deg, rgba(201, 13, 24, 0.18) 0%, rgba(18, 1, 4, 0.78) 100%), radial-gradient(circle at 76% 22%, rgba(255, 234, 160, 0.12), transparent 28%)',
+      'linear-gradient(135deg, rgba(201, 13, 24, 0.12) 0%, rgba(18, 1, 4, 0.7) 100%), radial-gradient(circle at 76% 22%, rgba(255, 234, 160, 0.1), transparent 28%)',
+  },
+  shopRoyalNameplate: {
+    image: 'shop-royal-nameplate.svg',
+    meta: 'Account Decor',
+    label: '皇家暱稱牌',
+    caption: '會員中心展示用名牌，讓玩家暱稱更像主角。',
+    overlay:
+      'linear-gradient(135deg, rgba(255, 225, 128, 0.1) 0%, rgba(35, 2, 8, 0.72) 100%)',
+  },
+  shopTitleBadge: {
+    image: 'shop-title-badge.svg',
+    meta: 'Account Decor',
+    label: '星耀稱號徽章',
+    caption: '收藏式稱號徽章，適合排行與活動獎勵展示。',
+    overlay:
+      'linear-gradient(135deg, rgba(86, 180, 255, 0.12) 0%, rgba(16, 2, 28, 0.75) 100%)',
+  },
+  shopProfileBackdrop: {
+    image: 'shop-profile-backdrop.svg',
+    meta: 'Account Decor',
+    label: '星河會員背景',
+    caption: '會員中心背景收藏，營造專屬帳戶風格。',
+    overlay:
+      'linear-gradient(135deg, rgba(90, 95, 255, 0.12) 0%, rgba(16, 2, 34, 0.76) 100%)',
+  },
+  shopCoinRain: {
+    image: 'shop-coin-rain.svg',
+    meta: 'Account Decor',
+    label: '金幣雨入場特效',
+    caption: '展示用入場特效收藏，讓會員頁更有儀式感。',
+    overlay:
+      'linear-gradient(135deg, rgba(255, 198, 64, 0.14) 0%, rgba(28, 8, 1, 0.74) 100%)',
+  },
+  shopLuckPass: {
+    image: 'shop-luck-pass.svg',
+    meta: 'Daily Reward',
+    label: '每日幸運券',
+    caption: '輕量收藏券，適合作為每日任務或活動獎勵。',
+    overlay:
+      'linear-gradient(135deg, rgba(52, 211, 153, 0.12) 0%, rgba(2, 32, 24, 0.76) 100%)',
+  },
+  shopHighRollerInvite: {
+    image: 'shop-high-roller-invite.svg',
+    meta: 'Event Invite',
+    label: '高額桌邀請函',
+    caption: '收藏型邀請函，適合兌換限時桌台或活動資格。',
+    overlay:
+      'linear-gradient(135deg, rgba(255, 214, 86, 0.1) 0%, rgba(19, 8, 28, 0.76) 100%)',
+  },
+  shopLuckyCharm: {
+    image: 'shop-lucky-charm.svg',
+    meta: 'Starter Reward',
+    label: '幸運星護符',
+    caption: '低門檻收藏獎勵，適合新手任務後兌換。',
+    overlay:
+      'linear-gradient(135deg, rgba(252, 165, 165, 0.13) 0%, rgba(42, 4, 8, 0.74) 100%)',
   },
 }
 

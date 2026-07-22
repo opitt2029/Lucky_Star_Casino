@@ -43,7 +43,7 @@ class PlayerServiceTest {
         sampleMember.setAvatar(null);
         sampleMember.setRole("PLAYER");
         sampleMember.setStatus("ACTIVE");
-        // 手動設定 createdAt，因為 @PrePersist 在 new 時不會自動觸發
+        // 手動設定 createdAt，避免單元測試中沒有觸發 @PrePersist。
         try {
             var field = Member.class.getDeclaredField("createdAt");
             field.setAccessible(true);
@@ -173,5 +173,49 @@ class PlayerServiceTest {
                 .isInstanceOf(MemberNotFoundException.class)
                 .hasMessageContaining("99");
         verify(memberRepository, never()).save(any(Member.class));
+    }
+
+    @Test
+    void getSocialBindings_returnsAllProviders() {
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+
+        var result = playerService.getSocialBindings(1L);
+
+        assertThat(result).hasSize(3);
+        assertThat(result).extracting("provider").containsExactly("line", "google", "apple");
+        assertThat(result).allMatch(binding -> !binding.isBound());
+    }
+
+    @Test
+    void completeSocialBinding_returnsDemoBoundResponse() {
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+
+        var result = playerService.completeSocialBinding(1L, "google", null);
+
+        assertThat(result.isBound()).isTrue();
+        assertThat(result.getStatus()).isEqualTo("BOUND");
+        assertThat(result.getMaskedAccountId()).isEqualTo("demo-linked");
+        verify(memberRepository, never()).save(any(Member.class));
+    }
+
+    @Test
+    void removeSocialBinding_returnsDemoUnboundResponse() {
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+
+        var result = playerService.removeSocialBinding(1L, "line");
+
+        assertThat(result.isBound()).isFalse();
+        assertThat(result.getStatus()).isEqualTo("UNBOUND");
+        assertThat(result.getMaskedAccountId()).isNull();
+        verify(memberRepository, never()).save(any(Member.class));
+    }
+
+    @Test
+    void startSocialBinding_unknownProvider_throws() {
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+
+        assertThatThrownBy(() -> playerService.startSocialBinding(1L, "twitter"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unsupported social provider");
     }
 }

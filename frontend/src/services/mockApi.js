@@ -271,6 +271,10 @@ function createInitialDb() {
       [player.id]: [],
       [TEST_ACCOUNT.player.id]: [],
     },
+    socialBindings: {
+      [player.id]: {},
+      [TEST_ACCOUNT.player.id]: {},
+    },
     ranks: [
       {
         id: TEST_ACCOUNT.player.id,
@@ -294,6 +298,7 @@ function ensureTestAccount(db) {
   db.ranks = db.ranks || []
   db.checkinDates = db.checkinDates || {}
   db.monthlyRewardClaims = db.monthlyRewardClaims || {}
+  db.socialBindings = db.socialBindings || {}
 
   let user = db.users.find((item) => item.player?.username === TEST_ACCOUNT.player.username)
   if (!user) {
@@ -335,6 +340,11 @@ function ensureTestAccount(db) {
 
   if (!db.friendRequests[TEST_ACCOUNT.player.id]) {
     db.friendRequests[TEST_ACCOUNT.player.id] = []
+    changed = true
+  }
+
+  if (!db.socialBindings[TEST_ACCOUNT.player.id]) {
+    db.socialBindings[TEST_ACCOUNT.player.id] = {}
     changed = true
   }
 
@@ -578,6 +588,8 @@ export const mockApi = {
     db.wallets[player.id] = { balance: MOCK_TEST_STAR_COIN_BALANCE, frozenAmount: 0 }
     db.transactions[player.id] = [makeTransaction('task', 30000, '新手啟動金')]
     db.friends[player.id] = []
+    db.socialBindings = db.socialBindings || {}
+    db.socialBindings[player.id] = {}
     db.ranks.push({ id: player.id, name: nickname, nickname, score: 30000, trend: '+0%' })
     saveDb(db)
     return createSession(player)
@@ -609,6 +621,63 @@ export const mockApi = {
     return user.player
   },
 
+
+  async getSocialBindings() {
+    await wait(180)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const bindings = db.socialBindings?.[playerId] || {}
+    return ['line', 'google', 'apple'].map((provider) => {
+      const accountId = bindings[provider]
+      return {
+        provider,
+        label: provider === 'line' ? 'LINE' : provider === 'google' ? 'Google' : 'Apple',
+        bound: Boolean(accountId),
+        status: accountId ? 'BOUND' : 'UNBOUND',
+        connectUrl: `/profile/social-bindings/${provider}`,
+        maskedAccountId: accountId ? `****${String(accountId).slice(-4)}` : null,
+      }
+    })
+  },
+
+  async startSocialBinding(provider) {
+    await wait(220)
+    const id = String(provider).toLowerCase()
+    const label = id === 'line' ? 'LINE' : id === 'google' ? 'Google' : 'Apple'
+    if (!['line', 'google', 'apple'].includes(id)) throw new Error('Unsupported social provider')
+    return {
+      provider: id,
+      label,
+      status: 'READY',
+      authorizationUrl: `/mock/oauth/${id}?ticket=mock-${id}-${currentPlayerId()}`,
+    }
+  },
+
+  async completeSocialBinding(provider, externalAccountId) {
+    await wait(300)
+    const id = String(provider).toLowerCase()
+    if (!['line', 'google', 'apple'].includes(id)) throw new Error('Unsupported social provider')
+    const db = getDb()
+    const playerId = currentPlayerId()
+    db.socialBindings = db.socialBindings || {}
+    db.socialBindings[playerId] = {
+      ...(db.socialBindings[playerId] || {}),
+      [id]: externalAccountId || `${id.toUpperCase()}-${playerId}`,
+    }
+    saveDb(db)
+    return (await this.getSocialBindings()).find((item) => item.provider === id)
+  },
+
+  async removeSocialBinding(provider) {
+    await wait(220)
+    const id = String(provider).toLowerCase()
+    const db = getDb()
+    const playerId = currentPlayerId()
+    db.socialBindings = db.socialBindings || {}
+    db.socialBindings[playerId] = { ...(db.socialBindings[playerId] || {}), [id]: null }
+    saveDb(db)
+    return (await this.getSocialBindings()).find((item) => item.provider === id)
+  },
   async getWallet() {
     await wait(240)
     const db = getDb()

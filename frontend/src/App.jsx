@@ -16,6 +16,7 @@ const Baccarat = lazy(() => import('./pages/Baccarat'))
 const Fishing = lazy(() => import('./pages/Fishing'))
 const Rank = lazy(() => import('./pages/Rank'))
 const Profile = lazy(() => import('./pages/Profile'))
+const SocialBinding = lazy(() => import('./pages/SocialBinding'))
 const Records = lazy(() => import('./pages/Records'))
 const CasinoShop = lazy(() => import('./pages/CasinoShop'))
 const Inventory = lazy(() => import('./pages/Inventory'))
@@ -32,7 +33,7 @@ function RouteFallback() {
   return (
     <div className="route-fallback" role="status" aria-live="polite">
       <span className="route-fallback__mark" aria-hidden="true" />
-      <span>頁面載入中...</span>
+      <span>?頛銝?..</span>
     </div>
   )
 }
@@ -169,6 +170,14 @@ export default function App() {
             element={
               <ProtectedPage>
                 <Profile />
+              </ProtectedPage>
+            }
+          />
+          <Route
+            path="/profile/social-bindings/:provider"
+            element={
+              <ProtectedPage>
+                <SocialBinding />
               </ProtectedPage>
             }
           />
