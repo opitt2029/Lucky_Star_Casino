@@ -82,7 +82,6 @@ hashTree 標籤平衡（slot 5/5、fishing 6/6）、`ConstantTimer` 已 0 顆、
 序列化格式按 JMeter 5.6.3 慣例手寫（表達式屬性存為 `stringProp`）。**首次實跑前務必用 JMeter GUI 開一次
 兩支 jmx，確認 Timer 正確載入（TestBean 若欄位不合會被靜默丟棄→退回無節奏爆發，數字會失真）。**
 
----
 
 ## [perf] — 2026-07-22 — T-090 壓測後續優化 A/C：調大 HikariCP 連線池 + 移除壓測不真實的餘額輪詢
 
