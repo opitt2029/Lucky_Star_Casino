@@ -233,9 +233,15 @@ try {
             <stringProp name="scriptLanguage">groovy</stringProp>
           </JSR223Assertion>
           <hashTree/>
-          <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="One Bet Pair Per Player Per Second" enabled="true">
-            <stringProp name="ConstantTimer.delay">${__P(pacing_ms,1000)}</stringProp>
-          </ConstantTimer>
+          <PreciseThroughputTimer guiclass="TestBeanGUI" testclass="PreciseThroughputTimer" testname="Open-Model Pacing (P1: target_rps spins/sec, schedule-based)" enabled="true">
+            <intProp name="batchSize">1</intProp>
+            <longProp name="batchThreadDelay">0</longProp>
+            <stringProp name="duration">${__P(duration_seconds,60)}</stringProp>
+            <boolProp name="perThread">false</boolProp>
+            <longProp name="randomSeed">0</longProp>
+            <stringProp name="throughput">${__P(target_rps,1000)}</stringProp>
+            <intProp name="throughputPeriod">1</intProp>
+          </PreciseThroughputTimer>
           <hashTree/>
         </hashTree>
       </hashTree>
