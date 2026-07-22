@@ -2,6 +2,15 @@
 -- Run this against the PostgreSQL write database after the slot load test.
 -- The script returns one CSV-friendly result set:
 -- check_name, violation_count, description.
+--
+-- 2026-07-22 排序鍵修正（依 5,000 req/s 階梯壓測的實證）：
+--   每筆交易的先後順序一律以 `id`（BIGSERIAL）為準，**不可**用 `created_at`。
+--   created_at 是應用端寫入的時間戳，在毫秒級併發下會與實際寫入順序不一致：
+--   壓測實測到同一名玩家的兩筆 DEBIT，id 58494（created_at .271647）竟晚於
+--   id 58495（.256333），用 created_at 排序就把真實順序 58494 → 58495 排反，
+--   於是 balance_before 接不上前一筆的 balance_after，誤報 transaction_chain_breaks。
+--   金額其實完全正確（1,000,100 → 1,000,000 → 999,900）。序列 id 由資料庫在
+--   INSERT 當下配發，才是權威的寫入順序。
 
 WITH ordered_transactions AS (
     SELECT
@@ -15,14 +24,14 @@ WITH ordered_transactions AS (
         created_at,
         LAG(balance_after) OVER (
             PARTITION BY player_id
-            ORDER BY created_at, id
+            ORDER BY id
         ) AS previous_balance_after
     FROM wallet_transactions
 ),
 transaction_rollup AS (
     SELECT
         player_id,
-        (ARRAY_AGG(balance_before ORDER BY created_at, id))[1] AS opening_balance,
+        (ARRAY_AGG(balance_before ORDER BY id))[1] AS opening_balance,
         SUM(
             CASE
                 WHEN type = 'DEBIT' THEN -amount
@@ -30,7 +39,7 @@ transaction_rollup AS (
                 ELSE 0
             END
         ) AS signed_amount,
-        (ARRAY_AGG(balance_after ORDER BY created_at DESC, id DESC))[1] AS latest_balance_after,
+        (ARRAY_AGG(balance_after ORDER BY id DESC))[1] AS latest_balance_after,
         COUNT(*) AS transaction_count
     FROM wallet_transactions
     GROUP BY player_id
@@ -61,9 +70,16 @@ check_results AS (
     SELECT
         'wallet_balance_matches_transaction_sum' AS check_name,
         COUNT(*)::BIGINT AS violation_count,
-        'wallets.balance must equal first balance_before plus signed wallet_transactions amounts' AS description
+        'wallets.balance must equal first balance_before plus signed wallet_transactions amounts (wallets with zero transactions are out of scope)' AS description
     FROM wallet_reconciliation
+    /* 交易數為 0 的錢包沒有「期初餘額」可推：opening_balance 與 signed_amount 都是 0，
+       期望值必然算成 0，任何有餘額的種子錢包（例：1001/1002/1003 各 10,000）都會被誤判。
+       這條檢查的公式在無交易時無定義，故排除；這類錢包的正確性由
+       transactions_without_wallet / negative_wallet_balances 等其他檢查覆蓋。
+       用區塊註解而非 `--`：本檔會被 pipe 進 psql（含 docker exec），單行註解一旦
+       遇到換行被吞掉，會把後面的條件整段註解掉、讓檢查靜默放寬。 */
     WHERE NOT missing_wallet
+      AND NOT missing_transactions
       AND wallet_balance <> expected_balance
 
     UNION ALL

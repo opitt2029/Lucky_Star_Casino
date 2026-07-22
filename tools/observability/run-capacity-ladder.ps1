@@ -17,6 +17,14 @@
 # ============================================================
 param(
     [Parameter(Mandatory = $true)][string]$JMeter,
+    # ── 遠端施壓機（2026-07-23 起）─────────────────────────────────────────────
+    # 施壓機與被測系統同機時，JMeter 自身 CPU 會吃到 34~40%，同時推高 P99、壓低吞吐，
+    # 而且發不出超過 ~1,330 req/s（見 T-090-capacity-ladder-5000rps-report-20260722.md §4.4）。
+    # 把本腳本放到另一台機器上跑、-SutHost 指向被測主機，就能拿到不受施壓機污染的數字。
+    # 這一個參數會同時決定：JMeter 打哪、actuator 快照抓哪、階間排空 poll 哪、token 去哪重發。
+    [string]$SutHost = "localhost",
+    [int]$SutPort = 8080,          # gateway
+    [int]$MemberPort = 8081,       # refresh-player-tokens.mjs 直打 member（繞過 gateway 的 auth 限流）
     [int[]]$Steps = @(25, 50, 100, 150, 300, 600, 1000),
     # ── 高 RPS 模式（2026-07-22 新增）─────────────────────────────────────────
     # $Steps 的語意是「併發數＝目標速率」（歷史耦合：target_rps == threads）。要壓到
@@ -66,7 +74,8 @@ New-Item -ItemType Directory -Path $ladderDir -Force | Out-Null
 . (Join-Path $scriptDir "wait-for-quiescence.ps1")   # P4：階間排空等待
 . (Join-Path $scriptDir "sample-host-java-cpu.ps1")  # P3：量施壓機 JMeter 自身 CPU
 Write-Host "[ladder] 擷取環境快照（P0：git SHA / 各服務 HikariCP 上限 / docker stats）..."
-$environment = Get-CapacityEnvironmentSnapshot -RepoRoot $repoRoot
+Write-Host "[ladder] 被測系統：http://${SutHost}:$SutPort（gateway）"
+$environment = Get-CapacityEnvironmentSnapshot -RepoRoot $repoRoot -SutHost $SutHost
 
 $ladderStartMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 $rows = @()
@@ -106,7 +115,12 @@ foreach ($step in $plan) {
     # JWT 效期 15 分鐘：每 N 階重發一次，避免中後段整批 401 把數據弄髒
     if ((($stepIndex - 1) % $RefreshTokensEverySteps) -eq 0) {
         Write-Host "[ladder] 重發 player token（第 $stepIndex 階前）"
+        $env:MEMBER_URL = "http://${SutHost}:$MemberPort"
         & node (Join-Path $repoRoot "tests\performance\refresh-player-tokens.mjs") | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            # token 沒換成功就往下跑，中後段會整批 401、整輪數據作廢——寧可現在就停。
+            throw "[ladder] refresh-player-tokens.mjs 失敗（exit $LASTEXITCODE），中止階梯。MEMBER_URL=$env:MEMBER_URL"
+        }
     }
 
     Write-Host ("[ladder] === 第 {0}/{1} 階：目標 offered {2} req/s（target_rps={3} iter/s、threads={4}）===" -f `
@@ -120,7 +134,8 @@ foreach ($step in $plan) {
 
     $cpuSampler = Start-HostJavaCpuSampler   # P3：step 進行中量 host java（JMeter）CPU
     & powershell -NoProfile -ExecutionPolicy Bypass -File $runnerPath `
-        -JMeter $JMeter -Threads $threads -DurationSeconds $DurationSeconds `
+        -JMeter $JMeter -HostName $SutHost -Port $SutPort `
+        -Threads $threads -DurationSeconds $DurationSeconds `
         -RampUpSeconds $RampUpSeconds -DeclaredCapacity $DeclaredCapacity `
         -Bet $Bet -PacingMs $PacingMs -TargetRps $targetRps @extraArgs 2>&1 | Out-Null
     $exitCode = $LASTEXITCODE
@@ -134,7 +149,18 @@ foreach ($step in $plan) {
         Sort-Object CreationTime -Descending | Select-Object -First 1
 
     # 直接讀 JTL 重算，不解析 markdown：markdown 是給人看的，格式一改就爆
-    $stats = & node (Join-Path $scriptDir "summarize-jtl.mjs") (Join-Path $runDir.FullName "results.jtl") $WarmupSeconds | ConvertFrom-Json
+    $statsJson = & node (Join-Path $scriptDir "summarize-jtl.mjs") (Join-Path $runDir.FullName "results.jtl") $WarmupSeconds
+    $summarizeExit = $LASTEXITCODE
+    $stats = if ($statsJson) { $statsJson | ConvertFrom-Json } else { $null }
+
+    # 2026-07-22：summarize 崩掉時（曾因 Math.min(...arr) 對數十萬樣本展開而 RangeError），
+    # 舊寫法會把整列統計靜默寫成空白、階梯照跑不誤——報告裡就多出一列看不出哪裡錯的空白。
+    # 統計算不出來＝那一階沒有資料，必須大聲失敗，不能混進結果表。
+    if ($summarizeExit -ne 0 -or $null -eq $stats -or $null -eq $stats.samples) {
+        throw ("[ladder] 第 {0} 階（目標 offered {1} req/s）統計計算失敗（summarize-jtl.mjs exit={2}）。" +
+            "原始資料仍在 {3}，修正後可單獨重算；此處中止以免空白列混進結果表。") -f `
+            $stepIndex, $step.offeredRpsTarget, $summarizeExit, $runDir.FullName
+    }
 
     $row = [ordered]@{
         step = $stepIndex
@@ -170,7 +196,7 @@ foreach ($step in $plan) {
 
     # P4：不再死等固定秒數，改 poll 到 backlog 排空（outbox PENDING==0 且 consumer lag==0）才進下一階
     if ($stepIndex -lt $plan.Count) {
-        Wait-ForQuiescence -FallbackCooldownSeconds $CooldownSeconds -MaxWaitSeconds $MaxQuiesceSeconds
+        Wait-ForQuiescence -SutHost $SutHost -FallbackCooldownSeconds $CooldownSeconds -MaxWaitSeconds $MaxQuiesceSeconds
     }
 }
 
@@ -190,12 +216,17 @@ $summary = [ordered]@{
     # 保留只為記錄；真正的目標速率 = target_rps = 該階 threads（spins/sec）。open-model 下慢請求
     # 會真的堆積，P99 不再被 coordinated omission 系統性低估。
     loadModel = if ($decoupled) {
-        "open-model (PreciseThroughputTimer); target rate DECOUPLED from thread pool: offeredRpsTarget = HTTP req/s, target_rps = ceil(offered / $SamplersPerIteration) iterations/sec, fixed threads = $FixedThreads"
+        $threadNote = if ($ThreadsPerStep.Count -gt 0) { "threads per step = $($ThreadsPerStep -join '/')" } else { "fixed threads = $FixedThreads" }
+        "open-model (PreciseThroughputTimer); target rate DECOUPLED from thread pool: offeredRpsTarget = HTTP req/s, target_rps = ceil(offered / $SamplersPerIteration) iterations/sec, $threadNote"
     } else {
         "open-model (PreciseThroughputTimer, target_rps = threads spins/sec)"
     }
     samplersPerIteration = $SamplersPerIteration
     fixedThreads = $(if ($decoupled) { $FixedThreads } else { $null })
+    sutHost = $SutHost
+    sutPort = $SutPort
+    # 施壓機是否與 SUT 同機——決定這一輪的數字能不能對外引用（P3）
+    loadGeneratorColocated = ($SutHost -in @('localhost', '127.0.0.1', '::1'))
     environment = $environment
     steps = $rows
 }
@@ -232,6 +263,12 @@ $md += "## 環境快照（P0：確保可重現）"
 $md += ""
 $md += "- git：$($environment.gitBranch) @ $($environment.gitSha)"
 $md += "- 擷取時間(UTC)：$($environment.capturedAtUtc)"
+$md += "- 被測系統：``http://${SutHost}:$SutPort``；施壓機與 SUT " + $(if ($summary.loadGeneratorColocated) { "**同機**（P3 未隔離，絕對數字為悲觀下界、不可對外引用）" } else { "**分機**（P3 已隔離）" })
+if ($environment.staleImageWarnings -and $environment.staleImageWarnings.Count -gt 0) {
+    $md += ""
+    $md += "> ⚠️ **image 版本可疑**（容器可能不是這一版程式碼）："
+    foreach ($warning in $environment.staleImageWarnings) { $md += ">   - $warning" }
+}
 $md += ""
 $md += "| 服務 | port | 連線池上限(總) | 池名 |"
 $md += "|---|---:|---:|---|"
