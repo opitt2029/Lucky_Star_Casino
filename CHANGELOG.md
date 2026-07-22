@@ -1,3 +1,16 @@
+## [docs] — 2026-07-22 — T-090 分層歸因：膝點延遲不在 wallet DB/outbox，在 game→wallet 未調校的 RestClient
+
+> 承 5000rps 報告 §7.B1 的開放問題（「pending≈0 且 CPU 未滿 → 單筆交易延遲 → 該不該做 B 案」）。
+> 另跑一輪階梯（`ladder-20260722-150429`）並對膝點（100/150 併發）做逐服務 P99 分層歸因，回答了它。
+
+### Changed
+- `docs/performance/T-090-capacity-ladder-5000rps-report-20260722.md`：§7.B 新增「B1-續」分層歸因小節。
+  **發現**：膝點 P99 幾乎全在 game-service spin（846→1399ms），wallet 伺服器端才 124–271ms、debit/credit 平均僅 ~30ms（含同步寫 `wallet_outbox`）→ **否證「outbox 同步寫入／Postgres WAL 天花板」是膝點主因**。game 自身 DB 池未滿（active 23/40、pending 0）、風控走 Redis 快取、Kafka 非同步發送皆非瓶頸。根因指向 **`WalletClientConfig` 的 `RestClient` 未設連線池／逾時**（退回 JDK `HttpClient` 預設），每 spin 對 wallet 的 2 次序列呼叫在高併發下序列化。
+  **修正下一步方向**：先調 game→wallet `RestClient` 連線池（低風險純設定，與 §7.B4 對 gateway HttpClient 的建議同型），而非先動高風險 B 案；定案前補一份 load 中的 game thread dump 實錘。
+  **如何驗證**：Prometheus `histogram_quantile` 逐服務／逐 uri P99 + `hikaricp_connections_*` + `system_cpu_usage`（皆取膝點兩階窗）；程式碼路徑核對 `SlotService.settleInternal` → `WalletClient`／`WalletClientConfig`／`GameResultEventPublisher`／`RiskControlService`。純文件、不動程式碼。
+
+---
+
 ## [perf] — 2026-07-22 — T-090 加壓到 5,000 req/s 容量階梯：連線池 40/50 驗證 +84% 吞吐，但 5,000 打不到（施壓機先飽和）
 
 > 依 #246（熱路徑池統一 40）落地後的重測。目標是把「上升 → 觸頂 → 卸載 → 施壓機撐不住」整條曲線量完，

@@ -310,6 +310,22 @@ percentile 只取穩態窗（已切掉每階前 30 秒）。
   併成單次 wallet 往返）才值得做**。B 案是架構級金流改動（牽動 rank 計分／稽核／補償／冪等，
   需 ADR + Testcontainers），**在數據指向它之前不該動**。
 
+**B1-續（2026-07-22 下午分層歸因，run `ladder-20260722-150429`）：三指標量完了，落在「pending≈0 且 CPU 未滿」這格，但延遲不在 wallet DB，在 game→wallet 的 HTTP client。**
+上面 B1 的三指標本輪實測：營運區間（≤150 併發）`hikaricp.connections.pending` **game/wallet/member 全 0**、CPU 每階平均 **65–68%**（尖峰 ~80%，未飽和）。照 B1 的判準即落入第三格「單筆交易延遲」。但**再往下做分層歸因，發現延遲不在原本猜的 wallet DB/outbox**：
+
+| 層（膝點 100→150 併發，Prometheus histogram_quantile P99） | 100 | 150 |
+|---|---:|---:|
+| gateway | 883ms | 1424ms |
+| **game spin** | **846ms** | **1399ms** ← 延遲主體 |
+| wallet 伺服器端 | 124ms | 271ms |
+| wallet debit / credit 平均耗時 | 24 / 29ms | 30 / 35ms |
+
+- **wallet 伺服器端很快**（debit/credit 含同步寫 `wallet_outbox` 才 ~30ms、P99 才 124–271ms）→ **否證「outbox 同步寫入成本」與「Postgres WAL 天花板」是膝點主因**。
+- game 自己的 DB 池 @150：`active 23/40、pending 0`（沒滿）；風控已 Redis 快取化（sub-ms）；`game.result` 走 `kafkaTemplate.send()` **非同步**（無 `.get()`）→ game 這些本地資源都不是瓶頸。
+- ∴ **~1.3s 花在 game 每個 spin 對 wallet 的 2 次序列 HTTP 呼叫上**，而 `WalletClientConfig` 的 `RestClient` **完全沒設連線池／逾時**（jar 未 bundle Apache HttpClient5，退回 JDK `HttpClient` 預設）。wallet 30ms 很快、但 game 執行緒卡在 outbound 連線處理（CPU 沒吃、只是 park 等 I/O）；吞吐鎖死 ~190–220/s 反推 game→wallet 有效並發僅個位數，吻合「未調校 client」特徵。
+
+**修正後的下一步建議**：**先調 game→wallet 的 `RestClient` 連線池（低風險純設定，與 B4 對 gateway HttpClient 的建議同型）**，而非先動高風險的 B 案——B 案的實益其實是「把 2 次往返砍成 1 次」，不是省 DB。定案前補一份 **load 中的 game thread dump** 實錘（看 150 條執行緒是否 park 在 `jdk.internal.net.http`／`RestClient`）。
+
 **B2 用本輪曲線重訂 gateway 的卸載門檻。**
 現在 250 req/s 就卸載 25%，而 accepted 吞吐要到 189.5 req/s（250 階）才觸頂——
 **門檻略低於實際容量，等於提早把還吃得下的請求丟掉**。建議把閾值對齊「accepted 吞吐開始下降的點」
