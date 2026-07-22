@@ -18,6 +18,24 @@
 param(
     [Parameter(Mandatory = $true)][string]$JMeter,
     [int[]]$Steps = @(25, 50, 100, 150, 300, 600, 1000),
+    # ── 高 RPS 模式（2026-07-22 新增）─────────────────────────────────────────
+    # $Steps 的語意是「併發數＝目標速率」（歷史耦合：target_rps == threads）。要壓到
+    # 5,000 req/s 時這個耦合會逼施壓機開 5,000 條執行緒，JMeter 自己先變成瓶頸（P3）。
+    # 給 -OfferedRpsSteps 就改走解耦模式：每階的「目標 offered 速率」由此陣列決定，
+    # 執行緒數固定為 -FixedThreads。
+    # 單位＝**gateway 收到的 HTTP req/s（spins/s）**；因每個 iteration 送 2 支 spin
+    # sampler，實際傳給 JMeter 的 target_rps（iterations/s）= ceil(offered / 2)。
+    [int[]]$OfferedRpsSteps = @(),
+    [int]$FixedThreads = 1000,
+    # 每階各自的執行緒數（與 -OfferedRpsSteps 等長）。留空＝每階都用 $FixedThreads。
+    # 為什麼需要：慢請求會把執行緒卡住（jmx response_timeout_ms=5000），能發出的速率上限
+    # ≈ threads / 平均週期時間。高階若執行緒不足，量到的是「施壓機發不出來」而非 SUT 容量。
+    [int[]]$ThreadsPerStep = @(),
+    [int]$SamplersPerIteration = 2,
+    # 超過這個目標 offered 速率的階，跳過 JMeter 內建 HTML dashboard：樣本數上看數十萬時，
+    # 報表產生器會變成整輪最慢也最吃記憶體的一段（本機可用 RAM 僅個位數 GB）。所有數字都由
+    # 原始 .jtl 重算，HTML 只是選配工件。設 0 = 每階都產。
+    [int]$HtmlReportMaxOfferedRps = 1000,
     [int]$DurationSeconds = 180,          # P2：每階 ≥180s，含 JIT/池爬升雜訊後仍留足夠穩態樣本算 percentile
     [int]$WarmupSeconds = 30,             # P2：算 percentile 前丟掉每階前 N 秒暖機窗（傳給 summarize-jtl.mjs）
     [int]$RampUpSeconds = 1,              # open-model 下維持短 ramp：讓執行緒盡快就緒，避免 PreciseThroughputTimer 早期缺工被迫降速
@@ -54,8 +72,36 @@ $ladderStartMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 $rows = @()
 $stepIndex = 0
 
-foreach ($threads in $Steps) {
+# 先把「要跑哪幾階」攤平成計畫表，兩種模式（併發階梯 / 解耦高 RPS 階梯）走同一個迴圈。
+$plan = @()
+if ($OfferedRpsSteps.Count -gt 0) {
+    $decoupled = $true
+    if ($ThreadsPerStep.Count -gt 0 -and $ThreadsPerStep.Count -ne $OfferedRpsSteps.Count) {
+        throw "-ThreadsPerStep 有 $($ThreadsPerStep.Count) 項，與 -OfferedRpsSteps 的 $($OfferedRpsSteps.Count) 項不等長。"
+    }
+    for ($i = 0; $i -lt $OfferedRpsSteps.Count; $i++) {
+        $rps = $OfferedRpsSteps[$i]
+        $plan += [pscustomobject]@{
+            threads          = $(if ($ThreadsPerStep.Count -gt 0) { $ThreadsPerStep[$i] } else { $FixedThreads })
+            targetRps        = [math]::Ceiling($rps / $SamplersPerIteration)   # iterations/s
+            offeredRpsTarget = $rps                                            # spins/s（HTTP req/s）
+        }
+    }
+} else {
+    $decoupled = $false
+    foreach ($t in $Steps) {
+        $plan += [pscustomobject]@{
+            threads          = $t
+            targetRps        = $t
+            offeredRpsTarget = $t * $SamplersPerIteration
+        }
+    }
+}
+
+foreach ($step in $plan) {
     $stepIndex++
+    $threads = $step.threads
+    $targetRps = $step.targetRps
 
     # JWT 效期 15 分鐘：每 N 階重發一次，避免中後段整批 401 把數據弄髒
     if ((($stepIndex - 1) % $RefreshTokensEverySteps) -eq 0) {
@@ -63,14 +109,20 @@ foreach ($threads in $Steps) {
         & node (Join-Path $repoRoot "tests\performance\refresh-player-tokens.mjs") | Out-Null
     }
 
-    Write-Host "[ladder] === 第 $stepIndex/$($Steps.Count) 階：$threads 併發 ==="
+    Write-Host ("[ladder] === 第 {0}/{1} 階：目標 offered {2} req/s（target_rps={3} iter/s、threads={4}）===" -f `
+        $stepIndex, $plan.Count, $step.offeredRpsTarget, $targetRps, $threads)
     $startMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+
+    $extraArgs = @()
+    if ($HtmlReportMaxOfferedRps -gt 0 -and $step.offeredRpsTarget -gt $HtmlReportMaxOfferedRps) {
+        $extraArgs += '-NoHtmlReport'
+    }
 
     $cpuSampler = Start-HostJavaCpuSampler   # P3：step 進行中量 host java（JMeter）CPU
     & powershell -NoProfile -ExecutionPolicy Bypass -File $runnerPath `
         -JMeter $JMeter -Threads $threads -DurationSeconds $DurationSeconds `
         -RampUpSeconds $RampUpSeconds -DeclaredCapacity $DeclaredCapacity `
-        -Bet $Bet -PacingMs $PacingMs 2>&1 | Out-Null
+        -Bet $Bet -PacingMs $PacingMs -TargetRps $targetRps @extraArgs 2>&1 | Out-Null
     $exitCode = $LASTEXITCODE
     $jmeterCpuPct = Stop-HostJavaCpuSampler -Job $cpuSampler   # P3：>25% 代表施壓機在搶 SUT 資源
 
@@ -87,6 +139,8 @@ foreach ($threads in $Steps) {
     $row = [ordered]@{
         step = $stepIndex
         threads = $threads
+        targetRpsIterationsPerSec = $targetRps          # 傳給 PreciseThroughputTimer 的值
+        offeredRpsTarget = $step.offeredRpsTarget       # 目標 HTTP req/s（= targetRps × 每 iteration sampler 數）
         runId = $runDir.Name
         startMs = $startMs
         endMs = $endMs
@@ -108,13 +162,14 @@ foreach ($threads in $Steps) {
         jmeterHostJavaCpuPct = $jmeterCpuPct        # P3：施壓機自身 CPU%（近似 JMeter；>25% 該階數字打折）
     }
     $rows += [pscustomobject]$row
-    Write-Host ("[ladder] {0} 併發 → 吞吐 {1}/s、P99 {2} ms、卸載 {3}%、5xx {4}、帳務違規 {5}、JMeter CPU {6}%" -f `
-        $threads, $stats.acceptedThroughputPerSec, $stats.p99, [math]::Round($stats.shedRatio * 100, 1), `
+    Write-Host ("[ladder] 目標 {0} req/s → 實際 offered {1}/s、accepted 吞吐 {2}/s、P99 {3} ms、卸載 {4}%、5xx {5}、帳務違規 {6}、JMeter CPU {7}%" -f `
+        $step.offeredRpsTarget, $stats.throughputPerSec, $stats.acceptedThroughputPerSec, $stats.p99, `
+        [math]::Round($stats.shedRatio * 100, 1), `
         $stats.errors5xx, ($stats.idempotencyFailures + $stats.overdrawFailures), `
         ($(if ($null -eq $jmeterCpuPct) { 'n/a' } else { $jmeterCpuPct })))
 
     # P4：不再死等固定秒數，改 poll 到 backlog 排空（outbox PENDING==0 且 consumer lag==0）才進下一階
-    if ($stepIndex -lt $Steps.Count) {
+    if ($stepIndex -lt $plan.Count) {
         Wait-ForQuiescence -FallbackCooldownSeconds $CooldownSeconds -MaxWaitSeconds $MaxQuiesceSeconds
     }
 }
@@ -134,7 +189,13 @@ $summary = [ordered]@{
     # （PreciseThroughputTimer，依牆鐘排程發送、不管前一發回沒回）。故 pacingMs 已不再控制節奏，
     # 保留只為記錄；真正的目標速率 = target_rps = 該階 threads（spins/sec）。open-model 下慢請求
     # 會真的堆積，P99 不再被 coordinated omission 系統性低估。
-    loadModel = "open-model (PreciseThroughputTimer, target_rps = threads spins/sec)"
+    loadModel = if ($decoupled) {
+        "open-model (PreciseThroughputTimer); target rate DECOUPLED from thread pool: offeredRpsTarget = HTTP req/s, target_rps = ceil(offered / $SamplersPerIteration) iterations/sec, fixed threads = $FixedThreads"
+    } else {
+        "open-model (PreciseThroughputTimer, target_rps = threads spins/sec)"
+    }
+    samplersPerIteration = $SamplersPerIteration
+    fixedThreads = $(if ($decoupled) { $FixedThreads } else { $null })
     environment = $environment
     steps = $rows
 }
@@ -144,15 +205,17 @@ $summary | ConvertTo-Json -Depth 6 | Out-File (Join-Path $ladderDir "ladder-summ
 $md = @()
 $md += "# 容量階梯結果（$ladderId）"
 $md += ""
-$md += "> 施壓模型：**open-model**（PreciseThroughputTimer，target_rps = 該階 threads spins/sec）。慢請求會真的堆積，P99 為誠實值（非 closed-loop 的樂觀值）。"
+$md += "> 施壓模型：**open-model**（PreciseThroughputTimer）。$($summary.loadModel)"
+$md += "> 「目標offered」= 想打進 gateway 的 HTTP req/s；「實際offered」= JTL 實測總樣本速率（施壓機跟不上排程時會低於目標，此時該階是**施壓機**受限、不是 SUT 容量）。"
 $md += "> 統計口徑：percentile 只用**穩態窗**（已切掉每階前 $WarmupSeconds 秒暖機；每階 $DurationSeconds 秒，P2）。"
 $md += "> 施壓機隔離：各階 ``jmeterHostJavaCpuPct``（見 ladder-summary.json）為 host java（近似 JMeter）平均 CPU%；>25% 代表施壓機在搶 SUT 資源、該階數字打折（P3）。docker stats 快照見下方環境段。"
 $md += ""
-$md += "| 併發 | 樣本 | 被接受 | 吞吐(req/s) | P50(ms) | P95(ms) | P99(ms) | 卸載429 | 卸載率 | 5xx | 冪等違規 | 超扣違規 |"
-$md += "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
+$md += "| 目標offered(req/s) | 併發 | 樣本 | 實際offered(req/s) | 被接受 | accepted吞吐(req/s) | P50(ms) | P95(ms) | P99(ms) | 卸載429 | 卸載率 | 5xx | 冪等違規 | 超扣違規 |"
+$md += "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
 foreach ($r in $rows) {
-    $md += ("| {0} | {1} | {2} | {3} | {4} | {5} | {6} | {7} | {8}% | {9} | {10} | {11} |" -f `
-        $r.threads, $r.samples, $r.accepted, $r.acceptedThroughputPerSec, $r.p50, $r.p95, $r.p99, `
+    $md += ("| {0} | {1} | {2} | {3} | {4} | {5} | {6} | {7} | {8} | {9} | {10}% | {11} | {12} | {13} |" -f `
+        $r.offeredRpsTarget, $r.threads, $r.samples, $r.throughputPerSec, $r.accepted, $r.acceptedThroughputPerSec, `
+        $r.p50, $r.p95, $r.p99, `
         $r.shed429, [math]::Round($r.shedRatio * 100, 1), $r.errors5xx, $r.idempotencyFailures, $r.overdrawFailures)
 }
 
