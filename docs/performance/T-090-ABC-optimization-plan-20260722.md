@@ -44,12 +44,14 @@
 ### A — 連線池（4 個檔）
 | 檔案 | 改動 | 依據 |
 |---|---|---|
-| `backend/game-service/.../application.yml` | pool `10 → 24`、min-idle `2 → 5` | 排隊尖峰 49 |
-| `backend/wallet-service/.../application.yml` | Postgres 寫庫 pool `15 → 32`、min-idle `3 → 6` | 帳本寫入熱路徑、排隊 18 |
-| `backend/member-service/.../application.yml` | pool `10 → 16`、min-idle `2 → 4`（走 MySQL） | 排隊 15 |
+| `backend/game-service/.../application.yml` | pool `10 → 24 → 40`、min-idle `→ 10` | 排隊尖峰 49 |
+| `backend/wallet-service/.../application.yml` | Postgres 寫庫 pool `15 → 32 → 40`、min-idle `→ 10` | 帳本寫入熱路徑、排隊 18 |
+| `backend/member-service/.../application.yml` | pool `10 → 16 → 40`、min-idle `→ 10`（走 MySQL） | 排隊 15 |
 | `docker-compose.yml` | postgres 加 `command: max_connections=200` | 各服務池加大後仍需 headroom |
 
-**連線預算檢查**（避免調大反而撞 Postgres 上限）：Postgres 消費者 = game 24 + wallet 32 + rank 10 + admin 5 = **71 < 200**。安全。
+> **2026-07-22 二次上調（24/32 → 40）**：首輪為避免筆電 context-switch thrash 保守停在 24/32，計畫「重測後再微調」。當日壓測顯示 **CPU 尖峰僅 ~40%（硬體有餘裕、非 thrash 風險區）**，故將熱路徑三服務（game/wallet/member）統一上調到 40，直接吃掉排隊 49，不再等一輪重測。rank/admin 不在請求熱路徑（rank 非同步消費、admin 無壓測流量）故不動。
+
+**連線預算檢查**（避免調大反而撞 Postgres 上限）：Postgres 消費者 = game 40 + wallet 40 + rank 10 + admin 5 = **95 < 200**。安全。
 `minimum-idle` 一起提高，是為了每一階起跑時**連線池已預熱**，不會冷池慢慢爬升拖慢前幾秒（讓量測更乾淨）。
 
 ### C — 移除壓測裡不真實的餘額輪詢（1 個檔）
@@ -96,7 +98,7 @@ docker stats --no-stream                  # 同機還有誰在吃資源
 
 | | 預期 | 風險 / 注意 |
 |---|---|---|
-| A | 排隊下降、吞吐上升、P99 下降 | 連線數並非越大越好：Postgres 在筆電只有少數有效核心，開太多會 context-switch thrash。故這輪只加到 24/32（非報告上限 50），**重測後再依數據微調**。 |
+| A | 排隊下降、吞吐上升、P99 下降 | 連線數並非越大越好：Postgres 在筆電核心有限，開太多會 context-switch thrash。首輪保守 24/32，**當日壓測確認 CPU 尖峰僅 ~40%（有餘裕）後**再上調到 40（仍低於報告上限 50，留安全邊際）。重測若 CPU 逼近飽和再往回收。 |
 | C | 壓測讀負載下降、數字更真實 | 每 iteration 從 3 請求變 2 請求，吞吐口徑會變（更貼近真實）；報告要註明這個口徑差異，別跟舊報告直接比絕對值。 |
 | B | （未做） | 架構級金流，需 ADR + Testcontainers，別在沒重測數據前貿然做。 |
 
