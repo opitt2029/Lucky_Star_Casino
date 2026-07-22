@@ -105,7 +105,7 @@
 ## 4. 驗證指令（提交前自查）
 
 ```bash
-# 後端：跑七個服務的測試（全用 H2；game/rank/notification 另用 @EmbeddedKafka，皆免外部基礎設施）
+# 後端：跑七個服務的測試（全用 H2，免外部基礎設施；Kafka 無內嵌 broker——game 無 @KafkaListener（producer 延遲連線），rank/notification 測試設 spring.kafka.listener.auto-startup=false，事件邏輯測試 mock KafkaTemplate）
 mvn -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/admin-service,backend/game-service,backend/rank-service,backend/notification-service test
 
 # 基礎設施腳本測試

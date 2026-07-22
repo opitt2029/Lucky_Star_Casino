@@ -1692,6 +1692,18 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - npm.cmd run lint frontend passed.
 - npm.cmd run build frontend passed.
 
+## [docs] -- 2026-07-14 -- 修正 AGENTS.md 與 ci.yml 的 @EmbeddedKafka 漂移：程式碼從未用內嵌 broker
+
+### Changed
+- `AGENTS.md` §4 驗證指令註解、`.github/workflows/ci.yml` backend-test job 註解：移除「game/rank/notification 另用 `@EmbeddedKafka` 起內嵌 broker」的說法，改為實際的 Kafka 隔離手法——game 無 `@KafkaListener`（`KafkaTemplate` producer 延遲連線，contextLoads 不碰網路）、rank/notification 測試 `application.yml` 設 `spring.kafka.listener.auto-startup: false`、事件邏輯測試以 Mockito mock `KafkaTemplate`（如 `GameResultEventPublisherTest`）。
+
+### 為什麼
+- `grep -r EmbeddedKafka backend/` 零命中——整個 backend 沒有任何 `@EmbeddedKafka`，此說法自 2026 年中寫入後即與程式碼不符（依 AGENTS.md 自身「以程式碼為準並順手更正文件」原則修正）。留著會誤導：新增服務的人可能真的去引入 EmbeddedKafka（慢、吃記憶體、偶發 flaky），而不是沿用現行三個更輕的隔離技巧。
+- 註：`docs/report/PROJECT_ANALYSIS.md` 等日期快照報告中同一說法未改（屬歷史快照，不回溯修訂）。
+
+### 如何驗證
+- 純文件/註解變更，無程式行為影響。佐證可重現：`grep -r "EmbeddedKafka" backend/` 無結果；`backend/rank-service/src/test/resources/application.yml` 與 `backend/notification-service/src/test/resources/application.yml` 均含 `listener.auto-startup: false`；game-service 測試設定檔註解自述「無 @KafkaListener、不於啟動時連線」。
+
 ## [docs] -- 2026-07-14 -- ADR-004 補修訂紀錄：追認砲台傷害 14/22/32 為定案值，收掉最後一筆已知 ADR 漂移
 
 ### Changed
