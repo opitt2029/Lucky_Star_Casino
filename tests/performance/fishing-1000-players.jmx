@@ -182,9 +182,15 @@ vars.put('fishInstanceId', "fi-${ctx.getThreadNum()}-${bucket}")
             <stringProp name="scriptLanguage">groovy</stringProp>
           </JSR223PreProcessor>
           <hashTree/>
-          <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="One Shot Per Player Per Second" enabled="true">
-            <stringProp name="ConstantTimer.delay">${__P(pacing_ms,1000)}</stringProp>
-          </ConstantTimer>
+          <PreciseThroughputTimer guiclass="TestBeanGUI" testclass="PreciseThroughputTimer" testname="Open-Model Pacing (P1: target_rps shots/sec, schedule-based)" enabled="true">
+            <intProp name="batchSize">1</intProp>
+            <longProp name="batchThreadDelay">0</longProp>
+            <stringProp name="duration">${__P(duration_seconds,60)}</stringProp>
+            <boolProp name="perThread">false</boolProp>
+            <longProp name="randomSeed">0</longProp>
+            <stringProp name="throughput">${__P(target_rps,1000)}</stringProp>
+            <intProp name="throughputPeriod">1</intProp>
+          </PreciseThroughputTimer>
           <hashTree/>
           <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Shot Must Return 2xx" enabled="true">
             <collectionProp name="Asserion.test_strings">

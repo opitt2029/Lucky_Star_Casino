@@ -40,6 +40,12 @@ $ladderId = Get-Date -Format "yyyyMMdd-HHmmss"
 $ladderDir = Join-Path $resultsRoot "ladder-$ladderId"
 New-Item -ItemType Directory -Path $ladderDir -Force | Out-Null
 
+# T-090 P0：階梯開跑前打一次環境快照（git SHA / 各服務 HikariCP 上限 / docker stats），
+# 寫進 ladder-summary.json。#240 vs #242 同條件吞吐差 4 倍卻無法重現，就是因為沒記這些。
+. (Join-Path $scriptDir "capture-environment.ps1")
+Write-Host "[ladder] 擷取環境快照（P0：git SHA / 各服務 HikariCP 上限 / docker stats）..."
+$environment = Get-CapacityEnvironmentSnapshot -RepoRoot $repoRoot
+
 $ladderStartMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 $rows = @()
 $stepIndex = 0
@@ -112,6 +118,12 @@ $summary = [ordered]@{
     declaredCapacity = $DeclaredCapacity
     bet = $Bet
     pacingMs = $PacingMs
+    # T-090 P1：施壓模型已從 closed-loop（ConstantTimer，等回應完再等固定 1 秒）改為 open-model
+    # （PreciseThroughputTimer，依牆鐘排程發送、不管前一發回沒回）。故 pacingMs 已不再控制節奏，
+    # 保留只為記錄；真正的目標速率 = target_rps = 該階 threads（spins/sec）。open-model 下慢請求
+    # 會真的堆積，P99 不再被 coordinated omission 系統性低估。
+    loadModel = "open-model (PreciseThroughputTimer, target_rps = threads spins/sec)"
+    environment = $environment
     steps = $rows
 }
 $summary | ConvertTo-Json -Depth 6 | Out-File (Join-Path $ladderDir "ladder-summary.json") -Encoding utf8
@@ -120,12 +132,37 @@ $summary | ConvertTo-Json -Depth 6 | Out-File (Join-Path $ladderDir "ladder-summ
 $md = @()
 $md += "# 容量階梯結果（$ladderId）"
 $md += ""
+$md += "> 施壓模型：**open-model**（PreciseThroughputTimer，target_rps = 該階 threads spins/sec）。慢請求會真的堆積，P99 為誠實值（非 closed-loop 的樂觀值）。"
+$md += ""
 $md += "| 併發 | 樣本 | 被接受 | 吞吐(req/s) | P50(ms) | P95(ms) | P99(ms) | 卸載429 | 卸載率 | 5xx | 冪等違規 | 超扣違規 |"
 $md += "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
 foreach ($r in $rows) {
     $md += ("| {0} | {1} | {2} | {3} | {4} | {5} | {6} | {7} | {8}% | {9} | {10} | {11} |" -f `
         $r.threads, $r.samples, $r.accepted, $r.acceptedThroughputPerSec, $r.p50, $r.p95, $r.p99, `
         $r.shed429, [math]::Round($r.shedRatio * 100, 1), $r.errors5xx, $r.idempotencyFailures, $r.overdrawFailures)
+}
+
+# T-090 P0：把環境快照也印進 markdown，報告一眼就能看到「這一輪是在什麼環境下跑的」
+$md += ""
+$md += "## 環境快照（P0：確保可重現）"
+$md += ""
+$md += "- git：$($environment.gitBranch) @ $($environment.gitSha)"
+$md += "- 擷取時間(UTC)：$($environment.capturedAtUtc)"
+$md += ""
+$md += "| 服務 | port | 連線池上限(總) | 池名 |"
+$md += "|---|---:|---:|---|"
+foreach ($svc in $environment.hikaricpConnectionsMax.Keys) {
+    $p = $environment.hikaricpConnectionsMax[$svc]
+    $poolNames = if ($p.poolNames) { ($p.poolNames -join ', ') } else { '-' }
+    $maxc = if ($null -ne $p.maxConnectionsTotal) { $p.maxConnectionsTotal } else { 'n/a（服務未起 / actuator 未開）' }
+    $md += ("| {0} | {1} | {2} | {3} |" -f $svc, $p.port, $maxc, $poolNames)
+}
+if ($environment.dockerStats) {
+    $md += ""
+    $md += "docker stats（同機資源競爭；JMeter/prac-* 容器偷 SUT 資源會讓數字失真）："
+    $md += '```'
+    $md += $environment.dockerStats
+    $md += '```'
 }
 $md -join "`n" | Out-File (Join-Path $ladderDir "ladder-summary.md") -Encoding utf8
 

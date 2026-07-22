@@ -1,3 +1,43 @@
+## [perf] — 2026-07-22 — T-090 壓測 harness 修正 P0/P1：環境快照可重現 + open-model 消除 P99 樂觀偏差
+
+> 依 `docs/performance/T-090-P0-P6.md`（審 #240/#242 壓測後列出的 6 項 harness 問題）落地最高 ROI 的兩項：
+> **P0**（記錄環境＝解 #240 vs #242 同條件吞吐差 4 倍卻不可重現）、**P1**（closed-loop → open-model，
+> 讓尾延遲不再被 coordinated omission 系統性低估）。P2~P6 本輪未做（見文件狀態表）。
+
+### Added
+- `tools/observability/capture-environment.ps1`：**P0** 環境快照 helper（`Get-CapacityEnvironmentSnapshot`）。
+  階梯開跑前打一次快照：git SHA/branch、各服務實際生效的 HikariCP `connections.max`（走 actuator，
+  wallet 雙資料源會列兩個池，ADR-001）、`docker stats` 同機資源競爭。抓不到的服務記 `null`+error 而非略過
+  （讓「當時沒量到」本身留在報告裡）。UTF-8 **with BOM**（雷區 27）。
+
+### Changed
+- **P0｜環境釘死並記錄**：`tools/observability/run-capacity-ladder.ps1`、`run-fishing-ladder.ps1` 兩支階梯
+  在開跑前 dot-source 上述 helper，把 `environment` 快照寫進 `ladder-summary.json`，並在 `ladder-summary.md`
+  補「環境快照」段（連線池上限表 + docker stats）。沒記環境＝不可重現＝數字不能引用。
+- **P1｜closed-loop → open-model**：`tests/performance/slot-1000-players.jmx`、`fishing-1000-players.jmx`
+  把每次下注/開火的 `ConstantTimer`（等回應完再等固定 1 秒＝coordinated omission，尾延遲被低估）換成
+  **`PreciseThroughputTimer`**（依牆鐘排程發送、不管前一發回沒回）。目標速率由新 `-Jtarget_rps` 屬性控制，
+  預設綁 `threads`（保留舊的名目施壓量：slot 每階 threads spins/sec、fishing threads shots/sec），
+  由 `run-slot-load-test.ps1`、`run-fishing-ladder.ps1` 傳入。兩支 `ladder-summary` 新增 `loadModel` 欄位與
+  markdown 註記，明示 P99 為誠實值。`-Jpacing_ms` 保留只為記錄/回滾，已不再控制節奏。
+
+**為什麼**：#240 與 #242 對「同 jmx、同參數、同機、同一天」的老虎機壓測給出矛盾數字（200/s vs 818/s、
+P50 差 13 倍），代表目前沒有一個容量數字可安全引用——根因是 harness 沒記「決定結果的環境」（P0）。
+且原 closed-loop + ConstantTimer 會讓伺服器慢時執行緒自動降速、慢請求不堆積，尾延遲與 offered load 被系統性
+低估（P1）。先修這兩項，其餘壓測結論才有可信的地基。
+
+**如何驗證**：本次僅動壓測腳本 / 觀測工具 / 文件，**未改任何 Java 產品碼**，不影響既有測試套件。
+已驗：① `capture-environment.ps1` 實跑通過——git SHA 正確、`docker stats` 正常、服務池上限如實抓到
+（並當場驗出 **live 事實**：跑著的容器仍是舊池 game=10/wallet=25，非 #243 的 24/32；同機還有 `prac-*`
+整套，`prac-kafka` 吃 22.43% CPU——正是 P0 要抓的環境漂移與資源競爭）。② 兩支 jmx `[xml]` well-formed、
+hashTree 標籤平衡（slot 5/5、fishing 6/6）、`ConstantTimer` 已 0 顆、`PreciseThroughputTimer` 已就位。
+③ 三支 ps1 PSParser 無語法錯、皆保留 BOM。
+**⚠️ 一項無法在本機驗證**：`PreciseThroughputTimer` 是 JMeter TestBean，本機無 JMeter 可載入確認反序列化；
+序列化格式按 JMeter 5.6.3 慣例手寫（表達式屬性存為 `stringProp`）。**首次實跑前務必用 JMeter GUI 開一次
+兩支 jmx，確認 Timer 正確載入（TestBean 若欄位不合會被靜默丟棄→退回無節奏爆發，數字會失真）。**
+
+---
+
 ## [perf] — 2026-07-22 — T-090 壓測後續優化 A/C：調大 HikariCP 連線池 + 移除壓測不真實的餘額輪詢
 
 > 依 PR #240/#242 容量階梯壓測發現（瓶頸＝連線池非 CPU：game 池 10 滿載排隊 49、CPU 僅 ~10%）。

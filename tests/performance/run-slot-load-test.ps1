@@ -49,6 +49,7 @@ New-Item -ItemType Directory -Path $resultDir | Out-Null
     "-Jport=$Port" `
     "-Jplayers_csv=$PlayersCsv" `
     "-Jthreads=$Threads" `
+    "-Jtarget_rps=$Threads" `
     "-Jduration_seconds=$DurationSeconds" `
     "-Jramp_up_seconds=$RampUpSeconds" `
     "-Jbet=$Bet" `
