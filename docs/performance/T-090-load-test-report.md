@@ -8,6 +8,46 @@
 
 > ⚠️ The P99 < 500 ms / 5xx = 0 gates were defined for a properly resourced multi-host deployment. On this single host, the dominant factor is that Spring Cloud Gateway's CircuitBreaker has no explicit `timelimiter` configured, so Resilience4j defaults to a **1-second** call timeout — well below the ~0.9–3.6 s latencies seen under concurrent load once risk-control and bet-audit logic were added to the spin path (2026-06-22/24). See "2026-07-08 完整重跑最終結果" for the full Prometheus-backed evidence chain.
 
+## 2026-07-22 open-model 首測（User 機器）——#244 harness 修正後第一次實跑
+
+> ⚠️ **這是 #244（P0~P6 harness 修正）合併後、換上 open-model（`PreciseThroughputTimer`，P1）的
+> 第一次實測**，且在**全新的 User 機器**（≠ weiyu/Alex），故絕對延遲**與歷輪 377/390 ms 完全不可比**。
+> 換 open-model 的意義正是：舊 closed-loop（`ConstantTimer`）會被後端回應時間自我節流、低估尾延遲；
+> open-model 以排程無條件送出 offered load，才是誠實的施壓。**本輪即為該修正首次揭露的真相。**
+
+環境快照：develop `938cd5c`（#244）、HikariCP postgres 寫池 **32**／MySQL 讀池 10（actuator 實測，已確認新 build）、
+Postgres migration 補到 V17（`wallet_outbox` 等）、7 服務 health 200、Prometheus targets 7/7、
+`prac-*` 偷資源容器已停。1,000 名已入金玩家（GM 發幣），正式輪前 `refresh-player-tokens` 臨發 token。
+
+| 輪 | run-id | 模式 | 樣本（accepted/shed） | Accepted P99 | 成功率 | 5xx | 帳務(冪等/超扣) | 判定 |
+|---|---|---|---|---:|---:|---:|---|---|
+| 暖機（棄置） | `20260722-134459` | — | — | — | — | — | — | 丟棄 |
+| **150 驗收** | `20260722-134638` | 驗收 | 18,210（5,582 / 12,628） | **1,427 ms** | 100% | 0 | 0 / 0 | ❌ **FAIL** |
+| **1,000 韌性** | `20260722-134938` | 韌性 | 52,736（3,393 / 49,343） | 3,583 ms | 100% | 1 | 0 / 0 | ✅ **PASS** |
+
+- **150 驗收輪 FAIL**：Accepted P99 1,427 ms（門檻 <500）＋ **429 卸載 69.3%**（宣告容量內不准卸載）兩道 gate 皆破。
+  穩態 accepted 吞吐 ≈ 93 spin/s，遠低於「150/s offered」。→ **在誠實 open-model 下，先前宣告的「150 併發」
+  不成立**。這與 #244 P1 的預期一致（closed-loop 低估尾延遲）。
+- **1,000 韌性輪 PASS**：卸載 93.6% 之下，穿透請求 **accepted 成功率 100%、帳務 0 違規**——超載時 gateway 以 429
+  快速卸載、不傷後端（優雅降級有效）。
+- **1 個 5xx（502 Bad Gateway，UTC 05:50:01，1/3393＝0.03%）**：經查為**傳輸層瞬斷**，非 game-service 應用錯誤——
+  game-service resilience4j circuit breaker `failed=0`、狀態 closed，gateway/game 該窗均無 ERROR log，且 T-091 對帳
+  全乾淨（該筆未半途落庫）。研判為 gateway(Netty)↔game-service keep-alive 連線在高併發下被中途關閉／連線池重用競態。
+  比例屬超載輪雜訊等級；若日後要壓，方向為調 gateway HttpClient 連線池（`maxIdleTime`／背景驅逐）。
+- **T-091 九項對帳**：8 項全 0；唯一非零 `wallet_balance_matches_transaction_sum=3` 經查為 player **1001/1002/1003**
+  （零交易種子錢包，§準備清單 §5 已知結構性誤報），**非本輪壓測新違規**。壓測玩家全部完美對平 → **實質 0 違規**。
+
+### ⚠️ 必須誠實標註的方法學限制
+1. **JMeter 與 SUT 同機（P3 未隔離）**：單機 12 核同時扛 JMeter（本輪 offered ~300–880 req/s）＋7 服務，JMeter 偷走的
+   CPU 會**同時推高 P99、壓低 accepted 吞吐**。上表絕對數字是**同機悲觀下界，非乾淨容量**。本輪未跑 `sample-host-java-cpu.ps1`，
+   無法量化 JMeter 這次偷了多少 CPU。要可對外引用的容量數字，須把 JMeter 移到獨立機器（或套 #244 §P3 cpuset 隔離）重測。
+2. **open-model 每 iteration 兩支 spin sampler**：`target_rps=150` 實際 offered ≈ 300 req/s（總樣本 18,210/60s≈303/s），
+   與舊 closed-loop「150 threads 自我節流」語意不同——這也是同一「150」在兩種方法學下水位落差的一部分。
+
+**結論**：管線／帳務健康、韌性與降級機制有效；但「150 併發」在誠實 open-model＋同機條件下**未通過驗收**，
+需在乾淨分機環境重測才能宣告可對外引用的容量。歷史 E3（closed-loop）377/390 ms 結論不受本節推翻，但
+**本節重新開啟了容量宣告的問題**：兩種方法學的數字不可混用。
+
 ## 2026-07-18 B2 對照重跑（Alex 機器）——debit 往返 4→2 落地驗證
 
 E3 結案後的選配收尾：B2（wallet debit 交易 DB 往返 4→2，條件 UPDATE RETURNING＋

@@ -1,3 +1,35 @@
+## [perf] — 2026-07-22 — T-090 open-model 首測（User 機器）：150 驗收 FAIL、1000 韌性 PASS、帳務 0 違規
+
+> #244 harness 修正後、換上 open-model（`PreciseThroughputTimer`）的**第一次實跑**。全新 User 機器（≠ weiyu/Alex），
+> 絕對延遲與歷輪 377/390 ms 不可比。詳見 `docs/performance/T-090-load-test-report.md`「2026-07-22 open-model 首測」節。
+
+### Added
+- `docs/performance/T-090-load-test-report.md`：新增「2026-07-22 open-model 首測（User 機器）」章節，
+  逐輪記錄（run-id `20260722-134638` 150 驗收 / `20260722-134938` 1000 韌性）＋方法學限制＋誠實結論。
+  **為什麼**：SOP §9 要求每輪結果誠實入報告；本輪是 open-model 首次揭露「150 併發」在誠實施壓下不成立。
+- 本機壓測產物（**gitignored、未入庫**，僅存本機供查）：`tests/performance/results/20260722-*/`
+  （JTL＋HTML＋acceptance-report）、`tests/performance/players.csv`（1,000 名玩家含 JWT，故不入庫）。
+
+### Changed
+- `docker-compose.yml`｜gateway-service `environment` 補接 `AUTH_RATE_LIMIT_REPLENISH: ${AUTH_RATE_LIMIT_REPLENISH:-5}`
+  與 `AUTH_RATE_LIMIT_BURST: ${AUTH_RATE_LIMIT_BURST:-10}`。**為什麼**：`application.yml` 早有這兩個 env 旋鈕
+  （`/api/v1/auth/**` 限流，防暴力破解），但 compose 沒把它們傳進容器，導致無法覆寫（provisioning 1,000 名同 IP
+  註冊/登入撞 5/s 限流、只成 956）。帶 `:-5`/`:-10` 安全預設 → **行為中性**：`.env` 未設時仍是原本的 5/10。
+  provisioning 期間曾於 `.env` 暫時放寬（500/1000），**壓測後已還原、gateway 已重建確認回到 5/10**。
+
+### 結果摘要（實測，非杜撰）
+- **150 驗收輪 FAIL**：Accepted P99 1,427 ms（<500 破）、429 卸載 69.3%（宣告容量內不准卸載，破）；成功率 100%、帳務 0 違規。
+- **1,000 韌性輪 PASS**：卸載 93.6%，accepted 成功率 100%、帳務 0 違規；1 個 502（傳輸層瞬斷，非應用錯誤，無帳務影響）。
+- **T-091 對帳**：實質 0 違規（唯一非零＝player 1001–1003 零交易種子錢包，已知結構性誤報）。
+- **限制**：JMeter 與 SUT 同機（P3 未隔離）＋open-model 每 iteration 兩 sampler（offered ≈2×）→ 絕對數字為同機悲觀下界，
+  非可對外引用容量；需分機重測。
+
+### 如何驗證
+- `docker exec lucky-star-gateway-service sh -c 'echo $AUTH_RATE_LIMIT_REPLENISH'` → 5（已還原）。
+- 三輪 acceptance-report.md 與 T-091 對帳（`accounting-reconciliation.sql`，容器 psql）輸出如報告所載。
+
+---
+
 ## [perf] — 2026-07-22 — T-090 壓測 harness 修正 P2~P6：暖機窗 / JMeter CPU / 階間排空 / 帳務語意 / 捕魚結算範圍
 
 > 接續 P0/P1，落地 `docs/performance/T-090-P0-P6.md` 其餘四項半（P2~P6）。全部只動壓測腳本／觀測工具／文件，
