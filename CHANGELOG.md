@@ -1,3 +1,18 @@
+## [fixed] -- 2026-07-23 -- Restore remote CI green gates
+
+### Fixed
+- tests/infra/jmeter.test.js: align T-090 contract assertions with the current open-model runner, response-level balance checks, optional HTML report generation, and offered-load gate selection.
+- frontend/e2e/smoke.spec.js: make the Records page heading assertion tolerate whitespace around the slash while still checking the same accessible heading.
+
+### Why
+- develop had advanced the T-090 load-test runner/JMX contract, but the infra test still asserted the older runner shape. The frontend smoke test also compared the Records nav label exactly against a heading that intentionally includes spaces for display.
+
+### Verification
+- node --test tests/infra/*.test.js
+- mvn -B -ntp -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/admin-service,backend/game-service,backend/rank-service,backend/notification-service clean test
+- mvn -B -ntp -pl backend/wallet-service test -Pcontainers-test
+- npm.cmd run lint / npm.cmd test / npm.cmd run build / npm.cmd run e2e (frontend)
+
 ## [docs] — 2026-07-22 — T-090 B1-續 審閱：歸因方向成立，但補「outbound 呼叫零儀表」與「無逾時/無斷路器」兩項
 
 > 對 PR #249（分層歸因：膝點延遲在 game→wallet 的 `RestClient`）做程式碼核對後的補充。
