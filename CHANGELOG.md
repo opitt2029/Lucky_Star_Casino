@@ -1,3 +1,39 @@
+## [perf] — 2026-07-22 — T-090 加壓到 5,000 req/s 容量階梯：連線池 40/50 驗證 +84% 吞吐，但 5,000 打不到（施壓機先飽和）
+
+> 依 #246（熱路徑池統一 40）落地後的重測。目標是把「上升 → 觸頂 → 卸載 → 施壓機撐不住」整條曲線量完，
+> 而不是宣告 5,000 req/s 可用。結論：**accepted 吞吐天花板 ≈ 190 req/s、膝點在 150～250 req/s 之間；
+> 5,000 打不到，因為同機 JMeter 最多只發得出 ~1,330 req/s**。
+
+### Added
+- `docs/performance/T-090-capacity-ladder-5000rps-report-20260722.md`：9 階（offered 50→5,000 req/s）
+  完整報告，含主結果表、三段曲線解讀、與前兩輪對照、T-091 對帳、8 項改善建議。
+- `tests/performance/run-slot-load-test.ps1`：新增 `-TargetRps`（open-model 目標速率，與執行緒數解耦；
+  `0` = 沿用舊耦合 `target_rps == Threads`，向後相容）與 `-NoHtmlReport`（高階單階數十萬樣本時，
+  JMeter 內建報表產生器是最慢也最吃記憶體的一段；數字全由原始 `.jtl` 重算）。
+- `tools/observability/run-capacity-ladder.ps1`：新增 `-OfferedRpsSteps`（每階目標 **HTTP req/s**）、
+  `-ThreadsPerStep` / `-FixedThreads`、`-SamplersPerIteration`、`-HtmlReportMaxOfferedRps`。
+  markdown 表加「目標 offered / 實際 offered」兩欄——實際遠低於目標即代表該階是**施壓機受限**。
+
+### Fixed
+- `tools/observability/summarize-jtl.mjs`：`Math.min(...arr)` / `Math.max(...arr)` 對數十萬筆樣本展開會
+  丟 `RangeError: Maximum call stack size exceeded`，而該腳本的輸出是被階梯腳本當 JSON 吃的，
+  崩掉的那一階會**安靜地變成整列空白**（本輪 2,000 與 5,000 兩階實際踩到）。改為迴圈求 min/max。
+
+### 為什麼
+`target_rps` 原本恆等於 `threads`，要打 5,000 req/s 就得開 5,000 條 JMeter 執行緒，
+施壓機必然先變成瓶頸。解耦後才能在固定執行緒預算下拉高目標速率，並讓「目標 vs 實際 offered」
+的落差直接暴露施壓機飽和——這正是本輪最重要的發現。
+
+### 如何驗證
+- 9 階實跑：434,001 筆樣本 / 98,404 筆被接受；5xx 8 筆（佔被接受 0.008%）；
+  JMeter 斷言冪等違規 0、超扣違規 0。
+- T-091 SQL 對帳 9 項：7 項 0；`transaction_chain_breaks=3` 經查為對帳 SQL 用
+  `ORDER BY created_at, id` 在毫秒級併發下排反（改 `ORDER BY id` 後 = 0）；
+  `wallet_balance_matches_transaction_sum=3` 為零交易種子錢包 1001/1002/1003 的已知誤報。
+  **實質 0 帳務違規。**
+- 環境已釘死：重建 game/wallet/member image 對齊 develop `d8f9370`，actuator 實測
+  game pool 40、wallet 50（40 Postgres + 10 MySQL）。
+
 ## [perf] — 2026-07-22 — T-090 A 案二次上調：熱路徑 HikariCP 池 24/32/16 → 統一 40（依 CPU 僅 ~40%）
 
 > 首輪 A 案（`47ead0c`）為避免筆電 context-switch thrash，保守把 game/wallet/member 池停在 24/32/16，

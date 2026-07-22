@@ -72,9 +72,24 @@ const allSamples = lines.slice(1).filter(Boolean).map((line) => {
   return Object.fromEntries(headers.map((h, i) => [h, values[i] ?? '']))
 })
 
+// 2026-07-22：min/max 一律用迴圈，不用 Math.min(...arr) 展開。
+// 展開會把每個元素當成一個函式引數，樣本數上看數十萬時直接
+// RangeError: Maximum call stack size exceeded——而且這支腳本的輸出是被階梯腳本
+// 當 JSON 吃的，崩掉的那一階會安靜地變成整列空白（5,000 req/s 階實際踩到過）。
+function minOf(numbers) {
+  let result = Infinity
+  for (const n of numbers) if (n < result) result = n
+  return Number.isFinite(result) ? result : 0
+}
+function maxOf(numbers) {
+  let result = -Infinity
+  for (const n of numbers) if (n > result) result = n
+  return Number.isFinite(result) ? result : 0
+}
+
 // P2：以「該階第一筆樣本送出時間」為零點，切掉前 warmupSeconds 秒，只留穩態窗。
 const allStartTimestamps = allSamples.map((s) => Number(s.timeStamp)).filter(Number.isFinite)
-const stepStartMs = allStartTimestamps.length ? Math.min(...allStartTimestamps) : 0
+const stepStartMs = allStartTimestamps.length ? minOf(allStartTimestamps) : 0
 const warmupCutoffMs = stepStartMs + warmupSeconds * 1000
 let samples = warmupSeconds > 0
   ? allSamples.filter((s) => Number(s.timeStamp) >= warmupCutoffMs)
@@ -90,7 +105,7 @@ if (samples.length === 0) {
 
 const timestamps = samples.map((s) => Number(s.timeStamp)).filter(Number.isFinite)
 // 牆鐘時間用穩態窗重算（切掉暖機後，吞吐＝穩態樣本數 / 穩態牆鐘）
-const wallSeconds = Math.max(1, (Math.max(...timestamps) - Math.min(...timestamps)) / 1000)
+const wallSeconds = Math.max(1, (maxOf(timestamps) - minOf(timestamps)) / 1000)
 
 const shed = samples.filter((s) => s.responseCode === '429')
 const accepted = samples.filter((s) => s.responseCode !== '429')
