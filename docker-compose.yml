@@ -26,6 +26,9 @@ services:
     image: postgres:16
     container_name: lucky-star-postgres
     restart: always
+    # T-090 壓測後調高：預設 max_connections=100，各服務池加大後（wallet 32 + game 24
+    # + rank 10 + admin 5 = 71）留足 headroom，避免尖峰撞上限反而取不到連線。
+    command: ["postgres", "-c", "max_connections=200"]
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}

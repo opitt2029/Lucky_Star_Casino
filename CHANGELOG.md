@@ -1,3 +1,37 @@
+## [perf] — 2026-07-22 — T-090 壓測後續優化 A/C：調大 HikariCP 連線池 + 移除壓測不真實的餘額輪詢
+
+> 依 PR #240/#242 容量階梯壓測發現（瓶頸＝連線池非 CPU：game 池 10 滿載排隊 49、CPU 僅 ~10%）。
+> A/C 為零至低風險；架構級的 B（帳本 debit+credit 合併單一往返）**先重測 A 再決定**，未包含在本次。
+> 完整計畫與下午重測指引：`docs/performance/T-090-ABC-optimization-plan-20260722.md`。
+
+### Changed
+- **A｜連線池調大**（純設定，易回滾，不碰帳務語意）：
+  - `backend/game-service/.../application.yml`：Postgres 池 `maximum-pool-size 10→24`、`minimum-idle 2→5`（排隊尖峰 49）。
+  - `backend/wallet-service/.../application.yml`：Postgres 寫庫池 `15→32`、`minimum-idle 3→6`（帳本寫入熱路徑）。
+  - `backend/member-service/.../application.yml`：MySQL 池 `10→16`、`minimum-idle 2→4`（排隊 15）。
+  - `docker-compose.yml`：postgres 加 `command: max_connections=200`，各服務池加大後留 headroom。
+    連線預算：game 24 + wallet 32 + rank 10 + admin 5 = 71 < 200，安全。
+- **C｜壓測移除多餘餘額查詢**（零帳務風險）：
+  - `tests/performance/slot-1000-players.jmx`：移除每 spin 後的 `GET /api/v1/wallet/balance`（原 sampler 03）；
+    pacing `ConstantTimer` 搬進 sampler 02，**每 iteration 觸發一次的 pacing 模型不變**。
+    真實前端 `SlotGame.jsx` 用 `setBalance(spinResult.wallet)` 直接吃 spin 回應餘額、從不 per-spin 查餘額；
+    移除後壓測更貼近真實，並把不必要的讀負載移出 wallet Postgres 寫庫池（該查詢原會與 debit/credit 搶同池）。
+    餘額非負驗證未消失——兩個 spin 的回應各自已 assert 非負。**每 iteration 由 3 請求變 2 請求，吞吐口徑改變，勿與舊報告直接比絕對值。**
+
+### Added
+- `docs/performance/T-090-ABC-optimization-plan-20260722.md`：A/B/C 決策、改動清單、下午重測操作指引
+  （含 A/B 對照組跑法、環境釘死與記錄的 SOP、判定 B 要不要做的準則）、預期效果與風險。兼作 PPT 說明稿。
+
+**為什麼**：壓測證明老虎機瓶頸在連線池（軟體設定）而非 CPU（硬體）；先用最低風險手段驗證假設，
+把高風險的帳本改寫（B）留到重測數據證明其必要時再做——先量、再改。另 #240/#242 兩份報告對同一壓測
+數字矛盾 4 倍，根因是 harness 未記錄環境；計畫文件已把「環境釘死並記錄」列為重測第一要務。
+
+**如何驗證**：本次僅動設定 / 壓測腳本 / 文件，**未改任何 Java 產品碼**，不影響既有測試套件。
+已驗：3 個 `application.yml` 與 `docker-compose.yml` YAML 語法通過；`slot-1000-players.jmx` XML well-formed、
+sampler 03 已移除、pacing timer 保留一顆、hashTree 標籤平衡（5 開 5 閉）。實際容量效果由下午重測驗證。
+
+---
+
 ## [test] — 2026-07-21 — 捕魚機容量階梯壓測 + 老虎機/捕魚機對照（Prometheus + Grafana）
 
 ### Added
@@ -665,6 +699,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### Verification
 - npm.cmd run build in frontend passed.
 - npm.cmd run lint in frontend passed.
+
+---
 
 ## [test] — 2026-07-18 — T-084/T-093 端對端驗收補齊：全鏈路 e2e ＋ 前端 WS 真後端驗收，兩筆 audit override 移除
 

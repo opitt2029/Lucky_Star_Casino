@@ -2,7 +2,7 @@
 <jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
   <hashTree>
     <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="T-090 Slot 1000 Players Load Test" enabled="true">
-      <stringProp name="TestPlan.comments">1000 concurrent players place slot bets for 60 seconds against the real contract POST /api/v1/game/slot/spin (body {bet, clientSeed}; idempotency key is generated server-side, never sent by the client). Each iteration fires two distinct spins then verifies wallet balance stays non-negative.</stringProp>
+      <stringProp name="TestPlan.comments">1000 concurrent players place slot bets for 60 seconds against the real contract POST /api/v1/game/slot/spin (body {bet, clientSeed}; idempotency key is generated server-side, never sent by the client). Each iteration fires two distinct spins; each spin RESPONSE is asserted to carry a non-negative balance. The spin response already returns the updated wallet balance (WalletView.balance), so — matching the real client (SlotGame.jsx uses setBalance(spinResult.wallet), it never polls GET /wallet/balance per spin) — no separate balance query is issued. This keeps the load faithful to real usage and removes the redundant read that used to contend for the wallet Postgres write pool (T-090 optimization C).</stringProp>
       <boolProp name="TestPlan.functional_mode">false</boolProp>
       <boolProp name="TestPlan.tearDown_on_shutdown">true</boolProp>
       <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
@@ -233,66 +233,9 @@ try {
             <stringProp name="scriptLanguage">groovy</stringProp>
           </JSR223Assertion>
           <hashTree/>
-        </hashTree>
-        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="03 Wallet Balance Must Stay Non-Negative" enabled="true">
-          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="Wallet Query Arguments" enabled="true">
-            <collectionProp name="Arguments.arguments"/>
-          </elementProp>
-          <stringProp name="HTTPSampler.path">${__P(balance_path,/api/v1/wallet/balance)}</stringProp>
-          <stringProp name="HTTPSampler.method">GET</stringProp>
-          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
-          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
-          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
-        </HTTPSamplerProxy>
-        <hashTree>
           <ConstantTimer guiclass="ConstantTimerGui" testclass="ConstantTimer" testname="One Bet Pair Per Player Per Second" enabled="true">
             <stringProp name="ConstantTimer.delay">${__P(pacing_ms,1000)}</stringProp>
           </ConstantTimer>
-          <hashTree/>
-          <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Balance Query Must Return 2xx" enabled="true">
-            <collectionProp name="Asserion.test_strings">
-              <stringProp name="2xx">2\d\d</stringProp>
-            </collectionProp>
-            <stringProp name="Assertion.custom_message">Wallet balance query must return 2xx.</stringProp>
-            <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
-            <boolProp name="Assertion.assume_success">false</boolProp>
-            <intProp name="Assertion.test_type">1</intProp>
-          </ResponseAssertion>
-          <hashTree/>
-          <JSR223Assertion guiclass="TestBeanGUI" testclass="JSR223Assertion" testname="Reject Overdrawn Wallet" enabled="true">
-            <stringProp name="cacheKey">t090-wallet-balance-assertion</stringProp>
-            <stringProp name="filename"/>
-            <stringProp name="parameters"/>
-            <stringProp name="script"><![CDATA[
-import groovy.json.JsonSlurper
-
-if (prev.getResponseCode()?.startsWith('5')) {
-    AssertionResult.setFailure(true)
-    AssertionResult.setFailureMessage("5xx response from wallet balance query: ${prev.getResponseCode()}")
-    return
-}
-
-try {
-    def json = new JsonSlurper().parseText(prev.getResponseDataAsString())
-    def root = json?.data != null ? json.data : json
-    def balance = root?.balance
-    def availableBalance = root?.availableBalance
-    if (balance == null || availableBalance == null) {
-        AssertionResult.setFailure(true)
-        AssertionResult.setFailureMessage('Wallet balance response must expose balance and availableBalance.')
-        return
-    }
-    if (new BigDecimal(balance.toString()) < 0 || new BigDecimal(availableBalance.toString()) < 0) {
-        AssertionResult.setFailure(true)
-        AssertionResult.setFailureMessage("Overdraw detected: balance=${balance}, availableBalance=${availableBalance}")
-    }
-} catch (Exception exception) {
-    AssertionResult.setFailure(true)
-    AssertionResult.setFailureMessage("Wallet balance response is not valid JSON: ${exception.message}")
-}
-]]></stringProp>
-            <stringProp name="scriptLanguage">groovy</stringProp>
-          </JSR223Assertion>
           <hashTree/>
         </hashTree>
       </hashTree>
