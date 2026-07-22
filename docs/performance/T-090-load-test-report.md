@@ -31,7 +31,10 @@ Postgres migration 補到 V17（`wallet_outbox` 等）、7 服務 health 200、P
 - **1,000 韌性輪 PASS**：卸載 93.6% 之下，穿透請求 **accepted 成功率 100%、帳務 0 違規**——超載時 gateway 以 429
   快速卸載、不傷後端（優雅降級有效）。
 - **1 個 5xx（502 Bad Gateway，UTC 05:50:01，1/3393＝0.03%）**：經查為**傳輸層瞬斷**，非 game-service 應用錯誤——
-  game-service resilience4j circuit breaker `failed=0`、狀態 closed，gateway/game 該窗均無 ERROR log，且 T-091 對帳
+  gateway 上名為 `game-service` 的 resilience4j circuit breaker `failed=0`、狀態 closed（**2026-07-22 晚更正措辭**：
+  resilience4j 只存在於 gateway-service，這個斷路器保護的是 gateway→game 這一段；**game-service 內部沒有
+  resilience4j 依賴，game→wallet 那段既無斷路器也無逾時**，見 `T-090-B5-game-wallet-restclient-驗證計畫.md` §5），
+  gateway/game 該窗均無 ERROR log，且 T-091 對帳
   全乾淨（該筆未半途落庫）。研判為 gateway(Netty)↔game-service keep-alive 連線在高併發下被中途關閉／連線池重用競態。
   比例屬超載輪雜訊等級；若日後要壓，方向為調 gateway HttpClient 連線池（`maxIdleTime`／背景驅逐）。
 - **T-091 九項對帳**：8 項全 0；唯一非零 `wallet_balance_matches_transaction_sum=3` 經查為 player **1001/1002/1003**
