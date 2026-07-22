@@ -1,3 +1,49 @@
+## [perf] — 2026-07-22 — T-090 壓測 harness 修正 P2~P6：暖機窗 / JMeter CPU / 階間排空 / 帳務語意 / 捕魚結算範圍
+
+> 接續 P0/P1，落地 `docs/performance/T-090-P0-P6.md` 其餘四項半（P2~P6）。全部只動壓測腳本／觀測工具／文件，
+> **未改任何 Java 產品碼**。進度總覽見該文件表格。
+
+### Added
+- `tools/observability/wait-for-quiescence.ps1`（**P4**）：階間排空等待 helper。poll `wallet.outbox.pending`
+  （wallet actuator）與 `kafka_consumer_fetch_manager_records_lag_max`（Prometheus :9090）到 0 才放行下一階；
+  只 gate「讀得到」的維度，兩者皆讀不到就退回固定冷卻（＝舊行為），有 `MaxWaitSeconds` 上限絕不卡死、
+  `MinCooldownSeconds` 地板絕不 0 冷卻。UTF-8 with BOM。
+- `tools/observability/sample-host-java-cpu.ps1`（**P3**）：背景取樣 host java（≈JMeter）CPU% helper。
+  JMeter 是 host java.exe、不在容器裡，P0 的 docker stats 量不到；用背景 job 每 2 秒取樣 `Process.CPU`
+  累積秒數，事後「窗內最大−最小 ÷ 窗長 ÷ 邏輯核」＝平均整機 CPU%。刻意不用會被在地化的 Get-Counter
+  計數器路徑。全程 try/catch，絕不讓取樣器把階梯搞掛。UTF-8 with BOM。
+
+### Changed
+- **P2｜暖機/穩態切乾淨**：`tools/observability/summarize-jtl.mjs` 新增第二參數 `warmupSeconds`——以「該階第一筆
+  樣本送出時間」為零點切掉前 N 秒，只用穩態窗算 percentile 與吞吐（暖機窗清空樣本則退回全部並標
+  `warmupApplied=false`）。輸出新增 `warmupSeconds/warmupApplied/warmupDroppedSamples/totalSamples`。
+  兩支階梯新增 `-WarmupSeconds 30`、`DurationSeconds` 預設 `60→180`（step ≥180s），並把 `warmupSeconds` 記進
+  `ladder-summary.json`、markdown 標「percentile 只用穩態窗」。open-model 下 ramp 維持短（避免早期缺工降速）。
+- **P3｜量施壓機 CPU**：兩支階梯 dot-source 取樣 helper，包住每階 JMeter 呼叫，記 `jmeterHostJavaCpuPct`
+  進 `ladder-summary.json` 與 console；markdown 標「>25% 該階數字打折」。cpuset 隔離 recipe 寫進 P0-P6 文件
+  §P3（opt-in，不強制改 compose，低核機硬切會餓死服務）。
+- **P4｜階間排空**：兩支階梯把固定 `Start-Sleep -Seconds $CooldownSeconds` 換成 `Wait-ForQuiescence`；
+  `CooldownSeconds` 語意改為「讀不到指標時的退回固定冷卻」，新增 `-MaxQuiesceSeconds 90` 上限。
+- **P5｜帳務違規語意**：slot `ladder-summary.md` 新增「帳務違規口徑」段——「冪等/超扣違規」兩欄是 JMeter
+  in-flight 斷言（回應當下），**抓不到 DB 層重複入帳**；真正權威＝T-091 SQL 對帳
+  （`tests/performance/accounting-reconciliation.sql`），別把 0 讀成「帳務已證明正確」。
+- **P6｜捕魚結算範圍**：選「報告明講不含結算」。fishing `ladder-summary.md` 標明穩態＝連續 shots（多為純
+  Redis 累傷、偶發捕獲才 credit），**session 從不 `end`、殘血回收結算/退款的 DB 寫入不在穩態內**，此吞吐是
+  shots 路徑上限非全系統容量。要量「含結算」的 start→shots→end 循環計畫設計見 P0-P6 文件 §P6（opt-in）。
+
+**為什麼**：P2 去掉 JIT/池爬升的暖機尖刺，P99 才穩、才是穩態值；P3 讓「SUT 撐不住」不會把 JMeter 自身
+吃的 CPU 算進去；P4 確保下一階不被上一階殘留 backlog（outbox/lag）污染；P5/P6 把兩個容易被誤讀成「已證明」
+的地方（帳務斷言、捕魚容量）標清楚，避免報告過度宣稱。
+
+**如何驗證**：① `summarize-jtl.mjs` 用合成 JTL 實測三情境——無暖機（1800 樣本、含尖峰 p99=500）、`warmup=30`
+（丟 300 筆暖機、p99 500→50、穩態值）、`warmup=200`（過長→退回全部、`warmupApplied=false`）皆正確。
+② `wait-for-quiescence.ps1` 實跑：兩指標皆讀不到時走退回固定冷卻、不卡死（本機服務為舊 build、指標不全，
+正好驗到 graceful degrade）。③ `sample-host-java-cpu.ps1` 實跑無例外、回傳合理值/`null`。④ 五支 ps1 全數
+PSParser 無語法錯且保留 UTF-8 BOM。**P3/P4 的完整 gating 效果需在指標齊備的重跑環境才看得到；捕魚 settle
+循環計畫（P6 option a）若要做，須先在 JMeter GUI 驗過再實跑。**
+
+---
+
 ## [perf] — 2026-07-22 — T-090 壓測 harness 修正 P0/P1：環境快照可重現 + open-model 消除 P99 樂觀偏差
 
 > 依 `docs/performance/T-090-P0-P6.md`（審 #240/#242 壓測後列出的 6 項 harness 問題）落地最高 ROI 的兩項：

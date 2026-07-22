@@ -18,12 +18,14 @@
 param(
     [Parameter(Mandatory = $true)][string]$JMeter,
     [int[]]$Steps = @(25, 50, 100, 150, 300, 600, 1000),
-    [int]$DurationSeconds = 60,
-    [int]$RampUpSeconds = 1,
+    [int]$DurationSeconds = 180,          # P2：每階 ≥180s，含 JIT/池爬升雜訊後仍留足夠穩態樣本算 percentile
+    [int]$WarmupSeconds = 30,             # P2：算 percentile 前丟掉每階前 N 秒暖機窗（傳給 summarize-jtl.mjs）
+    [int]$RampUpSeconds = 1,              # open-model 下維持短 ramp：讓執行緒盡快就緒，避免 PreciseThroughputTimer 早期缺工被迫降速
     [int]$DeclaredCapacity = 150,
     [int]$Bet = 100,
     [int]$PacingMs = 1000,
-    [int]$CooldownSeconds = 20,          # 每階之間讓系統回到基線，否則上一階的積壓污染下一階
+    [int]$CooldownSeconds = 20,          # P4：改當「讀不到 outbox/lag 指標時的退回固定冷卻」；正常走 Wait-ForQuiescence poll 排空
+    [int]$MaxQuiesceSeconds = 90,        # P4：poll 排空的逾時上限，逾時就繼續（絕不卡死階梯）
     [int]$RefreshTokensEverySteps = 3    # JWT 只有 15 分鐘，階梯跑久了會整批 401
 )
 
@@ -43,6 +45,8 @@ New-Item -ItemType Directory -Path $ladderDir -Force | Out-Null
 # T-090 P0：階梯開跑前打一次環境快照（git SHA / 各服務 HikariCP 上限 / docker stats），
 # 寫進 ladder-summary.json。#240 vs #242 同條件吞吐差 4 倍卻無法重現，就是因為沒記這些。
 . (Join-Path $scriptDir "capture-environment.ps1")
+. (Join-Path $scriptDir "wait-for-quiescence.ps1")   # P4：階間排空等待
+. (Join-Path $scriptDir "sample-host-java-cpu.ps1")  # P3：量施壓機 JMeter 自身 CPU
 Write-Host "[ladder] 擷取環境快照（P0：git SHA / 各服務 HikariCP 上限 / docker stats）..."
 $environment = Get-CapacityEnvironmentSnapshot -RepoRoot $repoRoot
 
@@ -62,11 +66,13 @@ foreach ($threads in $Steps) {
     Write-Host "[ladder] === 第 $stepIndex/$($Steps.Count) 階：$threads 併發 ==="
     $startMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 
+    $cpuSampler = Start-HostJavaCpuSampler   # P3：step 進行中量 host java（JMeter）CPU
     & powershell -NoProfile -ExecutionPolicy Bypass -File $runnerPath `
         -JMeter $JMeter -Threads $threads -DurationSeconds $DurationSeconds `
         -RampUpSeconds $RampUpSeconds -DeclaredCapacity $DeclaredCapacity `
         -Bet $Bet -PacingMs $PacingMs 2>&1 | Out-Null
     $exitCode = $LASTEXITCODE
+    $jmeterCpuPct = Stop-HostJavaCpuSampler -Job $cpuSampler   # P3：>25% 代表施壓機在搶 SUT 資源
 
     $endMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 
@@ -76,7 +82,7 @@ foreach ($threads in $Steps) {
         Sort-Object CreationTime -Descending | Select-Object -First 1
 
     # 直接讀 JTL 重算，不解析 markdown：markdown 是給人看的，格式一改就爆
-    $stats = & node (Join-Path $scriptDir "summarize-jtl.mjs") (Join-Path $runDir.FullName "results.jtl") | ConvertFrom-Json
+    $stats = & node (Join-Path $scriptDir "summarize-jtl.mjs") (Join-Path $runDir.FullName "results.jtl") $WarmupSeconds | ConvertFrom-Json
 
     $row = [ordered]@{
         step = $stepIndex
@@ -99,13 +105,18 @@ foreach ($threads in $Steps) {
         failures = $stats.failures
         idempotencyFailures = $stats.idempotencyFailures
         overdrawFailures = $stats.overdrawFailures
+        jmeterHostJavaCpuPct = $jmeterCpuPct        # P3：施壓機自身 CPU%（近似 JMeter；>25% 該階數字打折）
     }
     $rows += [pscustomobject]$row
-    Write-Host ("[ladder] {0} 併發 → 吞吐 {1}/s、P99 {2} ms、卸載 {3}%、5xx {4}、帳務違規 {5}" -f `
+    Write-Host ("[ladder] {0} 併發 → 吞吐 {1}/s、P99 {2} ms、卸載 {3}%、5xx {4}、帳務違規 {5}、JMeter CPU {6}%" -f `
         $threads, $stats.acceptedThroughputPerSec, $stats.p99, [math]::Round($stats.shedRatio * 100, 1), `
-        $stats.errors5xx, ($stats.idempotencyFailures + $stats.overdrawFailures))
+        $stats.errors5xx, ($stats.idempotencyFailures + $stats.overdrawFailures), `
+        ($(if ($null -eq $jmeterCpuPct) { 'n/a' } else { $jmeterCpuPct })))
 
-    if ($stepIndex -lt $Steps.Count) { Start-Sleep -Seconds $CooldownSeconds }
+    # P4：不再死等固定秒數，改 poll 到 backlog 排空（outbox PENDING==0 且 consumer lag==0）才進下一階
+    if ($stepIndex -lt $Steps.Count) {
+        Wait-ForQuiescence -FallbackCooldownSeconds $CooldownSeconds -MaxWaitSeconds $MaxQuiesceSeconds
+    }
 }
 
 $ladderEndMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
@@ -115,6 +126,7 @@ $summary = [ordered]@{
     startMs = $ladderStartMs
     endMs = $ladderEndMs
     durationSecondsPerStep = $DurationSeconds
+    warmupSeconds = $WarmupSeconds
     declaredCapacity = $DeclaredCapacity
     bet = $Bet
     pacingMs = $PacingMs
@@ -133,6 +145,8 @@ $md = @()
 $md += "# 容量階梯結果（$ladderId）"
 $md += ""
 $md += "> 施壓模型：**open-model**（PreciseThroughputTimer，target_rps = 該階 threads spins/sec）。慢請求會真的堆積，P99 為誠實值（非 closed-loop 的樂觀值）。"
+$md += "> 統計口徑：percentile 只用**穩態窗**（已切掉每階前 $WarmupSeconds 秒暖機；每階 $DurationSeconds 秒，P2）。"
+$md += "> 施壓機隔離：各階 ``jmeterHostJavaCpuPct``（見 ladder-summary.json）為 host java（近似 JMeter）平均 CPU%；>25% 代表施壓機在搶 SUT 資源、該階數字打折（P3）。docker stats 快照見下方環境段。"
 $md += ""
 $md += "| 併發 | 樣本 | 被接受 | 吞吐(req/s) | P50(ms) | P95(ms) | P99(ms) | 卸載429 | 卸載率 | 5xx | 冪等違規 | 超扣違規 |"
 $md += "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
@@ -141,6 +155,13 @@ foreach ($r in $rows) {
         $r.threads, $r.samples, $r.accepted, $r.acceptedThroughputPerSec, $r.p50, $r.p95, $r.p99, `
         $r.shed429, [math]::Round($r.shedRatio * 100, 1), $r.errors5xx, $r.idempotencyFailures, $r.overdrawFailures)
 }
+
+# T-090 P5：講清楚「冪等違規/超扣違規」兩欄的語意，別被讀成「帳務已證明正確」
+$md += ""
+$md += "## 帳務違規口徑（P5：別把 JMeter 斷言當成對帳）"
+$md += ""
+$md += "- 表中「冪等違規 / 超扣違規」= **JMeter in-flight 斷言**（每筆回應是否帶負餘額 / 冪等錯誤訊息）。只抓「回應當下」的異常，**抓不到 DB 層重複入帳或跨請求的帳不平**。"
+$md += "- **真正權威 = T-091 SQL 對帳**（``tests/performance/accounting-reconciliation.sql``，跑法見 ``run-accounting-reconciliation.ps1``）：直接比對 ``wallet_transactions`` 帳本。壓測後務必跑一次，別把上面兩欄的 0 讀成「帳務已證明正確」。"
 
 # T-090 P0：把環境快照也印進 markdown，報告一眼就能看到「這一輪是在什麼環境下跑的」
 $md += ""

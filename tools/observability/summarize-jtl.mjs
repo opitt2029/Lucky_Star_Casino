@@ -11,7 +11,13 @@
  *   429 = gateway 明確卸載（快速拒絕、不佔後端資源、無帳務風險），不計入失敗；
  *   延遲統計以「被接受的請求」為母體，才不會被大量快速 429 拉低而失真。
  *
- * 用法：node summarize-jtl.mjs <results.jtl>
+ * T-090 P2（暖機/穩態切乾淨）：
+ *   JIT 編譯、連線池爬升、快取冷啟在每一階的「前幾秒」製造尖刺，混進 percentile 會讓 P99
+ *   不穩、失真。故支援「暖機窗」：丟掉每一階前 <warmupSeconds> 秒的樣本，只用穩態窗算統計。
+ *   暖機窗依「該階第一筆樣本的送出時間」起算（每個 step 各自一個 results.jtl，min 即該階起點）。
+ *   若暖機窗把樣本清空（step 太短），退回用全部樣本並標記 warmupApplied=false（不假裝有穩態）。
+ *
+ * 用法：node summarize-jtl.mjs <results.jtl> [warmupSeconds]
  */
 
 import { readFileSync } from 'node:fs'
@@ -19,9 +25,11 @@ import { resolve } from 'node:path'
 
 const jtlArg = process.argv[2]
 if (!jtlArg) {
-  console.error('Usage: node summarize-jtl.mjs <results.jtl>')
+  console.error('Usage: node summarize-jtl.mjs <results.jtl> [warmupSeconds]')
   process.exit(2)
 }
+// P2：暖機窗秒數（第二個參數，預設 0＝不丟、行為與舊版相容）
+const warmupSeconds = Math.max(0, Number(process.argv[3] ?? 0) || 0)
 
 function parseCsvLine(line) {
   const values = []
@@ -59,13 +67,29 @@ if (lines.length < 2) {
 }
 
 const headers = parseCsvLine(lines[0])
-const samples = lines.slice(1).filter(Boolean).map((line) => {
+const allSamples = lines.slice(1).filter(Boolean).map((line) => {
   const values = parseCsvLine(line)
   return Object.fromEntries(headers.map((h, i) => [h, values[i] ?? '']))
 })
 
+// P2：以「該階第一筆樣本送出時間」為零點，切掉前 warmupSeconds 秒，只留穩態窗。
+const allStartTimestamps = allSamples.map((s) => Number(s.timeStamp)).filter(Number.isFinite)
+const stepStartMs = allStartTimestamps.length ? Math.min(...allStartTimestamps) : 0
+const warmupCutoffMs = stepStartMs + warmupSeconds * 1000
+let samples = warmupSeconds > 0
+  ? allSamples.filter((s) => Number(s.timeStamp) >= warmupCutoffMs)
+  : allSamples
+let warmupDroppedSamples = allSamples.length - samples.length
+let warmupApplied = warmupSeconds > 0
+// 保護：暖機窗把樣本清空（step 太短）→ 退回全部並標記，別回傳 0 樣本的假統計
+if (samples.length === 0) {
+  samples = allSamples
+  warmupDroppedSamples = 0
+  warmupApplied = false
+}
+
 const timestamps = samples.map((s) => Number(s.timeStamp)).filter(Number.isFinite)
-// 牆鐘時間用「最後一筆的送出時間 - 第一筆」，再加最後一筆的 elapsed 才是真正跑完的時間
+// 牆鐘時間用穩態窗重算（切掉暖機後，吞吐＝穩態樣本數 / 穩態牆鐘）
 const wallSeconds = Math.max(1, (Math.max(...timestamps) - Math.min(...timestamps)) / 1000)
 
 const shed = samples.filter((s) => s.responseCode === '429')
@@ -86,6 +110,11 @@ const round = (n, digits = 1) => Number(n.toFixed(digits))
 console.log(JSON.stringify({
   jtl: resolve(jtlArg),
   wallSeconds: round(wallSeconds),
+  // P2：暖機窗透明度——回報丟了幾筆、是否真的套用，讓報告能標「這是穩態值」
+  warmupSeconds,
+  warmupApplied,
+  warmupDroppedSamples,
+  totalSamples: allSamples.length,
   samples: samples.length,
   accepted: accepted.length,
   shed429: shed.length,
