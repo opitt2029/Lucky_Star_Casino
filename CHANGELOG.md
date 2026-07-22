@@ -1,3 +1,4 @@
+feature/weiyu-t090-D-client-bottleneck
 ## [docs] — 2026-07-22 — T-090 分層歸因：膝點延遲不在 wallet DB/outbox，在 game→wallet 未調校的 RestClient
 
 > 承 5000rps 報告 §7.B1 的開放問題（「pending≈0 且 CPU 未滿 → 單筆交易延遲 → 該不該做 B 案」）。
@@ -10,6 +11,53 @@
   **如何驗證**：Prometheus `histogram_quantile` 逐服務／逐 uri P99 + `hikaricp_connections_*` + `system_cpu_usage`（皆取膝點兩階窗）；程式碼路徑核對 `SlotService.settleInternal` → `WalletClient`／`WalletClientConfig`／`GameResultEventPublisher`／`RiskControlService`。純文件、不動程式碼。
 
 ---
+## [perf] — 2026-07-22 — T-090 壓測 harness 支援遠端施壓機 + 修掉兩個「會靜默放寬檢查」的 bug
+
+> 承前一筆（5,000 req/s 階梯報告）的改善建議 A1~A4。最硬的結論是「施壓機與 SUT 同機導致量不準」，
+> 故本次把 harness 改成可從另一台機器施壓，並修掉三個在昨天那輪實際踩到的坑。
+> 明天的執行步驟見 `docs/performance/T-090-遠端施壓機壓測計畫-20260723.md`。
+
+### Added
+- `docs/performance/T-090-遠端施壓機壓測計畫-20260723.md`：分機壓測完整 runbook——機器角色/port 清單、
+  防火牆規則（含用完必須移除）、2,500 玩家 provisioning、階梯指令、每階要回答的瓶頸定位問題、
+  收工三件事（對帳／存原始資料／還原環境）、成功條件、常見卡關對照表。
+- `tools/observability/run-capacity-ladder.ps1`：`-SutHost` / `-SutPort` / `-MemberPort`。
+  一個參數同時決定 JMeter 打哪、actuator 快照抓哪、階間排空 poll 哪、token 去哪重發。
+  `ladder-summary.json` 新增 `sutHost` / `sutPort` / `loadGeneratorColocated`——最後一欄就是
+  「這輪是不是分機跑的」的機讀證據（P3 能不能對外引用的判準）。
+- `tools/observability/capture-environment.ps1`：`-SutHost`；新增 image 版本啟發式檢查
+  （image 建置時間早於 HEAD commit 即警告並寫進快照）——昨天差點用舊 image 出報告，
+  實測連線池 24/42 與設定 40/50 不符才發現。
+
+### Fixed
+- **`tests/performance/accounting-reconciliation.sql`：排序鍵改用 `id`，不再用 `created_at`。**
+  `created_at` 是應用端時間戳，毫秒級併發下會與實際寫入順序不一致（實測到 id 58494 的 created_at
+  晚於 id 58495），用它排序會把交易順序排反、誤報 `transaction_chain_breaks`。序列 `id` 由 DB 在
+  INSERT 當下配發，才是權威順序。改完該項違規 3 → **0**。
+- **同檔：`wallet_balance_matches_transaction_sum` 排除零交易錢包。**
+  無交易時 opening/signed 都是 0、期望值必然算成 0，任何有餘額的種子錢包（1001/1002/1003 各 10,000）
+  都會被誤判。此公式在無交易時無定義，故排除。改完該項違規 3 → **0**，九項對帳首次全綠。
+- **同檔：WHERE 子句內的 `--` 單行註解改為區塊註解。** SQL 經 pipe 餵給 psql 時，實測到單行註解
+  吃掉後續換行、把 WHERE 的後續條件整段註解掉——**檢查被靜默放寬且毫無錯誤訊息**。
+- `tests/performance/run-accounting-reconciliation.ps1`：本機沒有 psql 時自動改用
+  `docker exec lucky-star-postgres`（容器內必有 client），並以 `docker cp` + `-f` 餵檔而非 pipe，
+  同時避開上面那個註解吞行的坑。昨天就是卡在「psql not found」直接 throw、只好手動下指令。
+- `tools/observability/capture-environment.ps1`：`/actuator/metrics` 被服務自身 Spring Security 擋掉時
+  （member-service 只 permitAll health/info/prometheus，admin 回 401），改從已放行的
+  `/actuator/prometheus` 解析 `hikaricp_connections_max`。**不放寬任何服務的安全設定。**
+  修正後 member=40、admin=20 都補齊，不再是每輪快照缺一格。
+- `tools/observability/run-capacity-ladder.ps1`：統計算不出來時**大聲失敗**而非靜默寫空白列
+  （昨天 2,000／5,000 兩階就是這樣混進空白）；`refresh-player-tokens.mjs` 失敗也改為中止階梯
+  （token 沒換成功會讓中後段整批 401、整輪作廢）。
+- `tests/performance/run-slot-load-test.ps1`：補 UTF-8 BOM（AGENTS.md 雷區 27——無 BOM 的中文註解
+  會被 PowerShell 5.1 當 ANSI 解讀而觸發語法錯誤，且錯誤訊息指不到真因）。
+
+### 如何驗證
+- 五支 `.ps1` 全數通過 `PSParser` 語法檢查、全部帶 UTF-8 BOM。
+- 兩輪端到端煙霧測試（`-SutHost localhost`、單階 60 req/s）：`-HostName`/`-Port` 透傳、環境快照、
+  階間排空、token 重發、統計重算全鏈路正常。
+- `run-accounting-reconciliation.ps1` 走 docker 退路實跑：**九項檢查全 0，Result: PASS**。
+- 環境快照實測：game=40、wallet=50、member=40（prometheus 退路）、admin=20（prometheus 退路）、rank=10。
 
 ## [perf] — 2026-07-22 — T-090 加壓到 5,000 req/s 容量階梯：連線池 40/50 驗證 +84% 吞吐，但 5,000 打不到（施壓機先飽和）
 

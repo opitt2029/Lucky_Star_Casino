@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$JMeter = "jmeter",
     [string]$Protocol = "http",
     [string]$HostName = "localhost",

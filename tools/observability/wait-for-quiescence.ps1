@@ -19,9 +19,9 @@
 
 function Get-OutboxPending {
     # 回傳 wallet_outbox 內 PENDING 筆數；讀不到回 $null（代表「這個維度看不到」，非 0）
-    param([int]$WalletPort = 8082)
+    param([int]$WalletPort = 8082, [string]$SutHost = "localhost")
     try {
-        $resp = Invoke-RestMethod -Uri "http://localhost:$WalletPort/actuator/metrics/wallet.outbox.pending" -TimeoutSec 3 -ErrorAction Stop
+        $resp = Invoke-RestMethod -Uri "http://${SutHost}:$WalletPort/actuator/metrics/wallet.outbox.pending" -TimeoutSec 3 -ErrorAction Stop
         $m = $resp.measurements | Where-Object { $_.statistic -eq 'VALUE' } | Select-Object -First 1
         if ($null -eq $m) { return $null }
         return [double]$m.value
@@ -47,18 +47,25 @@ function Get-MaxConsumerLag {
 function Wait-ForQuiescence {
     param(
         [int]$WalletPort = 8082,
-        [string]$PrometheusUrl = "http://localhost:9090",
+        # 施壓機與 SUT 分機時，outbox / Prometheus 都要打過網路。給了 $SutHost 就自動組出
+        # 預設的 Prometheus 位址，呼叫端不必兩個參數都傳。
+        [string]$SutHost = "localhost",
+        [string]$PrometheusUrl = "",
         [int]$PollIntervalSeconds = 3,
         [int]$MinCooldownSeconds = 5,          # 地板：無論如何先給一點 settle 時間
         [int]$MaxWaitSeconds = 90,             # 上限：逾時就繼續，絕不卡死階梯
         [int]$FallbackCooldownSeconds = 20     # 兩個維度都讀不到時，退回這個固定冷卻（＝舊行為）
     )
 
+    if ([string]::IsNullOrWhiteSpace($PrometheusUrl)) {
+        $PrometheusUrl = "http://${SutHost}:9090"
+    }
+
     Start-Sleep -Seconds $MinCooldownSeconds
 
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds([Math]::Max(0, $MaxWaitSeconds - $MinCooldownSeconds))
     while ([DateTimeOffset]::UtcNow -lt $deadline) {
-        $pending = Get-OutboxPending -WalletPort $WalletPort
+        $pending = Get-OutboxPending -WalletPort $WalletPort -SutHost $SutHost
         $lag = Get-MaxConsumerLag -PrometheusUrl $PrometheusUrl
 
         # 兩個維度都看不到 → 沒有可信訊號可 gate，退回固定冷卻後放行
