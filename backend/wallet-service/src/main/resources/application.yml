@@ -22,9 +22,10 @@ spring:
     password: ${POSTGRES_PASSWORD:lucky_password}
     driver-class-name: org.postgresql.Driver
     # T-090 壓測（2026-07-21）：帳務寫庫熱路徑，每 spin 兩筆寫入（debit+credit），
-    # 尖峰滿載、排隊 18、取連線最長 1.12s。15→32 直接紓解帳本寫入瓶頸。
-    maximum-pool-size: 32
-    minimum-idle: 6
+    # 尖峰滿載、排隊 18、取連線最長 1.12s。首輪 15→32；2026-07-22 依 CPU 僅 ~40%（硬體有餘裕）
+    # 再上調 32→40，與 game 對齊。Postgres 預算：game 40 + wallet 40 + rank 10 + admin 5 = 95 < 200。
+    maximum-pool-size: 40
+    minimum-idle: 10
     connection-timeout: 30000
 
   # 注意：spring.jpa.* 在此服務無效 —— EntityManagerFactory 由 DataSourceConfig.java

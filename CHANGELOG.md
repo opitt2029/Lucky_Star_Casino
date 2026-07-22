@@ -1,3 +1,21 @@
+## [perf] — 2026-07-22 — T-090 A 案二次上調：熱路徑 HikariCP 池 24/32/16 → 統一 40（依 CPU 僅 ~40%）
+
+> 首輪 A 案（`47ead0c`）為避免筆電 context-switch thrash，保守把 game/wallet/member 池停在 24/32/16，
+> 計畫「重測後再微調」。當日壓測顯示 **CPU 尖峰僅 ~40%、硬體有餘裕（非 thrash 風險區）**，故直接把三個
+> 請求熱路徑服務的連線池統一上調到 40，吃掉排隊尖峰 49，不再多等一輪重測。
+
+### Changed
+- `backend/game-service/.../application.yml`：Postgres 池 `maximum-pool-size 24→40`、`minimum-idle 5→10`（排隊尖峰 49 的主戰場）。
+- `backend/wallet-service/.../application.yml`：Postgres 寫庫池 `32→40`、`minimum-idle 6→10`（帳本 debit+credit 熱路徑、排隊 18）。
+- `backend/member-service/.../application.yml`：MySQL 池 `16→40`、`minimum-idle 4→10`（排隊 15；MySQL 預設 max_connections 151，40 遠低於此）。
+- `docker-compose.yml`：更新 postgres 預算註解（`max_connections=200` **值不變**）——新預算 game 40 + wallet 40 + rank 10 + admin 5 = **95 < 200**，headroom 充足，無需再調高。
+- `docs/performance/T-090-ABC-optimization-plan-20260722.md`：§3/§5 更新為 24/32 → 40 的二次上調與 CPU-40% 依據。
+
+**為什麼**：延遲瓶頸經壓測證實在連線池（軟體上限）非 CPU（硬體）；CPU 只用 40% 代表加連線不會撞 thrash，故安全上調。rank/admin **不動**——不在請求熱路徑（rank 非同步 Kafka 消費、admin 無壓測流量），動了只吃連線預算無收益（surgical）。
+**如何驗證**：純設定、不碰帳務語意/程式碼，無新增測試需求；四服務 yml 語法照舊。下午重測比對 `panel-06 連線池`（排隊應趨近 0）與 `panel-02 延遲`（P99 應下降）；若 CPU 逼近飽和再往回收。
+
+---
+
 ## [perf] — 2026-07-22 — T-090 open-model 首測（User 機器）：150 驗收 FAIL、1000 韌性 PASS、帳務 0 違規
 
 > #244 harness 修正後、換上 open-model（`PreciseThroughputTimer`）的**第一次實跑**。全新 User 機器（≠ weiyu/Alex），
