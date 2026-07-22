@@ -1,3 +1,38 @@
+## [docs] — 2026-07-22 — T-090 B1-續 審閱：歸因方向成立，但補「outbound 呼叫零儀表」與「無逾時/無斷路器」兩項
+
+> 對 PR #249（分層歸因：膝點延遲在 game→wallet 的 `RestClient`）做程式碼核對後的補充。
+> **歸因方向成立**，但發現兩件會改變下一步做法的事，並據此調整明天分機重測的計畫。
+
+### Added
+- `docs/performance/T-090-B5-game-wallet-restclient-驗證計畫.md`：把「調 client」拆成
+  **先加裝儀表 → 再調校** 兩步，並定義每一步的驗收條件與「什麼情況下該推翻這個歸因」。
+
+### Changed
+- `docs/performance/T-090-capacity-ladder-5000rps-report-20260722.md`：§7.B1-續 新增「審閱補充」：
+  1. **問題比「沒設連線池」更根本**——`WalletClientConfig` 用靜態 `RestClient.builder()`，
+     **繞過 Spring Boot 自動組態**：`spring.http.client.*` 逾時完全不生效、請求工廠退回框架預設、
+     **outbound 呼叫沒有 Micrometer 儀表**。實測 game 的 `http_client_requests` 指標數 = **0**
+     （`http_server_requests` 有 5 個）→ B1-續 的 ~1.3s 是**相減推論**，不是量測。
+     改注入 Boot 的 `RestClient.Builder` 即可直接拿到 client 端 P99，比 thread dump 更省事也更可重複。
+  2. **無逾時、無斷路器 = 可用性風險**：`WalletClient` 兩次呼叫皆同步阻塞且無 timeout；
+     `resilience4j` 在整個 backend **只存在於 gateway-service**。wallet 卡住不回 → game 的 Tomcat
+     執行緒被無限期佔住 → 執行緒池耗盡。**此項優先度不該綁在吞吐議題上，即使不調池也該補逾時。**
+- `docs/performance/T-090-遠端施壓機壓測計畫-20260723.md`：§5 改寫為 5.1/5.2/5.3——
+  三指標分流標註「#249 已先答過（落在第三格）、明天是在分機條件下複驗」；
+  新增 §5.2「延遲主體在哪一層」含 **game thread dump 抓取指令**、逐服務 P99 分層、
+  Tomcat 執行緒水位三項唯讀觀測（不污染主要數字）；§5.3 說明 **B 案優先度應往後排**。
+  §7 成功條件加一條：要對「卡在 HTTP client」給出支持或推翻的結論。
+- `docs/performance/T-090-load-test-report.md`：更正一處會誤導的措辭——
+  「game-service resilience4j circuit breaker」實為 **gateway 上以下游服務命名的斷路器實例**
+  （保護 gateway→game）。原文易被讀成 game-service 自己有斷路器，進而以為 game→wallet 也有保護。
+
+### 如何驗證
+- 程式碼核對：`WalletClientConfig`（無 factory/pool/timeout）、`WalletClient`（debit→credit 兩次同步阻塞）、
+  `grep -rn "httpclient5\|httpcomponents\|okhttp" backend/*/pom.xml pom.xml`（無命中）、
+  `grep -rl resilience4j backend/`（只命中 gateway-service）。
+- 實測：`curl http://localhost:8083/actuator/prometheus` → `http_client_requests*` 共 **0** 筆。
+- 純文件，未動任何程式碼。
+
 feature/weiyu-t090-D-client-bottleneck
 ## [docs] — 2026-07-22 — T-090 分層歸因：膝點延遲不在 wallet DB/outbox，在 game→wallet 未調校的 RestClient
 
