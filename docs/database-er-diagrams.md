@@ -14,7 +14,7 @@
 帳務核心（wallet-service）、遊戲對局（game-service）、排行快照（rank-service）、後台（admin-service）。
 `player_id` 一律邏輯對應 MySQL 的 `members.id`；`wallets` 以 `player_id` 為主鍵，是本庫的玩家錨點。
 
-![PostgreSQL 寫庫 ER 圖](assets/er/er-postgres.png)
+![PostgreSQL 寫庫 ER 圖](assets/er/er-postgres.svg)
 
 <details>
 <summary>Mermaid 原始碼（schema 變動時改這裡並重新產圖，見文末說明）</summary>
@@ -245,7 +245,7 @@ erDiagram
 > 圖中 `wallet_transactions_view` 實際表名為 `wallet_transactions`（與 PG 寫庫同名）；
 > 為避免混淆，圖上加 `_view` 後綴標示。
 
-![MySQL 讀庫 ER 圖](assets/er/er-mysql.png)
+![MySQL 讀庫 ER 圖](assets/er/er-mysql.svg)
 
 <details>
 <summary>Mermaid 原始碼（schema 變動時改這裡並重新產圖，見文末說明）</summary>
@@ -400,7 +400,7 @@ erDiagram
 
 兩庫之間沒有任何實體外鍵，靠三種機制黏合：共用邏輯鍵 `player_id`、Kafka 事件同步、以及「目錄在讀庫、帳務在寫庫」的分工。
 
-![跨庫 CQRS 資料流](assets/er/er-cross-db-cqrs.png)
+![跨庫 CQRS 資料流](assets/er/er-cross-db-cqrs.svg)
 
 <details>
 <summary>Mermaid 原始碼（schema 變動時改這裡並重新產圖，見文末說明）</summary>
@@ -446,7 +446,7 @@ flowchart LR
 ① 改對應摺疊區塊的 Mermaid 原始碼 → ② 把該區塊內容存成 `.mmd` 檔 → ③ 用 mermaid-cli 重新輸出 PNG：
 
 ```bash
-npx -y @mermaid-js/mermaid-cli -i er-postgres.mmd -o docs/assets/er/er-postgres.png -b white -s 2
+npx -y @mermaid-js/mermaid-cli -i er-postgres.mmd -o docs/assets/er/er-postgres.svg -b white
 ```
 
-（`-b white` 白底、`-s 2` 兩倍解析度；三張圖檔名：`er-postgres.png` / `er-mysql.png` / `er-cross-db-cqrs.png`）
+（`-b white` 白底；輸出 SVG 向量圖，放大不失真。三張圖檔名：`er-postgres.svg` / `er-mysql.svg` / `er-cross-db-cqrs.svg`）
