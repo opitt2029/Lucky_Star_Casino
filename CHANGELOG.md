@@ -1,3 +1,83 @@
+## [fixed] — 2026-07-23 — 百家樂／捕魚機全螢幕：一按下注、一開抽屜整個版面就跑掉
+
+> 承 #253 / #255 的同一類雷：全螢幕容器把高度分配交給「子元素數量」或「內容多寡」，
+> 玩家一操作就重排。老虎機在 #255 修過一次，這次把剩下兩款一起收斂，並補上回歸測試。
+
+### Fixed
+- `frontend/src/styles/games/baccarat.css`：全螢幕牌桌改用 flex 直向排列。
+  原本 cockpit override 宣告 `grid-template-rows: auto auto minmax(0, 1fr)` 共三列，
+  但 `.baccarat-table` 在全螢幕**只有兩個可見子元素**——狀態列（`.baccarat-status-bar`）
+  與路紙側欄（`.baccarat-side-panel`）都被 `display: none` 收掉了。於是牌桌
+  `.baccarat-table-felt` 掉進第二個 `auto` 列，高度跟著「內容」跑（felt 自己的
+  `height: 100%` 對 auto 列是循環定義，會退回 auto），而第三列 `1fr` 空著卻吃掉
+  全部剩餘空間。實測 1920x1080：按下注前牌桌 672px、結算後 837px，**表頭以下整塊
+  往下位移 165px**，同時底部固定空著 270px（「畫面被壓縮」）。1366x768 更嚴重：
+  `1fr` 縮到 0 後，felt 內的側注格與結算面板被 `overflow: hidden` 直接裁掉 54px。
+  改 flex 後牌桌 `flex: 1 1 auto` 恆等於剩餘空間，不再依賴「宣告列數 == 子元素數」
+  這個會被 `display: none` 破功的假設。
+- `frontend/src/styles/games/baccarat.css`：結算面板 `.baccarat-settlement` 改固定高度
+  `clamp(160px, 26vh, 300px)`。它所在的 grid 列是 `auto`，尺寸取自內容的 max-content：
+  空狀態 195px、結算後長出金額欄位變成 336px，差額全部從牌桌那列 `minmax(0, 1fr)` 扣。
+  它本來就是 `overflow-y: auto`，固定高度後列高不再隨內容變動，內容真放不下由它自己捲。
+  （`--empty` 變體另有 `max-height: 132px` 會把固定高度夾回去，一併解除。）
+- `frontend/src/components/Fishing.css`：全螢幕 `.fishing-game--fullscreen` 改 flex 直向排列，
+  `.fishing-play-surface` 吸收剩餘空間、舞台卡 `flex: 1 1 auto`、統計抽屜 `flex: 0 0 auto`。
+  原本 `.fishing-play-surface` 是 `display: block`，內含「`height: 100%` 的
+  `.fishing-stage-card`（858px）」＋「`.fishing-catch-stats-drawer`（50px）」＝908px，
+  超出它自己的 858px。溢出往上累積成 `.fishing-main` 的 `scrollHeight` 1114 > 1080。
+  `.fishing-main` 是 `overflow: hidden`，沒有捲軸但**仍可被程式捲動**——瀏覽器把剛點開的
+  `<details>` 捲進可視範圍時 `scrollTop` 變成 33，整個全螢幕面板往上位移 33px，
+  而玩家沒有捲軸可以捲回來。這就是「一操作整個畫面就跑掉」。
+- `frontend/src/components/Fishing.css`：`.fishing-catch-stats-drawer__panel` 加
+  `max-height: min(24vh, 200px); overflow-y: auto`，抽屜展開由自己捲，不把高度推給外層。
+  另外全螢幕改成「往舞台之上浮」（`position: absolute; bottom: 100%`，抽屜自身補
+  `position: relative` 當定位基準）——只讓它自己捲還不夠，展開仍會多佔 48px 而那 48px
+  是從舞台卡扣的，canvas 一縮 Pixi 就重算尺寸讓整批魚跳位，是同一個 bug 的另一種形狀。
+- `frontend/src/components/Reel.jsx`：修 **PR #255 回報的「SPIN 永久卡在 SPINNING」**。
+  `nextFrame()` 只包 `requestAnimationFrame`，但視窗被其他視窗完全遮蔽 / 分頁切到背景時
+  Chrome 會停掉 rAF（`setTimeout` 仍會被節流地觸發），那個 Promise 就永遠不 resolve，
+  `SlotMachine.runReels` 卡在 `phase='spinning'`：按鈕卡在 disabled、狀態停在「減速中」、
+  餘額不更新（`onSettled` 在 `runReels` 之後才呼叫）、且**完全沒有 console 錯誤**——
+  與 #255 的描述逐條吻合。修法：`nextFrame` 讓 rAF 與逾時賽跑，`animateReel` 加看門狗
+  （`duration + 1200ms` 寬限，正常路徑一定是 `step()` 先跑完、行為不變）。
+  順帶修 `startedAt` 用 `!startedAt` 判斷「尚未起算」的問題：rAF 的 timestamp 可能就是 0，
+  那一幀會被當成沒起算過而丟掉，動畫實際少跑一格；改用 `=== null`。
+
+### Added
+- `frontend/e2e/fullscreen-layout.spec.js`：全螢幕版面穩定性回歸測試（1920x1080 / 1366x768 × 三款遊戲）。
+  斷言統一寫成「做完一次真實操作後，關鍵容器的座標/尺寸必須完全不變」＋「全螢幕容器
+  `scrollHeight <= clientHeight`（不可被捲走）」，而不是比對寫死的像素值——後者會隨
+  美術調整誤報，前者才是真正的不變量。
+- `frontend/src/components/Reel.test.jsx`、`frontend/src/components/SlotMachine.test.jsx`：
+  轉輪動畫與視覺鎖的單元測試。核心情境是「把 rAF 完全凍結」（等同視窗被遮蔽/背景分頁），
+  驗證動畫 Promise 仍會結束、SPIN 仍會解鎖；另涵蓋 `targetY` 必為格高整數倍（不停半格）、
+  第一幀 timestamp 為 0、`signal` 已中止、`trackElement` 為 null、`onSpin` 拋錯等邊界。
+
+### 為什麼
+版面 bug 用 jsdom 單元測試抓不到（jsdom 沒有版面引擎），必須在真瀏覽器量。三次事故
+（#253 按鍵被蓋、#255 轉輪第三行被裁、本次兩款全螢幕位移）根因是同一個：**容器的高度
+分配依賴了會變動的東西**（子元素數量、內容 max-content）。因此修法一律收斂成 flex
+「主角吃剩餘空間、配角只佔內容高度」，並把不變量寫成 e2e 斷言擋住下一次。
+
+### 如何驗證
+- `npx playwright test fullscreen-layout.spec.js` → **6 passed**（三款遊戲 × 兩種解析度）
+- 反向驗證測試有效性：`git stash` 退掉兩支 CSS 修正後重跑 →
+  百家樂與捕魚機**立刻紅**、老虎機（#255 已修）維持綠，確認不是假綠燈
+- `npm run lint`（eslint src）無輸出；`npx vitest run` → 8 檔 56 測試全綠
+- 版面量測（Playwright 實測 1920x1080）：
+  百家樂 felt 下注前後皆為 `17,113 1886x950`、`grid-template-rows` 完全一致；
+  捕魚 `.fishing-main` scrollHeight 1114 → **1080**（== clientHeight），scrollTop 恆 0
+- 全站巡檢 38 項（公開頁 / 12 個受保護頁 / 三款遊戲完整下注流程 / 全站浮動元件）
+  皆通過，無 console error
+
+### 關於 PR #255 遺留的「SPIN 永久卡在 SPINNING」
+該現象在一般瀏覽操作下不容易重現（本次 mock 模式連轉兩局皆正常、餘額正確扣款
+999,999,999,999 → 999,999,994,999），因為它只在 **rAF 停擺**時發生——視窗被其他視窗
+完全遮蔽、或分頁切到背景。根因與修法見上方 `Reel.jsx` 條目，並由
+`Reel.test.jsx` / `SlotMachine.test.jsx` 以「凍結 rAF」的方式穩定重現與守門
+（反向驗證：退掉 `Reel.jsx` 修正後這 4 個測試立刻紅）。
+
+---
 ## [docs] — 2026-07-23 — 新增雙資料庫 ER 圖文件
 
 ### Added

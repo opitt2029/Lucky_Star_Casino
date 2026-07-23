@@ -2096,3 +2096,102 @@ body.baccarat-fullscreen-active {
   margin-top: 4px;
   line-height: 1.2;
 }
+
+/* ---------------------------------------------------------------------------
+   全螢幕：按下注後整個版面重排（牌桌忽大忽小、底部空一大塊）。
+
+   原因（實測 1920x1080 全螢幕）：上方 cockpit override 宣告
+   `grid-template-rows: auto auto minmax(0, 1fr)` 共三列，但 .baccarat-table
+   實際只有「兩個」可見子元素——狀態列（.baccarat-status-bar）與路紙側欄
+   （.baccarat-side-panel）在全螢幕都被 display: none 收掉了。於是：
+     · row1(auto)     ← 表頭
+     · row2(auto)     ← 牌桌 .baccarat-table-felt   ← 掉進 auto 列
+     · row3(1fr)      ← 空的，卻吃掉全部剩餘空間
+   牌桌落在 auto 列＝高度跟著「內容」跑（felt 的 height: 100% 對 auto 列是循環
+   定義，會退回 auto）。所以按下注、結算面板一長內容，牌桌就從 672px 撐到 837px，
+   表頭以下整塊往下推——這就是「按下注整個畫面跑掉」；同時底部固定空著 270px
+   的 1fr，可用空間被浪費，牌桌反而被壓在較小的區域裡（「畫面被壓縮」）。
+   矮螢幕（1366x768）更嚴重：1fr 縮到 0 後，felt 內的側注格與結算面板直接被
+   overflow: hidden 裁掉 54px。
+
+   修法：改用 flex 直向排列，不再依賴「宣告列數 == 子元素數」這個會隨
+   display: none 破功的假設（同一個雷 PR #255 才在老虎機機台上踩過一次）。
+   牌桌用 flex: 1 1 auto 恆等於「剩餘空間」，其餘子元素 flex: 0 0 auto 只佔
+   內容高度。子元素增減或顯示/隱藏都不會再改變牌桌以外的版面。
+   --------------------------------------------------------------------------- */
+.baccarat-table--fullscreen,
+.baccarat-table:fullscreen {
+  display: flex;
+  flex-direction: column;
+}
+
+.baccarat-table--fullscreen > *,
+.baccarat-table:fullscreen > * {
+  flex: 0 0 auto;
+}
+
+.baccarat-table--fullscreen > .baccarat-table-felt,
+.baccarat-table:fullscreen > .baccarat-table-felt {
+  flex: 1 1 auto;
+  /* height: 100%（cockpit override）在 flex 直向排列下會先算出整個容器高度再被
+     shrink 拉回來，中間狀態會讓內部 grid 以錯誤高度算一次列高；改回 auto 讓
+     flex 單獨決定高度。 */
+  height: auto;
+}
+
+/* 窄視窗（≤900px）的全螢幕本來就是「整頁可捲動」設計（見上方 max-width: 900px
+   區塊把 table 設成 overflow: auto、felt 設成 height: auto/overflow: visible）。
+   若讓 felt 繼續 flex: 1 1 auto，它會被壓縮回容器高度而不是撐開捲動，反而把
+   內容裁掉——這裡把伸縮關掉，維持原本的捲動行為。 */
+@media (max-width: 900px) {
+  .baccarat-table--fullscreen > .baccarat-table-felt,
+  .baccarat-table:fullscreen > .baccarat-table-felt {
+    flex: 0 0 auto;
+  }
+}
+
+/* 牌桌外框固定之後，還有第二層位移來自 felt 內部：結算面板所在的 grid 列是
+   auto，尺寸取自內容的 max-content。空狀態只有 195px，結算後長出金額欄位變成
+   336px（1920x1080 實測），差額全部從牌桌那列 minmax(0, 1fr) 扣——按下注的瞬間
+   牌桌就縮一截（矮螢幕上那列甚至歸零，下注區直接被 overflow: hidden 裁掉）。
+
+   結算面板本來就是 overflow-y: auto，所以這裡直接給它固定高度：列高不再隨內容
+   變動，空狀態與結算後版面完全一致，內容真的放不下時由它自己捲。
+   （--empty 變體在上方 breakpoint 另有 max-height: 132px，會把固定高度夾回去，
+   一併在此解除。） */
+.baccarat-table--fullscreen .baccarat-settlement,
+.baccarat-table:fullscreen .baccarat-settlement {
+  height: clamp(160px, 26vh, 300px);
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+}
+
+/* 側注面板：內容放不下時要「自己捲」，不是被外框裁掉。
+   實測 1536x672 全螢幕，側注格最底下兩張卡被 overflow: hidden 切掉 18px——
+   看得到一半、點不到，玩家只會覺得畫面被壓爛了。
+   標題與統計列固定，只有卡片格伸縮並自捲；捲軸關在卡片區內，牌桌版面完全不受影響。
+   （上方 breakpoint 給 __grid 的 max-height 是為了「不要長太高擠到牌桌」，在這個
+   flex 版面下高度已由外框決定，留著反而會夾住伸縮，故一併解除。） */
+.baccarat-table--fullscreen .baccarat-side-bets,
+.baccarat-table:fullscreen .baccarat-side-bets {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.baccarat-table--fullscreen .baccarat-side-bets__heading,
+.baccarat-table:fullscreen .baccarat-side-bets__heading,
+.baccarat-table--fullscreen .baccarat-side-bets__summary,
+.baccarat-table:fullscreen .baccarat-side-bets__summary {
+  flex: 0 0 auto;
+}
+
+.baccarat-table--fullscreen .baccarat-side-bets__grid,
+.baccarat-table:fullscreen .baccarat-side-bets__grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+}
