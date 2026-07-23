@@ -37,8 +37,10 @@ jobs:
   #   能在合併前就攔截「服務根本起不來」這類設定錯誤。
   #
   # 不需外部資料庫/Kafka：全部服務的測試皆使用 H2 記憶體資料庫（見各自
-  #   src/test/resources/application.yml），game/rank/notification 另用
-  #   @EmbeddedKafka 起內嵌 broker，所以 CI 不必啟動 PostgreSQL/MySQL/Kafka。
+  #   src/test/resources/application.yml）；Kafka 不用內嵌 broker——game 無
+  #   @KafkaListener（producer 延遲連線，contextLoads 不碰網路），rank/notification
+  #   測試設 spring.kafka.listener.auto-startup=false，事件邏輯測試 mock
+  #   KafkaTemplate。所以 CI 不必啟動 PostgreSQL/MySQL/Kafka。
   #
   # 範圍：七個服務全部已實作且測試綠燈（見 CHANGELOG 2026-07-01 健檢紀錄），
   #   全部納入擋關清單。

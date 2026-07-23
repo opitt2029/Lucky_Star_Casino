@@ -147,18 +147,80 @@ body.slot-fullscreen-active {
   height: 100%;
 }
 
+/* 改用 flex（原本是 grid + grid-template-rows: auto minmax(0,1fr) auto auto）。
+   機台實際有 5 個子元素（跑馬燈 / topper / 轉輪窗 / 控制列 / 狀態列），那份四列宣告
+   讓 1fr 落在高度 0 的裝飾層上，真正該吃剩餘空間的轉輪窗反而只拿到 auto。
+   flex 不依賴子元素的數量與順序，轉輪窗永遠拿得到剩下的空間。 */
 .slot-game-surface--fullscreen .slot-machine,
 .slot-game-surface:fullscreen .slot-machine {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  display: flex;
+  flex-direction: column;
   padding: clamp(8px, 1.1vw, 14px);
 }
 
 .slot-game-surface--fullscreen .slot-cabinet,
 .slot-game-surface:fullscreen .slot-cabinet {
+  /* index.css 的 @media (min-width: 1024px) 把 --slot-reel-height 寫死成 32rem（512px），
+     讓轉輪視窗高度跟 --slot-symbol-height 脫鉤。格高縮小後視窗仍是 512px，
+     多出來的高度會露出第四格再被外框切斷（看起來像轉輪下面卡了半排符號）。
+     全螢幕綁回「三格」的原始定義，視窗高度就會跟著格高一起縮。 */
+  --slot-reel-height: calc(var(--slot-symbol-height, 100px) * 3);
+  flex: 1 1 auto;
   min-height: 0;
-  height: 100%;
+  height: auto;
   margin-top: 10px;
+}
+
+.slot-game-surface--fullscreen .slot-machine > *:not(.slot-cabinet),
+.slot-game-surface:fullscreen .slot-machine > *:not(.slot-cabinet) {
+  flex: 0 0 auto;
+}
+
+/* 轉輪是全螢幕的主角，裝飾件讓出高度給它——省下來的每一 px 都會變成更大的符號格
+   （格高＝轉輪窗可用高度 ÷ 3，見 SlotMachine.jsx 的 fitToCabinet）。 */
+.slot-game-surface--fullscreen .slot-machine__marquee,
+.slot-game-surface:fullscreen .slot-machine__marquee {
+  margin-bottom: 8px;
+  padding: 4px 8px;
+}
+
+.slot-game-surface--fullscreen .slot-machine__bulb,
+.slot-game-surface:fullscreen .slot-machine__bulb {
+  height: 14px;
+}
+
+.slot-game-surface--fullscreen .slot-machine__topper,
+.slot-game-surface:fullscreen .slot-machine__topper {
+  padding: 8px 12px;
+}
+
+/* 機台內的「Lucky Star Deluxe / 星幣老虎機」在全螢幕是重複資訊——
+   全螢幕頂列（.slot-game-topbar）已經有一模一樣的標題。收掉它把高度讓給轉輪，
+   只留右邊的 GRAND 獎池。第一個 div 是標題組、第二個是獎池，見 SlotMachine.jsx 的 topper。 */
+.slot-game-surface--fullscreen .slot-machine__topper > div:first-child,
+.slot-game-surface:fullscreen .slot-machine__topper > div:first-child {
+  display: none;
+}
+
+/* 獎池是氛圍展示，不需要 34px 的大數字佔掉 74px 高——縮成一行留住老虎機的味道就好。 */
+.slot-game-surface--fullscreen .slot-machine__jackpot,
+.slot-game-surface:fullscreen .slot-machine__jackpot {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  /* 一般頁面的 min-height: 74px 是為了撐出獎池的存在感，全螢幕要把高度讓給轉輪。 */
+  min-height: 0;
+}
+
+.slot-game-surface--fullscreen .slot-machine__jackpot strong,
+.slot-game-surface:fullscreen .slot-machine__jackpot strong {
+  font-size: 1.35rem;
+}
+
+.slot-game-surface--fullscreen .slot-lever,
+.slot-game-surface:fullscreen .slot-lever {
+  height: 88px;
 }
 
 .slot-game-surface--fullscreen .slot-game-control-panel,

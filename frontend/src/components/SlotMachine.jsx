@@ -57,6 +57,7 @@ export default function SlotMachine({
   onSpinComplete,
   symbols = defaultSymbols,
   symbolHeight: symbolHeightProp,
+  fullscreen = false,
 }) {
   const [responsiveSymbolHeight, setResponsiveSymbolHeight] = useState(() =>
     getResponsiveSymbolHeight(compact)
@@ -70,6 +71,7 @@ export default function SlotMachine({
   // Jackpot 氛圍數字：緩慢滾動營造「獎池一直在長大」的期待感（純展示）。
   const [jackpot, setJackpot] = useState(777000)
   const trackRefs = useRef([])
+  const cabinetRef = useRef(null)
   const abortRef = useRef(null)
   const handledGridRef = useRef(grid || fallbackGrid)
 
@@ -112,17 +114,56 @@ export default function SlotMachine({
     return () => window.clearInterval(timer)
   }, [])
 
+  // 一般頁面：格高只看視窗寬度就夠，機台高度由內容自然撐開。
+  // 全螢幕：機台高度被視窗鎖死，轉輪窗（.slot-cabinet）能分到多少高度由 grid 決定，
+  //   格高必須跟著它算，否則三行會超出轉輪窗、被 overflow: hidden 裁掉。
+  //   實測 1536x672 的全螢幕：轉輪窗只有 207px，但格高寫死 170px（三行 510px），
+  //   第二行只露 14px、第三行整個不見——螢幕越矮越明顯，高螢幕則看不出問題。
+  //   這裡量的是轉輪窗，全螢幕下它是 height: 100% 由外層 grid 決定，
+  //   不會反過來被格高撐開，所以不會有「縮了又量、量了又縮」的循環。
   useEffect(() => {
     if (symbolHeightProp) return undefined
 
-    const handleResize = () => {
-      setResponsiveSymbolHeight(getResponsiveSymbolHeight(compact))
+    const widthBased = () => getResponsiveSymbolHeight(compact)
+
+    if (!fullscreen) {
+      const handleResize = () => setResponsiveSymbolHeight(widthBased())
+      handleResize()
+      window.addEventListener('resize', handleResize)
+      return () => window.removeEventListener('resize', handleResize)
     }
 
-    handleResize()
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [compact, symbolHeightProp])
+    const cabinet = cabinetRef.current
+    const fitToCabinet = () => {
+      if (!cabinet) {
+        setResponsiveSymbolHeight(widthBased())
+        return
+      }
+      // clientHeight 含 padding，轉輪只能用扣掉 padding 之後的部分（實測上下各 22px）。
+      const style = window.getComputedStyle(cabinet)
+      const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0)
+      const available = cabinet.clientHeight - padding
+      if (available <= 0) {
+        setResponsiveSymbolHeight(widthBased())
+        return
+      }
+      // 下限 48px：再矮就看不清符號了，寧可讓它溢出也不要糊成一片。
+      setResponsiveSymbolHeight(Math.max(48, Math.min(widthBased(), Math.floor(available / visibleRows))))
+    }
+
+    fitToCabinet()
+
+    // 走 window.ResizeObserver 而非裸的 ResizeObserver：專案 ESLint 的 env 沒宣告這個全域，
+    // 裸用會被 no-undef 擋下；順帶讓「瀏覽器不支援就退回 resize 事件」的判斷更直白。
+    if (!cabinet || typeof window.ResizeObserver === 'undefined') {
+      window.addEventListener('resize', fitToCabinet)
+      return () => window.removeEventListener('resize', fitToCabinet)
+    }
+
+    const observer = new window.ResizeObserver(fitToCabinet)
+    observer.observe(cabinet)
+    return () => observer.disconnect()
+  }, [compact, symbolHeightProp, fullscreen])
 
   useEffect(() => {
     if (phase !== 'idle' || !grid || sameGrid(grid, handledGridRef.current)) return
@@ -266,6 +307,7 @@ export default function SlotMachine({
       </div>
 
       <div
+        ref={cabinetRef}
         className={[
           'slot-cabinet mt-5',
           compact ? 'slot-cabinet--compact' : '',
