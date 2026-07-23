@@ -6,6 +6,7 @@ const initialState = {
   friendRank: [],
   dailyWinnings: [],
   myGlobalRank: null,
+  myDailyWinnings: null,
   activeTab: 'global',
   searchQuery: '',
   loading: false,
@@ -67,7 +68,9 @@ const rankSlice = createSlice({
         state.loading = false
         state.globalRank = action.payload.globalRank
         state.friendRank = action.payload.friendRank
+        state.dailyWinnings = action.payload.dailyWinnings || []
         state.myGlobalRank = action.payload.myGlobalRank
+        state.myDailyWinnings = action.payload.myDailyWinnings || null
       })
       .addCase(fetchRanks.rejected, (state, action) => {
         state.loading = false

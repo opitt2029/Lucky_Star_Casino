@@ -5,17 +5,33 @@ import LeaderboardPanel from '../components/LeaderboardPanel'
 import MetricCard from '../components/MetricCard'
 import { fetchRanks, setRankSearchQuery, setRankTab } from '../store/slices/rankSlice'
 
+const rankTabs = [
+  ['global', '全服 TOP100'],
+  ['friends', '好友榜'],
+  ['daily', '今日贏幣王'],
+]
+
 export default function Rank() {
   const dispatch = useDispatch()
   const [showFullRank, setShowFullRank] = useState(false)
-  const { globalRank, friendRank, myGlobalRank, activeTab, searchQuery, error } = useSelector((state) => state.rank)
+  const {
+    globalRank,
+    friendRank,
+    dailyWinnings,
+    myGlobalRank,
+    myDailyWinnings,
+    activeTab,
+    searchQuery,
+    error,
+  } = useSelector((state) => state.rank)
   const player = useSelector((state) => state.auth.player)
-  const rows = activeTab === 'friends' ? friendRank : globalRank
+  const isDailyTab = activeTab === 'daily'
+  const rows = activeTab === 'friends' ? friendRank : isDailyTab ? dailyWinnings : globalRank
   const filteredRows = useMemo(
-    () => rows.filter((row) => (row.nickname || row.name).toLowerCase().includes(searchQuery.toLowerCase())),
-    [rows, searchQuery]
+    () => rows.filter((row) => (row.nickname || row.name || '').toLowerCase().includes(searchQuery.toLowerCase())),
+    [rows, searchQuery],
   )
-  const topScore = globalRank[0]?.score || 0
+  const topScore = isDailyTab ? dailyWinnings[0]?.score || 0 : globalRank[0]?.score || 0
   const rankLimit = showFullRank ? 100 : 20
   const canShowMore = filteredRows.length > rankLimit
 
@@ -33,11 +49,8 @@ export default function Rank() {
         <div className="grid gap-4">
           <section className="luxury-panel-soft rounded p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="flex rounded border border-yellow-200/15 bg-red-950/70 p-1">
-                {[
-                  ['global', '全服 TOP100'],
-                  ['friends', '好友榜'],
-                ].map(([key, label]) => (
+              <div className="flex flex-wrap rounded border border-yellow-200/15 bg-red-950/70 p-1">
+                {rankTabs.map(([key, label]) => (
                   <button
                     key={key}
                     type="button"
@@ -53,12 +66,16 @@ export default function Rank() {
               </div>
               <input
                 className="min-h-11 rounded border border-yellow-200/15 bg-red-950/70 px-4 text-sm font-bold text-white outline-none focus:border-yellow-200"
-                placeholder="搜尋好友名次"
+                placeholder="搜尋玩家名次"
                 value={searchQuery}
                 onChange={(event) => dispatch(setRankSearchQuery(event.target.value))}
               />
             </div>
-            {error && <p className="mt-3 rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">{error}</p>}
+            {error && (
+              <p className="mt-3 rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">
+                {error}
+              </p>
+            )}
           </section>
           <LeaderboardPanel rows={filteredRows} myNickname={player?.nickname} limit={rankLimit} />
           {canShowMore && (
@@ -72,9 +89,17 @@ export default function Rank() {
           )}
         </div>
         <aside className="grid gap-4 content-start">
-          <MetricCard label="榜首分數" value={topScore.toLocaleString()} tone="light" />
-          <MetricCard label="我的名次" value={myGlobalRank?.rank ? `#${myGlobalRank.rank}` : '-'} caption={player?.nickname || '目前玩家'} />
-          <MetricCard label="榜單筆數" value={filteredRows.length.toLocaleString()} caption={activeTab === 'friends' ? '好友榜' : '全服 TOP100'} />
+          <MetricCard label={isDailyTab ? '今日榜首淨贏' : '榜首分數'} value={topScore.toLocaleString()} tone="light" />
+          <MetricCard
+            label={isDailyTab ? '我的今日名次' : '我的名次'}
+            value={isDailyTab ? (myDailyWinnings?.rank ? `#${myDailyWinnings.rank}` : '-') : (myGlobalRank?.rank ? `#${myGlobalRank.rank}` : '-')}
+            caption={isDailyTab ? `${(myDailyWinnings?.score ?? 0).toLocaleString()} 今日淨贏` : player?.nickname || '目前玩家'}
+          />
+          <MetricCard
+            label="榜單筆數"
+            value={filteredRows.length.toLocaleString()}
+            caption={activeTab === 'friends' ? '好友榜' : isDailyTab ? '今日贏幣王' : '全服 TOP100'}
+          />
         </aside>
       </section>
     </AppShell>

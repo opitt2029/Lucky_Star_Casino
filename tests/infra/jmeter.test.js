@@ -44,8 +44,11 @@ describe('T-090 JMeter pressure test contract', () => {
   })
 
   test('checks wallet balances for overdraw', () => {
-    assert.match(jmx, /03 Wallet Balance Must Stay Non-Negative/)
-    assert.match(jmx, /Overdraw detected/)
+    assert.match(jmx, /Capture Round Identity And Reject Negative Balance/)
+    assert.match(jmx, /Reject Negative Balance On Secondary Spin/)
+    assert.match(jmx, /root\?\.wallet\?\.balance/)
+    assert.match(jmx, /Negative balance returned by primary spin/)
+    assert.match(jmx, /Negative balance returned by secondary spin/)
   })
 
   test('sets finite HTTP timeouts and rejects non-2xx responses', () => {
@@ -54,10 +57,11 @@ describe('T-090 JMeter pressure test contract', () => {
     assert.match(jmx, /Primary Spin Must Return 2xx/)
   })
 
-  test('runner generates JTL and JMeter HTML dashboard', () => {
-    assert.match(runner, /-l \$jtl/)
-    assert.match(runner, /-e/)
-    assert.match(runner, /-o \$htmlDir/)
+  test('runner generates JTL and optionally generates JMeter HTML dashboard', () => {
+    assert.match(runner, /"-l", \$jtl/)
+    assert.match(runner, /\[switch\]\$NoHtmlReport/)
+    assert.match(runner, /if \(\-not \$NoHtmlReport\)/)
+    assert.match(runner, /\$jmeterArgs \+= @\("-e", "-o", \$htmlDir\)/)
   })
 
   test('analyzer enforces P99 under 500ms and zero 5xx', () => {
@@ -66,16 +70,17 @@ describe('T-090 JMeter pressure test contract', () => {
   })
 
   test('gate mode binds to declared capacity (D1-final, 2026-07-18)', () => {
-    // 驗收模式（容量內）429=0 硬 gate；韌性模式（超容量）判 accepted 成功率，429 只記趨勢。
     assert.match(analyzer, /DECLARED_CAPACITY/)
     assert.match(analyzer, /resilienceMode/)
     assert.match(analyzer, /successRate >= minAcceptedSuccess/)
     assert.match(analyzer, /shed\.length === 0/)
-    // 舊標量上限已被 D1-final 拓樸綁定語意取代，不得回歸。
     assert.doesNotMatch(analyzer, /MAX_429_RATIO/)
-    // runner 必須把兩個判模式參數傳給 analyzer。
+    assert.match(runner, /\[int\]\$TargetRps = 0/)
+    assert.match(runner, /\$effectiveTargetRps = if \(\$TargetRps -gt 0\) { \$TargetRps } else { \$Threads }/)
+    assert.match(runner, /"-Jtarget_rps=\$effectiveTargetRps"/)
+    // runner passes the offered load level to analyzer, decoupled from generator thread count.
     assert.match(runner, /\$env:DECLARED_CAPACITY = \$DeclaredCapacity/)
-    assert.match(runner, /\$env:THREADS = \$Threads/)
+    assert.match(runner, /\$env:THREADS = \$effectiveTargetRps/)
   })
 
   test('report documents the real contract and records measured results honestly', () => {

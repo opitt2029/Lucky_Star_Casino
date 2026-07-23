@@ -1,3 +1,66 @@
+## [fixed] -- 2026-07-23 -- Restore remote CI green gates
+
+### Fixed
+- tests/infra/jmeter.test.js: align T-090 contract assertions with the current open-model runner, response-level balance checks, optional HTML report generation, and offered-load gate selection.
+- frontend/e2e/smoke.spec.js: make the Records page heading assertion tolerate whitespace around the slash while still checking the same accessible heading.
+
+### Why
+- develop had advanced the T-090 load-test runner/JMX contract, but the infra test still asserted the older runner shape. The frontend smoke test also compared the Records nav label exactly against a heading that intentionally includes spaces for display.
+
+### Verification
+- node --test tests/infra/*.test.js
+- mvn -B -ntp -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/admin-service,backend/game-service,backend/rank-service,backend/notification-service clean test
+- mvn -B -ntp -pl backend/wallet-service test -Pcontainers-test
+- npm.cmd run lint / npm.cmd test / npm.cmd run build / npm.cmd run e2e (frontend)
+
+## [docs] — 2026-07-22 — T-090 B1-續 審閱：歸因方向成立，但補「outbound 呼叫零儀表」與「無逾時/無斷路器」兩項
+
+> 對 PR #249（分層歸因：膝點延遲在 game→wallet 的 `RestClient`）做程式碼核對後的補充。
+> **歸因方向成立**，但發現兩件會改變下一步做法的事，並據此調整明天分機重測的計畫。
+
+### Added
+- `docs/performance/T-090-B5-game-wallet-restclient-驗證計畫.md`：把「調 client」拆成
+  **先加裝儀表 → 再調校** 兩步，並定義每一步的驗收條件與「什麼情況下該推翻這個歸因」。
+
+### Changed
+- `docs/performance/T-090-capacity-ladder-5000rps-report-20260722.md`：§7.B1-續 新增「審閱補充」：
+  1. **問題比「沒設連線池」更根本**——`WalletClientConfig` 用靜態 `RestClient.builder()`，
+     **繞過 Spring Boot 自動組態**：`spring.http.client.*` 逾時完全不生效、請求工廠退回框架預設、
+     **outbound 呼叫沒有 Micrometer 儀表**。實測 game 的 `http_client_requests` 指標數 = **0**
+     （`http_server_requests` 有 5 個）→ B1-續 的 ~1.3s 是**相減推論**，不是量測。
+     改注入 Boot 的 `RestClient.Builder` 即可直接拿到 client 端 P99，比 thread dump 更省事也更可重複。
+  2. **無逾時、無斷路器 = 可用性風險**：`WalletClient` 兩次呼叫皆同步阻塞且無 timeout；
+     `resilience4j` 在整個 backend **只存在於 gateway-service**。wallet 卡住不回 → game 的 Tomcat
+     執行緒被無限期佔住 → 執行緒池耗盡。**此項優先度不該綁在吞吐議題上，即使不調池也該補逾時。**
+- `docs/performance/T-090-遠端施壓機壓測計畫-20260723.md`：§5 改寫為 5.1/5.2/5.3——
+  三指標分流標註「#249 已先答過（落在第三格）、明天是在分機條件下複驗」；
+  新增 §5.2「延遲主體在哪一層」含 **game thread dump 抓取指令**、逐服務 P99 分層、
+  Tomcat 執行緒水位三項唯讀觀測（不污染主要數字）；§5.3 說明 **B 案優先度應往後排**。
+  §7 成功條件加一條：要對「卡在 HTTP client」給出支持或推翻的結論。
+- `docs/performance/T-090-load-test-report.md`：更正一處會誤導的措辭——
+  「game-service resilience4j circuit breaker」實為 **gateway 上以下游服務命名的斷路器實例**
+  （保護 gateway→game）。原文易被讀成 game-service 自己有斷路器，進而以為 game→wallet 也有保護。
+
+### 如何驗證
+- 程式碼核對：`WalletClientConfig`（無 factory/pool/timeout）、`WalletClient`（debit→credit 兩次同步阻塞）、
+  `grep -rn "httpclient5\|httpcomponents\|okhttp" backend/*/pom.xml pom.xml`（無命中）、
+  `grep -rl resilience4j backend/`（只命中 gateway-service）。
+- 實測：`curl http://localhost:8083/actuator/prometheus` → `http_client_requests*` 共 **0** 筆。
+- 純文件，未動任何程式碼。
+
+feature/weiyu-t090-D-client-bottleneck
+## [docs] — 2026-07-22 — T-090 分層歸因：膝點延遲不在 wallet DB/outbox，在 game→wallet 未調校的 RestClient
+
+> 承 5000rps 報告 §7.B1 的開放問題（「pending≈0 且 CPU 未滿 → 單筆交易延遲 → 該不該做 B 案」）。
+> 另跑一輪階梯（`ladder-20260722-150429`）並對膝點（100/150 併發）做逐服務 P99 分層歸因，回答了它。
+
+### Changed
+- `docs/performance/T-090-capacity-ladder-5000rps-report-20260722.md`：§7.B 新增「B1-續」分層歸因小節。
+  **發現**：膝點 P99 幾乎全在 game-service spin（846→1399ms），wallet 伺服器端才 124–271ms、debit/credit 平均僅 ~30ms（含同步寫 `wallet_outbox`）→ **否證「outbox 同步寫入／Postgres WAL 天花板」是膝點主因**。game 自身 DB 池未滿（active 23/40、pending 0）、風控走 Redis 快取、Kafka 非同步發送皆非瓶頸。根因指向 **`WalletClientConfig` 的 `RestClient` 未設連線池／逾時**（退回 JDK `HttpClient` 預設），每 spin 對 wallet 的 2 次序列呼叫在高併發下序列化。
+  **修正下一步方向**：先調 game→wallet `RestClient` 連線池（低風險純設定，與 §7.B4 對 gateway HttpClient 的建議同型），而非先動高風險 B 案；定案前補一份 load 中的 game thread dump 實錘。
+  **如何驗證**：Prometheus `histogram_quantile` 逐服務／逐 uri P99 + `hikaricp_connections_*` + `system_cpu_usage`（皆取膝點兩階窗）；程式碼路徑核對 `SlotService.settleInternal` → `WalletClient`／`WalletClientConfig`／`GameResultEventPublisher`／`RiskControlService`。純文件、不動程式碼。
+
+---
 ## [perf] — 2026-07-22 — T-090 壓測 harness 支援遠端施壓機 + 修掉兩個「會靜默放寬檢查」的 bug
 
 > 承前一筆（5,000 req/s 階梯報告）的改善建議 A1~A4。最硬的結論是「施壓機與 SUT 同機導致量不準」，
@@ -637,6 +700,171 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### Verification
 - `mvn -pl backend/game-service test`：196 個測試全綠（含新增的 3 個 CAS 測試與既有跨批累傷/風控/補償測試迴歸）。
 - 手動雙分頁連打＋top-up 驗證待部署環境進行（ADR-008「驗證」節已列為待辦）。
+## [changed] -- 2026-07-23 -- Adjust shop toast and gate inventory voucher use
+
+### Changed
+- frontend/src/pages/CasinoShop.jsx: move the redemption success toast from the middle-lower viewport position to the lower viewport area while keeping it fixed and visible above the mobile toolbar.
+- frontend/src/pages/Inventory.jsx: replace direct item-use effects with a confirmation dialog before using a voucher and a follow-up dialog that says the feature is still in development.
+- frontend/src/index.css: remove the temporary inventory item effect styles that are no longer used.
+
+### Why
+- The redemption toast was still too close to the center of the screen.
+- Inventory voucher use should ask for confirmation first and clearly indicate that the real use behavior is not implemented yet.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+## [changed] -- 2026-07-23 -- Keep shop redemption toast in viewport
+
+### Changed
+- frontend/src/pages/CasinoShop.jsx: move the redemption success toast from bottom anchoring to a viewport-fixed middle-lower position so it remains visible on tall shop pages.
+
+### Why
+- A long shop page can make a bottom-only notification easy to miss. The toast should stay in the visible screen area after redemption.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [changed] -- 2026-07-23 -- Show shop redemption toast
+
+### Changed
+- frontend/src/pages/CasinoShop.jsx: show a bottom-center success notification after a shop redemption, with actions to open the inventory or dismiss the toast.
+
+### Why
+- Successful redemptions should give immediate, visible feedback near the user's focus instead of only appearing in the shop sidebar.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [added] -- 2026-07-23 -- Expand reward shop catalog
+
+### Added
+- database/mysql/init.sql and database/mysql/migration/V11__expand_shop_catalog.sql: expand `shop_items` from 3 to 10 active rewards, including account decoration collectibles, starter rewards, and event invitation items.
+- contracts/shop-catalog.json: synchronize the mock shop catalog with the MySQL catalog.
+- frontend/public/backgrounds/shop-*.svg: add SVG artwork for every shop reward, including account decoration items such as nameplates, badges, profile backdrops, and entry effects.
+
+### Changed
+- frontend/src/pages/CasinoShop.jsx: update `/shop` copy, card layout, affordability messaging, and catalog stats for a larger reward catalog.
+- frontend/src/pages/Inventory.jsx and frontend/src/theme/backgroundTheme.js: map the expanded catalog to the same visual assets in the player inventory.
+- frontend/src/store/slices/walletSlice.js: make shop redemption success/failure messages readable.
+
+### Why
+- The reward shop only had three items and did not give players enough goals. The expanded catalog adds more star-coin sinks while staying within the current ADR-006 shop model: items are catalog/inventory rewards and do not imply unimplemented gameplay perks.
+
+### Verification
+- Docker MySQL `shop_items` now contains 10 active items; sampled `HEX(name)` values confirm UTF-8 Chinese names are stored correctly.
+- node parsed contracts/shop-catalog.json and found 10 item codes.
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- mvn -pl backend/wallet-service test passed.
+
+## [changed] -- 2026-07-23 -- Humanize social binding success dialog
+
+### Changed
+- frontend/src/pages/SocialBinding.jsx: make the third-party binding success dialog clearer and warmer, including provider-specific success wording, current demo status, and next-step actions.
+
+### Why
+- The demo binding flow should reassure users that the account is ready and make the next action obvious instead of showing a bare success message.
+
+### Verification
+- rg -n "\?{3,}|蝬|撌|銝|嚗|甈|蝣|摰|雿|憭|蝡|隤" frontend/src/pages/SocialBinding.jsx found no matches.
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [changed] -- 2026-07-22 -- Make social account binding a demo-only flow
+
+### Changed
+- frontend/src/pages/SocialBinding.jsx: replace the binding page with a demo flow that shows a generated confirmation link and opens a binding-success dialog after confirmation.
+- backend/member-service/src/main/java/com/luckystar/member/service/PlayerService.java: return demo social binding responses without persisting provider account IDs.
+- backend/member-service/src/main/java/com/luckystar/member/entity/Member.java and database/mysql/init.sql: remove the temporary social account columns so existing Docker MySQL volumes keep passing `ddl-auto=validate`.
+- backend/member-service/src/test/java/com/luckystar/member/service/PlayerServiceTest.java: assert the demo binding flow does not write member rows.
+
+### Why
+- Third-party account binding only needs to look functional for now. Persisting provider IDs added new `members` columns and caused existing Docker databases to fail startup with `Schema-validation: missing column [apple_account_id]`.
+
+### Verification
+- rg -n "lineAccountId|googleAccountId|appleAccountId|line_account_id|google_account_id|apple_account_id" backend/member-service database/mysql frontend/src found no matches.
+- rg -n "\?{3,}" frontend/src/pages/Profile.jsx frontend/src/pages/SocialBinding.jsx found no matches.
+- mvn -pl backend/member-service test passed.
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- docker compose up -d --build member-service completed; docker compose ps member-service shows `Up ... (healthy)`.
+## [fixed] -- 2026-07-22 -- Restore readable profile center copy
+
+### Fixed
+- frontend/src/pages/Profile.jsx: replace corrupted question-mark/mojibake text in the member center with readable Traditional Chinese copy for profile editing, avatar selection, check-in rewards, wallet metrics, and third-party account binding cards.
+
+### Why
+- The previous profile update left user-facing strings rendered as `???`, making the member center difficult to understand.
+
+### Verification
+- rg -n "\?{3,}" frontend/src/pages/Profile.jsx frontend/src/pages/SocialBinding.jsx frontend/src/pages/Member.jsx frontend/src/components/AppShell.jsx found no matches.
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [added] -- 2026-07-22 -- Add third-party account binding flow
+
+### Added
+- backend/member-service: add social binding DTOs, provider mapping, and player endpoints for listing, starting, completing, and removing LINE/Google/Apple bindings.
+- database/mysql/init.sql and migration V11: persist third-party account IDs on members with unique keys.
+- frontend/src/pages/Profile.jsx and frontend/src/pages/SocialBinding.jsx: add prominent provider SVG cards and route users into a dedicated binding screen.
+- frontend/src/components/SocialProviderIcon.jsx, frontend/src/services/memberApi.js, frontend/src/services/mockApi.js, and frontend/src/utils/memberPreferences.js: wire real/mock API support and provider artwork/metadata.
+
+### Why
+- The previous player profile only toggled third-party binding state in localStorage, so the UI had no real backend response and did not guide users into a binding flow.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- mvn -pl backend/member-service test passed.
+
+## [changed] -- 2026-07-22 -- Hide fairness verification from player navigation
+
+### Changed
+- frontend/src/App.jsx: move the fairness verification page from `/fairness` to developer-only `/dev/fairness`, gated by `VITE_ENABLE_DEV_TOOLS=true`.
+- frontend/src/components/AppShell.jsx: remove the fairness verification item from the player navigation.
+
+### Why
+- Fairness verification is intended as a developer/audit utility, not a regular player-facing web page.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+
+## [added] -- 2026-07-21 -- Add player front-back integration entry points
+
+### Added
+- frontend/src/pages/Fairness.jsx, frontend/src/App.jsx, and frontend/src/components/AppShell.jsx: add a protected fairness verification page, navigation entry, recent-round picker, and `fairnessApi.verifyRound` wiring.
+- frontend/src/pages/Rank.jsx, frontend/src/services/rankApi.js, and frontend/src/store/slices/rankSlice.js: add the daily winnings leaderboard tab and connect it to `/api/v1/rank/daily/winnings` plus the current player's daily rank endpoint.
+- frontend/src/pages/Records.jsx: add source, transaction direction, game type, and date range filters so records query the relevant wallet/game APIs instead of only switching a local merged list.
+
+### Changed
+- frontend/src/services/walletApi.js: add `credit` and `debit` transaction filter aliases for the records page, mapping to the backend wallet transaction type query.
+
+### Why
+- The project already had backend APIs for fairness verification, daily winnings ranking, and record filtering, but the player frontend did not expose or fully pass those filters through.
+
+### Verification
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
+- mvn -pl backend/member-service test passed.
+
+## [added] -- 2026-07-21 -- Complete friend request UI flow
+
+### Added
+- backend/member-service: add `FriendRequestView` and `GET /api/v1/friends/requests` so the frontend can list pending incoming friend requests.
+- frontend/src/services/memberApi.js and frontend/src/services/mockApi.js: add friend request list/send/accept/reject API wiring for real and mock modes.
+- frontend/src/components/FriendFloatingPanel.jsx and .css: add friend/request tabs, numeric player ID invite form, pending request cards, and accept/reject actions.
+
+### Why
+- The backend already supported sending, accepting, and rejecting friend requests, but the player frontend only exposed accepted friend list and delete, leaving the friend flow incomplete.
+
+### Verification
+- mvn -pl backend/member-service test passed.
+- npm.cmd run lint --prefix frontend passed.
+- npm.cmd run build --prefix frontend passed.
 
 ## [fixed] -- 2026-07-21 -- Expand fishing buy-in and settlement fullscreen surface
 
@@ -773,6 +1001,7 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - python docs/game-math/verify_rtp.py passed.
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
+
 ## [changed] -- 2026-07-20 -- Show top fishing notices for every defeated fish
 
 ### Changed
@@ -785,6 +1014,7 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### Verification
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
+
 ## [changed] -- 2026-07-19 -- Treat Caishen and Money Tree as special fishing targets
 
 ### Changed
@@ -799,6 +1029,7 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - npm.cmd run test --prefix frontend -- fishingFishConfig passed.
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
+
 ## [fixed] -- 2026-07-19 -- Fix fishing capture notice names for Boss variants
 
 ### Fixed
@@ -891,6 +1122,7 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### Verification
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
+
 ## [changed] -- 2026-07-16 -- Move fishing fullscreen control into stage marquee
 
 ### Changed
@@ -903,6 +1135,7 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### Verification
 - npm.cmd run lint in frontend passed.
 - npm.cmd run build in frontend passed.
+
 ## [changed] -- 2026-07-16 -- Add fullscreen cockpit layouts to player games
 
 ### Changed

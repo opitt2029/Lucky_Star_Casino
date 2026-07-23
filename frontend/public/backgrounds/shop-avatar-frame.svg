@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">Avatar frame</title><desc id="desc">Elegant golden avatar frame with casino stars.</desc>
+  <defs><radialGradient id="bg" cx="50%" cy="40%" r="70%"><stop stop-color="#5b1020"/><stop offset="1" stop-color="#120106"/></radialGradient><linearGradient id="gold" x1="0" x2="1"><stop stop-color="#fff4b8"/><stop offset=".5" stop-color="#f4c542"/><stop offset="1" stop-color="#a16207"/></linearGradient></defs>
+  <rect width="640" height="420" fill="url(#bg)"/>
+  <circle cx="320" cy="210" r="124" fill="#20030a" stroke="url(#gold)" stroke-width="18"/>
+  <circle cx="320" cy="210" r="88" fill="#3b0712" stroke="#fff2a8" stroke-width="4" opacity=".95"/>
+  <path d="M320 98l22 44 49 7-36 35 9 49-44-23-44 23 9-49-36-35 49-7 22-44Z" fill="url(#gold)" opacity=".95"/>
+  <g fill="#facc15"><circle cx="190" cy="122" r="8"/><circle cx="450" cy="122" r="8"/><circle cx="190" cy="298" r="8"/><circle cx="450" cy="298" r="8"/></g>
+  <path d="M236 322c38 34 130 34 168 0" fill="none" stroke="#facc15" stroke-width="8" stroke-linecap="round" opacity=".75"/>
+</svg>

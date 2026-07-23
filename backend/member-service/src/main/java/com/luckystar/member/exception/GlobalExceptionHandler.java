@@ -51,6 +51,12 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException ex) {
         String message = ex.getBindingResult().getFieldErrors().stream()
@@ -132,21 +138,21 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
-    // DB 唯一鍵/約束衝突的安全網：併發 find-then-insert（註冊撞 username/email、簽到撞當日唯一鍵等）
-    // 落到此處時回 409 而非 500。訊息保持中性——好友併發已在 FriendshipService 內精準轉為
-    // FriendshipAlreadyExistsException（回「好友關係已存在」），這裡不可寫死好友訊息以免誤標其他衝突。
+    // DB ?臭???蝝?銵????函雯嚗蔥??find-then-insert嚗酉?? username/email?偷?唳??嗆?臭??萇?嚗?
+    // ?賢甇方??? 409 ?? 500???臭??葉?把末?蔥?澆歇??FriendshipService ?抒移皞???
+    // FriendshipAlreadyExistsException嚗??末??靽歇摮??嚗ㄐ銝撖急香憟賢?閮隞亙?隤斗??嗡?銵???
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(ApiResponse.error("資料衝突，請稍後再試"));
+                .body(ApiResponse.error("鞈?銵?嚗?蝔??岫"));
     }
 
-    // 樂觀鎖衝突（Friendship.@Version）：同一申請被併發接受/拒絕、或上限競態時，
-    // 後手交易回 409 讓前端重試，而非 500。
+    // 璅???蝒?Friendship.@Version嚗????唾?鋡思蔥?潭??????銝?蝡嗆???
+    // 敺?鈭斗???409 霈?蝡舫?閰佗??? 500??
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     public ResponseEntity<ApiResponse<Void>> handleOptimisticLockingFailure(ObjectOptimisticLockingFailureException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(ApiResponse.error("好友關係已被其他請求更新，請重試"));
+                .body(ApiResponse.error("憟賢???撌脰◤?嗡?隢??湔嚗??岫"));
     }
 
     @ExceptionHandler(Exception.class)

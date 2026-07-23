@@ -17,21 +17,34 @@ function toRow(entry) {
 // 封裝對 rank-service（透過 Gateway）真實 API 的呼叫。
 // 玩家身分由 gateway 驗證 JWT 後以 X-User-Id 注入，好友榜不需另帶參數。
 export const rankApi = {
-  // 全球榜 + 好友榜 + 我的名次。mock 模式沿用 mockApi.getRank 既有形狀。
+  // 全球榜 + 好友榜 + 今日贏幣王 + 我的名次。mock 模式沿用 mockApi.getRank 既有形狀。
   async getRanks(playerId) {
     if (useMockApi) {
-      return mockApi.getRank()
+      const rank = await mockApi.getRank()
+      const dailyWinnings = (rank.globalRank || []).slice(0, 20).map((row, index) => ({
+        ...row,
+        rank: index + 1,
+        score: Math.max(0, Math.floor(row.score * 0.08)),
+      }))
+      return {
+        ...rank,
+        dailyWinnings,
+        myDailyWinnings: dailyWinnings.find((row) => String(row.id) === String(playerId)) || null,
+      }
     }
 
     // RankController 直接回傳 List<RankEntryResponse>（未包 ApiResponse），故取 res.data。
-    const [globalRes, friendRes] = await Promise.all([
+    const [globalRes, friendRes, dailyRes] = await Promise.all([
       api.get('/api/v1/rank/global'),
       api.get('/api/v1/rank/friends'),
+      api.get('/api/v1/rank/daily/winnings', { params: { limit: 100 } }),
     ])
     const globalRank = (globalRes.data || []).map(toRow)
     const friendRank = (friendRes.data || []).map(toRow)
+    const dailyWinnings = (dailyRes.data || []).map(toRow)
 
     let myGlobalRank = null
+    let myDailyWinnings = null
     if (playerId != null) {
       try {
         const me = (await api.get(`/api/v1/rank/global/${playerId}`)).data
@@ -40,9 +53,16 @@ export const rankApi = {
         // 未上榜時後端回 404，視為「無名次」，不應擋住整個榜單載入。
         if (error?.response?.status !== 404) throw error
       }
+
+      try {
+        const me = (await api.get('/api/v1/rank/daily/winnings/me')).data
+        myDailyWinnings = { rank: me.rank, nickname: me.username, score: me.score }
+      } catch (error) {
+        if (error?.response?.status !== 404) throw error
+      }
     }
 
-    return { globalRank, friendRank, myGlobalRank }
+    return { globalRank, friendRank, dailyWinnings, myGlobalRank, myDailyWinnings }
   },
 
   // 即時 /topic/rank 廣播（RankUpdateEvent { type, entries:[RankEntryResponse], updatedAt }）

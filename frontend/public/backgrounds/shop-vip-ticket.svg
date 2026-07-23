@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">VIP ticket</title><desc id="desc">Gold casino VIP ticket on a red velvet background.</desc>
+  <defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#fff2a8"/><stop offset="0.45" stop-color="#f4c542"/><stop offset="1" stop-color="#9b5c08"/></linearGradient><radialGradient id="r" cx="50%" cy="34%" r="64%"><stop stop-color="#7f1d1d"/><stop offset="1" stop-color="#140205"/></radialGradient></defs>
+  <rect width="640" height="420" fill="url(#r)"/>
+  <g opacity=".32" fill="#facc15"><circle cx="86" cy="78" r="6"/><circle cx="554" cy="72" r="5"/><circle cx="588" cy="328" r="7"/><circle cx="72" cy="338" r="5"/></g>
+  <path d="M126 132c0-18 14-32 32-32h324c18 0 32 14 32 32v42c-22 6-38 25-38 48s16 42 38 48v18c0 18-14 32-32 32H158c-18 0-32-14-32-32v-18c22-6 38-25 38-48s-16-42-38-48v-42Z" fill="url(#g)" stroke="#fff7c2" stroke-width="6"/>
+  <path d="M220 124v172" stroke="#8a4f08" stroke-width="4" stroke-dasharray="12 12" opacity=".65"/>
+  <text x="318" y="204" text-anchor="middle" font-family="Georgia,serif" font-size="64" font-weight="700" fill="#4a1306">VIP</text>
+  <text x="318" y="248" text-anchor="middle" font-family="Arial,sans-serif" font-size="24" font-weight="700" fill="#6b2308">LUCKY STAR PASS</text>
+  <path d="M320 74l18 36 40 6-29 28 7 40-36-19-36 19 7-40-29-28 40-6 18-36Z" fill="#fff7c2" opacity=".9"/>
+</svg>

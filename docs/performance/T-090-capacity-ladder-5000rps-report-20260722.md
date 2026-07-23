@@ -315,6 +315,50 @@ percentile 只取穩態窗（已切掉每階前 30 秒）。
   併成單次 wallet 往返）才值得做**。B 案是架構級金流改動（牽動 rank 計分／稽核／補償／冪等，
   需 ADR + Testcontainers），**在數據指向它之前不該動**。
 
+**B1-續（2026-07-22 下午分層歸因，run `ladder-20260722-150429`）：三指標量完了，落在「pending≈0 且 CPU 未滿」這格，但延遲不在 wallet DB，在 game→wallet 的 HTTP client。**
+上面 B1 的三指標本輪實測：營運區間（≤150 併發）`hikaricp.connections.pending` **game/wallet/member 全 0**、CPU 每階平均 **65–68%**（尖峰 ~80%，未飽和）。照 B1 的判準即落入第三格「單筆交易延遲」。但**再往下做分層歸因，發現延遲不在原本猜的 wallet DB/outbox**：
+
+| 層（膝點 100→150 併發，Prometheus histogram_quantile P99） | 100 | 150 |
+|---|---:|---:|
+| gateway | 883ms | 1424ms |
+| **game spin** | **846ms** | **1399ms** ← 延遲主體 |
+| wallet 伺服器端 | 124ms | 271ms |
+| wallet debit / credit 平均耗時 | 24 / 29ms | 30 / 35ms |
+
+- **wallet 伺服器端很快**（debit/credit 含同步寫 `wallet_outbox` 才 ~30ms、P99 才 124–271ms）→ **否證「outbox 同步寫入成本」與「Postgres WAL 天花板」是膝點主因**。
+- game 自己的 DB 池 @150：`active 23/40、pending 0`（沒滿）；風控已 Redis 快取化（sub-ms）；`game.result` 走 `kafkaTemplate.send()` **非同步**（無 `.get()`）→ game 這些本地資源都不是瓶頸。
+- ∴ **~1.3s 花在 game 每個 spin 對 wallet 的 2 次序列 HTTP 呼叫上**，而 `WalletClientConfig` 的 `RestClient` **完全沒設連線池／逾時**（jar 未 bundle Apache HttpClient5，退回 JDK `HttpClient` 預設）。wallet 30ms 很快、但 game 執行緒卡在 outbound 連線處理（CPU 沒吃、只是 park 等 I/O）；吞吐鎖死 ~190–220/s 反推 game→wallet 有效並發僅個位數，吻合「未調校 client」特徵。
+
+**修正後的下一步建議**：**先調 game→wallet 的 `RestClient` 連線池（低風險純設定，與 B4 對 gateway HttpClient 的建議同型）**，而非先動高風險的 B 案——B 案的實益其實是「把 2 次往返砍成 1 次」，不是省 DB。定案前補一份 **load 中的 game thread dump** 實錘（看 150 條執行緒是否 park 在 `jdk.internal.net.http`／`RestClient`）。
+
+**B1-續・審閱補充（2026-07-22 晚，程式碼核對）**：上面的歸因方向經核對程式碼**成立**，但補三件事——
+其中兩件把「推論」變成「可直接量測」，另一件是與效能無關、但風險更高的發現。
+
+1. **`WalletClientConfig` 的問題比「沒設連線池」更根本：它用了靜態 `RestClient.builder()`，
+   完全繞過 Spring Boot 自動組態的 `RestClient.Builder`。** 後果有三：
+   - `spring.http.client.*` 的逾時設定**完全不生效**（設了也沒用，容易誤以為已經設好）；
+   - 請求工廠退回框架預設（本專案 classpath 無 Apache HttpClient5／OkHttp，Java 21 → `JdkClientHttpRequestFactory`）；
+   - **outbound 呼叫完全沒有 Micrometer 儀表**。實測 game-service 的 `/actuator/prometheus`
+     **`http_client_requests` 系列指標數 = 0**（`http_server_requests` 則有 5 個）。
+   ⇒ 也就是說，「game 花在呼叫 wallet 上的時間」**目前根本沒有被量到**，B1-續 的 ~1.3s 是
+   *用 game P99 減 wallet 伺服器端 P99 推論出來的*，不是量出來的。
+   **改注入 Boot 的 `RestClient.Builder` 就能直接拿到 `http_client_requests` 的 P99**——
+   這比 thread dump 更省事、也更可重複（thread dump 只是某個瞬間的切片）。
+2. **完全沒有逾時，也完全沒有斷路器——這是可用性風險，不只是效能問題。**
+   `WalletClient` 的兩次呼叫都是同步阻塞、無 timeout；且 **`resilience4j` 在整個 backend 只存在於
+   gateway-service**（`grep -rl resilience4j backend/` 只命中 gateway 的 pom／`FallbackController`／
+   `application.yml`／測試）。因此若 wallet 卡住不回，game 的 Tomcat 執行緒會**無限期**被佔住，
+   直到執行緒池耗盡 → game 整個服務失去回應。**這一項的優先度不該綁在吞吐議題上，
+   即使最後不做連線池調校，逾時也應該補。**
+3. **順帶更正一處會誤導的措辭**：`T-090-load-test-report.md` 的
+   「2026-07-22 open-model 首測」節寫「game-service resilience4j circuit breaker `failed=0`、狀態 closed」。
+   指標本身沒錯，但 resilience4j 只存在於 **gateway-service**——那是 gateway 上一個
+   以下游服務命名的斷路器實例，保護的是 gateway→game。容易被讀成 game-service 自己有斷路器，
+   進而以為 game→wallet 也有保護——**那一段沒有**。已隨本次一併更正。
+
+> 承上，明天分機重測時要把「先量到 client 端延遲」排進步驟，實驗設計與驗收條件見
+> [`T-090-B5-game-wallet-restclient-驗證計畫.md`](./T-090-B5-game-wallet-restclient-驗證計畫.md)。
+
 **B2 用本輪曲線重訂 gateway 的卸載門檻。**
 現在 250 req/s 就卸載 25%，而 accepted 吞吐要到 189.5 req/s（250 階）才觸頂——
 **門檻略低於實際容量，等於提早把還吃得下的請求丟掉**。建議把閾值對齊「accepted 吞吐開始下降的點」

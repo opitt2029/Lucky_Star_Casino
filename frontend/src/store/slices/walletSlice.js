@@ -265,17 +265,17 @@ const walletSlice = createSlice({
       })
       .addCase(redeemShopItem.pending, (state) => {
         state.redeem.loading = true
-        state.redeem.message = ''
+      state.redeem.message = ''
         state.redeem.error = null
       })
       .addCase(redeemShopItem.fulfilled, (state, action) => {
         state.redeem.loading = false
         state.balance = action.payload.balanceAfter
-        state.redeem.message = `已兌換 ${action.payload.itemName}，星幣已從餘額扣除。`
+        state.redeem.message = `已兌換 ${action.payload.itemName}，已放入背包`
       })
       .addCase(redeemShopItem.rejected, (state, action) => {
         state.redeem.loading = false
-        state.redeem.error = action.payload || '兌換失敗'
+        state.redeem.error = action.payload || '兌換失敗，請稍後再試'
       })
   },
 })

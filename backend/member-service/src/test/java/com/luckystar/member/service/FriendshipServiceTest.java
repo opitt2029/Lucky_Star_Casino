@@ -2,6 +2,7 @@ package com.luckystar.member.service;
 
 import com.luckystar.member.dto.FriendListResponse;
 import com.luckystar.member.dto.FriendRelationshipUpdatedEvent;
+import com.luckystar.member.dto.FriendRequestView;
 import com.luckystar.member.dto.FriendshipResponse;
 import com.luckystar.member.entity.Friendship;
 import com.luckystar.member.entity.FriendshipStatus;
@@ -245,6 +246,22 @@ class FriendshipServiceTest {
                 .containsExactlyInAnyOrder(2L, 3L);
     }
 
+    @Test
+    void listPendingRequests_returnsRequesterProfile() {
+        Friendship pending = buildFriendship(20L, 2L, 1L, FriendshipStatus.PENDING);
+        when(friendshipRepository.findByReceiverIdAndStatus(1L, FriendshipStatus.PENDING))
+                .thenReturn(List.of(pending));
+        when(memberRepository.findAllById(List.of(2L)))
+                .thenReturn(List.of(buildMember(2L, "alice", "Alice", "avatar2.png")));
+
+        List<FriendRequestView> result = friendshipService.listPendingRequests(1L);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).friendshipId()).isEqualTo(20L);
+        assertThat(result.get(0).requesterId()).isEqualTo(2L);
+        assertThat(result.get(0).requesterUsername()).isEqualTo("alice");
+        assertThat(result.get(0).requesterNickname()).isEqualTo("Alice");
+    }
     // ── helpers ───────────────────────────────────────────────────────────
 
     private Friendship buildFriendship(Long id, Long requesterId, Long receiverId, FriendshipStatus status) {

@@ -2,6 +2,7 @@ package com.luckystar.member.service;
 
 import com.luckystar.member.dto.FriendListResponse;
 import com.luckystar.member.dto.FriendRelationshipUpdatedEvent;
+import com.luckystar.member.dto.FriendRequestView;
 import com.luckystar.member.dto.FriendshipResponse;
 import com.luckystar.member.entity.Friendship;
 import com.luckystar.member.entity.FriendshipStatus;
@@ -121,6 +122,32 @@ public class FriendshipService {
         return toResponse(friendshipRepository.save(friendship));
     }
 
+    @Transactional(readOnly = true)
+    public List<FriendRequestView> listPendingRequests(Long playerId) {
+        List<Friendship> requests = friendshipRepository
+                .findByReceiverIdAndStatus(playerId, FriendshipStatus.PENDING);
+
+        List<Long> requesterIds = requests.stream()
+                .map(Friendship::getRequesterId)
+                .collect(Collectors.toList());
+
+        Map<Long, Member> memberMap = memberRepository.findAllById(requesterIds).stream()
+                .collect(Collectors.toMap(Member::getId, Function.identity()));
+
+        return requests.stream()
+                .map(f -> {
+                    Member requester = memberMap.get(f.getRequesterId());
+                    return new FriendRequestView(
+                            f.getId(),
+                            f.getRequesterId(),
+                            requester != null ? requester.getUsername() : null,
+                            requester != null ? requester.getNickname() : null,
+                            requester != null ? requester.getAvatar() : null,
+                            f.getCreatedAt()
+                    );
+                })
+                .collect(Collectors.toList());
+    }
     @Transactional(readOnly = true)
     public List<FriendListResponse> listFriends(Long playerId) {
         List<Friendship> friendships = friendshipRepository.findAcceptedFriends(playerId);

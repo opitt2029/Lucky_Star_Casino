@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">Star title badge</title><desc id="desc">A blue and gold star badge for account titles.</desc>
+  <defs><radialGradient id="bg" cx="50%" cy="38%" r="70%"><stop stop-color="#1e3a8a"/><stop offset="1" stop-color="#0f1028"/></radialGradient><linearGradient id="gold" x1="0" x2="1"><stop stop-color="#fff7c2"/><stop offset="1" stop-color="#f59e0b"/></linearGradient></defs>
+  <rect width="640" height="420" fill="url(#bg)"/>
+  <circle cx="320" cy="210" r="118" fill="#172554" stroke="url(#gold)" stroke-width="10"/>
+  <path d="M320 98l34 70 77 11-56 54 13 76-68-36-68 36 13-76-56-54 77-11 34-70Z" fill="url(#gold)"/>
+  <circle cx="320" cy="210" r="48" fill="#1e1b4b" stroke="#bfdbfe" stroke-width="5"/>
+  <text x="320" y="220" text-anchor="middle" font-family="Arial,sans-serif" font-size="22" font-weight="900" fill="#dbeafe">STAR</text>
+  <path d="M172 110c70 38 226 38 296 0" fill="none" stroke="#93c5fd" stroke-width="4" opacity=".45"/>
+</svg>

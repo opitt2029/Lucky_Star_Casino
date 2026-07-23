@@ -7,6 +7,8 @@ const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
 // 前端 UI 篩選器沿用 mock 的細分類型，這裡盡量映回後端可篩的 type；
 // 後端不支援以 subType 篩選，故 checkin/task/payout 都會落在 CREDIT（結果較寬鬆）。
 const TX_TYPE_TO_BACKEND = {
+  credit: 'CREDIT',
+  debit: 'DEBIT',
   bet: 'DEBIT',
   gift: 'DEBIT',
   payout: 'CREDIT',

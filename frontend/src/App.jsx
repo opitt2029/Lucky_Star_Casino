@@ -16,6 +16,7 @@ const Baccarat = lazy(() => import('./pages/Baccarat'))
 const Fishing = lazy(() => import('./pages/Fishing'))
 const Rank = lazy(() => import('./pages/Rank'))
 const Profile = lazy(() => import('./pages/Profile'))
+const SocialBinding = lazy(() => import('./pages/SocialBinding'))
 const Records = lazy(() => import('./pages/Records'))
 const CasinoShop = lazy(() => import('./pages/CasinoShop'))
 const Inventory = lazy(() => import('./pages/Inventory'))
@@ -25,13 +26,14 @@ const Topup = lazy(() => import('./pages/Topup'))
 const ProvablyFair = lazy(() => import('./pages/ProvablyFair'))
 
 const enableDevTools = import.meta.env.VITE_ENABLE_DEV_TOOLS === 'true'
+const Fairness = enableDevTools ? lazy(() => import('./pages/Fairness')) : null
 const IntegrationTestPage = enableDevTools ? lazy(() => import('./pages/IntegrationTestPage')) : null
 
 function RouteFallback() {
   return (
     <div className="route-fallback" role="status" aria-live="polite">
       <span className="route-fallback__mark" aria-hidden="true" />
-      <span>頁面載入中...</span>
+      <span>?頛銝?..</span>
     </div>
   )
 }
@@ -172,6 +174,14 @@ export default function App() {
             }
           />
           <Route
+            path="/profile/social-bindings/:provider"
+            element={
+              <ProtectedPage>
+                <SocialBinding />
+              </ProtectedPage>
+            }
+          />
+          <Route
             path="/inventory"
             element={
               <ProtectedPage>
@@ -196,6 +206,16 @@ export default function App() {
             }
           />
 
+          {enableDevTools && Fairness && (
+            <Route
+              path="/dev/fairness"
+              element={
+                <ProtectedPage>
+                  <Fairness />
+                </ProtectedPage>
+              }
+            />
+          )}
           {enableDevTools && IntegrationTestPage && (
             <Route
               path="/dev/integration"

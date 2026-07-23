@@ -249,6 +249,19 @@ function createInitialDb() {
       ],
       [TEST_ACCOUNT.player.id]: [],
     },
+    friendRequests: {
+      [player.id]: [
+        {
+          friendshipId: 'mock-request-1',
+          requesterId: 'friend-3',
+          requesterUsername: 'Mika',
+          requesterNickname: 'Mika',
+          requesterAvatarUrl: '',
+          requestedAt: new Date().toISOString(),
+        },
+      ],
+      [TEST_ACCOUNT.player.id]: [],
+    },
     // 後端權威簽到日期（每元素 'yyyy-MM-dd'，台北時區）與月度累計獎勵領取紀錄
     checkinDates: {
       [player.id]: [],
@@ -257,6 +270,10 @@ function createInitialDb() {
     monthlyRewardClaims: {
       [player.id]: [],
       [TEST_ACCOUNT.player.id]: [],
+    },
+    socialBindings: {
+      [player.id]: {},
+      [TEST_ACCOUNT.player.id]: {},
     },
     ranks: [
       {
@@ -277,9 +294,11 @@ function ensureTestAccount(db) {
   db.wallets = db.wallets || {}
   db.transactions = db.transactions || {}
   db.friends = db.friends || {}
+  db.friendRequests = db.friendRequests || {}
   db.ranks = db.ranks || []
   db.checkinDates = db.checkinDates || {}
   db.monthlyRewardClaims = db.monthlyRewardClaims || {}
+  db.socialBindings = db.socialBindings || {}
 
   let user = db.users.find((item) => item.player?.username === TEST_ACCOUNT.player.username)
   if (!user) {
@@ -316,6 +335,16 @@ function ensureTestAccount(db) {
 
   if (!db.friends[TEST_ACCOUNT.player.id]) {
     db.friends[TEST_ACCOUNT.player.id] = []
+    changed = true
+  }
+
+  if (!db.friendRequests[TEST_ACCOUNT.player.id]) {
+    db.friendRequests[TEST_ACCOUNT.player.id] = []
+    changed = true
+  }
+
+  if (!db.socialBindings[TEST_ACCOUNT.player.id]) {
+    db.socialBindings[TEST_ACCOUNT.player.id] = {}
     changed = true
   }
 
@@ -559,6 +588,8 @@ export const mockApi = {
     db.wallets[player.id] = { balance: MOCK_TEST_STAR_COIN_BALANCE, frozenAmount: 0 }
     db.transactions[player.id] = [makeTransaction('task', 30000, '新手啟動金')]
     db.friends[player.id] = []
+    db.socialBindings = db.socialBindings || {}
+    db.socialBindings[player.id] = {}
     db.ranks.push({ id: player.id, name: nickname, nickname, score: 30000, trend: '+0%' })
     saveDb(db)
     return createSession(player)
@@ -590,6 +621,63 @@ export const mockApi = {
     return user.player
   },
 
+
+  async getSocialBindings() {
+    await wait(180)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const bindings = db.socialBindings?.[playerId] || {}
+    return ['line', 'google', 'apple'].map((provider) => {
+      const accountId = bindings[provider]
+      return {
+        provider,
+        label: provider === 'line' ? 'LINE' : provider === 'google' ? 'Google' : 'Apple',
+        bound: Boolean(accountId),
+        status: accountId ? 'BOUND' : 'UNBOUND',
+        connectUrl: `/profile/social-bindings/${provider}`,
+        maskedAccountId: accountId ? `****${String(accountId).slice(-4)}` : null,
+      }
+    })
+  },
+
+  async startSocialBinding(provider) {
+    await wait(220)
+    const id = String(provider).toLowerCase()
+    const label = id === 'line' ? 'LINE' : id === 'google' ? 'Google' : 'Apple'
+    if (!['line', 'google', 'apple'].includes(id)) throw new Error('Unsupported social provider')
+    return {
+      provider: id,
+      label,
+      status: 'READY',
+      authorizationUrl: `/mock/oauth/${id}?ticket=mock-${id}-${currentPlayerId()}`,
+    }
+  },
+
+  async completeSocialBinding(provider, externalAccountId) {
+    await wait(300)
+    const id = String(provider).toLowerCase()
+    if (!['line', 'google', 'apple'].includes(id)) throw new Error('Unsupported social provider')
+    const db = getDb()
+    const playerId = currentPlayerId()
+    db.socialBindings = db.socialBindings || {}
+    db.socialBindings[playerId] = {
+      ...(db.socialBindings[playerId] || {}),
+      [id]: externalAccountId || `${id.toUpperCase()}-${playerId}`,
+    }
+    saveDb(db)
+    return (await this.getSocialBindings()).find((item) => item.provider === id)
+  },
+
+  async removeSocialBinding(provider) {
+    await wait(220)
+    const id = String(provider).toLowerCase()
+    const db = getDb()
+    const playerId = currentPlayerId()
+    db.socialBindings = db.socialBindings || {}
+    db.socialBindings[playerId] = { ...(db.socialBindings[playerId] || {}), [id]: null }
+    saveDb(db)
+    return (await this.getSocialBindings()).find((item) => item.provider === id)
+  },
   async getWallet() {
     await wait(240)
     const db = getDb()
@@ -921,6 +1009,80 @@ export const mockApi = {
     return db.friends[playerId]
   },
 
+  async getFriendRequests() {
+    await wait(240)
+    const db = getDb()
+    return db.friendRequests?.[currentPlayerId()] || []
+  },
+
+  async sendFriendRequest(receiverId) {
+    await wait(260)
+    const db = getDb()
+    const requesterId = currentPlayerId()
+    const normalizedReceiverId = String(receiverId || '').trim()
+    if (!normalizedReceiverId) throw new Error('請輸入玩家 ID')
+    if (normalizedReceiverId === String(requesterId)) throw new Error('不能邀請自己')
+
+    const existingFriend = (db.friends[requesterId] || []).some(
+      (friend) => String(friend.id ?? friend.friendId) === normalizedReceiverId,
+    )
+    if (existingFriend) throw new Error('已經是好友')
+
+    db.friendRequests = db.friendRequests || {}
+    const receiverRequests = db.friendRequests[normalizedReceiverId] || []
+    const duplicate = receiverRequests.some((request) => String(request.requesterId) === String(requesterId))
+    if (duplicate) throw new Error('好友邀請已送出')
+
+    const requester = db.users.find((item) => String(item.player?.id) === String(requesterId))?.player
+    const request = {
+      friendshipId: `mock-request-${Date.now()}`,
+      requesterId,
+      requesterUsername: requester?.username || String(requesterId),
+      requesterNickname: requester?.nickname || String(requesterId),
+      requesterAvatarUrl: requester?.avatarUrl || '',
+      requestedAt: new Date().toISOString(),
+    }
+    db.friendRequests[normalizedReceiverId] = [request, ...receiverRequests]
+    saveDb(db)
+    return { id: request.friendshipId, requesterId, receiverId: normalizedReceiverId, status: 'PENDING' }
+  },
+
+  async acceptFriendRequest(friendshipId) {
+    await wait(260)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const requests = db.friendRequests?.[playerId] || []
+    const request = requests.find((item) => String(item.friendshipId ?? item.id) === String(friendshipId))
+    if (!request) throw new Error('找不到好友邀請')
+
+    const friend = {
+      id: request.requesterId,
+      username: request.requesterUsername,
+      nickname: request.requesterNickname || request.requesterUsername,
+      avatarUrl: request.requesterAvatarUrl || '',
+      friendSince: new Date().toISOString(),
+    }
+    db.friends[playerId] = [friend, ...(db.friends[playerId] || [])]
+    db.friendRequests[playerId] = requests.filter(
+      (item) => String(item.friendshipId ?? item.id) !== String(friendshipId),
+    )
+    saveDb(db)
+    return { id: friendshipId, requesterId: request.requesterId, receiverId: playerId, status: 'ACCEPTED' }
+  },
+
+  async rejectFriendRequest(friendshipId) {
+    await wait(240)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const requests = db.friendRequests?.[playerId] || []
+    const request = requests.find((item) => String(item.friendshipId ?? item.id) === String(friendshipId))
+    if (!request) throw new Error('找不到好友邀請')
+    db.friendRequests[playerId] = requests.filter(
+      (item) => String(item.friendshipId ?? item.id) !== String(friendshipId),
+    )
+    saveDb(db)
+    return { id: friendshipId, requesterId: request.requesterId, receiverId: playerId, status: 'REJECTED' }
+  },
   async removeFriend(friendId) {
     await wait(260)
     const db = getDb()
