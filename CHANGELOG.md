@@ -1,3 +1,50 @@
+## [fixed] — 2026-07-23 — 老虎機全螢幕轉輪第三行被裁掉（螢幕越矮越明顯）
+
+> 承同日前一筆全螢幕修正的後續回報：使用者在全螢幕看不到轉輪最下面那行，但同事的螢幕正常。
+
+### Fixed
+- `frontend/src/components/SlotMachine.jsx`：符號格高（`getResponsiveSymbolHeight`）原本**只看視窗寬度**
+  （480 / 768 兩個斷點），桌機一律固定 170px，完全不管視窗高度。全螢幕時機台高度被視窗鎖死，
+  轉輪窗（`.slot-cabinet`）能分到多少高度由版面決定——實測 1536x672 只有 207px，
+  但三行需要 510px，於是第二行只露 14px、**第三行整個被 `overflow: hidden` 裁掉**。
+  高解析度螢幕分得到足夠高度所以看不出問題，這就是「我的被蓋住、同事的沒有」的來源。
+  改為全螢幕時以 `ResizeObserver` 量測轉輪窗實際可用高度（`clientHeight` 扣掉上下 padding）
+  再除以三決定格高，一般頁面維持原本的寬度斷點邏輯不變。
+  轉輪窗在全螢幕是 `height: 100%` 由外層決定，不會反過來被格高撐開，因此沒有量測↔縮放的循環。
+- `frontend/src/components/slotMachine.css`：全螢幕把 `--slot-reel-height` 綁回
+  `calc(var(--slot-symbol-height) * 3)`。`index.css` 的 `@media (min-width: 1024px)` 把它寫死成
+  `32rem`(512px)，讓轉輪窗高度與格高**脫鉤**；格高縮小後窗口仍是 512px，多出來的高度會露出
+  第四格再被外框切斷（看起來像轉輪下面卡了半排符號）。
+- `frontend/src/components/slotMachine.css`：全螢幕的 `.slot-machine` 由 grid 改 flex。
+  機台實際有 5 個子元素（跑馬燈 / topper / 轉輪窗 / 控制列 / 狀態列），原本
+  `grid-template-rows: auto minmax(0,1fr) auto auto` 只有四列，`1fr` 落在高度 0 的裝飾層上，
+  真正該吃剩餘空間的轉輪窗反而只拿到 `auto`。flex 不依賴子元素數量與順序。
+
+### Changed
+- `frontend/src/components/slotMachine.css`：全螢幕壓縮裝飾件把高度讓給轉輪——燈泡列縮小、
+  機台內重複的「Lucky Star Deluxe / 星幣老虎機」標題收起（全螢幕頂列已經有一模一樣的標題）、
+  GRAND 獎池縮成單行並解除 `min-height: 74px`、拉桿降到 88px。
+  綜合結果：轉輪窗 207px → 250px，格高 51px → 68px，三行完整且無多餘露出。
+
+### 為什麼
+使用者回報全螢幕看不到轉輪最下面那行、但同事的正常。根因是格高只看寬度不看高度，
+所以問題只在矮螢幕出現——這也是為什麼先前只檢查按鈕遮擋沒抓到它。
+
+### 如何驗證
+- `npx eslint src/` 無輸出
+- `npx vitest run` → 8 檔 56 測試全綠
+- `npx vite build` → 成功
+- 瀏覽器實測（1536x672 全螢幕）：三行 tile 全部落在轉輪窗可視範圍內、
+  轉輪窗高度 204px 恰等於 3×格高（68px）、轉動結束後 tile 座標仍精準對齊格線
+  （動畫位移與格高同源，縮放不會讓轉輪停在半格）
+
+### 已知問題（本次未處理）
+- 老虎機按下 SPIN 後，轉輪動畫會停，但 SPIN 按鈕**永久卡在 disabled 的「SPINNING」**、
+  餘額未扣、狀態文字停在「轉輪由左至右自然減速中...」，30 秒仍未釋放，可重現且無 console 錯誤。
+  在**未套用本次修改的一般頁面**（格高仍是原本的 170px）同樣重現，故研判為既有問題、
+  與本次版面修改無關，但尚未完成對照驗證，本次未修。違反 AGENTS.md 雷區 13 的
+  「視覺鎖必須綁定真實流程」鐵則，建議另開任務處理。
+
 ## [fixed] — 2026-07-23 — 全螢幕版面互相覆蓋按不到按鍵；老虎機全螢幕定位；新增區塊說明標誌
 
 ### Fixed
