@@ -1,3 +1,17 @@
+## [docs] — 2026-07-23 — 新增雙資料庫 ER 圖文件
+
+### Added
+- `docs/database-er-diagrams.md`：PostgreSQL 寫庫（16 張表）與 MySQL 讀庫（12 張表）的
+  Mermaid ER 圖（GitHub 原生渲染），含每張表的用途清單與跨庫 CQRS 資料流圖。
+  依 `database/postgres/init.sql`、`database/mysql/init.sql` 現況繪製；因微服務不設實體外鍵，
+  所有關聯以虛線（非識別關聯）表示，並註明一致性改由冪等鍵、樂觀鎖與 Kafka 事件保證。
+
+**為什麼**：專案至今沒有一張完整的 schema 總覽圖，查表關係只能翻兩份 init.sql；
+ER 圖對新成員導覽與 DBA 學習（表設計、約束、CQRS 分工）都有幫助。
+**如何驗證**：純文件，無程式碼變更；Mermaid 語法以 GitHub 渲染確認。
+
+---
+
 ## [fixed] — 2026-07-23 — 全螢幕版面互相覆蓋按不到按鍵；老虎機全螢幕定位；新增區塊說明標誌
 
 ### Fixed
