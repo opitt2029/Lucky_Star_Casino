@@ -1,3 +1,5 @@
+import InfoHint from '../InfoHint'
+
 const SIDE_BET_OPTIONS = [
   {
     id: 'playerPair',
@@ -106,7 +108,14 @@ export default function BaccaratSideBets({
       <div className="baccarat-panel-heading baccarat-side-bets__heading">
         <div>
           <p>側注</p>
-          <h3>側注追蹤</h3>
+          <h3>
+            側注追蹤
+            <InfoHint title="側注追蹤">
+              只是「先勾起來、開牌後看有沒有中」的觀察工具，<strong>不會扣星幣、也不會派彩</strong>。
+              勾選想留意的項目（例如閒對、幸運六），本局開牌後會標示命中或未中，
+              方便你在真的能下側注之前先熟悉這些玩法。實際下注仍以閒／莊／和主注為準。
+            </InfoHint>
+          </h3>
         </div>
         <button type="button" onClick={onClearSideBets} disabled={disabled || trackedCount === 0}>
           清除

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import InfoHint from '../InfoHint'
 
 const ROWS = 6
 const MAX_HISTORY = 50
@@ -114,7 +115,18 @@ export default function BaccaratRoadmapPanel({ history = [] }) {
 
   return (
     <section className="baccarat-roadmap-panel">
-      <div className="baccarat-panel-heading"><p>路單</p><h3>路單分析</h3></div>
+      <div className="baccarat-panel-heading">
+        <p>路單</p>
+        <h3>
+          路單分析
+          <InfoHint title="路單分析">
+            賭場記錄最近開牌結果的傳統圖表，用來一眼看出莊閒的走勢。
+            「珠盤路」按順序一格一格記錄每局贏家；「大路」把同一方連贏排成直行，換邊才換行；
+            「大眼仔／小路／曱甴路」是從大路推導出來的三張衍生圖，看的是走勢規不規律。
+            <strong>純粹是歷史紀錄，每局結果彼此獨立，不能用來預測下一局。</strong>
+          </InfoHint>
+        </h3>
+      </div>
       {streak.count >= 3 && <span className={'baccarat-roadmap-panel__streak is-' + streak.winner?.toLowerCase()}>{DOT_LABELS[streak.winner]} {streak.count} 連</span>}
       <div className="baccarat-roadmap-tabs" role="tablist" aria-label="百家樂路單切換">
         {ROAD_TABS.map(([id, label]) => (

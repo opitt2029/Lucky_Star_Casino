@@ -103,6 +103,14 @@
 
 .slot-game-surface--fullscreen,
 .slot-game-surface:fullscreen {
+  /* position: fixed 是必要的：全螢幕 class 生效到瀏覽器真的進入全螢幕之間有一個
+     影格的落差，這時元素還在原本的文件流位置（頁面已捲動時 x/y 都不是 0），
+     100vw/100vh 就會從那個偏移量開始算而整塊溢出視窗右下角——右側資訊欄與
+     「離開全螢幕」按鈕會被切掉。百家樂的 .baccarat-table--fullscreen 早有這段，
+     老虎機漏了。 */
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
   width: 100vw;
   height: 100vh;
   overflow: hidden;
@@ -155,11 +163,28 @@ body.slot-fullscreen-active {
 
 .slot-game-surface--fullscreen .slot-game-control-panel,
 .slot-game-surface:fullscreen .slot-game-control-panel {
+  display: flex;
+  flex-direction: column;
   max-height: 100%;
   overflow: auto;
   gap: 10px;
   padding-right: 2px;
   scrollbar-width: thin;
+}
+
+/* 全螢幕下右欄放不下所有卡片，會出現捲軸。預設順序會把「下注面額」推到最底，
+   玩家得先捲動才能改注額——把下注與本局狀態提到最前面，讓核心操作永遠免捲動可及，
+   純資訊的 MetricCard（餘額、派彩、損益）留在後面捲。 */
+.slot-game-surface--fullscreen .slot-bet-panel,
+.slot-game-surface:fullscreen .slot-bet-panel {
+  order: -2;
+  flex: 0 0 auto;
+}
+
+.slot-game-surface--fullscreen .slot-status-panel,
+.slot-game-surface:fullscreen .slot-status-panel {
+  order: -1;
+  flex: 0 0 auto;
 }
 
 .slot-game-surface--fullscreen .slot-game-control-panel > button,
