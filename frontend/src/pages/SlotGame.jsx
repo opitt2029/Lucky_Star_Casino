@@ -196,6 +196,7 @@ export default function SlotGame() {
             }}
           >
             <SlotMachine
+              fullscreen={isFullscreen}
               grid={slotGrid}
               winningCells={winningCells}
               spinning={loading}
