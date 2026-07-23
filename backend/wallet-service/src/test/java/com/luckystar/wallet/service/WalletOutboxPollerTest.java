@@ -7,6 +7,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 
@@ -44,7 +45,8 @@ class WalletOutboxPollerTest {
     @Test
     void publishPendingEvents_sendSucceeds_marksSent() {
         WalletOutbox event = pending(1L);
-        when(walletOutboxRepository.findTop100ByStatusOrderByCreatedAtAsc(WalletOutbox.STATUS_PENDING))
+        when(walletOutboxRepository.findByStatusOrderByCreatedAtAsc(
+                eq(WalletOutbox.STATUS_PENDING), any(Pageable.class)))
                 .thenReturn(List.of(event));
         @SuppressWarnings("unchecked")
         SendResult<String, String> sendResult = mock(SendResult.class);
@@ -62,7 +64,8 @@ class WalletOutboxPollerTest {
     @Test
     void publishPendingEvents_sendFails_keepsPendingAndBumpsRetry() {
         WalletOutbox event = pending(2L);
-        when(walletOutboxRepository.findTop100ByStatusOrderByCreatedAtAsc(WalletOutbox.STATUS_PENDING))
+        when(walletOutboxRepository.findByStatusOrderByCreatedAtAsc(
+                eq(WalletOutbox.STATUS_PENDING), any(Pageable.class)))
                 .thenReturn(List.of(event));
         // broker 拒收：future 以例外完成 → .get() 拋 ExecutionException
         CompletableFuture<SendResult<String, String>> failed = new CompletableFuture<>();
@@ -78,8 +81,29 @@ class WalletOutboxPollerTest {
     }
 
     @Test
+    void publishPendingEvents_wholeBatchSent_marksAllSent() {
+        // 重構後為「整批先射出 send()、再統一等 ack」：一批多筆都應標 SENT（守門批次處理）
+        WalletOutbox e1 = pending(10L);
+        WalletOutbox e2 = pending(11L);
+        WalletOutbox e3 = pending(12L);
+        when(walletOutboxRepository.findByStatusOrderByCreatedAtAsc(
+                eq(WalletOutbox.STATUS_PENDING), any(Pageable.class)))
+                .thenReturn(List.of(e1, e2, e3));
+        @SuppressWarnings("unchecked")
+        SendResult<String, String> sendResult = mock(SendResult.class);
+        when(kafkaTemplate.send(anyString(), anyString(), anyString()))
+                .thenReturn(CompletableFuture.completedFuture(sendResult));
+
+        poller.publishPendingEvents();
+
+        assertThat(List.of(e1, e2, e3))
+                .allSatisfy(e -> assertThat(e.getStatus()).isEqualTo(WalletOutbox.STATUS_SENT));
+    }
+
+    @Test
     void publishPendingEvents_noPending_doesNothing() {
-        when(walletOutboxRepository.findTop100ByStatusOrderByCreatedAtAsc(WalletOutbox.STATUS_PENDING))
+        when(walletOutboxRepository.findByStatusOrderByCreatedAtAsc(
+                eq(WalletOutbox.STATUS_PENDING), any(Pageable.class)))
                 .thenReturn(List.of());
 
         poller.publishPendingEvents();

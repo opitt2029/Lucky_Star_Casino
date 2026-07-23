@@ -1,3 +1,39 @@
+## [perf] — 2026-07-23 — wallet outbox 投遞器改平行 ack、可調批次（解 T-090 遠端壓測瓶頸）
+
+> 對應 T-090 遠端施壓機壓測報告（2026-07-23，SUT `10.0.102.84`）§3~§4.1 根因與修法建議。
+
+### Changed
+- `backend/wallet-service/.../service/WalletOutboxPoller.java`：背景投遞器的併發模型重構。
+  舊版在 `for` 迴圈裡逐筆 `.get(10s)` 等 broker ack，是 **O(N) 循序阻塞**——即使單筆 ack 5ms，
+  100 筆也要 ~500ms，實測投遞上限僅 ~100 events/s。改為兩段式：①依 `createdAt` 由舊到新
+  **依序射出整批 `send()`**（非阻塞，只入 producer buffer）②**統一等所有 ack**（平行返回，
+  整輪耗時 ≈ 最慢單筆 ack，而非 N×ack）。刻意**保留 `fixedDelay`**（不改 `fixedRate`），
+  因本 poller 對撈出列未加鎖（單實例假設），`fixedRate` 於 scheduler pool>1 時可能兩輪並跑重送。
+- `backend/wallet-service/.../repository/WalletOutboxRepository.java`：`findTop100By...`（寫死 100/輪，
+  壓測下的吞吐瓶頸）改為 `findByStatusOrderByCreatedAtAsc(status, Pageable)`，批次大小可調。
+- `backend/wallet-service/src/main/resources/application.yml`：新增 `wallet.outbox.batch-size`
+  （預設 500，`WALLET_OUTBOX_BATCH_SIZE`）；`poll-interval-ms` 預設 1000ms→200ms。兩者合計把
+  投遞上限拉到 ~batch/interval（500/0.2s ≈ 2,500 events/s），遠高於舊版 ~100/s。
+- `backend/wallet-service/.../service/WalletOutboxPollerTest.java`：三個既有測試改 stub 新的
+  `Pageable` 查詢方法；新增 `publishPendingEvents_wholeBatchSent_marksAllSent` 守門多筆批次處理。
+
+### Added
+- `docs/performance/T-090-outbox-fix-validation-20260723.md` + `docs/performance/assets/sut-docker-stats-{A-oldcode,B-newcode}-*.csv`：
+  SUT 本機自壓 A/B 驗證與資源快照。
+
+**為什麼**：分機壓測（JMeter 未成瓶頸、SUT CPU 有餘裕）下容量仍卡在 ~160 req/s，根因是每個 spin
+產生 ~2 筆 wallet 事件（debit+credit），事件產生速率一過 ~150 req/s 就追平 poller 上限，
+`outbox PENDING` 跨階累積到 3~4 萬筆、拖慢後續帳務查詢造成雪崩。平行化「等 ack」是最大槓桿；
+批次/間隔可調是配套。**順序安全**：只平行化等待、不改送出順序，idempotent producer（`acks=all`
+預設）保證同 key 不重排。
+**如何驗證**：① `mvn -pl backend/wallet-service test` → 174 tests 全綠（含更新後的
+`WalletOutboxPollerTest` 4 筆）。② **SUT 本機自壓 A/B**（`docs/performance/T-090-outbox-fix-validation-20260723.md`）：
+同一施壓器對舊/新 image 各跑 60s×80 併發——`wallet_outbox_pending_events` 峰值由舊 code 的
+**26,285 降到 189（~140×）**、排空由「>120s 排不完（~80/s）」變 **9s**；部署瞬間繼承的 10,635 筆積壓
+新 code ≤12s 清空；負載前後 T-091 對帳皆 9/9 PASS。co-located 自壓故容量數字不對外引用，
+**可對外的容量天花板仍須照壓測報告 §5 由 LG 分機重跑階梯確認**。
+
+---
 ## [fixed] — 2026-07-23 — 百家樂／捕魚機全螢幕：一按下注、一開抽屜整個版面就跑掉
 
 > 承 #253 / #255 的同一類雷：全螢幕容器把高度分配交給「子元素數量」或「內容多寡」，
