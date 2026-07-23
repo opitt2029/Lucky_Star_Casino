@@ -118,7 +118,8 @@
 
 ### Added
 - `docs/database-er-diagrams.md`：PostgreSQL 寫庫（16 張表）與 MySQL 讀庫（12 張表）的
-  Mermaid ER 圖（GitHub 原生渲染），含每張表的用途清單與跨庫 CQRS 資料流圖。
+  ER 圖，含每張表的用途清單與跨庫 CQRS 資料流圖。圖以 SVG 向量圖呈現（`docs/assets/er/`，
+  mermaid-cli 渲染，放大不失真），Mermaid 原始碼收在摺疊區塊、文末附重新產圖 SOP。
   依 `database/postgres/init.sql`、`database/mysql/init.sql` 現況繪製；因微服務不設實體外鍵，
   所有關聯以虛線（非識別關聯）表示，並註明一致性改由冪等鍵、樂觀鎖與 Kafka 事件保證。
 

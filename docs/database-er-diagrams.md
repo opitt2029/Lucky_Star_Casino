@@ -14,6 +14,11 @@
 帳務核心（wallet-service）、遊戲對局（game-service）、排行快照（rank-service）、後台（admin-service）。
 `player_id` 一律邏輯對應 MySQL 的 `members.id`；`wallets` 以 `player_id` 為主鍵，是本庫的玩家錨點。
 
+![PostgreSQL 寫庫 ER 圖](assets/er/er-postgres.svg)
+
+<details>
+<summary>Mermaid 原始碼（schema 變動時改這裡並重新產圖，見文末說明）</summary>
+
 ```mermaid
 erDiagram
     wallets {
@@ -207,6 +212,8 @@ erDiagram
     admin_users |o..o{ admin_alerts : "resolved_by"
 ```
 
+</details>
+
 ### 表格清單（16 張）
 
 | 資料表 | 所屬服務 | 用途 |
@@ -237,6 +244,11 @@ erDiagram
 
 > 圖中 `wallet_transactions_view` 實際表名為 `wallet_transactions`（與 PG 寫庫同名）；
 > 為避免混淆，圖上加 `_view` 後綴標示。
+
+![MySQL 讀庫 ER 圖](assets/er/er-mysql.svg)
+
+<details>
+<summary>Mermaid 原始碼（schema 變動時改這裡並重新產圖，見文末說明）</summary>
 
 ```mermaid
 erDiagram
@@ -363,6 +375,8 @@ erDiagram
     members |o..o{ diamond_cards : "redeemed_by（未兌換為 NULL）"
 ```
 
+</details>
+
 ### 表格清單（12 張）
 
 | 資料表 | 所屬服務 | 用途 |
@@ -385,6 +399,11 @@ erDiagram
 ## 3. 跨庫邏輯關係（CQRS 資料流）
 
 兩庫之間沒有任何實體外鍵，靠三種機制黏合：共用邏輯鍵 `player_id`、Kafka 事件同步、以及「目錄在讀庫、帳務在寫庫」的分工。
+
+![跨庫 CQRS 資料流](assets/er/er-cross-db-cqrs.svg)
+
+<details>
+<summary>Mermaid 原始碼（schema 變動時改這裡並重新產圖，見文末說明）</summary>
 
 ```mermaid
 flowchart LR
@@ -412,7 +431,22 @@ flowchart LR
     DC -. "序號兌換 → 鑽石入帳" .-> DW
 ```
 
+</details>
+
 - **玩家身分**：`members.id`（MySQL）＝ 所有表的 `player_id`，是唯一的跨庫共用鍵。
 - **帳務流水同步**：PG 寫入 → 同交易落 `wallet_outbox` → Poller 送 Kafka → 讀庫視圖冪等更新（at-least-once，最終一致）。餘額查詢一律查 PG。
 - **商城**（ADR-006）：目錄 `shop_items` 在 MySQL（admin 管理），兌換帳務 `shop_redemptions` 在 PG（與扣款同交易）。
 - **鑽石**：卡序號 `diamond_cards` 在 MySQL，兌換後入帳 `diamond_wallets` 在 PG。
+
+---
+
+## 附：如何重新產圖
+
+圖片由各節摺疊區塊內的 Mermaid 原始碼渲染而成。schema 變動時：
+① 改對應摺疊區塊的 Mermaid 原始碼 → ② 把該區塊內容存成 `.mmd` 檔 → ③ 用 mermaid-cli 重新輸出 PNG：
+
+```bash
+npx -y @mermaid-js/mermaid-cli -i er-postgres.mmd -o docs/assets/er/er-postgres.svg -b white
+```
+
+（`-b white` 白底；輸出 SVG 向量圖，放大不失真。三張圖檔名：`er-postgres.svg` / `er-mysql.svg` / `er-cross-db-cqrs.svg`）
