@@ -123,7 +123,11 @@
 .baccarat-table-header__metrics span,
 .baccarat-status-bar span,
 .baccarat-result-item span {
-  display: block;
+  /* flex（原本是 block）：標籤旁邊可能跟著一顆 InfoHint 驚嘆號，
+     block 會讓它掉到下一行、把數值擠開。 */
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--baccarat-text-muted);
   font-size: 0.72rem;
   font-weight: 800;
@@ -2034,4 +2038,61 @@ body.baccarat-fullscreen-active {
     height: auto;
     overflow: visible;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   全螢幕版面收尾：修正「區塊互相覆蓋、按鍵按不到」。
+
+   原因（實測，1536x674 視窗）：全螢幕的 .baccarat-table-felt 是固定高度的 grid，
+   上面每個 breakpoint 各自用 minmax(固定px, auto) 指定列高。視窗一矮，grid 沒有
+   足夠空間，auto 列被壓縮，而 felt 本身是 overflow: hidden（見上方 cockpit
+   override）——內容不是被擠開，是直接被切掉：
+     · 籌碼列 chips：內容需 137px、只分到 117px
+       → 「開始發牌」底部落在 682px、視窗只有 674px，被切在畫面外按不到
+     · 結算面板 settle：內容需 188px、只分到 113px
+       → 「下注金額」等欄位被硬裁，看起來像被側注面板蓋住
+
+   修法三層（順序即優先權）：
+     1. 籌碼列與下注區改 min-content：互動控制列一定拿到「內容需要的高度」，
+        不會被壓縮——按鍵永遠按得到，這是最高優先
+     2. 牌桌 duel 改 minmax(0, 1fr)：由它吸收剩餘空間，視窗再矮也只是牌變小
+     3. 資訊型面板（settle / side-bets）改 overflow-y: auto：內容過長時自己捲動，
+        取代原本被 felt 硬裁。min-height: 0 是 grid 子項能縮到內容以下的必要條件，
+        少了它捲動不會生效
+
+   刻意放在檔案最後：上面每個 breakpoint 都有一份自己的 grid-template-rows，
+   逐條改容易漏掉某個 breakpoint 而重現同一個 bug，在此統一收斂比較安全。
+   --------------------------------------------------------------------------- */
+.baccarat-table--fullscreen .baccarat-table-felt,
+.baccarat-table:fullscreen .baccarat-table-felt {
+  grid-template-rows: min-content minmax(88px, auto) minmax(0, 1fr) min-content min-content !important;
+}
+
+.baccarat-table--fullscreen .baccarat-chip-tray,
+.baccarat-table:fullscreen .baccarat-chip-tray,
+.baccarat-table--fullscreen .baccarat-betting-mat,
+.baccarat-table:fullscreen .baccarat-betting-mat {
+  min-height: 0;
+}
+
+.baccarat-table--fullscreen .baccarat-settlement,
+.baccarat-table:fullscreen .baccarat-settlement,
+.baccarat-table--fullscreen .baccarat-side-bets,
+.baccarat-table:fullscreen .baccarat-side-bets {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 面板標題在全螢幕被縮到 0.86rem 後，眉標與主標行距不足而黏在一起。 */
+.baccarat-table--fullscreen .baccarat-panel-heading p,
+.baccarat-table:fullscreen .baccarat-panel-heading p {
+  line-height: 1.3;
+}
+
+.baccarat-table--fullscreen .baccarat-side-bets__heading h3,
+.baccarat-table:fullscreen .baccarat-side-bets__heading h3,
+.baccarat-table--fullscreen .baccarat-settlement__banner h3,
+.baccarat-table:fullscreen .baccarat-settlement__banner h3 {
+  margin-top: 4px;
+  line-height: 1.2;
 }

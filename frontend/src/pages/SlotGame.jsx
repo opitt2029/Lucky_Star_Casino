@@ -4,6 +4,7 @@ import AppShell from '../components/AppShell'
 import GameRuleCard from '../components/GameRuleCard'
 import MetricCard from '../components/MetricCard'
 import SlotMachine from '../components/SlotMachine'
+import InfoHint from '../components/InfoHint'
 import { spinSlot, clearGameResult } from '../store/slices/gameSlice'
 import { setBalance } from '../store/slices/walletSlice'
 import { soundEngine } from '../casino-fx/sound/SoundEngine'
@@ -223,6 +224,12 @@ export default function SlotGame() {
               label="最近派彩"
               value={lastPayout === null ? '-' : formatCoins(lastPayout)}
               caption={payoutCaption}
+              hint={(
+                <InfoHint title="最近派彩" align="right">
+                  上一局實際拿回的星幣，<strong>已含本金</strong>。所以「中線倍率 2x」＝拿回下注額的兩倍，
+                  淨賺一倍；倍率 1x 等於剛好打平。沒中獎時為 0。
+                </InfoHint>
+              )}
             />
             <MetricCard
               label="本次遊玩損益"
@@ -237,9 +244,15 @@ export default function SlotGame() {
               valueClass={sessionProfit === null ? '' : sessionProfit >= 0 ? 'text-emerald-300' : 'text-red-300'}
             />
 
-            <div className="luxury-panel-soft rounded p-4">
+            <div className="slot-bet-panel luxury-panel-soft rounded p-4">
               <p className="gold-muted text-xs font-black uppercase tracking-[0.25em]">Bet</p>
-              <h3 className="brand-title mt-1 text-xl font-black">下注面額</h3>
+              <h3 className="brand-title mt-1 flex items-center gap-2 text-xl font-black">
+                下注面額
+                <InfoHint title="下注面額" align="right">
+                  每按一次 SPIN 要扣掉的星幣。<strong>MAX</strong> 不是固定金額，而是「用目前餘額能下的最大注」，
+                  上限 5,000 星幣；餘額不足 5,000 時就以餘額為準。注額越大，中獎時派彩也等比放大。
+                </InfoHint>
+              </h3>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 {betOptions.map((option) => (
                   <button
@@ -260,8 +273,14 @@ export default function SlotGame() {
               </div>
             </div>
 
-            <div className="luxury-panel-soft rounded p-4">
-              <p className="gold-muted text-xs font-black uppercase tracking-[0.25em]">Round Status</p>
+            <div className="slot-status-panel luxury-panel-soft rounded p-4">
+              <p className="gold-muted flex items-center gap-2 text-xs font-black uppercase tracking-[0.25em]">
+                Round Status
+                <InfoHint title="本局狀態" align="right">
+                  「流程」顯示這一局走到哪：待下注 → 轉動中 → 已結算；轉動中時不能改注額。
+                  「中線結果」則是這局中間那條線有沒有連成得分組合——命中才會有派彩。
+                </InfoHint>
+              </p>
               <div className="mt-3 grid gap-3">
                 <div className="flex items-center justify-between rounded border border-yellow-200/15 bg-red-950/70 px-3 py-3">
                   <span className="text-sm font-bold text-yellow-100/62">流程</span>

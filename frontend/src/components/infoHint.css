@@ -1,0 +1,89 @@
+/* 區塊說明標誌（InfoHint）。
+   說明卡就地渲染、絕對定位——不能改用 portal 到 body，全螢幕下會看不見，
+   原因見 InfoHint.jsx 的註解。 */
+
+.info-hint {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+  /* 讓說明卡疊在同層區塊之上；周圍面板多半是 z-index 1~2。 */
+  z-index: 30;
+}
+
+.info-hint__button {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(243, 215, 141, 0.6);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.4);
+  color: rgba(247, 215, 128, 0.95);
+  font-size: 0.8rem;
+  font-weight: 950;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.info-hint__button:hover,
+.info-hint__button[aria-expanded='true'] {
+  border-color: #f7d780;
+  background: #f7d780;
+  color: #2a1206;
+}
+
+.info-hint__button:focus-visible {
+  outline: 2px solid #f7d780;
+  outline-offset: 2px;
+}
+
+/* 選擇器刻意寫成 .info-hint .info-hint__panel（權重 0,2,0）而不是單一 class：
+   宿主頁面常有 `.某區塊 span { display: flex }` 這類針對標籤的規則（例如
+   baccarat.css 的 .baccarat-result-item span），那些規則會連帶命中說明卡本身，
+   把 title / body 拉成同一列、標題被壓成直排。這裡用較高權重把版面鎖住，
+   就不必去動宿主的既有規則。 */
+.info-hint .info-hint__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  display: grid;
+  gap: 5px;
+  width: max-content;
+  /* 上限用 vw 而非固定 px：全螢幕、視窗縮小、手機都不會超出可視範圍。 */
+  max-width: min(280px, 72vw);
+  border: 1px solid rgba(243, 215, 141, 0.42);
+  border-radius: 8px;
+  background: rgba(12, 5, 7, 0.97);
+  padding: 9px 11px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+  text-align: left;
+  white-space: normal;
+  /* 說明卡是被動資訊，不要攔截底下區塊的滑鼠事件；
+     卡片本身沒有互動元素，關閉靠外部點擊與 Esc。 */
+  pointer-events: none;
+}
+
+.info-hint .info-hint__panel--left {
+  left: 0;
+}
+
+.info-hint .info-hint__panel--right {
+  right: 0;
+}
+
+.info-hint .info-hint__title {
+  display: block;
+  color: #f7d780;
+  font-size: 0.78rem;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+}
+
+.info-hint .info-hint__body {
+  display: block;
+  color: rgba(247, 241, 223, 0.82);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.55;
+}

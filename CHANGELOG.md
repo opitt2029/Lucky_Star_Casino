@@ -1,3 +1,56 @@
+## [fixed] — 2026-07-23 — 全螢幕版面互相覆蓋按不到按鍵；老虎機全螢幕定位；新增區塊說明標誌
+
+### Fixed
+- `frontend/src/styles/games/baccarat.css`：修掉百家樂全螢幕「區塊互相覆蓋、按鍵按不了」。
+  根因不是 z-index 疊層，而是**格線軌道高度不足 + `overflow: hidden` 硬裁**：全螢幕的
+  `.baccarat-table-felt` 是固定高度 grid，上面每個 breakpoint 各自用 `minmax(固定px, auto)`
+  指定列高，視窗一矮 auto 列就被壓縮。實測 1536x674：籌碼列內容需 137px 只分到 117px，
+  「開始發牌」底部落在 682px（視窗只有 674px）被切在畫面外按不到；結算面板內容需 188px
+  只分到 113px，「下注金額」等欄位被硬裁，看起來像被側注面板蓋住。
+  修法三層：① 籌碼列與下注區改 `min-content`，互動控制列一定拿到內容需要的高度
+  ② 牌桌改 `minmax(0, 1fr)` 吸收剩餘空間 ③ 資訊型面板改 `overflow-y: auto` 自己捲動
+  （`min-height: 0` 是 grid 子項能縮到內容以下的必要條件）。修正後「開始發牌」底部回到 640px。
+- `frontend/src/index.css`：全螢幕期間關掉 `.page-transition-stage` 的
+  `transform / filter / will-change`。這三個屬性任一存在就會讓該元素成為底下所有
+  `position: fixed` 子孫的 containing block，全螢幕舞台會從轉場層的偏移量起算
+  100vw/100vh 而整塊歪掉、溢出視窗右下角。轉場動畫是 `fill-mode: both`（保留最後一格），
+  等動畫跑完沒有用，必須明確關閉。此問題同時影響百家樂與老虎機。
+- `frontend/src/components/slotMachine.css`：`.slot-game-surface--fullscreen` 補上
+  `position: fixed; inset: 0; z-index: 1000`（百家樂早有、老虎機漏了）。缺少時整塊從文件流
+  原位起算 100vw/100vh，右側資訊欄與「離開全螢幕」按鈕會被切出畫面。
+- `frontend/src/styles/games/baccarat.css`：`.baccarat-result-item span` 由 `block` 改為
+  `flex`，讓標籤旁的說明標誌不會掉到下一行把數值擠開；並補上全螢幕下面板標題的行距
+  （縮到 0.86rem 後眉標與主標會黏在一起）。
+
+### Changed
+- `frontend/src/components/slotMachine.css`、`frontend/src/pages/SlotGame.jsx`：老虎機全螢幕
+  右欄改用 flex 並把「下注面額」「本局狀態」排到最前（新增 `.slot-bet-panel` /
+  `.slot-status-panel` 語意 class）。原本順序會把下注面額推到最底（面板 scrollHeight 918px
+  vs 可視 562px），玩家得先捲動才能改注額。
+
+### Added
+- `frontend/src/components/InfoHint.jsx`、`frontend/src/components/infoHint.css`：區塊說明標誌。
+  一顆驚嘆號小圓鈕，點下去就地展開說明卡，支援 Esc 與點擊外部關閉、`align` 可切左右對齊。
+  **刻意不沿用 `GameRuleCard` 的 `createPortal(document.body)` 作法**——全螢幕時瀏覽器只渲染
+  進入全螢幕的那棵子樹，掛在 body 底下的 portal 會整個看不見（老虎機全螢幕之所以要把規則卡
+  `display: none` 就是這個原因）。面板樣式選擇器寫成 `.info-hint .info-hint__panel`（權重 0,2,0）
+  以免被宿主頁面的 `.某區塊 span { display: flex }` 命中而把標題壓成直排。
+- 說明標誌掛載點：百家樂＝側注追蹤、咪牌、本場損益、路單分析、返水、roundId；
+  老虎機＝下注面額（MAX 的實際意義）、本局狀態、最近派彩（含本金口徑）。
+- `frontend/src/components/MetricCard.jsx`：新增選用的 `hint` prop（不傳則行為完全不變）。
+
+### 為什麼
+使用者回報百家樂全螢幕有區塊互相覆蓋、某些按鍵按不了，並希望老虎機也有堪用的全螢幕，
+以及看不懂的區塊（例如「側注追蹤」到底是什麼）能就地查說明。
+
+### 如何驗證
+- `npx eslint src/` 無輸出
+- `npx vitest run` → 8 檔 56 測試全綠
+- `npx vite build` → 成功
+- 瀏覽器實測（1536x674）：全螢幕下對舞台內所有 button/input 做遮擋與溢出檢測
+  （`elementFromPoint` 命中自己 + rect 不超出視窗），百家樂與老虎機皆為 0 個問題按鈕；
+  9 顆說明標誌逐一開闔，全部在視窗內、Esc 可關。
+
 ## [fixed] — 2026-07-23 — 容量階梯：修掉「某一階失敗卻靜默沿用上一階數據」的假數據路徑
 
 > 承 PR #250（文件層先擋住）的腳本層根治。
