@@ -1,3 +1,41 @@
+## [fixed] — 2026-07-23 — 容量階梯：修掉「某一階失敗卻靜默沿用上一階數據」的假數據路徑
+
+> 承 PR #250（文件層先擋住）的腳本層根治。
+
+### Fixed
+- `tools/observability/run-capacity-ladder.ps1`：每階只採計**這一階新出現**的結果資料夾。
+  舊寫法是「取 `results/` 底下最新的一個資料夾」，不驗證它是否由這一階產生。
+  `run-slot-load-test.ps1` 在 `players.csv` 列數 < `-Threads` 時會 `throw`，而該 `throw`
+  發生在 `New-Item $resultDir` **之前** ⇒ 那一階不會留下自己的資料夾 ⇒ 舊寫法會取到
+  **上一階**的資料夾、拿上一階的 JTL 重算，產出一列標著這一階 `offeredRpsTarget` 的假數據，
+  整輪跑完看起來完全正常。取不到新資料夾時改為大聲中止並指出最可能的原因。
+- `tools/observability/run-capacity-ladder.ps1`：新增開跑前的 `players.csv` 列數檢查
+  （≥ 全階最高執行緒數）。玩家數是開跑前就能確定的事，不該讓階梯跑到 30 分鐘後最貴的
+  高階才失敗。
+- `tools/observability/run-capacity-ladder.ps1`：擋掉用 `powershell -File` 傳陣列參數造成的
+  靜默變形。實測 `-ThreadsPerStep 100,3000` 經 `-File` 會被當成單一字串再轉型成 **1003000**
+  （逗號被當千分位），**不會報錯**；`-OfferedRpsSteps` 同時被壓成 1 元素，所以既有的
+  「兩陣列等長」檢查也抓不到。
+- `docs/performance/T-090-遠端施壓機壓測計畫-20260723.md`：更正 #250 寫錯的一條驗收條件。
+  `gateExitCode` 非 0 是**預期中的正常結果**（runner 在驗收 gate 沒過時就 throw，高階本來就會不過），
+  不能拿它當中止或作廢的依據；真正分得出「跑了但沒過」與「根本沒跑」的是逐階 `runId` 不重複。
+
+### Why
+- 這與 2026-07-22（#247）修掉的「summarize 失敗靜默寫空白列」是同一類 bug，只是換了個入口：
+  **量測腳本沉默地拿到錯的東西，比大聲失敗危險得多**——空白列至少看得出異常，
+  沿用上一階的數據則完全看不出來，而且會直接進到對外引用的容量報告裡。
+- 觸發條件就在既有計畫裡：計畫 provision 2,500 名玩家，但主階梯最高階要開 3,000 條執行緒。
+
+### Verification
+- `node --test tests/infra/jmeter.test.js` — 11/11 pass
+- PowerShell 語法檢查：`[System.Management.Automation.Language.Parser]::ParseFile(...)` 無錯誤
+- 隔離重現測試（5 項全過，含重現舊寫法的 bug）：正常階取到自己的資料夾；runner 失敗時
+  新寫法得到 `$null` 會中止，舊寫法則取到上一階的資料夾
+- 端對端實跑三個守衛：`players.csv` 不存在 / 列數不足 / 陣列被 `-File` 吃掉，
+  三種情況都在第 0 秒中止並印出可執行的修正指令
+- 未做：需要 3,000 名已 provision 玩家 + JMeter 的完整階梯實跑（會寫入 SUT 資料庫），
+  故「取不到新資料夾就中止」這條走隔離重現驗證
+
 ## [fixed] -- 2026-07-23 -- Restore remote CI green gates
 
 ### Fixed
