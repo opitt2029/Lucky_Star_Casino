@@ -1,3 +1,17 @@
+## [chore] - 2026-07-24 - 第三方登入 PR 排除環境範例與忽略規則
+
+### Changed
+- 撤回 PR #270 對 `.env.example` 與 `.gitignore` 的修改，第三方登入憑證維持只存在本機 `.env`。
+- 移除依賴 OAuth 範例變數的 infra 斷言；Spring 與 Docker Compose 的執行期設定不變。
+
+### Why
+- 依專案提交需求，第三方登入成品 PR 不納入 `.env.example` 與 `.gitignore` 變更。
+
+### Verified
+- `node --test tests/infra/*.test.js`
+
+---
+
 ## [perf] — 2026-07-24 — T-090 新環境容量階梯壓測（PR #264 合併後重跑）
 
 ### Added
