@@ -76,6 +76,25 @@ Java 21 預設 G1GC 已足夠。**盲調 `-XX` 無據。** game 平均暫停 30m
 （派彩），合計約 **130ms** 的同步等待，負載下比 idle 增約 50%。**但 130ms 遠小於 P99 1600ms**——
 改非同步最多省 ~100ms，**改不動根本的容量天花板**。
 
+### 方向 1／2 — Tomcat 執行緒池 / acceptCount（補測，2026-07-24 二輪）
+
+> 首輪報告列此為「無法驗證」（指標未暴露）。本 PR 補上
+> `server.tomcat.mbeanregistry.enabled=true` 後**重建 image 重測**，得以直接量。
+
+| 服務 | Tomcat busy 峰值 | current 峰值 | pg pool active 峰值 |
+|---|---:|---:|---:|
+| wallet | **151 / 200** | 151 | 15 / 40 |
+| game | **151 / 200** | 158 | 10 / 40 |
+| member | 26 / 200 | 27 | — |
+
+**判定：❌ 不是瓶頸。** 即使 300 併發 offered 567/s，Tomcat busy 執行緒**從未超過 151/200**
+（49 條常駐空閒）。`max-threads` 加大**無效**；`acceptCount`（佇列，僅在 200 條執行緒全滿時才用到）
+**從未觸發**，調它**無意義**。
+
+> **busy 為何卡在 151？** 不是執行緒不夠，是 **gateway AIMD 併發限流器在上游先卸載**
+> （§2）——下游 wallet/game 根本收不到更多併發。**再次坐實**：151 條 busy 執行緒當下 pg pool 才用
+> 10–15/40 → 這些執行緒**不是卡在 DB、也不是卡在沒執行緒**，是**排不到 CPU**。
+
 ## 4. 真瓶頸判定：CPU / 排程爭搶
 
 把可量到的服務時間加起來：debit 64ms ＋ credit 68ms ＋ GC 分攤 ~20ms ≈ **~200ms**。
@@ -86,8 +105,9 @@ Java 21 預設 G1GC 已足夠。**盲調 `-XX` 無據。** game 平均暫停 30m
 - 12 核同機硬扛 7 個 Spring JVM ＋ MySQL ＋ Postgres ＋ Kafka ＋ Prometheus/Grafana ＋
   **JMeter 自身 24–35% CPU**。knee（150 併發）正好落在 JMeter CPU 破 25% 打折線之後。
 
-**結論：本輪的容量天花板是「這台筆電 ＋ 同機 JMeter」的 CPU，不是連線池/GC/同步耦合。**
-使用者原假設的三個方向，經直接量測**均被否證或降為次要**。
+**結論：本輪的容量天花板是「這台筆電 ＋ 同機 JMeter」的 CPU，不是連線池/GC/同步耦合/執行緒池。**
+使用者原提的**六個方向（HikariCP、GC、同步耦合、acceptCount、執行緒池、Redis）經直接量測全部被否證或降為次要**。
+唯一「限流器」是 gateway AIMD（設計行為），其收緊的觸發點（延遲破 1500ms）由 CPU 爭搶造成。
 
 ## 5. 真正該修的痛點（依優先序）
 
@@ -95,20 +115,22 @@ Java 21 預設 G1GC 已足夠。**盲調 `-XX` 無據。** game 平均暫停 30m
 > 在沒有分機乾淨數據前動它們＝拜拜式優化。
 
 **P0 — 觀測盲點（擋住所有後續判定）**
-1. **Tomcat 執行緒池指標沒暴露**：`/actuator/prometheus` 只有 `tomcat_sessions_*`，**沒有
-   `tomcat_threads_busy`**（需 `server.tomcat.mbeanregistry.enabled=true`）。無法看執行緒池是否飽和，
-   等於方向 1/2（acceptCount/執行緒池）**根本無從驗證**。
-2. **無 GC log**：要證實/排除 GC，得開 `-Xlog:gc*` 量真實暫停分布，而非只看聚合 gauge。
+1. ✅ **（本 PR 已修）Tomcat 執行緒池指標沒暴露**：原本 `/actuator/prometheus` 只有 `tomcat_sessions_*`。
+   本 PR 對六個 Tomcat 服務加 `server.tomcat.mbeanregistry.enabled=true`，重建後 `tomcat_threads_busy`
+   現身，**方向 1/2 才得以量測並否證**（§3）。
+2. **無 GC log**：要證實/排除 GC，得開 `-Xlog:gc*` 量真實暫停分布，而非只看聚合 gauge。（尚未做）
 3. **game→wallet client 端 timer 為 0**：`WalletClientConfig` 宣稱用 `ObservationRegistry` 產
-   `http.client.requests`，但實測 count=0——client 端觀測沒生效（目前只能靠 wallet server 端回推）。
+   `http.client.requests`，但實測 count=0——client 端觀測沒生效（目前只能靠 wallet server 端回推）。（尚未做）
 
 **P1 — 方法學**
 4. **co-located 測不出真實容量**：必須分機（LG `10.0.102.42`）對 SUT 施壓、且**負載期 scrape
    本報告的內部指標**，才能拿到可對外引用的容量曲線與乾淨的瓶頸歸因。
 
 **P2 — 設定衛生（與量測無關，現在就能修、低風險）**
-5. **無 `-Xmx`＋無容器 mem/cpu 限制**：7 個 JVM 各自預設堆為容器可見 RAM 的 25%（≈3.8GB）→
-   理論可超賣 15GB 主機。真實負載下有 OOM/互相爭搶風險。應每服務設 `-Xmx` ＋ compose `mem_limit`/`cpus`。
+5. ✅ **（本 PR 已修）無 `-Xmx`＋無容器 mem 限制**：原本 7 個 JVM 各自預設堆為「主機」RAM 25%（≈3.8GB）→
+   理論可超賣 15GB 主機。本 PR 對七服務加 `JAVA_TOOL_OPTIONS: -Xmx1g` ＋ `mem_limit: 1280m`
+   （兩者並設——只設 mem_limit 會讓 JVM 抓其 25% 過小易 OOM）。重測確認 heap 實際限到 0.97GB、服務全 healthy。
+   （**未**加 `cpus` 限制：在 CPU 已爭搶的同機上硬限反而壓縮突發容量，留待分機再議。）
 
 **P3 — 架構（真實上線前）**
 6. **gateway 單一 reactive 實例＝SPOF ＋ 無水平擴展**；全系統單副本（poller 註解自承「單實例假設」）。
