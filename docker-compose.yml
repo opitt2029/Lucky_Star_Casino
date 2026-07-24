@@ -128,7 +128,11 @@ services:
       dockerfile: backend/member-service/Dockerfile
     container_name: lucky-star-member-service
     restart: always
+    # T-090 P2：顯式限堆＋容器記憶體上限。缺 -Xmx 時 JVM 依 mem_limit 抓 25% 為堆，
+    # 而無 mem_limit 時又抓「主機」RAM 25%(≈3.8G)→7 JVM 可超賣 15G 主機。兩者並設。
+    mem_limit: 1280m
     environment:
+      JAVA_TOOL_OPTIONS: "-Xmx1g -XX:MaxMetaspaceSize=256m"
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
       MYSQL_DATABASE: ${MYSQL_DATABASE}
@@ -169,7 +173,10 @@ services:
       dockerfile: backend/wallet-service/Dockerfile
     container_name: lucky-star-wallet-service
     restart: always
+    # T-090 P2：顯式限堆＋容器記憶體上限（見 member-service 註解）。
+    mem_limit: 1280m
     environment:
+      JAVA_TOOL_OPTIONS: "-Xmx1g -XX:MaxMetaspaceSize=256m"
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB}
@@ -213,7 +220,10 @@ services:
       dockerfile: backend/game-service/Dockerfile
     container_name: lucky-star-game-service
     restart: always
+    # T-090 P2：顯式限堆＋容器記憶體上限（見 member-service 註解）。
+    mem_limit: 1280m
     environment:
+      JAVA_TOOL_OPTIONS: "-Xmx1g -XX:MaxMetaspaceSize=256m"
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB}
@@ -253,7 +263,10 @@ services:
       dockerfile: backend/rank-service/Dockerfile
     container_name: lucky-star-rank-service
     restart: always
+    # T-090 P2：顯式限堆＋容器記憶體上限（見 member-service 註解）。
+    mem_limit: 1280m
     environment:
+      JAVA_TOOL_OPTIONS: "-Xmx1g -XX:MaxMetaspaceSize=256m"
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB}
@@ -289,7 +302,10 @@ services:
       dockerfile: backend/admin-service/Dockerfile
     container_name: lucky-star-admin-service
     restart: always
+    # T-090 P2：顯式限堆＋容器記憶體上限（見 member-service 註解）。
+    mem_limit: 1280m
     environment:
+      JAVA_TOOL_OPTIONS: "-Xmx1g -XX:MaxMetaspaceSize=256m"
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
       MYSQL_DATABASE: ${MYSQL_DATABASE}
@@ -341,7 +357,10 @@ services:
       dockerfile: backend/notification-service/Dockerfile
     container_name: lucky-star-notification-service
     restart: always
+    # T-090 P2：顯式限堆＋容器記憶體上限（見 member-service 註解）。
+    mem_limit: 1280m
     environment:
+      JAVA_TOOL_OPTIONS: "-Xmx1g -XX:MaxMetaspaceSize=256m"
       KAFKA_BOOTSTRAP_SERVERS: lucky-star-kafka:29092
       JWT_SECRET: ${JWT_SECRET}
       LOG_LEVEL_APP: ${LOG_LEVEL_APP}
@@ -365,7 +384,11 @@ services:
       dockerfile: backend/gateway-service/Dockerfile
     container_name: lucky-star-gateway-service
     restart: always
+    # T-090 P2：顯式限堆＋容器記憶體上限（見 member-service 註解）。gateway 為 reactive Netty，
+    # 堆需求較低但同樣避免預設 25% 超賣。
+    mem_limit: 1280m
     environment:
+      JAVA_TOOL_OPTIONS: "-Xmx1g -XX:MaxMetaspaceSize=256m"
       REDIS_HOST: redis
       REDIS_PORT: 6379
       JWT_SECRET: ${JWT_SECRET}
