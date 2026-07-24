@@ -1,4 +1,30 @@
-## [test] — 2026-07-18 — T-084/T-093 端對端驗收補齊：全鏈路 e2e ＋ 前端 WS 真後端驗收，兩筆 audit override 移除
+## [perf][observability] — 2026-07-24 — T-090 架構瓶頸驗證：實測否證 HikariCP/GC/同步耦合三方向，補 Tomcat 執行緒觀測
+
+### Added
+- `docs/performance/T-090-bottleneck-verification-20260724.md`：負載期實測驗證報告。用每 2s scrape
+  wallet/game 內部指標，逐項判定使用者提出的三個調校方向是不是本站容量瓶頸。
+
+### Changed
+- 六個 Tomcat 服務（member/wallet/game/rank/admin/notification）`application.yml` 新增
+  `server.tomcat.mbeanregistry.enabled: true`：解鎖 `tomcat_threads_busy/current` 指標。gateway 為
+  reactive Netty，不適用故不改。
+
+### 為什麼
+- 使用者提案「加大 HikariCP／優化 GC／改非同步」解容量。實測**三者皆非瓶頸**：wallet/game pg 連線池
+  峰值僅 22/40（45% 閒置）、零 timeout；GC 僅佔 ~1.2% 時間；同步 wallet 呼叫 debit 64ms/credit 68ms、
+  合計 ~130ms 遠小於 P99 1600ms。冒煙證據＝game 連線 acquire 花 1.18s 但池只用 22/40 → 執行緒**排不到
+  CPU**（非池飽和）。真瓶頸是 co-located 12 核硬扛 7 JVM＋DB＋Kafka＋JMeter(24–35% CPU) 的排程爭搶。
+- 補 Tomcat 執行緒指標的動機：現況 `/actuator/prometheus` 只有 `tomcat_sessions_*`，**看不到執行緒池
+  飽和**，導致使用者另兩個方向（acceptCount／執行緒池）根本無從驗證。這是後續任何調校的觀測前提。
+
+### 如何驗證
+- `mvn -pl backend/wallet-service test -Dtest=WalletServiceApplicationTests` → contextLoads **PASS**
+  （1 run, 0 fail；確認新 yml 屬性不破壞啟動）。
+- 指標實際生效需**重建 image**（運行中容器仍用舊 image）；重建後 `curl :8082/actuator/prometheus |
+  grep tomcat_threads_busy` 應可見。
+- 帳務未受影響：本輪壓測後 T-091 對帳 9/9 PASS。
+
+
 
 ### Added
 - `tests/e2e/full-chain.mjs`（T-093）：跨服務全鏈路整合測試——「下注→帳務→排行→通知」18 斷言，
