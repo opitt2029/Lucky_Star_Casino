@@ -1,3 +1,22 @@
+## [perf] — 2026-07-24 — T-090 新環境容量階梯壓測（PR #264 合併後重跑）
+
+### Added
+- `docs/performance/T-090-new-env-ladder-20260724.md`：在 PR #264 合併後的新環境（tomcat mbean＋
+  `-Xmx1g`＋`mem_limit 1280m`）重跑 co-located 容量階梯（25/50/100/150/300 併發），與併入前
+  baseline（`fcaa14b`）對照。
+- 產出資料：`tests/performance/results/ladder-20260724-142712/`。
+
+### 結果
+- **T-091 九項 SQL 對帳 0 違規**（高卸載 300 併發 74% 下仍守住）。
+- 相較 baseline：低負載 P99 大幅下降（25 併發 534→58ms）、**150 併發首次零卸載撐住**（46%→0%）、
+  吞吐 124→219/s。knee 仍在 100→150 併發、真瓶頸仍是 co-located CPU 爭搶（不變）。
+- **為什麼**：使用者要求「依新環境壓測一次」。**如何驗證**：`run-capacity-ladder.ps1` 跑階梯 exit 0＋
+  `accounting-reconciliation.sql` 9/9 PASS。
+- ⚠️ caveat：runtime 連線池上限（game 10／wallet pg 15）低於 `application.yml` 宣告的 40 —— 記入報告 §5，
+  下輪正式壓測前應查清並重建 image。
+
+---
+
 ## [perf][observability] — 2026-07-24 — T-090 架構瓶頸驗證：實測否證使用者全部六個調校方向，補 Tomcat 觀測＋堆/記憶體衛生
 
 ### Added
