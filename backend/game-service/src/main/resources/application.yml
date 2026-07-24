@@ -69,6 +69,9 @@ management:
       percentiles-histogram:
         # P99 直方圖（T-090 觀測性）：供 Prometheus histogram_quantile 計算延遲分位數
         "[http.server.requests]": true
+        # game→wallet outbound 呼叫的 P99（T-090 §5.2 分層歸因）：
+        # 有這條才不用靠「game P99 減 wallet P99」相減推論延遲主體在哪一層。
+        "[http.client.requests]": true
   endpoints:
     web:
       exposure:

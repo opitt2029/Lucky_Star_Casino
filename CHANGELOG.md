@@ -1,3 +1,9 @@
+## [perf] — 2026-07-24 — game→wallet HTTP client 加上觀測儀表（T-090 §5.2 分層歸因）
+
+> 對應 `docs/performance/T-090-遠端施壓機壓測計畫-20260723.md` §5.2 與本輪 co-located 驗證報告
+> `docs/performance/T-090-colocated-ladder-20260724.md`：先前膝點延遲分層只能靠「game spin P99
+> 減 wallet 伺服器端 P99」相減推論，因為 game 對 wallet 的 outbound 呼叫**完全沒有儀表**
+> （實測 `http_client_requests` = 0）。這一筆把那條指標接起來。
 ## [docs] — 2026-07-24 — 簡報新增「網站架構全景」投影片
 
 ### Added
@@ -93,6 +99,10 @@
 ### 如何驗證
 - `mvn -pl backend/game-service test` → **197 tests 全綠**（`WalletClientTest` 自建 builder、
   不走 @Bean，故不受影響；`contextLoads` 因自動組態已提供 `RestClient.Builder` bean 照常通過）。
+- **co-located 容量階梯**（`docs/performance/T-090-colocated-ladder-20260724.md`，同機、數字不對外
+  引用）：改動前 game 的 `http_client_requests` = 0 條；改動後首次能直接量到 game→wallet 分層
+  ——DEBIT 往返 P99 405ms vs wallet 伺服器端 319ms（client/網路/連線池開銷僅 ~86ms），
+  **推翻**先前「延遲卡在未調校 HTTP client」的假設方向。T-091 對帳 9/9 PASS。
 - **co-located smoke**（本機自壓數百發 slot spin，容量數字不對外引用）：改動前 game 的
   `http_client_requests` = **0 條**；改動後出現 `uri=/internal/wallet/debit`（count 400、
   histogram buckets 齊）與 `uri=/internal/wallet/credit`（count 127）。Prometheus
