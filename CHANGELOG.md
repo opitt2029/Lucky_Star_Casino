@@ -4,6 +4,82 @@
 > `docs/performance/T-090-colocated-ladder-20260724.md`：先前膝點延遲分層只能靠「game spin P99
 > 減 wallet 伺服器端 P99」相減推論，因為 game 對 wallet 的 outbound 呼叫**完全沒有儀表**
 > （實測 `http_client_requests` = 0）。這一筆把那條指標接起來。
+## [docs] — 2026-07-24 — 簡報新增「網站架構全景」投影片
+
+### Added
+- `docs/report/幸運星幣城(看這個).pptx`：在第 8 頁「系統架構」之後插入一張深色**全景架構圖**
+  （新第 9 頁，投影片總數 19 → 20）。四層由上而下：用戶端(5173/5174) → API Gateway(8080，
+  金色焦點帶含五道 Filter) → 7 微服務(8081~8087，含 Notification) → Kafka 事件匯流排
+  (command/event 分離) → PostgreSQL 寫／MySQL 讀 CQRS＋Redis。含 `/internal` 同步 REST 註解。
+- 產圖腳本存於 scratchpad（非 repo）：以 python-pptx 原生 shapes 繪製、可在 PPT 內續編。
+
+### 為什麼
+- 原第 8 頁「系統架構」是淺色文字摘要，缺一張能一眼看懂完整拓撲（含 Kafka/資料層）的全景圖。
+- 沿用簡報既有視覺系統（深藍底 #141833／藏藍卡 #3A4076／金 #C9A227、Cambria 標題＋Calibri 內文），
+  新頁與整份簡報同一套語言，非外掛貼圖。
+
+### 如何驗證
+- 已用 PowerPoint COM 匯出該頁 PNG 目視檢查：四層版面對齊、無溢出、深色底金字可讀。
+- ⚠️ 產生器 `build.js` 仍不在硬碟（commit 12cf14a 只加了 pptxgenjs 依賴、產生器本身未進 git），
+  故本次比照上一筆採「直接編修 .pptx」；已先備份 `幸運星幣城.backup-20260724-111412.pptx`。
+
+---
+
+## [docs] — 2026-07-24 — 新增單頁系統架構圖並修正 README 架構樹
+
+### Added
+- `docs/architecture-diagram.html`：可在瀏覽器開啟的單頁視覺化架構圖（用戶端 → Gateway →
+  7 微服務 → Kafka 事件匯流排 → CQRS 資料層），支援深/淺色主題。內容依 `docs/architecture.md`
+  v1.1（服務邊界、Port、Kafka topics 的 command/event 分離、Redis/DB 分配）繪製。
+- README「專案文件」表新增一列指向該圖。
+
+### Fixed
+- README「專案架構」目錄樹**漂移修正**：補上遺漏的 `notification-service`（:8087）與
+  `frontend-admin`（:5174），並把 `admin-service` 的過期敘述「後台管理延伸骨架」更正為
+  實際職責（已完成 T-050~T-055 等）。舊樹停在 6 後端服務、admin 仍寫成骨架，與現況不符
+  （AGENTS.md §5：發現文件漂移順手更正）。
+
+### 為什麼
+- 之前只有純文字的 architecture.md，缺一張能一眼看懂服務拓撲的總覽圖；新圖便於簡報/新人上手。
+- README 是新人第一份讀物，架構樹漏了整個 notification 服務會誤導。以較新的 architecture.md
+  v1.1 為準對齊。
+
+### 如何驗證
+- 瀏覽器開啟 `docs/architecture-diagram.html`，切換系統深/淺色主題確認皆正常；對照
+  architecture.md §7 Port 表逐一核對服務與埠號。純文件變更，不影響程式行為，無需跑測試。
+
+---
+
+## [docs] — 2026-07-24 — 30 分鐘簡報版面修正：附錄歸位、圖表標籤補零
+
+> 對 `docs/report/幸運星幣城-30分鐘簡報-優化版.pptx` 做外科式版面修正，不動任何主題內容/配色/字體。
+> ⚠️ **產生器 `build.js` 已不存在**（原在 `docs/report/assets/簡報產生器/`，從未進 git、現已從硬碟消失、
+> 無法從 git 復原），故本次改為**直接編修 .pptx**（`python-pptx` + 直改 chart XML），已先備份原檔。
+
+### Fixed
+- **附錄投影片歸位**：「附錄・技術棧」被誤置於實體第 2 張（標題頁之後、議程頁之前），但其頁尾頁碼
+  是寫死的「19」——對照全篇頁碼可判定它原本是最後一張、被拖到了前面。改以 `sldIdLst` 重排移回
+  **最後一張**：實體位置(19) 從此與頁碼(19) 對上，簡報流程也回復正常（標題 → 議程 → …）。
+- **第 16 頁壓測圖表資料標籤**：資料標籤數字格式從 `0.##"%"` 改為 `0.0#"%"`。舊格式遇到整數值
+  78.0 會渲染成 `78.%`（像漏字的錯字），新格式強制至少一位小數 → `78.0%`；其餘 89.3% / 0.05% /
+  68.5% 顯示不變。壓測數字口徑（雙軌陳述）未動。
+
+### 為什麼
+兩者都是「看得到的版面瑕疵」而非內容問題：附錄出現在第 2 張會讓評審一開場就困惑；圖表 `78.%`
+在董事長面前像打錯字。其餘 18 頁設計已一致專業，依 CLAUDE.md §3「外科式修改、不重構沒壞的東西」
+原則不動。
+
+### 如何驗證
+- 用 PowerPoint COM 將改後 .pptx 逐張匯出 PNG 檢視：實體第 2 張＝議程總覽(頁碼 2)、最後一張＝
+  附錄技術棧(頁碼 19)、第 16 頁圖表標籤顯示 `78.0%`。共 19 張、順序與頁碼一致。
+- 原檔已備份至 scratchpad（`backup-YYYYMMDD-HHmmss.pptx`）。
+
+---
+## [perf] — 2026-07-24 — game→wallet HTTP client 加上觀測儀表（T-090 §5.2 分層歸因）
+
+> 對應 `docs/performance/T-090-遠端施壓機壓測計畫-20260723.md` §5.2：先前膝點延遲分層只能靠
+> 「game spin P99 減 wallet 伺服器端 P99」相減推論，因為 game 對 wallet 的 outbound 呼叫
+> **完全沒有儀表**（實測 `http_client_requests` = 0）。這一筆把那條指標接起來。
 
 ### Changed
 - `backend/game-service/.../config/WalletClientConfig.java`：`walletRestClient` bean 改為
@@ -27,6 +103,10 @@
   引用）：改動前 game 的 `http_client_requests` = 0 條；改動後首次能直接量到 game→wallet 分層
   ——DEBIT 往返 P99 405ms vs wallet 伺服器端 319ms（client/網路/連線池開銷僅 ~86ms），
   **推翻**先前「延遲卡在未調校 HTTP client」的假設方向。T-091 對帳 9/9 PASS。
+- **co-located smoke**（本機自壓數百發 slot spin，容量數字不對外引用）：改動前 game 的
+  `http_client_requests` = **0 條**；改動後出現 `uri=/internal/wallet/debit`（count 400、
+  histogram buckets 齊）與 `uri=/internal/wallet/credit`（count 127）。Prometheus
+  `histogram_quantile(0.99, …)` 算得出 P99（debit ~62ms、credit ~82ms，co-located 值僅供機制驗證）。
 
 ---
 ## [perf] — 2026-07-23 — wallet outbox 投遞器改平行 ack、可調批次（解 T-090 遠端壓測瓶頸）
