@@ -1,3 +1,34 @@
+## [perf] — 2026-07-24 — game→wallet HTTP client 加上觀測儀表（T-090 §5.2 分層歸因）
+
+> 對應 `docs/performance/T-090-遠端施壓機壓測計畫-20260723.md` §5.2 與本輪 co-located 驗證報告
+> `docs/performance/T-090-colocated-ladder-20260724.md`：先前膝點延遲分層只能靠「game spin P99
+> 減 wallet 伺服器端 P99」相減推論，因為 game 對 wallet 的 outbound 呼叫**完全沒有儀表**
+> （實測 `http_client_requests` = 0）。這一筆把那條指標接起來。
+
+### Changed
+- `backend/game-service/.../config/WalletClientConfig.java`：`walletRestClient` bean 改為
+  **注入 Spring Boot 自動組態的 `RestClient.Builder`**，而非靜態 `RestClient.builder()`。
+  根因：靜態 builder 沒有被 actuator 的 customizer 接上 `ObservationRegistry`，故 game→wallet
+  的每次呼叫都不產生 `http.client.requests` 指標；改注入自動組態的 builder 後，觀測自動生效
+  （帶 `client.name` / `uri` / `status` / `outcome` 標籤），呼叫端無需改動。
+- `backend/game-service/src/main/resources/application.yml`：`percentiles-histogram` 新增
+  `"[http.client.requests]": true`。只接觀測、不開 histogram 的話指標會「存在但沒有 buckets」，
+  Prometheus `histogram_quantile` 算不出 P99——要拿到 game→wallet 這一層的 P99 兩者缺一不可。
+
+### 為什麼
+分層歸因要能回答「延遲主體卡在哪一層」。少了 client 儀表，game→wallet 這一跳只能相減推論
+（誤差被兩端各自的抖動放大）。接上後，這一跳的 P99 / 呼叫次數 / 錯誤率變成 Prometheus 可直接
+查詢的一級指標，下一輪分機壓測不用再靠推論。純設定改動、低風險（不碰帳務語意、不改呼叫端）。
+
+### 如何驗證
+- `mvn -pl backend/game-service test` → **197 tests 全綠**（`WalletClientTest` 自建 builder、
+  不走 @Bean，故不受影響；`contextLoads` 因自動組態已提供 `RestClient.Builder` bean 照常通過）。
+- **co-located 容量階梯**（`docs/performance/T-090-colocated-ladder-20260724.md`，同機、數字不對外
+  引用）：改動前 game 的 `http_client_requests` = 0 條；改動後首次能直接量到 game→wallet 分層
+  ——DEBIT 往返 P99 405ms vs wallet 伺服器端 319ms（client/網路/連線池開銷僅 ~86ms），
+  **推翻**先前「延遲卡在未調校 HTTP client」的假設方向。T-091 對帳 9/9 PASS。
+
+---
 ## [perf] — 2026-07-23 — wallet outbox 投遞器改平行 ack、可調批次（解 T-090 遠端壓測瓶頸）
 
 > 對應 T-090 遠端施壓機壓測報告（2026-07-23，SUT `10.0.102.84`）§3~§4.1 根因與修法建議。
