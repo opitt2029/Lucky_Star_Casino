@@ -94,6 +94,9 @@ export default function Profile() {
       avatarUrl: player?.avatarUrl || '',
     })
     setAvatarPreviewError(false)
+  }, [player?.avatarUrl, player?.nickname])
+
+  useEffect(() => {
     if (player?.id) {
       let active = true
       setSocialBindingsLoading(true)
@@ -107,10 +110,10 @@ export default function Profile() {
         })
         .finally(() => {
           if (active) setSocialBindingsLoading(false)
-        })
+      })
       return () => { active = false }
     }
-  }, [player])
+  }, [player?.id])
 
   const handleChange = (event) => {
     setForm((current) => ({ ...current, [event.target.name]: event.target.value }))

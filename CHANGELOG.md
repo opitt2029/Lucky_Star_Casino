@@ -54,6 +54,90 @@
 > `docs/performance/T-090-colocated-ladder-20260724.md`：先前膝點延遲分層只能靠「game spin P99
 > 減 wallet 伺服器端 P99」相減推論，因為 game 對 wallet 的 outbound 呼叫**完全沒有儀表**
 > （實測 `http_client_requests` = 0）。這一筆把那條指標接起來。
+## [fix] - 2026-07-24 - 修正真實 API 模式測試帳號無法登入
+
+### Changed
+- 登入頁依 `VITE_USE_MOCK_API` 選擇測試帳號：Mock 使用 `test / test1234`，真實 API 使用資料庫種子帳號 `tester01 / Password1`。
+- 登入頁提示文字與實際預填帳密共用同一份設定，避免畫面文件與可登入帳號再次漂移。
+
+### Why
+- 前端原本固定預填 Mock 帳號，但本機切換至真實 API 後，MySQL 並不存在該帳號，所有登入請求都會回傳 401。
+
+### Verified
+- Gateway 登入 API：`tester01 / Password1` 回傳 HTTP 200；原 `test / test1234` 回傳 HTTP 401。
+- `npm test -- --run`：10 個測試檔、70 項測試通過。
+- `npm run lint`、`npm run build` 通過。
+
+---
+
+## [feat] - 2026-07-24 - 補齊 Apple 第三方登入憑證工具鏈
+
+### Added
+- 新增 `tools/generate-apple-client-secret.mjs`，以 Apple Sign in `.p8` 私鑰產生 ES256 client-secret JWT。
+- 新增 Apple JWT header、claims、P-256 簽章與最長有效期自動測試。
+
+### Changed
+- Apple callback 改由獨立的 `APPLE_REDIRECT_URI` 設定，支援 Apple 要求的公開 HTTPS Return URL。
+- `.env.example`、Docker Compose、部署文件與 ADR-011 補齊 Services ID、Team ID、Key ID、私鑰及 HTTPS 網域設定。
+- Git 忽略 `.p8` 與 client-secret 暫存檔，避免 Apple 私鑰或 JWT 被提交。
+
+### Why
+- Apple 不接受 `localhost`／IP callback，且 token endpoint 要求以 P-256 私鑰簽出的 ES256 client-secret JWT。
+
+### Verified
+- `node --test tests/infra/apple-oauth.test.js`：2 項測試通過。
+- Apple Developer 憑證建立與實際登入驗證待後台登入完成後執行。
+
+---
+
+## [fix] - 2026-07-24 - 修正 LINE OAuth callback 驗證失敗
+
+### Changed
+- LINE Login 僅要求 `openid profile` scope，避免尚未通過 LINE email 權限審核時阻擋登入。
+- 移除會建立自我委派代理的全域 `AuthenticationManager` Bean，避免 OAuth callback 遞迴驗證並觸發 `StackOverflowError`。
+- OIDC ID Token 解碼依 provider 選擇演算法：LINE Web Login 使用 `HS256`，Google／Apple 維持 `RS256`。
+- 會員資料物件更新時不再重複查詢第三方綁定狀態，避免總覽卡片誤顯示為未綁定。
+
+### Why
+- LINE Web Login 的 ID Token 由 Channel Secret 以 `HS256` 簽署，Spring Security 預設的 `RS256` 無法驗證。
+
+### Verified
+- `mvn -pl backend/member-service test`：101 項測試通過，包含 LINE `HS256`、其他 provider `RS256` 與 AuthenticationManager 回歸測試。
+- `npm test -- --run`：10 個測試檔、70 項測試通過；`npm run lint`、`npm run build` 通過。
+- Docker Member Service、Gateway 健康；LINE 實際帳戶綁定、資料庫狀態與登出後直接登入均驗證通過。
+- 會員中心總覽正確顯示 LINE 已綁定，且瀏覽器無 console error／warning。
+
+---
+
+## [feat] — 2026-07-24 — 新增 Google、LINE、Apple 第三方登入與真實帳戶綁定
+
+### Added
+- Member Service 整合 Spring Security OAuth2 Client，新增第三方登入起始、callback 與一次性 ticket 交換流程。
+- 新增 `member_social_accounts` MySQL schema／V12 migration，以 OIDC `(provider, sub)` 保存帳戶綁定。
+- 前端新增 `/auth/callback`，登入頁與會員中心改為實際 OAuth 導向；Mock 模式同步提供可測流程。
+- 新增 ADR-011，記錄不以 email 自動合併、JWT 不進 URL、綁定與登入 ticket TTL 等安全決策。
+
+### Changed
+- 帳密與第三方登入共用停權檢查、JWT 簽發及 refresh token Redis 儲存。
+- 移除可由前端自行提交 `externalAccountId` 的示範綁定端點。
+- API request interceptor 保留呼叫端明確指定的 Authorization header，避免 callback 換票後抓 profile 時被舊 token 覆蓋。
+- 將 `PasswordEncoder` 移至獨立設定類，解除 SecurityConfig、OAuth handler、SocialAuthService 與 AuthService 間的啟動循環依賴。
+- 將 member-service 的空殼啟動測試改為真正的 `@SpringBootTest`，並以 H2 與測試用 OAuth 設定驗證完整 Spring context。
+- 自訂 Kafka listener factory 明確遵循 `spring.kafka.listener.auto-startup`，測試環境可停用 consumer 且不需外部 broker。
+
+### Why
+- 原 LINE／Google／Apple 按鈕及社群綁定只回傳 demo 資料，無法向供應商驗證身分；一次性 ticket 可避免 access/refresh token 洩漏到 URL、瀏覽器歷史或代理日誌。
+
+### Verified
+- `npm test`：10 個測試檔、70 項測試通過。
+- `npm run lint`、`npm run build` 通過。
+- `mvn -pl backend/member-service test`：98 項測試通過，包含完整 Spring context 啟動驗證。
+- `node --test tests/infra/*.test.js`：161 項測試通過。
+- 瀏覽器 Mock 驗證：未綁定提示、Google 綁定、登出後第三方登入與 callback 回到 `/games` 均通過，無 console error／warning。
+- Docker 實機驗證（最新 `develop` 基底）：Gateway／Member Service 健康、Google OAuth 同意後成功綁定既有會員，未登入狀態再以 Google 登入可回到 `/games`，瀏覽器無 error／warning。
+
+---
+
 ## [docs] — 2026-07-24 — 簡報新增「網站架構全景」投影片
 
 ### Added
@@ -6428,3 +6512,17 @@ client DTO）`javac` 編譯通過。Lombok 檔案與 `@SpringBootTest` 待團隊
 
 ### Verified
 - `mvn -pl backend/wallet-service test` → 142 tests, 0 failures
+## [fix] - 2026-07-24 - Align LINE Login OAuth scopes
+
+### Changed
+- Removed the unapproved `email` scope from the LINE OAuth registration while retaining `openid` and `profile`.
+- Configured the local LINE Login channel callback as `http://localhost:8080/api/v1/auth/oauth2/callback/line`.
+
+### Why
+- LINE requires a separate review before a channel may request email access; account linking only needs the stable OIDC subject and profile.
+
+### Verified
+- `mvn -pl backend/member-service test`: 98 tests passed.
+- Docker Member Service and Gateway are healthy; the authorization redirect targets `access.line.me` with `scope=openid profile`.
+
+---

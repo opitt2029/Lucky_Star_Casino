@@ -1,6 +1,7 @@
 package com.luckystar.member.config;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.annotation.EnableKafka;
@@ -47,11 +48,13 @@ public class KafkaConfig {
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory(
             ConsumerFactory<String, String> consumerFactory,
-            DefaultErrorHandler kafkaErrorHandler) {
+            DefaultErrorHandler kafkaErrorHandler,
+            @Value("${spring.kafka.listener.auto-startup:true}") boolean autoStartup) {
         ConcurrentKafkaListenerContainerFactory<String, String> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory);
         factory.setCommonErrorHandler(kafkaErrorHandler);
+        factory.setAutoStartup(autoStartup);
         // 維持手動 ack：listener 成功呼叫 ack.acknowledge() 才提交 offset；
         // 失敗時由上面的 error handler 接手（重試或送 DLT 後提交）
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);

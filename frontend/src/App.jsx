@@ -17,6 +17,7 @@ const Fishing = lazy(() => import('./pages/Fishing'))
 const Rank = lazy(() => import('./pages/Rank'))
 const Profile = lazy(() => import('./pages/Profile'))
 const SocialBinding = lazy(() => import('./pages/SocialBinding'))
+const OAuthCallback = lazy(() => import('./pages/OAuthCallback'))
 const Records = lazy(() => import('./pages/Records'))
 const CasinoShop = lazy(() => import('./pages/CasinoShop'))
 const Inventory = lazy(() => import('./pages/Inventory'))
@@ -91,6 +92,14 @@ export default function App() {
           <Route path="/member" element={<Member />} />
           <Route path="/login" element={<Navigate to="/member?mode=login" replace />} />
           <Route path="/register" element={<Navigate to="/member?mode=register" replace />} />
+          <Route
+            path="/auth/callback"
+            element={
+              <LazyPage>
+                <OAuthCallback />
+              </LazyPage>
+            }
+          />
           <Route
             path="/shop"
             element={

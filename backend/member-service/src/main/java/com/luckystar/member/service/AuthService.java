@@ -67,6 +67,10 @@ public class AuthService {
             throw new InvalidCredentialsException("Invalid username or password");
         }
 
+        return loginMember(member);
+    }
+
+    public LoginResponse loginMember(Member member) {
         // DB status 或後台即時封鎖（Redis disabled:player:{id}）任一成立都視為停用，不得登入。
         // 後台 T-051 停用只寫 Redis 封鎖、不改 member DB，故必須同時查 Redis 才能擋住停用玩家登入。
         if ("DISABLED".equals(member.getStatus()) || tokenRedisService.isPlayerDisabled(member.getId())) {

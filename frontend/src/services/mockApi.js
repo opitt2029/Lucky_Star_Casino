@@ -567,6 +567,35 @@ export const mockApi = {
     return createSession(user.player)
   },
 
+  async startSocialLogin(provider) {
+    await wait(220)
+    const id = String(provider).toLowerCase()
+    if (!['line', 'google', 'apple'].includes(id)) throw new Error('Unsupported social provider')
+    const db = getDb()
+    const binding = Object.entries(db.socialBindings || {}).find(([, providers]) => providers?.[id])
+    if (!binding) {
+      throw new Error(`${id === 'line' ? 'LINE' : id === 'google' ? 'Google' : 'Apple'} 帳戶尚未綁定`)
+    }
+    const [playerId] = binding
+    return {
+      provider: id,
+      authorizationUrl: `/auth/callback?ticket=mock-social-${id}-${encodeURIComponent(playerId)}`,
+    }
+  },
+
+  async exchangeSocialLogin(ticket) {
+    await wait(260)
+    const match = /^mock-social-(line|google|apple)-(.+)$/.exec(String(ticket))
+    if (!match) throw new Error('第三方登入票據無效或已過期')
+    const playerId = decodeURIComponent(match[2])
+    const db = getDb()
+    const user = db.users.find((item) => item.player.id === playerId)
+    if (!user || !db.socialBindings?.[playerId]?.[match[1]]) {
+      throw new Error('第三方帳戶尚未綁定')
+    }
+    return createSession(user.player)
+  },
+
   async register({ username, password, nickname, email }) {
     await wait(520)
     const db = getDb()
@@ -645,27 +674,20 @@ export const mockApi = {
     const id = String(provider).toLowerCase()
     const label = id === 'line' ? 'LINE' : id === 'google' ? 'Google' : 'Apple'
     if (!['line', 'google', 'apple'].includes(id)) throw new Error('Unsupported social provider')
-    return {
-      provider: id,
-      label,
-      status: 'READY',
-      authorizationUrl: `/mock/oauth/${id}?ticket=mock-${id}-${currentPlayerId()}`,
-    }
-  },
-
-  async completeSocialBinding(provider, externalAccountId) {
-    await wait(300)
-    const id = String(provider).toLowerCase()
-    if (!['line', 'google', 'apple'].includes(id)) throw new Error('Unsupported social provider')
     const db = getDb()
     const playerId = currentPlayerId()
     db.socialBindings = db.socialBindings || {}
     db.socialBindings[playerId] = {
       ...(db.socialBindings[playerId] || {}),
-      [id]: externalAccountId || `${id.toUpperCase()}-${playerId}`,
+      [id]: `${id.toUpperCase()}-${playerId}`,
     }
     saveDb(db)
-    return (await this.getSocialBindings()).find((item) => item.provider === id)
+    return {
+      provider: id,
+      label,
+      status: 'READY',
+      authorizationUrl: `/profile/social-bindings/${id}?status=success`,
+    }
   },
 
   async removeSocialBinding(provider) {
