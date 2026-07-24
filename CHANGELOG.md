@@ -1,28 +1,33 @@
-## [perf][observability] — 2026-07-24 — T-090 架構瓶頸驗證：實測否證 HikariCP/GC/同步耦合三方向，補 Tomcat 執行緒觀測
+## [perf][observability] — 2026-07-24 — T-090 架構瓶頸驗證：實測否證使用者全部六個調校方向，補 Tomcat 觀測＋堆/記憶體衛生
 
 ### Added
 - `docs/performance/T-090-bottleneck-verification-20260724.md`：負載期實測驗證報告。用每 2s scrape
-  wallet/game 內部指標，逐項判定使用者提出的三個調校方向是不是本站容量瓶頸。
+  wallet/game/member 內部指標（HikariCP、GC、debit/credit 延遲、Tomcat 執行緒池），逐項判定使用者提出的
+  六個調校方向是不是本站容量瓶頸。
 
 ### Changed
 - 六個 Tomcat 服務（member/wallet/game/rank/admin/notification）`application.yml` 新增
   `server.tomcat.mbeanregistry.enabled: true`：解鎖 `tomcat_threads_busy/current` 指標。gateway 為
   reactive Netty，不適用故不改。
+- `docker-compose.yml` 七服務新增 `JAVA_TOOL_OPTIONS: -Xmx1g -XX:MaxMetaspaceSize=256m` ＋ `mem_limit: 1280m`：
+  原本無 -Xmx 且無 mem_limit → JVM 依主機 RAM 25%(≈3.8G) 設堆 → 7 JVM 可超賣 15G 主機。兩者必須並設
+  （只設 mem_limit 會讓 JVM 抓其 25%=320m 過小易 OOM/GC thrash）。
 
-### 為什麼
-- 使用者提案「加大 HikariCP／優化 GC／改非同步」解容量。實測**三者皆非瓶頸**：wallet/game pg 連線池
-  峰值僅 22/40（45% 閒置）、零 timeout；GC 僅佔 ~1.2% 時間；同步 wallet 呼叫 debit 64ms/credit 68ms、
-  合計 ~130ms 遠小於 P99 1600ms。冒煙證據＝game 連線 acquire 花 1.18s 但池只用 22/40 → 執行緒**排不到
-  CPU**（非池飽和）。真瓶頸是 co-located 12 核硬扛 7 JVM＋DB＋Kafka＋JMeter(24–35% CPU) 的排程爭搶。
-- 補 Tomcat 執行緒指標的動機：現況 `/actuator/prometheus` 只有 `tomcat_sessions_*`，**看不到執行緒池
-  飽和**，導致使用者另兩個方向（acceptCount／執行緒池）根本無從驗證。這是後續任何調校的觀測前提。
+### 為什麼（六個方向逐項實測，全部否證）
+- **3 HikariCP**：wallet/game pg 連線池峰值 22/40（45% 閒置）、零 timeout → 非瓶頸。
+- **4 GC**：僅佔 ~1.2% 時間、無 OOM → 非瓶頸。
+- **5 同步耦合**：debit 64ms＋credit 68ms≈130ms << P99 1600ms → 真但非主因。
+- **1/2 acceptCount／執行緒池**（補測）：Tomcat busy 峰值 **151/200**（49 條空）、acceptCount 佇列從未觸發
+  → 加 max-threads/acceptCount 無效。busy 卡 151 是因 gateway AIMD 上游先卸載。
+- **6 Redis**：6/7 服務已用；擴用需具體快取場景（餘額不可快取），非容量瓶頸。
+- **真瓶頸**：151 條 busy 執行緒當下 pg pool 才用 10–15/40 → 執行緒**排不到 CPU**。co-located 12 核硬扛
+  7 JVM＋DB＋Kafka＋JMeter(24–35% CPU) 的排程爭搶。要拿真實容量須分機重測。
 
 ### 如何驗證
-- `mvn -pl backend/wallet-service test -Dtest=WalletServiceApplicationTests` → contextLoads **PASS**
-  （1 run, 0 fail；確認新 yml 屬性不破壞啟動）。
-- 指標實際生效需**重建 image**（運行中容器仍用舊 image）；重建後 `curl :8082/actuator/prometheus |
-  grep tomcat_threads_busy` 應可見。
-- 帳務未受影響：本輪壓測後 T-091 對帳 9/9 PASS。
+- `WalletServiceApplicationTests` contextLoads **PASS**（yml 屬性不破壞啟動）。
+- `docker compose config` 通過；重建 image 後量測確認 `tomcat_threads_busy` 現身、heap 實際限到 0.97GB、
+  七服務全 healthy、6985 wallets 資料保留。
+- 帳務未受影響：壓測後 T-091 對帳 9/9 PASS。
 
 
 
