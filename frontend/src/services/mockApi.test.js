@@ -22,6 +22,24 @@ beforeEach(async () => {
   await mockApi.getWallet()
 })
 
+describe('mockApi 第三方登入', () => {
+  test('綁定後可使用一次第三方登入流程建立 session', async () => {
+    await mockApi.startSocialBinding('google')
+    await mockApi.logout()
+
+    const start = await mockApi.startSocialLogin('google')
+    const ticket = new window.URL(start.authorizationUrl, 'http://localhost').searchParams.get('ticket')
+    const session = await mockApi.exchangeSocialLogin(ticket)
+
+    expect(session.accessToken).toContain('mock-access-demo-player')
+    expect(session.player.id).toBe('demo-player')
+  })
+
+  test('未綁定的 provider 不允許登入', async () => {
+    await expect(mockApi.startSocialLogin('apple')).rejects.toThrow('尚未綁定')
+  })
+})
+
 describe('mockApi 簽到累計（鏡像後端權威）', () => {
   test('checkIn 會把當日寫入 checkinDates，狀態回報本月累計', async () => {
     await mockApi.checkIn()

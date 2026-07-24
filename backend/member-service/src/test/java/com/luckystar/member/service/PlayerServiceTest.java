@@ -3,9 +3,11 @@ package com.luckystar.member.service;
 import com.luckystar.member.dto.ProfileResponse;
 import com.luckystar.member.dto.UpdateProfileRequest;
 import com.luckystar.member.entity.Member;
+import com.luckystar.member.entity.MemberSocialAccount;
 import com.luckystar.member.exception.MemberNotFoundException;
 import com.luckystar.member.exception.NoUpdateFieldException;
 import com.luckystar.member.repository.MemberRepository;
+import com.luckystar.member.repository.MemberSocialAccountRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,6 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -26,6 +29,12 @@ class PlayerServiceTest {
 
     @Mock
     private MemberRepository memberRepository;
+
+    @Mock
+    private MemberSocialAccountRepository socialAccountRepository;
+
+    @Mock
+    private SocialAuthService socialAuthService;
 
     @InjectMocks
     private PlayerService playerService;
@@ -178,6 +187,7 @@ class PlayerServiceTest {
     @Test
     void getSocialBindings_returnsAllProviders() {
         when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+        when(socialAccountRepository.findAllByMemberId(1L)).thenReturn(List.of());
 
         var result = playerService.getSocialBindings(1L);
 
@@ -187,35 +197,52 @@ class PlayerServiceTest {
     }
 
     @Test
-    void completeSocialBinding_returnsDemoBoundResponse() {
+    void getSocialBindings_masksBoundEmail() {
         when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+        MemberSocialAccount account = new MemberSocialAccount();
+        account.setMember(sampleMember);
+        account.setProvider("google");
+        account.setProviderSubject("google-subject-1234");
+        account.setEmail("alice@example.com");
+        when(socialAccountRepository.findAllByMemberId(1L)).thenReturn(List.of(account));
 
-        var result = playerService.completeSocialBinding(1L, "google", null);
+        var result = playerService.getSocialBindings(1L).stream()
+                .filter(binding -> "google".equals(binding.getProvider()))
+                .findFirst()
+                .orElseThrow();
 
         assertThat(result.isBound()).isTrue();
         assertThat(result.getStatus()).isEqualTo("BOUND");
-        assertThat(result.getMaskedAccountId()).isEqualTo("demo-linked");
-        verify(memberRepository, never()).save(any(Member.class));
+        assertThat(result.getMaskedAccountId()).isEqualTo("al***@example.com");
     }
 
     @Test
-    void removeSocialBinding_returnsDemoUnboundResponse() {
+    void removeSocialBinding_deletesPersistedBinding() {
         when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+        MemberSocialAccount account = new MemberSocialAccount();
+        account.setMember(sampleMember);
+        account.setProvider("line");
+        account.setProviderSubject("line-subject");
+        when(socialAccountRepository.findByMemberIdAndProvider(1L, "line"))
+                .thenReturn(Optional.of(account));
 
         var result = playerService.removeSocialBinding(1L, "line");
 
         assertThat(result.isBound()).isFalse();
         assertThat(result.getStatus()).isEqualTo("UNBOUND");
         assertThat(result.getMaskedAccountId()).isNull();
-        verify(memberRepository, never()).save(any(Member.class));
+        verify(socialAccountRepository).delete(account);
     }
 
     @Test
-    void startSocialBinding_unknownProvider_throws() {
-        when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+    void startSocialBinding_delegatesToOAuthService() {
+        var expected = new com.luckystar.member.dto.SocialBindingStartResponse(
+                "google",
+                "Google",
+                "READY",
+                "/api/v1/auth/social/google/authorize?bindingTicket=ticket");
+        when(socialAuthService.startBinding(1L, "google")).thenReturn(expected);
 
-        assertThatThrownBy(() -> playerService.startSocialBinding(1L, "twitter"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Unsupported social provider");
+        assertThat(playerService.startSocialBinding(1L, "google")).isSameAs(expected);
     }
 }

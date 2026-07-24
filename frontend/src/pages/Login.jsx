@@ -8,11 +8,16 @@ import { fetchWallet } from '../store/slices/walletSlice'
 import CoinRain from '../components/CoinRain'
 import { getBackgroundStyle } from '../theme/backgroundTheme'
 
+const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
+const defaultLogin = useMockApi
+  ? { username: 'test', password: 'test1234' }
+  : { username: 'tester01', password: 'Password1' }
+
 export default function Login() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { loading, error } = useSelector((state) => state.auth)
-  const [form, setForm] = useState({ username: 'test', password: 'test1234' })
+  const [form, setForm] = useState(defaultLogin)
 
   const handleChange = (event) => {
     setForm((current) => ({ ...current, [event.target.name]: event.target.value }))
@@ -41,7 +46,8 @@ export default function Login() {
           <p className="text-xs font-black uppercase tracking-[0.35em] text-zinc-500">Lucky Star Casino</p>
           <h1 className="mt-4 text-4xl font-black tracking-tight sm:text-6xl">登入幸運星幣城</h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-zinc-400">
-            使用測試帳號 test / test1234 可直接進入遊戲大廳，體驗星幣下注、會員中心與禮品商城。
+            使用測試帳號 {defaultLogin.username} / {defaultLogin.password}{' '}
+            可直接進入遊戲大廳，體驗星幣下注、會員中心與禮品商城。
           </p>
         </div>
       </section>

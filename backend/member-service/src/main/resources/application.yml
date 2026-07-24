@@ -62,6 +62,52 @@ spring:
   security:
     user:
       name: disabled
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:oauth-not-configured}
+            client-secret: ${GOOGLE_CLIENT_SECRET:oauth-not-configured}
+            scope:
+              - openid
+              - profile
+              - email
+            redirect-uri: ${OAUTH_PUBLIC_BASE_URL:http://localhost:8080}/api/v1/auth/oauth2/callback/{registrationId}
+          line:
+            provider: line
+            client-id: ${LINE_CHANNEL_ID:oauth-not-configured}
+            client-secret: ${LINE_CHANNEL_SECRET:oauth-not-configured}
+            client-name: LINE
+            client-authentication-method: client_secret_post
+            authorization-grant-type: authorization_code
+            scope:
+              - openid
+              - profile
+            redirect-uri: ${OAUTH_PUBLIC_BASE_URL:http://localhost:8080}/api/v1/auth/oauth2/callback/{registrationId}
+          apple:
+            provider: apple
+            client-id: ${APPLE_CLIENT_ID:oauth-not-configured}
+            client-secret: ${APPLE_CLIENT_SECRET:oauth-not-configured}
+            client-name: Apple
+            client-authentication-method: client_secret_post
+            authorization-grant-type: authorization_code
+            # 只要求 OIDC subject；若要求 name/email，Apple 會改用 form_post，
+            # 正式 HTTPS 部署需另將 session cookie 設為 SameSite=None + Secure。
+            scope:
+              - openid
+            redirect-uri: ${APPLE_REDIRECT_URI:http://localhost:8080/api/v1/auth/oauth2/callback/apple}
+        provider:
+          line:
+            authorization-uri: https://access.line.me/oauth2/v2.1/authorize
+            token-uri: https://api.line.me/oauth2/v2.1/token
+            user-info-uri: https://api.line.me/oauth2/v2.1/userinfo
+            jwk-set-uri: https://api.line.me/oauth2/v2.1/certs
+            user-name-attribute: sub
+          apple:
+            authorization-uri: https://appleid.apple.com/auth/authorize
+            token-uri: https://appleid.apple.com/auth/token
+            jwk-set-uri: https://appleid.apple.com/auth/keys
+            user-name-attribute: sub
 
 jwt:
   secret: ${JWT_SECRET:?JWT_SECRET environment variable is required}
@@ -93,3 +139,15 @@ internal:
 
 outbox:
   poll-interval-ms: ${OUTBOX_POLL_INTERVAL_MS:5000}   # OutboxPoller 輪詢間隔（毫秒）
+
+social-oauth:
+  frontend-base-url: ${OAUTH_FRONTEND_BASE_URL:http://localhost:5173}
+  binding-ticket-ttl: 5m
+  login-ticket-ttl: 2m
+  providers:
+    google:
+      enabled: ${GOOGLE_OAUTH_ENABLED:false}
+    line:
+      enabled: ${LINE_OAUTH_ENABLED:false}
+    apple:
+      enabled: ${APPLE_OAUTH_ENABLED:false}

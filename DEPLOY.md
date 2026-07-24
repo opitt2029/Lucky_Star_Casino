@@ -78,6 +78,39 @@ openssl rand -base64 48
 ```
 
 各密鑰的用途、影響面與輪替步驟見 **[docs/security/secret-rotation.md](docs/security/secret-rotation.md)**。
+
+### 第三方登入設定（選用）
+
+Google、LINE、Apple 預設皆為停用，沒有憑證也不影響服務啟動。要啟用時，在 `.env` 填入對應
+Client ID／Secret，並將 `*_OAUTH_ENABLED` 改為 `true`。Google 與 LINE 後台的 callback URI 為：
+
+```text
+http://localhost:8080/api/v1/auth/oauth2/callback/google
+http://localhost:8080/api/v1/auth/oauth2/callback/line
+```
+
+Apple Web Login 不接受 `localhost` 或 IP 位址，`APPLE_REDIRECT_URI` 必須使用 Apple Developer
+後台已登記的公開 HTTPS 網域，例如：
+
+```text
+https://login.example.com/api/v1/auth/oauth2/callback/apple
+```
+
+Apple 設定順序為：啟用 Sign in with Apple 的主要 App ID → 建立網站用 Services ID → 登記網域與
+Return URL → 建立 Sign in with Apple Key 並下載一次性的 `.p8`。`APPLE_CLIENT_ID` 填 Services ID；
+`.p8` 應保存於 repo 外，專案也已忽略所有 `.p8` 檔案。
+
+填好 `APPLE_TEAM_ID`、`APPLE_CLIENT_ID`、`APPLE_KEY_ID`、`APPLE_PRIVATE_KEY_PATH` 後，可產生
+最長 180 天有效的 `APPLE_CLIENT_SECRET`：
+
+```bash
+node --env-file=.env tools/generate-apple-client-secret.mjs
+```
+
+將輸出的 JWT 填入 `.env` 的 `APPLE_CLIENT_SECRET`，並在到期前重新產生。私鑰原文不可填入
+`APPLE_CLIENT_SECRET`。正式環境也請把 `OAUTH_PUBLIC_BASE_URL` 與 `OAUTH_FRONTEND_BASE_URL`
+改為 HTTPS 網址。
+帳戶綁定與一次性登入票據設計詳見 [ADR-011](docs/adr/ADR-011.md)。
 若你的 `.env` 是 2026-07-07 前建立的，裡面的密鑰視同已洩漏，請照該文件重生一輪。
 
 ---
