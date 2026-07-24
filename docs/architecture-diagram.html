@@ -1,0 +1,482 @@
+<title>幸運星幣城 — 系統架構圖</title>
+<style>
+  :root {
+    --ground: #f4f2ea;
+    --panel: #ffffff;
+    --panel-2: #faf8f2;
+    --ink: #1b2820;
+    --ink-soft: #4c5b52;
+    --ink-faint: #7a887f;
+    --line: #dcd8cb;
+    --line-strong: #c6c1b0;
+    --gold: #b8862a;
+    --gold-soft: #f0e4c8;
+    --gold-line: #e2cf9f;
+    --pg: #35618e;      /* postgres blue */
+    --pg-bg: #e4edf6;
+    --my: #b76a24;      /* mysql amber */
+    --my-bg: #f6e9d9;
+    --rd: #b23b3b;      /* redis red */
+    --rd-bg: #f6dfdd;
+    --kf: #6b4fa0;      /* kafka purple */
+    --kf-bg: #ece4f6;
+    --client: #2f7d63;  /* client green */
+    --client-bg: #dcefe6;
+    --shadow: 0 1px 2px rgba(27,40,32,.06), 0 4px 16px rgba(27,40,32,.05);
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
+    --sans: "Segoe UI", system-ui, -apple-system, "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0e1512;
+      --panel: #17211c;
+      --panel-2: #131b17;
+      --ink: #e8eee9;
+      --ink-soft: #a6b3ab;
+      --ink-faint: #6f7d74;
+      --line: #263129;
+      --line-strong: #33413a;
+      --gold: #e6b955;
+      --gold-soft: #2a2415;
+      --gold-line: #4a3d1e;
+      --pg: #7fb0e0; --pg-bg: #16222e;
+      --my: #e0a061; --my-bg: #2a2015;
+      --rd: #e07a7a; --rd-bg: #2c1817;
+      --kf: #b299e0; --kf-bg: #221b2e;
+      --client: #6fc7a5; --client-bg: #13251d;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #f4f2ea; --panel: #ffffff; --panel-2: #faf8f2;
+    --ink: #1b2820; --ink-soft: #4c5b52; --ink-faint: #7a887f;
+    --line: #dcd8cb; --line-strong: #c6c1b0;
+    --gold: #b8862a; --gold-soft: #f0e4c8; --gold-line: #e2cf9f;
+    --pg: #35618e; --pg-bg: #e4edf6; --my: #b76a24; --my-bg: #f6e9d9;
+    --rd: #b23b3b; --rd-bg: #f6dfdd; --kf: #6b4fa0; --kf-bg: #ece4f6;
+    --client: #2f7d63; --client-bg: #dcefe6;
+    --shadow: 0 1px 2px rgba(27,40,32,.06), 0 4px 16px rgba(27,40,32,.05);
+  }
+  :root[data-theme="dark"] {
+    --ground: #0e1512; --panel: #17211c; --panel-2: #131b17;
+    --ink: #e8eee9; --ink-soft: #a6b3ab; --ink-faint: #6f7d74;
+    --line: #263129; --line-strong: #33413a;
+    --gold: #e6b955; --gold-soft: #2a2415; --gold-line: #4a3d1e;
+    --pg: #7fb0e0; --pg-bg: #16222e; --my: #e0a061; --my-bg: #2a2015;
+    --rd: #e07a7a; --rd-bg: #2c1817; --kf: #b299e0; --kf-bg: #221b2e;
+    --client: #6fc7a5; --client-bg: #13251d;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1200px 500px at 50% -10%, color-mix(in srgb, var(--gold) 7%, transparent), transparent 70%),
+      var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 40px 24px 64px; }
+
+  /* ---------- header ---------- */
+  header { margin-bottom: 34px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--gold); font-weight: 600;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .eyebrow::before { content: "★"; font-size: 13px; }
+  h1 {
+    font-size: clamp(28px, 4vw, 42px); line-height: 1.1; margin: 12px 0 8px;
+    font-weight: 800; letter-spacing: -.01em; text-wrap: balance;
+  }
+  .sub { color: var(--ink-soft); font-size: 15px; max-width: 60ch; margin: 0; }
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .badge {
+    font-family: var(--mono); font-size: 12px; padding: 4px 10px;
+    border: 1px solid var(--line-strong); border-radius: 999px;
+    color: var(--ink-soft); background: var(--panel);
+  }
+
+  /* ---------- layer band ---------- */
+  .layer { margin-top: 26px; position: relative; }
+  .layer-head {
+    display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px;
+  }
+  .layer-num {
+    font-family: var(--mono); font-size: 12px; font-weight: 700;
+    color: var(--gold); border: 1px solid var(--gold-line);
+    background: var(--gold-soft); border-radius: 6px; padding: 1px 7px;
+  }
+  .layer-title { font-size: 15px; font-weight: 700; letter-spacing: .01em; }
+  .layer-note { font-size: 13px; color: var(--ink-faint); margin-left: auto; font-family: var(--mono); }
+
+  .flow-arrow {
+    display: flex; justify-content: center; align-items: center;
+    gap: 10px; color: var(--ink-faint); margin: 6px 0;
+    font-family: var(--mono); font-size: 11px; letter-spacing: .08em;
+  }
+  .flow-arrow::before, .flow-arrow::after {
+    content: ""; height: 1px; width: 40px;
+    background: linear-gradient(90deg, transparent, var(--line-strong));
+  }
+  .flow-arrow::after { background: linear-gradient(90deg, var(--line-strong), transparent); }
+  .flow-arrow .dn { font-size: 14px; color: var(--gold); }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: var(--shadow);
+  }
+
+  /* ---------- client row ---------- */
+  .clients { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .client-card {
+    padding: 16px 18px; border-left: 3px solid var(--client);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .client-card .name { font-weight: 700; font-size: 15px; }
+  .client-card .desc { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
+  .port { font-family: var(--mono); font-size: 12px; font-weight: 600;
+    color: var(--client); background: var(--client-bg);
+    padding: 3px 9px; border-radius: 6px; white-space: nowrap; }
+
+  /* ---------- gateway ---------- */
+  .gateway {
+    padding: 18px 22px; border: 1px solid var(--gold-line);
+    background: linear-gradient(180deg, var(--panel), var(--gold-soft));
+    border-radius: 12px; box-shadow: var(--shadow);
+  }
+  .gw-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .gw-top .name { font-weight: 800; font-size: 17px; }
+  .gw-top .port { color: var(--gold); background: color-mix(in srgb, var(--gold) 14%, transparent); }
+  .gw-role {
+    font-size: 12px; color: var(--ink-soft); margin-left: auto;
+    font-family: var(--mono);
+  }
+  .gw-chain { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .gw-step {
+    font-size: 12.5px; padding: 6px 12px; border-radius: 8px;
+    background: var(--panel); border: 1px solid var(--gold-line);
+    display: flex; align-items: center; gap: 7px;
+  }
+  .gw-step b { color: var(--gold); font-family: var(--mono); font-size: 11px; }
+
+  /* ---------- services ---------- */
+  .services {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+  }
+  .svc { padding: 15px 16px; display: flex; flex-direction: column; gap: 9px; position: relative; overflow: hidden; }
+  .svc::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: var(--gold);
+  }
+  .svc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .svc-name { font-weight: 700; font-size: 14.5px; }
+  .svc-name span { color: var(--ink-faint); font-weight: 500; font-size: 12px; }
+  .svc .port { color: var(--gold); background: var(--gold-soft); }
+  .svc-desc { font-size: 12.5px; color: var(--ink-soft); line-height: 1.45; }
+  .svc-stores { display: flex; flex-wrap: wrap; gap: 5px; margin-top: auto; }
+  .chip {
+    font-family: var(--mono); font-size: 10.5px; padding: 2px 7px;
+    border-radius: 5px; border: 1px solid transparent; font-weight: 600;
+  }
+  .chip.pg { color: var(--pg); background: var(--pg-bg); }
+  .chip.my { color: var(--my); background: var(--my-bg); }
+  .chip.rd { color: var(--rd); background: var(--rd-bg); }
+  .chip.kf { color: var(--kf); background: var(--kf-bg); }
+  .chip.ws { color: var(--client); background: var(--client-bg); }
+
+  /* internal REST callout */
+  .internal-note {
+    margin-top: 14px; font-size: 12px; color: var(--ink-soft);
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font-family: var(--mono);
+  }
+  .internal-note .tag {
+    color: var(--gold); border: 1px dashed var(--gold-line);
+    padding: 2px 8px; border-radius: 6px;
+  }
+
+  /* ---------- kafka bus ---------- */
+  .kafka {
+    padding: 16px 20px; border: 1px solid var(--kf);
+    background: linear-gradient(180deg, var(--panel), var(--kf-bg));
+    border-radius: 12px; box-shadow: var(--shadow);
+  }
+  .kafka-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .kafka-head .name { font-weight: 800; font-size: 15px; color: var(--kf); }
+  .kafka-head .meta { font-family: var(--mono); font-size: 12px; color: var(--ink-faint); margin-left: auto; }
+  .topics { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+  .topic {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 9px 12px; font-size: 12px;
+  }
+  .topic .tname { font-family: var(--mono); font-weight: 700; font-size: 12px; color: var(--kf); }
+  .topic .kind { font-size: 10px; font-family: var(--mono); text-transform: uppercase; letter-spacing: .08em; padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
+  .kind.cmd { color: var(--my); background: var(--my-bg); }
+  .kind.evt { color: var(--pg); background: var(--pg-bg); }
+  .topic .route { color: var(--ink-soft); margin-top: 4px; display: block; }
+  .topic .route b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- data layer ---------- */
+  .data { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .store { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .store-head { display: flex; align-items: center; gap: 9px; }
+  .store-dot { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+  .store.pg { border-top: 3px solid var(--pg); } .store.pg .store-dot { background: var(--pg); }
+  .store.my { border-top: 3px solid var(--my); } .store.my .store-dot { background: var(--my); }
+  .store.rd { border-top: 3px solid var(--rd); } .store.rd .store-dot { background: var(--rd); }
+  .store-name { font-weight: 700; font-size: 14px; }
+  .store-name span { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); font-weight: 500; margin-left: 4px; }
+  .store-role { font-size: 12px; color: var(--ink-soft); }
+  .store-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  .store-list li { font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft); padding-left: 14px; position: relative; }
+  .store-list li::before { content: "›"; position: absolute; left: 2px; color: var(--ink-faint); }
+
+  /* ---------- legend / footer ---------- */
+  .legend {
+    margin-top: 34px; padding: 16px 20px; border: 1px solid var(--line);
+    border-radius: 12px; background: var(--panel-2);
+    display: flex; flex-wrap: wrap; gap: 18px 26px; align-items: center;
+  }
+  .legend-item { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ink-soft); }
+  .legend-item .sw { width: 14px; height: 14px; border-radius: 4px; flex: none; }
+  footer { margin-top: 22px; font-size: 12px; color: var(--ink-faint); font-family: var(--mono); text-align: center; }
+  footer a { color: var(--gold); text-decoration: none; }
+
+  @media (max-width: 860px) {
+    .services, .data { grid-template-columns: 1fr 1fr; }
+    .clients { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    .services, .data { grid-template-columns: 1fr; }
+    .gw-role, .layer-note { display: none; }
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Lucky Star Casino · 系統架構</div>
+    <h1>幸運星幣城 — 微服務系統架構圖</h1>
+    <p class="sub">模擬幣線上娛樂平台。所有外部流量經 API Gateway 統一入口，路由至 7 個業務微服務；服務間以 Kafka 事件解耦、以內部 REST 同步扣款，資料採 PostgreSQL（帳務寫）＋ MySQL（查詢讀）CQRS 分離。</p>
+    <div class="badges">
+      <span class="badge">Java 21</span>
+      <span class="badge">Spring Boot 3.3.5</span>
+      <span class="badge">Spring Cloud Gateway</span>
+      <span class="badge">Kafka (KRaft)</span>
+      <span class="badge">PostgreSQL 16</span>
+      <span class="badge">MySQL 8.4</span>
+      <span class="badge">Redis 7</span>
+      <span class="badge">React 18 + Vite</span>
+      <span class="badge">Monorepo · Maven 多模組</span>
+    </div>
+  </header>
+
+  <!-- Layer 1: Clients -->
+  <section class="layer">
+    <div class="layer-head">
+      <span class="layer-num">L1</span>
+      <span class="layer-title">用戶端（前端只與 Gateway 溝通，不直接呼叫任何業務服務）</span>
+      <span class="layer-note">HTTP / WebSocket</span>
+    </div>
+    <div class="clients">
+      <div class="card client-card">
+        <div>
+          <div class="name">玩家端 Web</div>
+          <div class="desc">React 18 · Redux · PixiJS 捕魚引擎 · STOMP 即時推播</div>
+        </div>
+        <span class="port">:5173</span>
+      </div>
+      <div class="card client-card">
+        <div>
+          <div class="name">管理後台 Web</div>
+          <div class="desc">獨立專案；dev 走 vite proxy /admin → 8080（ADMIN 與玩家 JWT 兩套 secret）</div>
+        </div>
+        <span class="port">:5174</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="flow-arrow"><span class="dn">▼</span> 所有請求統一入口 <span class="dn">▼</span></div>
+
+  <!-- Layer 2: Gateway -->
+  <section class="layer">
+    <div class="layer-head">
+      <span class="layer-num">L2</span>
+      <span class="layer-title">API Gateway — 唯一對外入口</span>
+    </div>
+    <div class="gateway">
+      <div class="gw-top">
+        <span class="name">Gateway Service</span>
+        <span class="port">:8080</span>
+        <span class="gw-role">Spring Cloud Gateway · 無業務邏輯</span>
+      </div>
+      <div class="gw-chain">
+        <div class="gw-step"><b>①</b> 在途上限卸載（AIMD → 429）</div>
+        <div class="gw-step"><b>②</b> 玩家限流 Rate Limiter</div>
+        <div class="gw-step"><b>③</b> JWT 驗證（黑名單／停用／min-iat）</div>
+        <div class="gw-step"><b>④</b> 路由轉發 + 注入 X-User-Id / Role</div>
+        <div class="gw-step"><b>⑤</b> 熔斷 Resilience4j（TimeLimiter 6s）</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="flow-arrow"><span class="dn">▼</span> 依路徑前綴路由 <span class="dn">▼</span></div>
+
+  <!-- Layer 3: Services -->
+  <section class="layer">
+    <div class="layer-head">
+      <span class="layer-num">L3</span>
+      <span class="layer-title">業務微服務（7 個）</span>
+      <span class="layer-note">/internal/** 需 X-Internal-Secret</span>
+    </div>
+    <div class="services">
+
+      <div class="card svc">
+        <div class="svc-head"><span class="svc-name">Member <span>會員</span></span><span class="port">:8081</span></div>
+        <div class="svc-desc">註冊／登入、JWT 簽發與輪替、個人資料、好友系統、每日簽到、月度累計獎勵。</div>
+        <div class="svc-stores"><span class="chip my">MySQL</span><span class="chip rd">Redis · refresh/黑名單</span></div>
+      </div>
+
+      <div class="card svc">
+        <div class="svc-head"><span class="svc-name">Wallet <span>錢包</span></span><span class="port">:8082</span></div>
+        <div class="svc-desc">星幣餘額、下注扣款／派彩、帳務流水、贈幣、鑽石錢包、禮品商城、加值。雙資料源（ADR-001）。</div>
+        <div class="svc-stores"><span class="chip pg">PostgreSQL · 帳務</span><span class="chip my">MySQL · 讀視圖</span><span class="chip rd">Redis</span></div>
+      </div>
+
+      <div class="card svc">
+        <div class="svc-head"><span class="svc-name">Game <span>遊戲/RNG</span></span><span class="port">:8083</span></div>
+        <div class="svc-desc">Provably Fair RNG、老虎機／百家樂／捕魚機、RTP 統計、風控、回饋。credit 失敗落補償單重試（ADR-009）。</div>
+        <div class="svc-stores"><span class="chip pg">PostgreSQL</span><span class="chip rd">Redis · session/風控</span></div>
+      </div>
+
+      <div class="card svc">
+        <div class="svc-head"><span class="svc-name">Rank <span>排行榜</span></span><span class="port">:8084</span></div>
+        <div class="svc-desc">全服／好友排行榜、每週重置、每日快照。只認 sub_type=WIN 計分。</div>
+        <div class="svc-stores"><span class="chip pg">PostgreSQL</span><span class="chip rd">Redis · ZSet</span></div>
+      </div>
+
+      <div class="card svc">
+        <div class="svc-head"><span class="svc-name">Admin <span>後台</span></span><span class="port">:8086</span></div>
+        <div class="svc-desc">後台登入、玩家管理、流通量報表、RTP 監控、異常偵測、GM 發幣、商城目錄。獨立 ADMIN JWT。</div>
+        <div class="svc-stores"><span class="chip my">MySQL · 主源</span><span class="chip pg">PostgreSQL</span><span class="chip rd">Redis</span></div>
+      </div>
+
+      <div class="card svc">
+        <div class="svc-head"><span class="svc-name">Notification <span>推播</span></span><span class="port">:8087</span></div>
+        <div class="svc-desc">WebSocket STOMP Server（/ws）；Kafka → WebSocket 事件橋接。best-effort、不持久化、不設 DLT。</div>
+        <div class="svc-stores"><span class="chip ws">WebSocket /ws</span><span class="chip kf">消費 Kafka</span></div>
+      </div>
+
+    </div>
+    <div class="internal-note">
+      <span class="tag">同步 REST</span>
+      Game <b>──POST /internal/wallet/debit·credit──►</b> Wallet　·　Admin <b>──PATCH /internal/members/{id}/status──►</b> Member
+    </div>
+  </section>
+
+  <div class="flow-arrow"><span class="dn">▲▼</span> 非同步事件（publish / consume） <span class="dn">▲▼</span></div>
+
+  <!-- Kafka bus -->
+  <section class="layer">
+    <div class="kafka">
+      <div class="kafka-head">
+        <span class="name">◆ Kafka 事件匯流排</span>
+        <span class="meta">8 業務 topic（partitions 3）＋ 5 DLT · KRaft :9092 · at-least-once</span>
+      </div>
+      <div class="topics">
+        <div class="topic">
+          <span class="tname">member.registered</span><span class="kind evt">event</span>
+          <span class="route"><b>Member</b> → Wallet（開戶）· Member（新手禮）· Rank（快取 username）</span>
+        </div>
+        <div class="topic">
+          <span class="tname">wallet.credit.request</span><span class="kind cmd">command</span>
+          <span class="route"><b>Member · Admin · Game</b> → Wallet（冪等入帳指令，ADR-002）</span>
+        </div>
+        <div class="topic">
+          <span class="tname">wallet.debit</span><span class="kind evt">event</span>
+          <span class="route"><b>Wallet</b> → Rank · Admin · Wallet 讀視圖同步</span>
+        </div>
+        <div class="topic">
+          <span class="tname">wallet.credit</span><span class="kind evt">event</span>
+          <span class="route"><b>Wallet</b> → Rank · Admin · Wallet 讀視圖同步</span>
+        </div>
+        <div class="topic">
+          <span class="tname">friend.relationship.updated</span><span class="kind evt">event</span>
+          <span class="route"><b>Member</b> → Rank（依完整好友清單重建）</span>
+        </div>
+        <div class="topic">
+          <span class="tname">game.result</span><span class="kind evt">event</span>
+          <span class="route"><b>Game</b> → Notification（推播）· Admin（RTP/異常）</span>
+        </div>
+        <div class="topic">
+          <span class="tname">rank.update</span><span class="kind evt">event</span>
+          <span class="route"><b>Rank</b> → Notification（廣播 TOP10 變動）</span>
+        </div>
+        <div class="topic">
+          <span class="tname">notification.push</span><span class="kind evt">event</span>
+          <span class="route"><b>Rank · Admin</b> → Notification（通知/告警）</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="flow-arrow"><span class="dn">▼</span> 資料持久化 <span class="dn">▼</span></div>
+
+  <!-- Data layer -->
+  <section class="layer">
+    <div class="layer-head">
+      <span class="layer-num">L4</span>
+      <span class="layer-title">資料層 — CQRS（PostgreSQL 寫 / MySQL 讀）＋ Redis</span>
+    </div>
+    <div class="data">
+      <div class="card store pg">
+        <div class="store-head"><span class="store-dot"></span><span class="store-name">PostgreSQL <span>:5433</span></span></div>
+        <div class="store-role">帳務核心 · 寫入主庫（強 ACID、樂觀鎖）</div>
+        <ul class="store-list">
+          <li>wallets · wallet_transactions</li>
+          <li>diamond_wallets · shop_redemptions · topup_orders</li>
+          <li>game_rounds · game_rtp_stats · cashback_records</li>
+          <li>pending_wallet_credits（補償單）</li>
+          <li>rank_history · admin_users · admin_action_logs</li>
+        </ul>
+      </div>
+      <div class="card store my">
+        <div class="store-head"><span class="store-dot"></span><span class="store-name">MySQL <span>:3307</span></span></div>
+        <div class="store-role">查詢讀庫 · CQRS 讀端（高頻查詢）</div>
+        <ul class="store-list">
+          <li>members · friendships · daily_checkins</li>
+          <li>monthly_reward_claims · player_tasks</li>
+          <li>wallet_transactions（讀視圖）· gift_logs</li>
+          <li>diamond_cards · shop_items（目錄）</li>
+        </ul>
+      </div>
+      <div class="card store rd">
+        <div class="store-head"><span class="store-dot"></span><span class="store-name">Redis <span>:6379</span></span></div>
+        <div class="store-role">Token · Session · 排行榜 · 風控閘</div>
+        <ul class="store-list">
+          <li>refresh:{id} · jwt:blacklist:{jti}</li>
+          <li>game:session · game:fishing:session</li>
+          <li>rank:global:coins · rank:friend:{id}（ZSet）</li>
+          <li>risk:rtp · risk:inflight（Lua 並發閘）</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Legend -->
+  <div class="legend">
+    <span class="legend-item"><span class="sw" style="background:var(--gold)"></span>Gateway / 業務服務</span>
+    <span class="legend-item"><span class="sw" style="background:var(--client)"></span>用戶端 / WebSocket</span>
+    <span class="legend-item"><span class="sw" style="background:var(--kf)"></span>Kafka 事件匯流排</span>
+    <span class="legend-item"><span class="sw" style="background:var(--pg)"></span>PostgreSQL（寫）</span>
+    <span class="legend-item"><span class="sw" style="background:var(--my)"></span>MySQL（讀）</span>
+    <span class="legend-item"><span class="sw" style="background:var(--rd)"></span>Redis</span>
+    <span class="legend-item" style="margin-left:auto"><b style="color:var(--my)">command</b>＝入帳指令　<b style="color:var(--pg)">event</b>＝已發生事件（ADR-002）</span>
+  </div>
+
+  <footer>資料來源：docs/architecture.md v1.1 · README.md ｜ 觀測性：Prometheus :9090 / Grafana :3000（observability profile）· Kafka UI :8085</footer>
+</div>
