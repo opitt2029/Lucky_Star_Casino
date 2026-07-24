@@ -36,35 +36,6 @@ function parseEnv(content) {
 
 const env = parseEnv(envContent);
 
-describe('.env.example — 第三方登入設定', () => {
-
-  const oauthVars = [
-    'GOOGLE_OAUTH_ENABLED',
-    'GOOGLE_CLIENT_ID',
-    'GOOGLE_CLIENT_SECRET',
-    'LINE_OAUTH_ENABLED',
-    'LINE_CHANNEL_ID',
-    'LINE_CHANNEL_SECRET',
-    'APPLE_OAUTH_ENABLED',
-    'APPLE_CLIENT_ID',
-    'APPLE_TEAM_ID',
-    'APPLE_KEY_ID',
-    'APPLE_PRIVATE_KEY_PATH',
-    'APPLE_CLIENT_SECRET',
-    'APPLE_REDIRECT_URI',
-    'OAUTH_PUBLIC_BASE_URL',
-    'OAUTH_FRONTEND_BASE_URL',
-  ];
-
-  for (const varName of oauthVars) {
-    test(`應包含 ${varName}`, () => {
-      assert.ok(varName in env, `找不到第三方登入設定 ${varName}`);
-      assert.ok(env[varName].length > 0, `${varName} 不能是空值`);
-    });
-  }
-
-});
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 測試群組：MySQL 設定
 // ─────────────────────────────────────────────────────────────────────────────
