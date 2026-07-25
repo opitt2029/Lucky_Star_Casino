@@ -154,7 +154,8 @@ export default function SlotMachine({
         return
       }
       // 下限 48px：再矮就看不清符號了，寧可讓它溢出也不要糊成一片。
-      setResponsiveSymbolHeight(Math.max(48, Math.min(widthBased(), Math.floor(available / visibleRows))))
+      const minimumSymbolHeight = shouldFitCabinet ? 30 : 48
+      setResponsiveSymbolHeight(Math.max(minimumSymbolHeight, Math.min(widthBased(), Math.floor(available / visibleRows))))
     }
 
     fitToCabinet()

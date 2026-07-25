@@ -30,6 +30,9 @@ export default function FallRain({ trigger = 0, artId = 'coin', density = 'light
         '--rain-duration': `${1.4 + Math.random() * 1.6}s`,
         '--rain-drift': `${(Math.random() - 0.5) * 120}px`,
         '--rain-spin': Math.random() > 0.5 ? 1 : -1,
+        '--rain-trail': `${26 + Math.random() * 64}px`,
+        '--rain-depth': `${0.72 + Math.random() * 0.5}`,
+        '--rain-flare': `${0.5 + Math.random() * 0.5}`,
       },
     }))
     setWaves((prev) => [...prev, { id, drops }])
@@ -46,7 +49,7 @@ export default function FallRain({ trigger = 0, artId = 'coin', density = 'light
     <div className="fx-layer" aria-hidden="true">
       {waves.flatMap((wave) =>
         wave.drops.map((drop) => (
-          <span key={drop.key} className="fx-rain__drop" style={drop.style}>
+          <span key={drop.key} className={`fx-rain__drop fx-rain__drop--${artId} fx-rain__drop--${density}`} style={drop.style}>
             <Art id={artId} />
           </span>
         ))
