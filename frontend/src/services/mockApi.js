@@ -120,6 +120,7 @@ const transactionLabels = {
   checkin: '簽到',
   task: '任務',
   gift: '贈送',
+  topup: '自助加值',
   shop: '商城兌換',
 }
 const DAILY_CHECKIN_REWARD = 100
@@ -275,6 +276,10 @@ function createInitialDb() {
       [player.id]: {},
       [TEST_ACCOUNT.player.id]: {},
     },
+    topupOrders: {
+      [player.id]: [],
+      [TEST_ACCOUNT.player.id]: [],
+    },
     ranks: [
       {
         id: TEST_ACCOUNT.player.id,
@@ -299,6 +304,7 @@ function ensureTestAccount(db) {
   db.checkinDates = db.checkinDates || {}
   db.monthlyRewardClaims = db.monthlyRewardClaims || {}
   db.socialBindings = db.socialBindings || {}
+  db.topupOrders = db.topupOrders || {}
 
   let user = db.users.find((item) => item.player?.username === TEST_ACCOUNT.player.username)
   if (!user) {
@@ -345,6 +351,11 @@ function ensureTestAccount(db) {
 
   if (!db.socialBindings[TEST_ACCOUNT.player.id]) {
     db.socialBindings[TEST_ACCOUNT.player.id] = {}
+    changed = true
+  }
+
+  if (!db.topupOrders[TEST_ACCOUNT.player.id]) {
+    db.topupOrders[TEST_ACCOUNT.player.id] = []
     changed = true
   }
 
@@ -589,6 +600,7 @@ export const mockApi = {
     db.transactions[player.id] = [makeTransaction('task', 30000, '新手啟動金')]
     db.friends[player.id] = []
     db.socialBindings = db.socialBindings || {}
+  db.topupOrders = db.topupOrders || {}
     db.socialBindings[player.id] = {}
     db.ranks.push({ id: player.id, name: nickname, nickname, score: 30000, trend: '+0%' })
     saveDb(db)
@@ -660,6 +672,7 @@ export const mockApi = {
     const db = getDb()
     const playerId = currentPlayerId()
     db.socialBindings = db.socialBindings || {}
+  db.topupOrders = db.topupOrders || {}
     db.socialBindings[playerId] = {
       ...(db.socialBindings[playerId] || {}),
       [id]: externalAccountId || `${id.toUpperCase()}-${playerId}`,
@@ -674,6 +687,7 @@ export const mockApi = {
     const db = getDb()
     const playerId = currentPlayerId()
     db.socialBindings = db.socialBindings || {}
+  db.topupOrders = db.topupOrders || {}
     db.socialBindings[playerId] = { ...(db.socialBindings[playerId] || {}), [id]: null }
     saveDb(db)
     return (await this.getSocialBindings()).find((item) => item.provider === id)
@@ -682,9 +696,10 @@ export const mockApi = {
     await wait(240)
     const db = getDb()
     const playerId = currentPlayerId()
-    db.wallets[playerId] = {
-      ...(db.wallets[playerId] || { frozenAmount: 0 }),
-      balance: MOCK_TEST_STAR_COIN_BALANCE,
+    if (!db.wallets[playerId]) {
+      db.wallets[playerId] = { balance: MOCK_TEST_STAR_COIN_BALANCE, frozenAmount: 0 }
+    } else if (typeof db.wallets[playerId].frozenAmount !== 'number') {
+      db.wallets[playerId].frozenAmount = 0
     }
     saveDb(db)
     return db.wallets[playerId]
@@ -1104,6 +1119,60 @@ export const mockApi = {
     return { wallet: db.wallets[playerId], friends: db.friends[playerId] || [] }
   },
 
+  async getTopupOrders() {
+    await wait(180)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    db.topupOrders = db.topupOrders || {}
+    return [...(db.topupOrders[playerId] || [])].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    )
+  },
+
+  async createTopupOrder(packageId, packages = []) {
+    await wait(260)
+    const pkg = packages.find((item) => item.packageId === packageId)
+    if (!pkg) throw new Error('未知的加值方案')
+
+    const db = getDb()
+    const playerId = currentPlayerId()
+    db.topupOrders = db.topupOrders || {}
+    const order = {
+      id: Date.now(),
+      orderNo: `MOCK-TOP-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+      packageId: pkg.packageId,
+      amount: pkg.amount,
+      priceLabel: pkg.priceLabel,
+      status: 'CREATED',
+      creditTxId: null,
+      balanceAfter: null,
+      createdAt: new Date().toISOString(),
+      paidAt: null,
+    }
+    db.topupOrders[playerId] = [order, ...(db.topupOrders[playerId] || [])]
+    saveDb(db)
+    return order
+  },
+
+  async payTopupOrder(orderId) {
+    await wait(420)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    db.topupOrders = db.topupOrders || {}
+    const orders = db.topupOrders[playerId] || []
+    const order = orders.find((item) => String(item.id) === String(orderId))
+    if (!order) throw new Error('找不到加值訂單')
+    if (order.status !== 'CREATED') throw new Error('此訂單已完成或不可付款')
+
+    order.status = 'PAID'
+    order.paidAt = new Date().toISOString()
+    const wallet = applyWalletChange(db, playerId, order.amount, 'topup', `自助加值 ${order.priceLabel}`)
+    order.status = 'CREDITED'
+    order.creditTxId = `MOCK-TX-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+    order.balanceAfter = wallet.balance
+    saveDb(db)
+    return { ...order }
+  },
   // ---- 禮品商城（鏡像後端 wallet-service shop 模組，ADR-006）----
 
   // 目錄：上架商品（鏡像後端 GET /api/v1/wallet/shop/catalog）。

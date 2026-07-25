@@ -1,3 +1,25 @@
+## [feat] -- 2026-07-25 -- Polish topup and diamond wallet flows
+
+### Added
+- `frontend/src/pages/TopupPayment.jsx`: add a protected payment confirmation page for topup orders.
+- `frontend/src/index.css`: add responsive visual treatments for topup packages, payment confirmation, and diamond wallet panels.
+
+### Changed
+- `frontend/src/pages/Topup.jsx`: split topup into package selection, order creation, and order-history actions instead of immediate payment.
+- `frontend/src/pages/Diamond.jsx`: refresh the diamond wallet UI with a gem hero, balance panels, and quick exchange chips.
+- `frontend/src/App.jsx`: register `/topup/pay/:orderId` as a protected route.
+- `frontend/src/services/walletApi.js` and `frontend/src/services/mockApi.js`: align mock topup orders with the real create/pay/list flow and persist mock topup credits.
+- `backend/wallet-service/src/main/java/com/luckystar/wallet/service/TopupService.java`: expand fixed topup packages to include P300, P2000, and P5000.
+- `backend/wallet-service/src/test/java/com/luckystar/wallet/service/TopupServiceTest.java`: update package assertions for the expanded list.
+
+### Why
+- The self-service topup page needed more purchase options and a dedicated payment step, while the diamond wallet needed clearer visual hierarchy and faster exchange controls.
+
+### Verification
+- `npm.cmd run lint` (frontend)
+- `npm.cmd run build` (frontend)
+- `npm.cmd test` (frontend)
+- `mvn -pl backend/wallet-service test`
 ## [fixed] -- 2026-07-23 -- Restore remote CI green gates
 
 ### Fixed

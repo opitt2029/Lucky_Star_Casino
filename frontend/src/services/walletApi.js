@@ -134,8 +134,11 @@ export const walletApi = {
   // 方案列表寫死於後端；mock 模式下提供等價的固定方案。
   TOPUP_PACKAGES: [
     { packageId: 'P100', priceLabel: 'NT$100', amount: 100000 },
+    { packageId: 'P300', priceLabel: 'NT$300', amount: 330000 },
     { packageId: 'P500', priceLabel: 'NT$500', amount: 600000 },
     { packageId: 'P1000', priceLabel: 'NT$1000', amount: 1300000 },
+    { packageId: 'P2000', priceLabel: 'NT$2000', amount: 2800000 },
+    { packageId: 'P5000', priceLabel: 'NT$5000', amount: 8000000 },
   ],
 
   // GET /api/v1/wallet/topup/packages
@@ -150,15 +153,7 @@ export const walletApi = {
   // POST /api/v1/wallet/topup/orders → 建立訂單（status=CREATED）
   async createTopupOrder(packageId) {
     if (useMockApi) {
-      const pkg = walletApi.TOPUP_PACKAGES.find((p) => p.packageId === packageId)
-      return {
-        id: Date.now(),
-        orderNo: `MOCK-${Date.now()}`,
-        packageId,
-        amount: pkg?.amount ?? 0,
-        priceLabel: pkg?.priceLabel ?? '',
-        status: 'CREATED',
-      }
+      return mockApi.createTopupOrder(packageId, walletApi.TOPUP_PACKAGES)
     }
     const res = await api.post('/api/v1/wallet/topup/orders', { packageId })
     return res.data.data
@@ -167,8 +162,7 @@ export const walletApi = {
   // POST /api/v1/wallet/topup/orders/{id}/pay → 模擬付款並真實入帳
   async payTopupOrder(orderId) {
     if (useMockApi) {
-      const wallet = await mockApi.getWallet()
-      return { id: orderId, status: 'CREDITED', balanceAfter: wallet.balance }
+      return mockApi.payTopupOrder(orderId)
     }
     const res = await api.post(`/api/v1/wallet/topup/orders/${orderId}/pay`)
     return res.data.data
@@ -177,15 +171,13 @@ export const walletApi = {
   // GET /api/v1/wallet/topup/orders → 自己的加值訂單（新到舊）
   async getTopupOrders() {
     if (useMockApi) {
-      return []
+      return mockApi.getTopupOrders()
     }
     const res = await api.get('/api/v1/wallet/topup/orders')
     return res.data.data
   },
 
-  // GET /api/v1/wallet/transactions → 帳務流水（CQRS 讀庫，分頁）。
-  // 前端 page 為 1-based、後端為 0-based；回傳形狀對齊 walletSlice 期望的
-  // { items, total, page(1-based), pageSize }。
+  // GET /api/v1/wallet/transactions → 帳務交易紀錄（CQRS 讀庫 API）
   async getTransactions({ type = 'all', startDate = '', endDate = '', page = 1, pageSize = 8 } = {}) {
     if (useMockApi) {
       return mockApi.getTransactions({ type, startDate, endDate, page, pageSize })

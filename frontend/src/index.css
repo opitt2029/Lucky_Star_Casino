@@ -3716,3 +3716,277 @@ video {
     animation: none;
   }
 }
+
+.topup-hero,
+.topup-payment,
+.diamond-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.topup-hero::after,
+.topup-payment::after,
+.diamond-hero::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  z-index: -1;
+  height: 44%;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, rgba(255, 234, 160, 0.08));
+}
+
+.topup-hero-art,
+.diamond-hero-gem,
+.topup-payment-card {
+  position: relative;
+  min-height: 190px;
+}
+
+.topup-coin {
+  position: absolute;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 246, 188, 0.84);
+  background:
+    radial-gradient(circle at 32% 24%, rgba(255, 255, 238, 0.92), transparent 16%),
+    radial-gradient(circle, #fff1aa 0 34%, #f8d56a 55%, #a56408 100%);
+  box-shadow:
+    inset 0 0 0 6px rgba(122, 66, 0, 0.2),
+    0 18px 42px rgba(14, 0, 2, 0.32),
+    0 0 30px rgba(255, 218, 94, 0.22);
+}
+
+.topup-coin::after {
+  content: '$';
+  position: absolute;
+  inset: 24%;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(86, 45, 0, 0.32);
+  color: rgba(55, 22, 0, 0.74);
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 900;
+}
+
+.topup-coin--one {
+  right: 110px;
+  top: 18px;
+  width: 112px;
+  height: 112px;
+  transform: rotate(-12deg);
+}
+
+.topup-coin--two {
+  right: 36px;
+  top: 68px;
+  width: 96px;
+  height: 96px;
+  transform: rotate(10deg);
+}
+
+.topup-receipt {
+  position: absolute;
+  right: 24px;
+  bottom: 4px;
+  width: 170px;
+  min-height: 128px;
+  border: 1px solid rgba(255, 234, 160, 0.4);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(255, 234, 160, 0.28), transparent 34%) 24px 38px / 118px 8px no-repeat,
+    linear-gradient(90deg, rgba(255, 234, 160, 0.18), transparent 42%) 24px 62px / 104px 8px no-repeat,
+    linear-gradient(90deg, rgba(255, 234, 160, 0.14), transparent 48%) 24px 86px / 128px 8px no-repeat,
+    linear-gradient(160deg, rgba(68, 4, 8, 0.94), rgba(18, 1, 3, 0.96));
+  box-shadow: 0 24px 48px rgba(8, 0, 1, 0.36);
+}
+
+.topup-package-card,
+.topup-method {
+  position: relative;
+  min-height: 154px;
+  border-color: rgba(248, 213, 106, 0.16);
+  background: linear-gradient(145deg, rgba(71, 5, 10, 0.84), rgba(21, 2, 4, 0.92));
+}
+
+.topup-package-card:hover,
+.topup-method:hover,
+.topup-package-card--active,
+.topup-method--active {
+  border-color: rgba(255, 234, 160, 0.72);
+  background:
+    radial-gradient(circle at 92% 10%, rgba(255, 234, 160, 0.16), transparent 28%),
+    linear-gradient(145deg, rgba(103, 6, 12, 0.9), rgba(24, 2, 4, 0.94));
+}
+
+.topup-package-card__mark {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  display: grid;
+  width: 42px;
+  min-height: 42px;
+  place-items: center;
+  border: 1px solid rgba(255, 234, 160, 0.46);
+  border-radius: 999px;
+  background: rgba(248, 213, 106, 0.12);
+  color: var(--casino-gold-bright);
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.topup-mini-ledger {
+  position: sticky;
+  top: 16px;
+}
+
+.topup-payment-card {
+  min-height: 172px;
+  border: 1px solid rgba(255, 234, 160, 0.36);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 18% 24%, rgba(255, 255, 255, 0.18), transparent 20%),
+    linear-gradient(135deg, rgba(255, 234, 160, 0.22), rgba(201, 13, 24, 0.16) 48%, rgba(20, 2, 4, 0.9));
+  box-shadow: 0 24px 56px rgba(12, 0, 2, 0.38);
+}
+
+.topup-payment-card__chip,
+.topup-payment-card__line {
+  position: absolute;
+  left: 24px;
+  border-radius: 6px;
+  background: rgba(255, 234, 160, 0.62);
+}
+
+.topup-payment-card__chip {
+  top: 28px;
+  width: 46px;
+  height: 34px;
+}
+
+.topup-payment-card__line {
+  bottom: 48px;
+  width: 170px;
+  height: 8px;
+}
+
+.topup-payment-card__line--short {
+  bottom: 28px;
+  width: 116px;
+}
+
+.topup-method__icon {
+  display: block;
+  width: 46px;
+  height: 34px;
+  border: 1px solid rgba(255, 234, 160, 0.52);
+  border-radius: 6px;
+  background:
+    linear-gradient(90deg, rgba(255, 234, 160, 0.4), transparent 58%) 8px 10px / 28px 5px no-repeat,
+    linear-gradient(135deg, rgba(255, 234, 160, 0.18), rgba(255, 234, 160, 0.06));
+}
+
+.diamond-hero-gem {
+  min-height: 188px;
+}
+
+.diamond-hero-gem__facet {
+  position: absolute;
+  left: 50%;
+  display: block;
+  border: 1px solid rgba(196, 244, 255, 0.58);
+  background:
+    linear-gradient(135deg, rgba(207, 250, 254, 0.9), rgba(56, 189, 248, 0.28) 46%, rgba(255, 234, 160, 0.2)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.3), transparent);
+  box-shadow:
+    0 0 34px rgba(103, 232, 249, 0.18),
+    0 18px 42px rgba(0, 0, 0, 0.3);
+}
+
+.diamond-hero-gem__facet--top {
+  top: 12px;
+  width: 142px;
+  height: 74px;
+  transform: translateX(-50%) skewX(-18deg);
+  border-radius: 8px 8px 3px 3px;
+}
+
+.diamond-hero-gem__facet--left,
+.diamond-hero-gem__facet--right {
+  top: 76px;
+  width: 104px;
+  height: 104px;
+}
+
+.diamond-hero-gem__facet--left {
+  transform: translateX(-88%) rotate(45deg);
+  border-radius: 4px 0 8px 0;
+}
+
+.diamond-hero-gem__facet--right {
+  transform: translateX(-12%) rotate(45deg);
+  border-radius: 0 4px 0 8px;
+}
+
+.diamond-action-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.diamond-action-panel__mark {
+  position: absolute;
+  right: 18px;
+  top: 18px;
+  display: grid;
+  width: 52px;
+  min-height: 52px;
+  place-items: center;
+  border: 1px solid rgba(196, 244, 255, 0.44);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(103, 232, 249, 0.18), rgba(255, 234, 160, 0.08));
+  color: #cffafe;
+  font-weight: 900;
+}
+
+.diamond-quick-chip {
+  border: 1px solid rgba(196, 244, 255, 0.34);
+  background: rgba(8, 47, 73, 0.36);
+  color: #cffafe;
+}
+
+.diamond-quick-chip:hover {
+  border-color: rgba(196, 244, 255, 0.72);
+  background: rgba(14, 116, 144, 0.32);
+}
+
+@media (max-width: 768px) {
+  .topup-hero-art,
+  .diamond-hero-gem,
+  .topup-payment-card {
+    min-height: 150px;
+  }
+
+  .topup-coin--one {
+    right: 88px;
+    width: 92px;
+    height: 92px;
+  }
+
+  .topup-coin--two {
+    right: 22px;
+    width: 78px;
+    height: 78px;
+  }
+
+  .topup-receipt {
+    right: 12px;
+    width: 140px;
+    min-height: 104px;
+  }
+
+  .topup-mini-ledger {
+    position: static;
+  }
+}
