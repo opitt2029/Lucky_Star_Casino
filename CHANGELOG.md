@@ -1,3 +1,38 @@
+## [fix] — 2026-07-25 — 還原 Apple 私鑰忽略規則，補齊第三方登入的文件與雷區
+
+### Fixed
+- `.gitignore`：還原 `*.p8` 與 `apple-client-secret*.txt` 兩條忽略規則（PR #271 一併撤掉）。
+
+### Added
+- `tests/infra/apple-oauth.test.js`：新增「Apple OAuth 私鑰不得進入 repo」測試群組——斷言
+  `.gitignore` 含上述兩條規則，並用 `git ls-files` 確認 repo 內沒有已追蹤的 `.p8` /
+  `apple-client-secret*.txt`。
+- `DEPLOY.md` §第三方登入設定：自帶完整 15 個 OAuth 變數的 dotenv 區塊，並明寫「這些變數刻意
+  不在 `.env.example`，`cp .env.example .env` 不會帶到」。另補 Apple client secret 會過期
+  （180 天、無監控）與 `OAUTH_PUBLIC_BASE_URL` 必須指向 gateway 8080 兩則提醒。
+- `AGENTS.md` 雷區 28：第三方登入的四條約束（session policy 由 STATELESS 改為 IF_REQUIRED
+  且 session 在記憶體→單副本限制、callback 必須經 gateway 且 `/api/v1/auth/` 要留在
+  `jwt.whitelist`、`*_OAUTH_ENABLED` 擋不住直連 `/oauth2/authorization/{id}` 的已知缺口、
+  OAuth 變數不在 `.env.example`）。
+
+### Why
+- **`.gitignore` 那兩條規則本身不含任何機密**，撤掉它不會讓 repo 更乾淨，只會讓 Apple 簽章私鑰
+  更容易被誤 commit——而 `.p8` 在 Apple 後台只給下載一次，外洩等於要重新建 key 並重簽 secret。
+  PR #271 的目的是「不把 OAuth 憑證欄位放進範本」，`.gitignore` 是被整批 revert 順手帶走的。
+- 撤掉後 `DEPLOY.md:101` 的「專案也已忽略所有 `.p8` 檔案」變成假敘述，而同一份文件又用
+  `APPLE_PRIVATE_KEY_PATH` 引導使用者把 `.p8` 放進專案 —— 文件教你放進來、gitignore 又不擋了。
+- 之所以補測試而不只是改回檔案：**PR #271 能無聲刪掉這兩行，正是因為當時沒有任何測試守著**。
+  同理，PR #270 原本用 `env.test.js` 守 `.env.example` 的 15 個變數，#271 把範本與斷言一起
+  刪掉後，DEPLOY.md 與範本的漂移也失去守門——這次改成讓 DEPLOY.md 自帶清單、不再依賴範本，
+  從結構上消掉這個耦合（尊重 #271「不動 `.env.example`」的決定）。
+
+### 如何驗證
+- `node --test tests/infra/*.test.js` → 155 pass / 0 fail（原 152，新增 3 項）。
+- `git ls-files '*.p8' 'apple-client-secret*.txt'` → 空輸出（確認歷史上沒有誤 commit 過）。
+- `git check-ignore -v test.p8` → 命中 `.gitignore:*.p8`。
+
+---
+
 ## [chore] - 2026-07-24 - 第三方登入 PR 排除環境範例與忽略規則
 
 ### Changed
