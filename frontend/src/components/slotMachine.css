@@ -101,7 +101,7 @@
   }
 }
 
-.slot-game-surface--fullscreen,
+.slot-game-surface--fullscreen-entering,
 .slot-game-surface:fullscreen {
   /* position: fixed 是必要的：全螢幕 class 生效到瀏覽器真的進入全螢幕之間有一個
      影格的落差，這時元素還在原本的文件流位置（頁面已捲動時 x/y 都不是 0），
@@ -126,7 +126,7 @@ body.slot-fullscreen-active {
   overflow: hidden;
 }
 
-.slot-game-surface--fullscreen .slot-game-layout,
+.slot-game-surface--fullscreen-entering .slot-game-layout,
 .slot-game-surface:fullscreen .slot-game-layout {
   height: 100%;
   min-height: 0;
@@ -134,14 +134,14 @@ body.slot-fullscreen-active {
   align-items: stretch;
 }
 
-.slot-game-surface--fullscreen .slot-game-topbar,
+.slot-game-surface--fullscreen-entering .slot-game-topbar,
 .slot-game-surface:fullscreen .slot-game-topbar {
   padding: 8px 10px;
 }
 
-.slot-game-surface--fullscreen .slot-game-machine,
+.slot-game-surface--fullscreen-entering .slot-game-machine,
 .slot-game-surface:fullscreen .slot-game-machine,
-.slot-game-surface--fullscreen .slot-machine,
+.slot-game-surface--fullscreen-entering .slot-machine,
 .slot-game-surface:fullscreen .slot-machine {
   min-height: 0;
   height: 100%;
@@ -151,14 +151,14 @@ body.slot-fullscreen-active {
    機台實際有 5 個子元素（跑馬燈 / topper / 轉輪窗 / 控制列 / 狀態列），那份四列宣告
    讓 1fr 落在高度 0 的裝飾層上，真正該吃剩餘空間的轉輪窗反而只拿到 auto。
    flex 不依賴子元素的數量與順序，轉輪窗永遠拿得到剩下的空間。 */
-.slot-game-surface--fullscreen .slot-machine,
+.slot-game-surface--fullscreen-entering .slot-machine,
 .slot-game-surface:fullscreen .slot-machine {
   display: flex;
   flex-direction: column;
   padding: clamp(8px, 1.1vw, 14px);
 }
 
-.slot-game-surface--fullscreen .slot-cabinet,
+.slot-game-surface--fullscreen-entering .slot-cabinet,
 .slot-game-surface:fullscreen .slot-cabinet {
   /* index.css 的 @media (min-width: 1024px) 把 --slot-reel-height 寫死成 32rem（512px），
      讓轉輪視窗高度跟 --slot-symbol-height 脫鉤。格高縮小後視窗仍是 512px，
@@ -171,25 +171,25 @@ body.slot-fullscreen-active {
   margin-top: 10px;
 }
 
-.slot-game-surface--fullscreen .slot-machine > *:not(.slot-cabinet),
+.slot-game-surface--fullscreen-entering .slot-machine > *:not(.slot-cabinet),
 .slot-game-surface:fullscreen .slot-machine > *:not(.slot-cabinet) {
   flex: 0 0 auto;
 }
 
 /* 轉輪是全螢幕的主角，裝飾件讓出高度給它——省下來的每一 px 都會變成更大的符號格
    （格高＝轉輪窗可用高度 ÷ 3，見 SlotMachine.jsx 的 fitToCabinet）。 */
-.slot-game-surface--fullscreen .slot-machine__marquee,
+.slot-game-surface--fullscreen-entering .slot-machine__marquee,
 .slot-game-surface:fullscreen .slot-machine__marquee {
   margin-bottom: 8px;
   padding: 4px 8px;
 }
 
-.slot-game-surface--fullscreen .slot-machine__bulb,
+.slot-game-surface--fullscreen-entering .slot-machine__bulb,
 .slot-game-surface:fullscreen .slot-machine__bulb {
   height: 14px;
 }
 
-.slot-game-surface--fullscreen .slot-machine__topper,
+.slot-game-surface--fullscreen-entering .slot-machine__topper,
 .slot-game-surface:fullscreen .slot-machine__topper {
   padding: 8px 12px;
 }
@@ -197,13 +197,13 @@ body.slot-fullscreen-active {
 /* 機台內的「Lucky Star Deluxe / 星幣老虎機」在全螢幕是重複資訊——
    全螢幕頂列（.slot-game-topbar）已經有一模一樣的標題。收掉它把高度讓給轉輪，
    只留右邊的 GRAND 獎池。第一個 div 是標題組、第二個是獎池，見 SlotMachine.jsx 的 topper。 */
-.slot-game-surface--fullscreen .slot-machine__topper > div:first-child,
+.slot-game-surface--fullscreen-entering .slot-machine__topper > div:first-child,
 .slot-game-surface:fullscreen .slot-machine__topper > div:first-child {
   display: none;
 }
 
 /* 獎池是氛圍展示，不需要 34px 的大數字佔掉 74px 高——縮成一行留住老虎機的味道就好。 */
-.slot-game-surface--fullscreen .slot-machine__jackpot,
+.slot-game-surface--fullscreen-entering .slot-machine__jackpot,
 .slot-game-surface:fullscreen .slot-machine__jackpot {
   display: flex;
   align-items: baseline;
@@ -213,17 +213,17 @@ body.slot-fullscreen-active {
   min-height: 0;
 }
 
-.slot-game-surface--fullscreen .slot-machine__jackpot strong,
+.slot-game-surface--fullscreen-entering .slot-machine__jackpot strong,
 .slot-game-surface:fullscreen .slot-machine__jackpot strong {
   font-size: 1.35rem;
 }
 
-.slot-game-surface--fullscreen .slot-lever,
+.slot-game-surface--fullscreen-entering .slot-lever,
 .slot-game-surface:fullscreen .slot-lever {
   height: 88px;
 }
 
-.slot-game-surface--fullscreen .slot-game-control-panel,
+.slot-game-surface--fullscreen-entering .slot-game-control-panel,
 .slot-game-surface:fullscreen .slot-game-control-panel {
   display: flex;
   flex-direction: column;
@@ -237,35 +237,35 @@ body.slot-fullscreen-active {
 /* 全螢幕下右欄放不下所有卡片，會出現捲軸。預設順序會把「下注面額」推到最底，
    玩家得先捲動才能改注額——把下注與本局狀態提到最前面，讓核心操作永遠免捲動可及，
    純資訊的 MetricCard（餘額、派彩、損益）留在後面捲。 */
-.slot-game-surface--fullscreen .slot-bet-panel,
+.slot-game-surface--fullscreen-entering .slot-bet-panel,
 .slot-game-surface:fullscreen .slot-bet-panel {
   order: -2;
   flex: 0 0 auto;
 }
 
-.slot-game-surface--fullscreen .slot-status-panel,
+.slot-game-surface--fullscreen-entering .slot-status-panel,
 .slot-game-surface:fullscreen .slot-status-panel {
   order: -1;
   flex: 0 0 auto;
 }
 
-.slot-game-surface--fullscreen .slot-game-control-panel > button,
+.slot-game-surface--fullscreen-entering .slot-game-control-panel > button,
 .slot-game-surface:fullscreen .slot-game-control-panel > button {
   display: none;
 }
 
-.slot-game-surface--fullscreen .slot-game-control-panel .luxury-panel-soft,
+.slot-game-surface--fullscreen-entering .slot-game-control-panel .luxury-panel-soft,
 .slot-game-surface:fullscreen .slot-game-control-panel .luxury-panel-soft {
   padding: 12px;
 }
 
 @media (max-width: 820px) {
-  .slot-game-surface--fullscreen,
+  .slot-game-surface--fullscreen-entering,
   .slot-game-surface:fullscreen {
     overflow: auto;
   }
 
-  .slot-game-surface--fullscreen .slot-game-layout,
+  .slot-game-surface--fullscreen-entering .slot-game-layout,
   .slot-game-surface:fullscreen .slot-game-layout {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1038,7 +1038,7 @@ body.slot-fullscreen-active {
   font-size: clamp(1.65rem, 2.7vw, 2.45rem);
 }
 
-.slot-game-surface--fullscreen .slot-machine--fit .slot-machine__jackpot,
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-machine__jackpot,
 .slot-game-surface:fullscreen .slot-machine--fit .slot-machine__jackpot {
   flex-direction: column;
   align-items: center;
@@ -1047,12 +1047,12 @@ body.slot-fullscreen-active {
   gap: 1px;
 }
 
-.slot-game-surface--fullscreen .slot-machine--fit .slot-machine__jackpot strong,
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-machine__jackpot strong,
 .slot-game-surface:fullscreen .slot-machine--fit .slot-machine__jackpot strong {
   font-size: clamp(1.55rem, 2.2vw, 2.1rem);
 }
 
-.slot-game-surface--fullscreen .slot-machine--fit .slot-machine__jackpot em,
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-machine__jackpot em,
 .slot-game-surface:fullscreen .slot-machine--fit .slot-machine__jackpot em {
   display: block;
 }
@@ -1079,19 +1079,19 @@ body.slot-fullscreen-active {
   font-size: clamp(2rem, 3.2vw, 3rem);
 }
 
-.slot-game-surface--fullscreen .slot-machine--fit,
+.slot-game-surface--fullscreen-entering .slot-machine--fit,
 .slot-game-surface:fullscreen .slot-machine--fit {
   gap: 10px;
 }
 
-.slot-game-surface--fullscreen .slot-machine--fit .slot-machine__topper,
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-machine__topper,
 .slot-game-surface:fullscreen .slot-machine--fit .slot-machine__topper {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   padding: 12px 16px;
 }
 
-.slot-game-surface--fullscreen .slot-machine--fit .slot-machine__jackpot,
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-machine__jackpot,
 .slot-game-surface:fullscreen .slot-machine--fit .slot-machine__jackpot {
   width: 100%;
   min-height: clamp(96px, 14vh, 132px);
@@ -1099,23 +1099,23 @@ body.slot-fullscreen-active {
   gap: 3px;
 }
 
-.slot-game-surface--fullscreen .slot-machine--fit .slot-machine__jackpot span,
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-machine__jackpot span,
 .slot-game-surface:fullscreen .slot-machine--fit .slot-machine__jackpot span {
   font-size: clamp(1rem, 1.55vw, 1.35rem);
 }
 
-.slot-game-surface--fullscreen .slot-machine--fit .slot-machine__jackpot strong,
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-machine__jackpot strong,
 .slot-game-surface:fullscreen .slot-machine--fit .slot-machine__jackpot strong {
   font-size: clamp(2.55rem, 5.2vw, 4.35rem);
   line-height: 0.9;
 }
 
-.slot-game-surface--fullscreen .slot-machine--fit .slot-machine__jackpot em,
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-machine__jackpot em,
 .slot-game-surface:fullscreen .slot-machine--fit .slot-machine__jackpot em {
   font-size: clamp(0.9rem, 1.35vw, 1.12rem);
 }
 
-.slot-game-surface--fullscreen .slot-machine--fit .slot-cabinet,
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-cabinet,
 .slot-game-surface:fullscreen .slot-machine--fit .slot-cabinet {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
@@ -1124,7 +1124,7 @@ body.slot-fullscreen-active {
   padding: clamp(10px, 1.1vw, 16px);
 }
 
-.slot-game-surface--fullscreen .slot-machine--fit .slot-reels,
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-reels,
 .slot-game-surface:fullscreen .slot-machine--fit .slot-reels {
   height: 100%;
   min-height: 0;
@@ -1132,15 +1132,29 @@ body.slot-fullscreen-active {
   gap: clamp(10px, 1.25vw, 18px);
 }
 
-.slot-game-surface--fullscreen .slot-machine--fit .slot-reel-window,
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-reel-window,
 .slot-game-surface:fullscreen .slot-machine--fit .slot-reel-window {
   height: 100%;
   min-height: 0;
 }
 
-.slot-game-surface--fullscreen .slot-machine--fit .slot-console,
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-console,
 .slot-game-surface:fullscreen .slot-machine--fit .slot-console,
-.slot-game-surface--fullscreen .slot-machine--fit .slot-status,
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-status,
 .slot-game-surface:fullscreen .slot-machine--fit .slot-status {
   margin-top: 0;
+}
+
+
+/* Fit-mode cabinet clamp for fullscreen restore frames. */
+.slot-machine--fit .slot-cabinet {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.slot-machine--fit .slot-reels,
+.slot-machine--fit .slot-reel-window {
+  height: 100%;
+  min-height: 0;
 }

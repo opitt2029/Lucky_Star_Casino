@@ -58,6 +58,14 @@ export default function SlotGame() {
 
   useBgm('slot', true, { intensity: loading || visualLock ? 2 : 1 })
 
+  const syncFullscreenState = (active) => {
+    const fullscreenTarget = fullscreenTargetRef.current
+    setIsFullscreen(active)
+    fullscreenTarget?.classList.toggle('slot-game-surface--fullscreen', active)
+    if (!active) fullscreenTarget?.classList.remove('slot-game-surface--fullscreen-entering')
+    document.body.classList.toggle('slot-fullscreen-active', active)
+  }
+
   const resolvedBet = selectedBet === 'MAX' ? Math.max(Math.min(balance, 5000), 100) : selectedBet
   const canAfford = balance >= resolvedBet
   const lastPayout = settled ? settled.payout : null
@@ -86,15 +94,20 @@ export default function SlotGame() {
   useEffect(() => {
     if (typeof document === 'undefined') return undefined
     const handleFullscreenChange = () => {
-      setIsFullscreen(document.fullscreenElement === fullscreenTargetRef.current)
+      syncFullscreenState(document.fullscreenElement === fullscreenTargetRef.current)
     }
     document.addEventListener('fullscreenchange', handleFullscreenChange)
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
   }, [])
 
   useEffect(() => {
+    const fullscreenTarget = fullscreenTargetRef.current
     document.body.classList.toggle('slot-fullscreen-active', isFullscreen)
-    return () => document.body.classList.remove('slot-fullscreen-active')
+    return () => {
+      document.body.classList.remove('slot-fullscreen-active')
+      fullscreenTarget?.classList.remove('slot-game-surface--fullscreen')
+      fullscreenTarget?.classList.remove('slot-game-surface--fullscreen-entering')
+    }
   }, [isFullscreen])
 
   const handleToggleFullscreen = async () => {
@@ -107,11 +120,17 @@ export default function SlotGame() {
     try {
       setFullscreenMessage('')
       if (document.fullscreenElement === target) {
+        syncFullscreenState(false)
         await document.exitFullscreen()
       } else {
+        target.classList.add('slot-game-surface--fullscreen-entering')
+        syncFullscreenState(true)
         await target.requestFullscreen()
+        target.classList.remove('slot-game-surface--fullscreen-entering')
       }
     } catch {
+      target.classList.remove('slot-game-surface--fullscreen-entering')
+      syncFullscreenState(document.fullscreenElement === target)
       setFullscreenMessage('無法切換全螢幕，請再試一次')
     }
   }
