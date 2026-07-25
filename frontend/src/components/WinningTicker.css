@@ -288,12 +288,12 @@
 
 .winning-ticker__badge {
   display: inline-grid;
-  min-width: 46px;
+  min-width: 64px;
   min-height: 23px;
   place-items: center;
   border: 1px solid rgba(255, 234, 160, 0.22);
   border-radius: 999px;
-  padding: 0 7px;
+  padding: 0 8px;
   color: #2a0205;
   background: linear-gradient(135deg, #ffeaa0, #c78a14);
   font-size: 0.64rem;

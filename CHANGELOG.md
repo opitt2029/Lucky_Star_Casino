@@ -1,3 +1,17 @@
+## [changed] -- 2026-07-26 -- 將遊戲中獎公告欄文案改為繁體中文
+
+### Changed
+- `frontend/src/components/WinningTicker.jsx`: 將公告欄玩家名稱、遊戲房間、派彩事件、獎項等級、欄位標籤、輔助讀屏文字與倍率資訊改為繁體中文呈現。
+- `frontend/src/components/WinningTicker.css`: 加寬獎項徽章，讓「超級大獎」等中文標籤完整顯示。
+
+### Why
+- 遊戲內公告欄應與玩家端整體繁體中文介面一致，避免中英文混雜影響沉浸感。
+
+### Verification
+- `npm.cmd run lint` (frontend)
+- `npm.cmd run build` (frontend)
+- Playwright route check: `/game/slot`、`/game/baccarat`、`/game/fishing` 的中獎公告欄顯示繁體中文標題、細節與派彩資訊，且沒有殘留英文 UI 文案。
+
 ## [changed] -- 2026-07-26 -- Keep game win boards sticky in viewport
 
 ### Changed
