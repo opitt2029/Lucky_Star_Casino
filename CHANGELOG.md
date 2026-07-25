@@ -1,3 +1,19 @@
+## [added] -- 2026-07-25 -- Add live win announcement board
+
+### Added
+- `frontend/src/components/WinningTicker.jsx` and `frontend/src/components/WinningTicker.css`: add a bottom-right live payout board that rotates mocked player win announcements with responsive casino-themed styling, click-through content, and a collapsible state.
+
+### Changed
+- `frontend/src/App.jsx`: mount the announcement board in the shared site chrome for player-facing pages while suppressing it on auth screens.
+
+### Why
+- The site needed a lightweight real-time social signal before the production event feed is connected, making active pages feel more interactive without changing game payout contracts.
+
+### Verification
+- `npm.cmd run lint` (frontend)
+- `npm.cmd run build` (frontend)
+- Playwright visual check at 1366x768 and 390x844: live win board renders at the bottom-right, rotates mocked win content, collapses to a pill, stays off auth screens, does not overlap the friend panel, and emits no console errors.
+
 ## [changed] -- 2026-07-25 -- Refresh slot game one-screen cockpit
 
 ### Added
