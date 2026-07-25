@@ -190,8 +190,6 @@ export default function SlotGame() {
       <CoinRainPro trigger={coinTrigger} density={coinDensity} />
       <RedEnvelopeRain trigger={envelopeTrigger} density="heavy" />
       <BrushBanner trigger={banner.trigger} text={banner.text} level={banner.level} />
-      <WinningTicker game="slot" />
-
       <section
         ref={fullscreenTargetRef}
         className={[
@@ -199,6 +197,7 @@ export default function SlotGame() {
           isFullscreen ? 'slot-game-surface--fullscreen' : '',
         ].join(' ')}
       >
+        <WinningTicker game="slot" />
         <div className="slot-game-topbar">
           <div>
             <p className="slot-game-topbar__eyebrow">Lucky Star Deluxe</p>

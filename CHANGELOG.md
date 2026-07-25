@@ -1,3 +1,18 @@
+## [changed] -- 2026-07-26 -- Keep game win boards sticky in viewport
+
+### Changed
+- `frontend/src/components/WinningTicker.jsx`: render the game win board through a portal to `document.body` in page mode and to `document.fullscreenElement` in fullscreen mode, so it stays fixed inside the visible game viewport.
+- `frontend/src/components/WinningTicker.css`: strengthen bottom-fixed positioning, fullscreen z-index rules, and the casino-styled live payout presentation.
+- `frontend/src/pages/SlotGame.jsx`, `frontend/src/pages/Baccarat.jsx`, and `frontend/src/pages/Fishing.jsx`: keep each game-scoped board mounted inside its fullscreen target.
+
+### Why
+- The announcement board should behave like an in-room HUD instead of appearing at the bottom of the document, and it should remain visible during each game's fullscreen mode.
+
+### Verification
+- `npm.cmd run lint` (frontend)
+- `npm.cmd run build` (frontend)
+- Playwright viewport/fullscreen check at 1366x768: slot, baccarat, and fishing boards stay fixed at the visible bottom after scrolling and inside fullscreen, render via the expected fullscreen host, show detailed payout content, and emit no console errors.
+
 ## [changed] -- 2026-07-25 -- Scope live win boards to game pages
 
 ### Changed

@@ -379,7 +379,6 @@ export default function Fishing() {
 
   return (
     <AppShell>
-      <WinningTicker game="fishing" />
       <main className="fishing-redgold-shell" data-style="red-gold-deep-sea">
         <div className="fishing-hero-shell">
           <div className="fishing-hero-copy">
@@ -412,6 +411,7 @@ export default function Fishing() {
             data-phase={phase}
             className={`fishing-main fishing-fullscreen-surface grid gap-4 ${isFullscreen ? 'fishing-game--fullscreen' : 'content-start'}`}
           >
+            <WinningTicker game="fishing" />
             <div className="fishing-flowbar">
               <div>
                 <p className="fishing-flowbar__eyebrow">Lucky Fishing</p>
