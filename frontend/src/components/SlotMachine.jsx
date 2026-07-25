@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { soundEngine } from '../casino-fx/sound/SoundEngine'
 import CountUp from '../casino-fx/fx/CountUp'
 import Reel, {
@@ -187,6 +187,15 @@ export default function SlotMachine({
     setDisplayGrid(grid)
     setReelTracks(getColumns(grid).map(buildStaticTrack))
   }, [grid, phase])
+
+  useLayoutEffect(() => {
+    if (phase !== 'idle') return
+
+    setReelTracks(getColumns(displayGrid).map(buildStaticTrack))
+    trackRefs.current.forEach((node) => {
+      if (node) node.style.transform = 'translate3d(0, 0, 0)'
+    })
+  }, [displayGrid, phase, symbolHeight])
 
   const runReels = useCallback(
     async (targetGrid) => {

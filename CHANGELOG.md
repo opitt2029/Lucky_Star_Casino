@@ -6,7 +6,7 @@
 ### Changed
 - `frontend/src/pages/SlotGame.jsx`: compress `/game/slot` controls into a readable one-screen dashboard, expose the 70x red-seven top-award state, remove the bracket glyph from the fullscreen button, and synchronously clear fullscreen presentation classes on exit.
 - `frontend/src/casino-fx/fx/FallRain.jsx` and `frontend/src/casino-fx/casino-fx.css`: give coin wins a red-gold neon trail animation that matches the casino theme.
-- `frontend/src/components/SlotMachine.jsx`: add container-fit sizing with a lower fit-mode floor, skip invalid zero-height restore measurements, fullscreen refit recovery, jackpot-hit presentation, and a futuristic themed win popup driven by settled payout data.
+- `frontend/src/components/SlotMachine.jsx`: add container-fit sizing with a lower fit-mode floor, skip invalid zero-height restore measurements, fullscreen refit recovery, idle reel-track transform resets after settled fullscreen spins, jackpot-hit presentation, and a futuristic themed win popup driven by settled payout data.
 - `frontend/src/components/Reel.jsx` and `frontend/src/casino-fx/assets/registry.js`: remap slot emoji results to market-style slot symbols without changing the backend contract or payout logic.
 - `frontend/src/components/slotMachine.css`: enlarge jackpot typography, make fullscreen jackpot/reels fill their cabinet space, decouple fullscreen layout CSS from the React state class, darken the reel window, hide the old horizontal payline, and polish the commercial slot cabinet skin.
 
@@ -17,7 +17,7 @@
 - `npm.cmd run lint` (frontend)
 - `npm.cmd run build` (frontend)
 - `npm.cmd test -- SlotMachine Reel` (frontend)
-- Playwright visual check at 1366x768: normal/fullscreen/restored states kept the slot reels visible, dashboard metrics fit, fullscreen button text contained no brackets, `.slot-payline` was hidden, `.slot-reel-window` kept a non-white gradient after exiting fullscreen, fullscreen reels filled the cabinet inner height, button/API fullscreen exits no longer collapsed reels to 17px, and coin wins used the `fx-rain-fall-neon` trail animation.
+- Playwright visual check at 1366x768: normal/fullscreen/restored states kept the slot reels visible, dashboard metrics fit, fullscreen button text contained no brackets, `.slot-payline` was hidden, `.slot-reel-window` kept a non-white gradient after exiting fullscreen, fullscreen reels filled the cabinet inner height, settled fullscreen spins restored to window mode without blank reel tracks, button/API fullscreen exits no longer collapsed reels to 17px, and coin wins used the `fx-rain-fall-neon` trail animation.
 
 ## [feat] -- 2026-07-25 -- Polish topup and diamond wallet flows
 
