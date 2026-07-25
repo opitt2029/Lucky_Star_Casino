@@ -4,6 +4,7 @@ import AppShell from '../components/AppShell'
 import GameRuleCard from '../components/GameRuleCard'
 import SlotMachine from '../components/SlotMachine'
 import InfoHint from '../components/InfoHint'
+import WinningTicker from '../components/WinningTicker'
 import { spinSlot, clearGameResult } from '../store/slices/gameSlice'
 import { setBalance } from '../store/slices/walletSlice'
 import { soundEngine } from '../casino-fx/sound/SoundEngine'
@@ -189,6 +190,7 @@ export default function SlotGame() {
       <CoinRainPro trigger={coinTrigger} density={coinDensity} />
       <RedEnvelopeRain trigger={envelopeTrigger} density="heavy" />
       <BrushBanner trigger={banner.trigger} text={banner.text} level={banner.level} />
+      <WinningTicker game="slot" />
 
       <section
         ref={fullscreenTargetRef}

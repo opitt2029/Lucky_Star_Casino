@@ -8,6 +8,7 @@ import FishingControlDock from '../components/FishingControlDock'
 import FishingSettlementPanel from '../components/FishingSettlementPanel'
 import FishingFullscreenButton from '../components/FishingFullscreenButton'
 import FishingFishInfoPanel from '../components/FishingFishInfoPanel'
+import WinningTicker from '../components/WinningTicker'
 import { fetchWallet } from '../store/slices/walletSlice'
 import { useFishingSession, BUYIN_TIERS, BUYIN_MIN, BUYIN_MAX } from '../hooks/useFishingSession'
 import { useSound } from '../casino-fx/sound/useSound'
@@ -378,6 +379,7 @@ export default function Fishing() {
 
   return (
     <AppShell>
+      <WinningTicker game="fishing" />
       <main className="fishing-redgold-shell" data-style="red-gold-deep-sea">
         <div className="fishing-hero-shell">
           <div className="fishing-hero-copy">

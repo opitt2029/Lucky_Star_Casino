@@ -10,6 +10,7 @@ import BaccaratSettlementPanel from '../components/baccarat/BaccaratSettlementPa
 import BaccaratSideBets from '../components/baccarat/BaccaratSideBets'
 import BaccaratStatusBar from '../components/baccarat/BaccaratStatusBar'
 import BaccaratTableHeader from '../components/baccarat/BaccaratTableHeader'
+import WinningTicker from '../components/WinningTicker'
 import { fetchWallet, setBalance } from '../store/slices/walletSlice'
 import { betBaccarat } from '../store/slices/gameSlice'
 import { BET_LABELS } from '../utils/baccaratGame'
@@ -441,6 +442,7 @@ export default function Baccarat() {
       <CoinRainPro trigger={coinTrigger} density={coinDensity} />
       <RedEnvelopeRain trigger={envelopeTrigger} density="heavy" />
       <BrushBanner trigger={banner.trigger} text={banner.text} level={banner.level} />
+      <WinningTicker game="baccarat" />
 
       <section className="baccarat-page">
         <GameRuleCard title="百家樂規則" subtitle="查看點數計算、補牌、賠率與返水。" rules={baccaratRules} payouts={baccaratPayouts} />

@@ -9,7 +9,6 @@ import PageTransition from './components/PageTransition'
 import QuickToolbar from './components/QuickToolbar'
 import FriendFloatingPanel from './components/FriendFloatingPanel'
 import SupportModal from './components/SupportModal'
-import WinningTicker from './components/WinningTicker'
 
 const Lobby = lazy(() => import('./pages/Lobby'))
 const SlotGame = lazy(() => import('./pages/SlotGame'))
@@ -62,7 +61,6 @@ function ProtectedPage({ children }) {
 function SiteChrome() {
   const location = useLocation()
   const isStandaloneTool = enableDevTools && location.pathname.startsWith('/dev/integration')
-  const shouldShowWinningTicker = !location.pathname.startsWith('/member') && !location.pathname.startsWith('/auth/')
 
   if (isStandaloneTool) return null
 
@@ -71,7 +69,6 @@ function SiteChrome() {
       <QuickToolbar />
       <FriendFloatingPanel />
       <SupportModal />
-      {shouldShowWinningTicker && <WinningTicker />}
 
     </>
   )

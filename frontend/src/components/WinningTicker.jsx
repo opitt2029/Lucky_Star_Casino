@@ -16,11 +16,17 @@ const PLAYER_NAMES = [
   'ViviCoin',
 ]
 
-const WIN_SOURCES = [
-  { game: 'Lucky 777', label: 'SLOT', min: 1800, max: 98800, accent: 'slot' },
-  { game: 'Baccarat', label: 'BAC', min: 1200, max: 52000, accent: 'baccarat' },
-  { game: 'Dragon Fishing', label: 'FISH', min: 2600, max: 126000, accent: 'fishing' },
-]
+const WIN_SOURCE_BY_GAME = {
+  slot: { game: 'Lucky 777', label: 'SLOT', min: 1800, max: 98800, accent: 'slot' },
+  baccarat: { game: 'Baccarat', label: 'BAC', min: 1200, max: 52000, accent: 'baccarat' },
+  fishing: { game: 'Dragon Fishing', label: 'FISH', min: 2600, max: 126000, accent: 'fishing' },
+}
+
+const MULTIPLIERS_BY_GAME = {
+  slot: [2, 3, 5, 8, 18, 40, 70],
+  baccarat: [1, 2, 3, 5, 8, 12, 25],
+  fishing: [5, 8, 12, 18, 30, 60, 120],
+}
 
 function randomFrom(list) {
   return list[Math.floor(Math.random() * list.length)]
@@ -31,16 +37,15 @@ function randomAmount(min, max) {
   return Math.round(value / 100) * 100
 }
 
-function createWinEvent(index = 0) {
-  const source = randomFrom(WIN_SOURCES)
+function createWinEvent(source, gameKey, index = 0) {
   return {
-    id: `${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`,
+    id: `${Date.now()}-${gameKey}-${index}-${Math.random().toString(16).slice(2)}`,
     playerName: randomFrom(PLAYER_NAMES),
     game: source.game,
     label: source.label,
     accent: source.accent,
     amount: randomAmount(source.min, source.max),
-    multiplier: [3, 5, 7, 12, 18, 25, 40, 70][Math.floor(Math.random() * 8)],
+    multiplier: randomFrom(MULTIPLIERS_BY_GAME[gameKey] || MULTIPLIERS_BY_GAME.slot),
   }
 }
 
@@ -48,18 +53,26 @@ function formatAmount(value) {
   return Number(value || 0).toLocaleString('en-US')
 }
 
-export default function WinningTicker() {
-  const initialEvents = useMemo(() => Array.from({ length: 4 }, (_, index) => createWinEvent(index)), [])
+export default function WinningTicker({ game = 'slot' }) {
+  const source = WIN_SOURCE_BY_GAME[game] || WIN_SOURCE_BY_GAME.slot
+  const initialEvents = useMemo(
+    () => Array.from({ length: 4 }, (_, index) => createWinEvent(source, game, index)),
+    [game, source],
+  )
   const [events, setEvents] = useState(initialEvents)
   const [collapsed, setCollapsed] = useState(false)
 
   useEffect(() => {
+    setEvents(initialEvents)
+  }, [initialEvents])
+
+  useEffect(() => {
     const timer = window.setInterval(() => {
-      setEvents((prev) => [createWinEvent(prev.length), ...prev].slice(0, 4))
+      setEvents((prev) => [createWinEvent(source, game, prev.length), ...prev].slice(0, 4))
     }, 4200)
 
     return () => window.clearInterval(timer)
-  }, [])
+  }, [game, source])
 
   if (collapsed) {
     return (
@@ -67,10 +80,10 @@ export default function WinningTicker() {
         type="button"
         className="winning-ticker winning-ticker--collapsed"
         onClick={() => setCollapsed(false)}
-        aria-label="Open live win board"
+        aria-label={`Open ${source.game} live win board`}
       >
         <span className="winning-ticker__live-dot" aria-hidden="true" />
-        <span>Live Wins</span>
+        <span>{source.label} Wins</span>
       </button>
     )
   }
@@ -78,14 +91,14 @@ export default function WinningTicker() {
   const latest = events[0]
 
   return (
-    <aside className="winning-ticker" aria-label="Live win board">
+    <aside className={`winning-ticker winning-ticker--${source.accent}`} aria-label={`${source.game} live win board`}>
       <div className="winning-ticker__frame" role="status" aria-live="polite">
         <div className="winning-ticker__header">
           <div>
-            <p>LIVE PAYOUTS</p>
+            <p>{source.label} PAYOUTS</p>
             <h2>Live Wins</h2>
           </div>
-          <button type="button" onClick={() => setCollapsed(true)} aria-label="Collapse live win board">
+          <button type="button" onClick={() => setCollapsed(true)} aria-label={`Collapse ${source.game} live win board`}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M6 12h12" />
             </svg>

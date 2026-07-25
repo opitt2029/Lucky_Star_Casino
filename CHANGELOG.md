@@ -1,3 +1,18 @@
+## [changed] -- 2026-07-25 -- Scope live win boards to game pages
+
+### Changed
+- `frontend/src/components/WinningTicker.jsx`: accept a game key and generate mocked win announcements only for that game's payout board.
+- `frontend/src/pages/SlotGame.jsx`, `frontend/src/pages/Baccarat.jsx`, and `frontend/src/pages/Fishing.jsx`: mount the live win board inside each game page.
+- `frontend/src/App.jsx`: remove the global site-chrome live win board so non-game pages stay clean.
+
+### Why
+- Win announcements should feel like room-specific activity instead of a global overlay, keeping each game's page focused on its own live results.
+
+### Verification
+- `npm.cmd run lint` (frontend)
+- `npm.cmd run build` (frontend)
+- Playwright route check: `/games` has no live win board, while `/game/slot`, `/game/baccarat`, and `/game/fishing` each render only their own SLOT/BAC/FISH payout announcements with no console errors.
+
 ## [added] -- 2026-07-25 -- Add live win announcement board
 
 ### Added
