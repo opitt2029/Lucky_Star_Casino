@@ -5,13 +5,13 @@ export const visibleRows = 3
 export const paylineRow = 1
 
 // 後端契約仍是 emoji 字串（SlotSymbol.display），視覺上由 SLOT_SYMBOL_ASSET
-// 映射成華人財富意象（元寶/銅錢/紅包/福/金龍）；caption 同步改中文彩頭名。
+// 映射成市面拉霸常見符號（櫻桃、檸檬、鈴鐺、星星、紅 7），不改賠付邏輯。
 const symbolMeta = {
-  '🍒': { label: '🍒', caption: '金元寶', tone: 'slot-symbol-seven' },
-  '🍋': { label: '🍋', caption: '銅錢', tone: 'slot-symbol-card' },
-  '🔔': { label: '🔔', caption: '紅包', tone: 'slot-symbol-bar' },
-  '⭐': { label: '⭐', caption: '福字', tone: 'slot-symbol-star' },
-  '7️⃣': { label: '7️⃣', caption: '金龍', tone: 'slot-symbol-seven' },
+  '🍒': { label: '🍒', caption: 'CHERRY', tone: 'slot-symbol-cherry' },
+  '🍋': { label: '🍋', caption: 'LEMON', tone: 'slot-symbol-lemon' },
+  '🔔': { label: '🔔', caption: 'BELL', tone: 'slot-symbol-bell' },
+  '⭐': { label: '⭐', caption: 'STAR', tone: 'slot-symbol-star' },
+  '7️⃣': { label: '7️⃣', caption: 'RED 7', tone: 'slot-symbol-seven' },
   '7': { label: '7', caption: 'Lucky', tone: 'slot-symbol-seven' },
   BAR: { label: 'BAR', caption: 'Triple', tone: 'slot-symbol-bar' },
   STAR: { label: 'STAR', caption: 'Bonus', tone: 'slot-symbol-star' },

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import AppShell from '../components/AppShell'
 import GameRuleCard from '../components/GameRuleCard'
-import MetricCard from '../components/MetricCard'
 import SlotMachine from '../components/SlotMachine'
 import InfoHint from '../components/InfoHint'
 import { spinSlot, clearGameResult } from '../store/slices/gameSlice'
@@ -26,6 +25,7 @@ const slotRules = [
 
 const slotPayouts = [
   { label: '三連', value: '依符號 5x / 8x / 18x / 40x / 70x' },
+  { label: '大獎', value: '紅 7 三連 70x' },
   { label: '左二同', value: '依符號 1x / 2x / 5x' },
   { label: '單局上限', value: '5,000 星幣' },
 ]
@@ -66,6 +66,15 @@ export default function SlotGame() {
     lastMultiplier === null ? '尚未完成本局' : lastMultiplier > 0 ? `中線倍率 ${lastMultiplier}x` : '本局未中獎'
   const roundStatus = loading || visualLock ? 'spinning' : status
   const hasLineWin = (settled?.winningCells?.length ?? 0) > 0
+  const topAwardHit = (settled?.multiplier ?? 0) >= 70 && (settled?.winningCells?.length ?? 0) === 3
+  const sessionProfitLabel =
+    sessionProfit === null
+      ? '-'
+      : sessionProfit >= 0
+        ? `+${formatCoins(sessionProfit)}`
+        : formatCoins(sessionProfit)
+  const sessionProfitTone = sessionProfit === null ? '' : sessionProfit >= 0 ? 'slot-mini-metric--up' : 'slot-mini-metric--down'
+  const flowLabel = roundStatus === 'spinning' ? '轉動中' : roundStatus === 'result' ? '已結算' : '待下注'
 
   useGameLeaveGuard(loading || visualLock, '老虎機正在轉動，離開頁面可能會中斷視覺結算。')
 
@@ -110,6 +119,7 @@ export default function SlotGame() {
   const handleSpinRound = async () => {
     if (balance < resolvedBet) return null
     const betAtSpin = resolvedBet
+    setSettled(null)
     setVisualLock(true)
     return dispatch(spinSlot({ bet: betAtSpin })).unwrap()
   }
@@ -164,7 +174,7 @@ export default function SlotGame() {
       <section
         ref={fullscreenTargetRef}
         className={[
-          'slot-game-surface',
+          'slot-game-surface slot-game-surface--single-screen',
           isFullscreen ? 'slot-game-surface--fullscreen' : '',
         ].join(' ')}
       >
@@ -181,7 +191,6 @@ export default function SlotGame() {
             aria-pressed={isFullscreen}
             title={fullscreenMessage || (isFullscreen ? '離開全螢幕' : '進入全螢幕')}
           >
-            <span aria-hidden="true">{isFullscreen ? '[]' : '[ ]'}</span>
             {isFullscreen ? '離開全螢幕' : '全螢幕'}
           </button>
         </div>
@@ -197,6 +206,10 @@ export default function SlotGame() {
           >
             <SlotMachine
               fullscreen={isFullscreen}
+              fitToContainer
+              jackpotHit={topAwardHit}
+              winAmount={lastPayout ?? 0}
+              winMultiplier={lastMultiplier ?? 0}
               grid={slotGrid}
               winningCells={winningCells}
               spinning={loading}
@@ -208,53 +221,46 @@ export default function SlotGame() {
           </div>
 
           <aside className="slot-game-control-panel">
-            <MetricCard label="錢包星幣" value={formatCoins(balance)} caption="下注前餘額" tone="light" />
-            <GameRuleCard
-              title="老虎機規則"
-              subtitle="三轉輪中線判定，下注後由動畫結算同一局結果。"
-              rules={slotRules}
-              payouts={slotPayouts}
-            />
-            <MetricCard label="本局下注" value={formatCoins(resolvedBet)} caption="單局最高 5,000" />
+            <div className="slot-dashboard-strip" aria-label="老虎機即時資訊">
+              <div className="slot-mini-metric slot-mini-metric--light">
+                <span>錢包</span>
+                <strong>{formatCoins(balance)}</strong>
+                <small>星幣</small>
+              </div>
+              <div className="slot-mini-metric">
+                <span>下注</span>
+                <strong>{formatCoins(resolvedBet)}</strong>
+                <small>最高 5,000</small>
+              </div>
+              <div className="slot-mini-metric">
+                <span>派彩</span>
+                <strong>{lastPayout === null ? '-' : formatCoins(lastPayout)}</strong>
+                <small>{payoutCaption}</small>
+              </div>
+              <div className={['slot-mini-metric', sessionProfitTone].filter(Boolean).join(' ')}>
+                <span>本場</span>
+                <strong>{sessionProfitLabel}</strong>
+                <small>{sessionProfit === null ? '尚未開始' : sessionRounds + ' 局'}</small>
+              </div>
+            </div>
+
             {!canAfford && (
-              <p className="rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">
+              <p className="slot-inline-alert">
                 星幣不足，請降低下注或先儲值。
               </p>
             )}
-            <MetricCard
-              label="最近派彩"
-              value={lastPayout === null ? '-' : formatCoins(lastPayout)}
-              caption={payoutCaption}
-              hint={(
-                <InfoHint title="最近派彩" align="right">
-                  上一局實際拿回的星幣，<strong>已含本金</strong>。所以「中線倍率 2x」＝拿回下注額的兩倍，
-                  淨賺一倍；倍率 1x 等於剛好打平。沒中獎時為 0。
-                </InfoHint>
-              )}
-            />
-            <MetricCard
-              label="本次遊玩損益"
-              value={
-                sessionProfit === null
-                  ? '-'
-                  : sessionProfit >= 0
-                    ? `+${formatCoins(sessionProfit)}`
-                    : formatCoins(sessionProfit)
-              }
-              caption={sessionProfit === null ? '尚未開始' : `已完成 ${sessionRounds} 局`}
-              valueClass={sessionProfit === null ? '' : sessionProfit >= 0 ? 'text-emerald-300' : 'text-red-300'}
-            />
 
-            <div className="slot-bet-panel luxury-panel-soft rounded p-4">
-              <p className="gold-muted text-xs font-black uppercase tracking-[0.25em]">Bet</p>
-              <h3 className="brand-title mt-1 flex items-center gap-2 text-xl font-black">
-                下注面額
+            <div className="slot-bet-panel luxury-panel-soft rounded p-3">
+              <div className="slot-panel-heading">
+                <div>
+                  <p className="gold-muted text-xs font-black uppercase">Bet</p>
+                  <h3 className="brand-title text-lg font-black">下注面額</h3>
+                </div>
                 <InfoHint title="下注面額" align="right">
-                  每按一次 SPIN 要扣掉的星幣。<strong>MAX</strong> 不是固定金額，而是「用目前餘額能下的最大注」，
-                  上限 5,000 星幣；餘額不足 5,000 時就以餘額為準。注額越大，中獎時派彩也等比放大。
+                  每按一次 SPIN 要扣掉的星幣。<strong>MAX</strong> 會用目前餘額能下的最大注，上限 5,000 星幣。
                 </InfoHint>
-              </h3>
-              <div className="mt-3 grid grid-cols-2 gap-2">
+              </div>
+              <div className="slot-bet-options">
                 {betOptions.map((option) => (
                   <button
                     key={option}
@@ -262,10 +268,8 @@ export default function SlotGame() {
                     onClick={() => setSelectedBet(option)}
                     disabled={loading || visualLock}
                     className={[
-                      'min-h-14 rounded border px-3 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-50',
-                      selectedBet === option
-                        ? 'gold-button'
-                        : 'border-yellow-200/15 bg-red-950/70 text-yellow-100/68 hover:border-yellow-200/60 hover:text-yellow-100',
+                      'slot-bet-chip',
+                      selectedBet === option ? 'slot-bet-chip--active' : '',
                     ].join(' ')}
                   >
                     {option === 'MAX' ? 'MAX' : formatCoins(option)}
@@ -274,36 +278,38 @@ export default function SlotGame() {
               </div>
             </div>
 
-            <div className="slot-status-panel luxury-panel-soft rounded p-4">
-              <p className="gold-muted flex items-center gap-2 text-xs font-black uppercase tracking-[0.25em]">
-                Round Status
-                <InfoHint title="本局狀態" align="right">
-                  「流程」顯示這一局走到哪：待下注 → 轉動中 → 已結算；轉動中時不能改注額。
-                  「中線結果」則是這局中間那條線有沒有連成得分組合——命中才會有派彩。
-                </InfoHint>
-              </p>
-              <div className="mt-3 grid gap-3">
-                <div className="flex items-center justify-between rounded border border-yellow-200/15 bg-red-950/70 px-3 py-3">
-                  <span className="text-sm font-bold text-yellow-100/62">流程</span>
-                  <span
-                    className={[
-                      'slot-signal',
-                      loading || visualLock ? 'slot-signal--active' : status === 'result' ? 'slot-signal--ready' : 'slot-signal--idle',
-                    ].join(' ')}
-                  >
-                    {roundStatus === 'spinning' ? '轉動中' : roundStatus === 'result' ? '已結算' : '待下注'}
-                  </span>
+            <div className="slot-status-panel luxury-panel-soft rounded p-3">
+              <div className="slot-panel-heading">
+                <div>
+                  <p className="gold-muted text-xs font-black uppercase">Round</p>
+                  <h3 className="brand-title text-lg font-black">本局狀態</h3>
                 </div>
-                <div className="flex items-center justify-between rounded border border-yellow-200/15 bg-red-950/70 px-3 py-3">
-                  <span className="text-sm font-bold text-yellow-100/62">中線結果</span>
-                  <span className={['slot-signal', hasLineWin ? 'slot-signal--win' : 'slot-signal--idle'].join(' ')}>
+                <InfoHint title="本局狀態" align="right">
+                  流程顯示待下注、轉動中或已結算；中線命中代表本局產生得分組合。
+                </InfoHint>
+              </div>
+              <div className="slot-status-grid">
+                <div>
+                  <span>流程</span>
+                  <strong className={['slot-signal', loading || visualLock ? 'slot-signal--active' : status === 'result' ? 'slot-signal--ready' : 'slot-signal--idle'].join(' ')}>{flowLabel}</strong>
+                </div>
+                <div>
+                  <span>中線</span>
+                  <strong className={['slot-signal', hasLineWin ? 'slot-signal--win' : 'slot-signal--idle'].join(' ')}>
                     {hasLineWin ? '命中' : '未命中'}
-                  </span>
+                  </strong>
                 </div>
               </div>
             </div>
 
-            {error && <p className="rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">{error}</p>}
+            <GameRuleCard
+              title="老虎機規則"
+              subtitle="三轉輪中線判定，下注後由動畫結算同一局結果。"
+              rules={slotRules}
+              payouts={slotPayouts}
+            />
+
+            {error && <p className="slot-inline-alert">{error}</p>}
           </aside>
         </div>
       </section>

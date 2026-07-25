@@ -1,3 +1,23 @@
+## [changed] -- 2026-07-25 -- Refresh slot game one-screen cockpit
+
+### Added
+- `frontend/src/casino-fx/assets/svgArt.jsx`: add classic slot symbols for cherry, lemon, bell, star, and red seven.
+
+### Changed
+- `frontend/src/pages/SlotGame.jsx`: compress `/game/slot` controls into a readable one-screen dashboard, expose the 70x red-seven top-award state, and remove the bracket glyph from the fullscreen button.
+- `frontend/src/components/SlotMachine.jsx`: add container-fit sizing, fullscreen refit recovery, jackpot-hit presentation, and a futuristic themed win popup driven by settled payout data.
+- `frontend/src/components/Reel.jsx` and `frontend/src/casino-fx/assets/registry.js`: remap slot emoji results to market-style slot symbols without changing the backend contract or payout logic.
+- `frontend/src/components/slotMachine.css`: enlarge the dashboard/jackpot hierarchy, darken the reel window, hide the old horizontal payline, and polish the commercial slot cabinet skin.
+
+### Why
+- The slot page needed the game surface and operation controls to stay visible together, while jackpot/top-award feedback, win presentation, and fullscreen recovery needed to feel clearer and more production-ready.
+
+### Verification
+- `npm.cmd run lint` (frontend)
+- `npm.cmd run build` (frontend)
+- `npm.cmd test -- SlotMachine Reel` (frontend)
+- Playwright visual check at 1366x768: normal/fullscreen/restored states had no page or surface scroll, dashboard metrics fit, fullscreen button text contained no brackets, `.slot-payline` was hidden, and `.slot-reel-window` kept a non-white gradient after exiting fullscreen.
+
 ## [feat] -- 2026-07-25 -- Polish topup and diamond wallet flows
 
 ### Added

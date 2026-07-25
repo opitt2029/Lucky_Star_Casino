@@ -104,6 +104,88 @@ export function StarCoin(props) {
   )
 }
 
+
+export function SlotCherry(props) {
+  const gid = useId()
+  return (
+    <svg viewBox="0 0 100 100" {...props}>
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#ff6a78" />
+          <stop offset="1" stopColor="#b30716" />
+        </linearGradient>
+      </defs>
+      <path d="M50 42c2-15 11-25 25-31" stroke="#2f9e44" strokeWidth="5" strokeLinecap="round" fill="none" />
+      <path d="M70 18c-13-5-24 0-31 11 13 5 24 1 31-11Z" fill="#43c463" stroke="#176d32" strokeWidth="2" />
+      <circle cx="38" cy="60" r="20" fill={`url(#${gid})`} stroke="#73020a" strokeWidth="3" />
+      <circle cx="62" cy="62" r="19" fill={`url(#${gid})`} stroke="#73020a" strokeWidth="3" />
+      <ellipse cx="31" cy="51" rx="6" ry="4" fill="#fff0f0" opacity="0.72" transform="rotate(-28 31 51)" />
+      <ellipse cx="56" cy="53" rx="5" ry="3.4" fill="#fff0f0" opacity="0.62" transform="rotate(-28 56 53)" />
+    </svg>
+  )
+}
+
+export function SlotLemon(props) {
+  const gid = useId()
+  return (
+    <svg viewBox="0 0 100 100" {...props}>
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#fff9a8" />
+          <stop offset="0.48" stopColor="#ffe04f" />
+          <stop offset="1" stopColor="#c89400" />
+        </linearGradient>
+      </defs>
+      <path d="M17 53c0-19 17-34 37-34 13 0 24 5 30 13-3 3-5 7-5 12 0 21-16 37-37 37-12 0-22-4-29-12 3-4 4-9 4-16Z" fill={`url(#${gid})`} stroke="#916500" strokeWidth="3" />
+      <path d="M30 58c8-17 21-27 39-31" stroke="#fff7b6" strokeWidth="4" strokeLinecap="round" opacity="0.7" />
+      <path d="M72 22c7-8 14-10 22-8-2 9-9 14-20 14" fill="#3fb85a" stroke="#167238" strokeWidth="2" />
+    </svg>
+  )
+}
+
+export function SlotBell(props) {
+  const gid = useId()
+  return (
+    <svg viewBox="0 0 100 100" {...props}>
+      <defs><GoldGradient id={gid} vertical /></defs>
+      <path d="M40 18c0-6 4-10 10-10s10 4 10 10" fill="none" stroke={GOLD_DEEP} strokeWidth="5" strokeLinecap="round" />
+      <path d="M22 72c8-8 10-20 10-34 0-13 8-22 18-22s18 9 18 22c0 14 2 26 10 34H22Z" fill={`url(#${gid})`} stroke={GOLD_DEEP} strokeWidth="3" />
+      <path d="M19 72h62c3 0 5 2 5 5s-2 5-5 5H19c-3 0-5-2-5-5s2-5 5-5Z" fill="#ffeaa0" stroke={GOLD_DEEP} strokeWidth="3" />
+      <circle cx="50" cy="82" r="7" fill={GOLD_DEEP} />
+      <path d="M39 31c-4 8-5 20-4 31" stroke="#fff7cc" strokeWidth="4" strokeLinecap="round" opacity="0.56" />
+    </svg>
+  )
+}
+
+export function SlotStar(props) {
+  const gid = useId()
+  return (
+    <svg viewBox="0 0 100 100" {...props}>
+      <defs><GoldGradient id={gid} /></defs>
+      <path d="M50 9l10.5 25.3 27.3 2.2-20.8 18 6.4 26.8L50 67.1 26.6 82.3 33 55.5l-20.8-18 27.3-2.2L50 9Z" fill={`url(#${gid})`} stroke="#8b4d00" strokeWidth="3" />
+      <path d="M50 22l6.7 16.2 17.4 1.4-13.3 11.5 4.1 17.1L50 58.5 35.1 68.2l4.1-17.1-13.3-11.5 17.4-1.4L50 22Z" fill="#fff3b8" opacity="0.45" />
+    </svg>
+  )
+}
+
+export function SlotSeven(props) {
+  const gid = useId()
+  return (
+    <svg viewBox="0 0 100 100" {...props}>
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#ff5968" />
+          <stop offset="0.55" stopColor="#d20a18" />
+          <stop offset="1" stopColor="#75030b" />
+        </linearGradient>
+      </defs>
+      <path d="M20 16h63l-5 19c-16 11-25 28-31 51H22c6-23 18-42 35-56H16l4-14Z" fill={`url(#${gid})`} stroke="#4d0007" strokeWidth="4" strokeLinejoin="round" />
+      <path d="M28 24h41M43 78c5-17 13-32 26-44" stroke="#fff0a8" strokeWidth="5" strokeLinecap="round" opacity="0.48" />
+      <path d="M18 14h63" stroke="#fff7c6" strokeWidth="3" strokeLinecap="round" opacity="0.72" />
+    </svg>
+  )
+}
+
 // ---- 捕魚機魚種 ----
 
 function FishBase({ body, tail, fin, eye = '#1b0b06', children, ...props }) {

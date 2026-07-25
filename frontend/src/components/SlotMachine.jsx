@@ -58,6 +58,10 @@ export default function SlotMachine({
   symbols = defaultSymbols,
   symbolHeight: symbolHeightProp,
   fullscreen = false,
+  fitToContainer = false,
+  jackpotHit = false,
+  winAmount = 0,
+  winMultiplier = 0,
 }) {
   const [responsiveSymbolHeight, setResponsiveSymbolHeight] = useState(() =>
     getResponsiveSymbolHeight(compact)
@@ -79,6 +83,8 @@ export default function SlotMachine({
   const winningCellSet = useMemo(() => new Set(winningCells.map(([row, col]) => `${row}-${col}`)), [winningCells])
   const visualBusy = phase !== 'idle' || externalSpinning
   const hasWin = winningCells.length > 0
+  const showWinPop = hasWin && !visualBusy && winAmount > 0
+  const shouldFitCabinet = fullscreen || fitToContainer
 
   useEffect(() => {
     return () => abortRef.current?.abort()
@@ -126,7 +132,7 @@ export default function SlotMachine({
 
     const widthBased = () => getResponsiveSymbolHeight(compact)
 
-    if (!fullscreen) {
+    if (!shouldFitCabinet) {
       const handleResize = () => setResponsiveSymbolHeight(widthBased())
       handleResize()
       window.addEventListener('resize', handleResize)
@@ -153,17 +159,25 @@ export default function SlotMachine({
 
     fitToCabinet()
 
+    const refitTimers = [window.setTimeout(fitToCabinet, 0), window.setTimeout(fitToCabinet, 140)]
+
     // 走 window.ResizeObserver 而非裸的 ResizeObserver：專案 ESLint 的 env 沒宣告這個全域，
     // 裸用會被 no-undef 擋下；順帶讓「瀏覽器不支援就退回 resize 事件」的判斷更直白。
     if (!cabinet || typeof window.ResizeObserver === 'undefined') {
       window.addEventListener('resize', fitToCabinet)
-      return () => window.removeEventListener('resize', fitToCabinet)
+      return () => {
+        refitTimers.forEach((timer) => window.clearTimeout(timer))
+        window.removeEventListener('resize', fitToCabinet)
+      }
     }
 
     const observer = new window.ResizeObserver(fitToCabinet)
     observer.observe(cabinet)
-    return () => observer.disconnect()
-  }, [compact, symbolHeightProp, fullscreen])
+    return () => {
+      refitTimers.forEach((timer) => window.clearTimeout(timer))
+      observer.disconnect()
+    }
+  }, [compact, symbolHeightProp, shouldFitCabinet, fullscreen])
 
   useEffect(() => {
     if (phase !== 'idle' || !grid || sameGrid(grid, handledGridRef.current)) return
@@ -283,6 +297,7 @@ export default function SlotMachine({
       className={[
         'slot-machine luxury-panel rounded p-4 sm:p-5',
         compact ? 'slot-machine--compact' : '',
+        shouldFitCabinet ? 'slot-machine--fit' : '',
         visualBusy ? 'slot-machine--live' : '',
       ].join(' ')}
       style={{ '--slot-symbol-height': `${symbolHeight}px` }}
@@ -293,16 +308,15 @@ export default function SlotMachine({
         ))}
       </div>
 
-      <div className="slot-machine__topper">
+      <div className={['slot-machine__topper', jackpotHit && !visualBusy ? 'slot-machine__topper--jackpot-hit' : ''].join(' ')}>
         <div>
           <p className="slot-machine__eyebrow">Lucky Star Deluxe</p>
-          <h2 className="slot-machine__title">星幣老虎機</h2>
+          <h2 className="slot-machine__title">Lucky 777</h2>
         </div>
-        <div className="slot-machine__jackpot" aria-label="Jackpot">
-          <span>GRAND</span>
-          <strong>
-            <CountUp value={jackpot} duration={2000} />
-          </strong>
+        <div className={['slot-machine__jackpot', jackpotHit && !visualBusy ? 'slot-machine__jackpot--hit' : ''].join(' ')} aria-label="Jackpot">
+          <span>{jackpotHit && !visualBusy ? 'GRAND HIT' : 'TOP AWARD'}</span>
+          <strong>{jackpotHit && !visualBusy ? '70x' : <CountUp value={jackpot} duration={2000} />}</strong>
+          <em>{jackpotHit && !visualBusy ? '紅 7 三連' : '紅 7 三連 70x'}</em>
         </div>
       </div>
 
@@ -335,6 +349,13 @@ export default function SlotMachine({
           ))}
         </div>
         <div className="slot-machine__glass" aria-hidden="true" />
+        {showWinPop && (
+          <div className={['slot-win-pop', jackpotHit ? 'slot-win-pop--jackpot' : ''].join(' ')} aria-live="polite">
+            <span>{jackpotHit ? 'GRAND HIT' : 'LINE WIN'}</span>
+            <strong>{Number(winAmount || 0).toLocaleString()}</strong>
+            <em>{winMultiplier}x paid</em>
+          </div>
+        )}
       </div>
 
       <div className="slot-console">
