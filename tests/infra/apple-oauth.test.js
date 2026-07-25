@@ -1,8 +1,15 @@
 import { generateKeyPairSync, verify } from 'node:crypto';
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { createAppleClientSecret } from '../../tools/generate-apple-client-secret.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(__dirname, '../..');
 
 function decodePart(value) {
   return JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
@@ -71,4 +78,38 @@ describe('Apple OAuth client secret generator', () => {
       /lifetimeSeconds/,
     );
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Apple 私鑰的忽略規則曾在 PR #271 被無聲刪除（當時沒有任何測試守著它），
+// 而 DEPLOY.md 仍寫著「專案已忽略所有 .p8 檔案」。以下斷言把文件承諾釘成機械檢查。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Apple OAuth 私鑰不得進入 repo', () => {
+
+  const ignoreRules = readFileSync(resolve(ROOT, '.gitignore'), 'utf-8')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'));
+
+  for (const rule of ['*.p8', 'apple-client-secret*.txt']) {
+    test(`.gitignore 應忽略 ${rule}`, () => {
+      assert.ok(
+        ignoreRules.includes(rule),
+        `.gitignore 缺少 ${rule}；Apple 簽章私鑰只能下載一次，誤 commit 無法挽回`,
+      );
+    });
+  }
+
+  test('repo 內不應存在任何已追蹤的 .p8 或 client secret 檔案', () => {
+    const tracked = execFileSync(
+      'git',
+      ['ls-files', '-z', '*.p8', 'apple-client-secret*.txt'],
+      { cwd: ROOT, encoding: 'utf-8' },
+    )
+      .split('\0')
+      .filter(Boolean);
+
+    assert.deepEqual(tracked, [], `以下機密檔案已被 git 追蹤：${tracked.join(', ')}`);
+  });
+
 });

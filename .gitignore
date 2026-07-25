@@ -48,6 +48,10 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+# Sign in with Apple 的簽章私鑰（Apple 只給下載一次）與由它簽出的 client secret。
+# 這兩條規則本身不含任何機密，純粹是誤 commit 的機械防線 —— 勿再移除（見 DEPLOY.md §第三方登入設定）。
+*.p8
+apple-client-secret*.txt
 
 # =========================
 # Docker
