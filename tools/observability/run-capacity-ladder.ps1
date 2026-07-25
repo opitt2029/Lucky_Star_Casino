@@ -107,6 +107,45 @@ if ($OfferedRpsSteps.Count -gt 0) {
     }
 }
 
+# ── 開跑前先擋「陣列被 -File 吃掉」（2026-07-23，AGENTS.md 雷區 27）──────────
+# 用 `powershell -File ladder.ps1 -ThreadsPerStep 100,3000` 傳陣列時，兩個值會被當成
+# 單一字串 "100,3000" 再轉型成 int —— PowerShell 的數字轉型會把逗號當千分位，
+# 結果是 **1003000**，而且不會報錯。ThreadsPerStep 與 OfferedRpsSteps 同時被壓成
+# 1 元素，所以既有的「兩陣列等長」檢查也抓不到。實測確認過這個行為。
+# 這裡只做粗略的合理性上界：單機施壓不可能開到這種量級，撞到就是傳參方式錯了。
+$absurdThreads = @($plan | Where-Object { $_.threads -gt 20000 })
+$absurdRps = @($plan | Where-Object { $_.offeredRpsTarget -gt 100000 })
+if ($absurdThreads.Count -gt 0 -or $absurdRps.Count -gt 0) {
+    $threadList = ($plan | ForEach-Object { $_.threads }) -join ','
+    $rpsList = ($plan | ForEach-Object { $_.offeredRpsTarget }) -join ','
+    $msg = "[ladder] 參數不合理（threads=$threadList；offered=$rpsList req/s）。`n"
+    $msg += "  最可能的原因：用「powershell -File」傳了陣列參數。-File 會把「100,3000」當成一個字串"
+    $msg += "再轉成數字 1003000（逗號被當千分位），而且不會報錯。`n"
+    $msg += "  改用「&」直接呼叫（AGENTS.md 雷區 27）：`n"
+    $msg += "    & .\tools\observability\run-capacity-ladder.ps1 -OfferedRpsSteps @(50,100) -ThreadsPerStep @(100,150) ..."
+    throw $msg
+}
+
+# ── 開跑前先擋玩家數不足（2026-07-23）───────────────────────────────────────
+# run-slot-load-test.ps1 每階起跑時會檢查 players.csv 列數 >= threads，不足就 throw。
+# 問題是它 throw 在建結果資料夾「之前」，那一階不會留下任何產物——不先擋的話，階梯會
+# 一路跑到最貴的高階才失敗（前面已經燒掉 30 分鐘以上），而且失敗方式很難看出來（見下方
+# runDir 歸屬判定）。玩家數是開跑前就能確定的事，就在開跑前一次問完。
+$playersCsv = Join-Path $repoRoot "tests\performance\players.csv"
+if (-not (Test-Path $playersCsv)) {
+    throw "[ladder] 找不到 $playersCsv。先跑 tests/performance/provision-players.mjs 準備玩家帳號。"
+}
+$playerRows = (Get-Content -LiteralPath $playersCsv | Measure-Object -Line).Lines - 1   # 扣掉表頭
+$maxThreads = ($plan | ForEach-Object { $_.threads } | Measure-Object -Maximum).Maximum
+if ($playerRows -lt $maxThreads) {
+    throw ("[ladder] players.csv 只有 {0} 名玩家，但本階梯最高階要開 {1} 條執行緒。`n" +
+        "  執行緒數 > 玩家數會讓 JMeter 的 CSV DataSet recycle，兩條執行緒共用同一個玩家 ⇒`n" +
+        "  wallet 樂觀鎖衝突，量到的是施壓機造成的假失敗，不是 SUT 的容量極限。`n" +
+        "  解法：PLAYERS={2} node tests/performance/provision-players.mjs（建議再多留 100 名裕度），`n" +
+        "  或把 -ThreadsPerStep 的上限壓到 {0} 以內。") -f $playerRows, $maxThreads, $maxThreads
+}
+Write-Host "[ladder] players.csv：$playerRows 名玩家，最高階需 $maxThreads 條執行緒 — 足夠。"
+
 foreach ($step in $plan) {
     $stepIndex++
     $threads = $step.threads
@@ -132,6 +171,11 @@ foreach ($step in $plan) {
         $extraArgs += '-NoHtmlReport'
     }
 
+    # 開跑前記下「已經存在哪些結果資料夾」，跑完只認新出現的那一個（見下方歸屬判定）。
+    # 用名單比對而不是比時間戳：不受兩台機器時鐘差、檔案系統時間精度、時區的影響。
+    $runDirsBefore = @(Get-ChildItem -Path $resultsRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notlike "ladder-*" } | Select-Object -ExpandProperty Name)
+
     $cpuSampler = Start-HostJavaCpuSampler   # P3：step 進行中量 host java（JMeter）CPU
     & powershell -NoProfile -ExecutionPolicy Bypass -File $runnerPath `
         -JMeter $JMeter -HostName $SutHost -Port $SutPort `
@@ -143,10 +187,26 @@ foreach ($step in $plan) {
 
     $endMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 
-    # 取這一階 runner 產出的資料夾（排除 ladder-* 自己）
+    # 取這一階 runner 產出的資料夾（排除 ladder-* 自己，且必須是這一階「新出現」的）。
+    #
+    # 2026-07-23：舊寫法是「取最新的一個資料夾」，不管它是不是這一階產生的。runner 在
+    # 玩家數不足時會 throw，而那個 throw 發生在 New-Item $resultDir 之前 ⇒ 該階根本沒有
+    # 自己的資料夾 ⇒ 舊寫法會靜默取到「上一階」的資料夾，拿上一階的 JTL 重算，產出一列
+    # 標著這一階 offeredRpsTarget 的假數據。整輪跑完看起來完全正常。
+    # 跟 2026-07-22 修掉的「summarize 失敗靜默寫空白列」是同一類 bug，只是換了個入口：
+    # **量測腳本沉默地拿到錯的東西，比大聲失敗危險得多。**
     $runDir = Get-ChildItem -Path $resultsRoot -Directory |
-        Where-Object { $_.Name -notlike "ladder-*" } |
+        Where-Object { $_.Name -notlike "ladder-*" -and $_.Name -notin $runDirsBefore } |
         Sort-Object CreationTime -Descending | Select-Object -First 1
+
+    if ($null -eq $runDir) {
+        throw ("[ladder] 第 {0} 階（目標 offered {1} req/s、threads={2}）沒有產生任何結果資料夾" +
+            "（runner exit={3}）。代表 runner 在建立結果資料夾之前就失敗了，最常見的原因是" +
+            "players.csv 列數不足、JMeter 執行檔找不到，或 -JMeter 路徑有誤。`n" +
+            "  此處中止：若繼續，這一階會取到上一階的資料夾，產出一列看不出錯的假數據。`n" +
+            "  已完成的 {4} 階結果仍在 {5}。") -f `
+            $stepIndex, $step.offeredRpsTarget, $threads, $exitCode, ($stepIndex - 1), $ladderDir
+    }
 
     # 直接讀 JTL 重算，不解析 markdown：markdown 是給人看的，格式一改就爆
     $statsJson = & node (Join-Path $scriptDir "summarize-jtl.mjs") (Join-Path $runDir.FullName "results.jtl") $WarmupSeconds

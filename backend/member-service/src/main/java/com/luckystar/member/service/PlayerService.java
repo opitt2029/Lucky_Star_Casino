@@ -5,16 +5,21 @@ import com.luckystar.member.dto.SocialBindingResponse;
 import com.luckystar.member.dto.SocialBindingStartResponse;
 import com.luckystar.member.dto.UpdateProfileRequest;
 import com.luckystar.member.entity.Member;
+import com.luckystar.member.entity.MemberSocialAccount;
 import com.luckystar.member.exception.MemberNotFoundException;
 import com.luckystar.member.exception.NoUpdateFieldException;
 import com.luckystar.member.repository.MemberRepository;
+import com.luckystar.member.repository.MemberSocialAccountRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.List;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -23,6 +28,8 @@ public class PlayerService {
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
     private final MemberRepository memberRepository;
+    private final MemberSocialAccountRepository socialAccountRepository;
+    private final SocialAuthService socialAuthService;
 
     @Transactional(readOnly = true)
     public ProfileResponse getProfile(Long playerId) {
@@ -53,43 +60,28 @@ public class PlayerService {
     @Transactional(readOnly = true)
     public List<SocialBindingResponse> getSocialBindings(Long playerId) {
         findMember(playerId);
+        Map<String, MemberSocialAccount> accounts = socialAccountRepository
+                .findAllByMemberId(playerId)
+                .stream()
+                .collect(Collectors.toMap(
+                        MemberSocialAccount::getProvider,
+                        Function.identity()));
         return Arrays.stream(SocialProvider.values())
-                .map(provider -> demoSocialBinding(provider, false))
+                .map(provider -> socialBinding(provider, accounts.get(provider.id())))
                 .toList();
     }
 
-    @Transactional(readOnly = true)
     public SocialBindingStartResponse startSocialBinding(Long playerId, String providerId) {
-        findMember(playerId);
-        SocialProvider provider = SocialProvider.fromId(providerId);
-        String ticket = "demo-" + provider.id() + "-" + playerId;
-        String authorizationUrl = "/api/v1/player/social-bindings/"
-                + provider.id()
-                + "/authorize?ticket="
-                + ticket;
-        return new SocialBindingStartResponse(
-                provider.id(),
-                provider.label(),
-                "READY",
-                authorizationUrl
-        );
+        return socialAuthService.startBinding(playerId, providerId);
     }
 
-    @Transactional(readOnly = true)
-    public SocialBindingResponse completeSocialBinding(
-            Long playerId,
-            String providerId,
-            String externalAccountId) {
-        findMember(playerId);
-        SocialProvider provider = SocialProvider.fromId(providerId);
-        return demoSocialBinding(provider, true);
-    }
-
-    @Transactional(readOnly = true)
+    @Transactional
     public SocialBindingResponse removeSocialBinding(Long playerId, String providerId) {
         findMember(playerId);
         SocialProvider provider = SocialProvider.fromId(providerId);
-        return demoSocialBinding(provider, false);
+        socialAccountRepository.findByMemberIdAndProvider(playerId, provider.id())
+                .ifPresent(socialAccountRepository::delete);
+        return socialBinding(provider, null);
     }
 
     /**
@@ -121,14 +113,32 @@ public class PlayerService {
         );
     }
 
-    private SocialBindingResponse demoSocialBinding(SocialProvider provider, boolean bound) {
+    private SocialBindingResponse socialBinding(
+            SocialProvider provider,
+            MemberSocialAccount account) {
+        boolean bound = account != null;
         return new SocialBindingResponse(
                 provider.id(),
                 provider.label(),
                 bound,
                 bound ? "BOUND" : "UNBOUND",
                 "/profile/social-bindings/" + provider.id(),
-                bound ? "demo-linked" : null
+                bound ? maskAccount(account) : null
         );
+    }
+
+    private String maskAccount(MemberSocialAccount account) {
+        String email = account.getEmail();
+        if (email != null && email.contains("@")) {
+            int at = email.indexOf('@');
+            String local = email.substring(0, at);
+            String visible = local.substring(0, Math.min(2, local.length()));
+            return visible + "***" + email.substring(at);
+        }
+        String subject = account.getProviderSubject();
+        if (subject == null || subject.length() <= 4) {
+            return "****";
+        }
+        return "****" + subject.substring(subject.length() - 4);
     }
 }

@@ -3344,3 +3344,85 @@
   background: linear-gradient(90deg, rgba(255, 255, 225, 0.96), rgba(255, 197, 50, 0.95));
   box-shadow: 0 0 12px rgba(255, 217, 94, 0.65);
 }
+
+/* ---------------------------------------------------------------------------
+   全螢幕：點「本局捕獲統計」抽屜（或任何讓內容變高的操作）之後，整個全螢幕畫面
+   往上跳且回不來。
+
+   原因（實測 1920x1080 全螢幕）：.fishing-main 是 display: grid 的隱式列版面，
+   第三列 .fishing-play-surface 拿到剩餘空間（858px），但它自己是 display: block，
+   內含「.fishing-stage-card（height: 100% → 858px）」＋「統計抽屜（50px）」，
+   合計 908px > 858px。溢出往上累積成 .fishing-main 的 scrollHeight 1114 > 1080。
+
+   .fishing-main 是 overflow: hidden，沒有捲軸但**仍可被程式捲動**——瀏覽器把
+   剛點開的 <details> 捲進可視範圍時，scrollTop 變成 33，整個全螢幕面板（含頂列）
+   往上位移 33px，而使用者沒有捲軸可以捲回來。這就是「一操作整個畫面就跑掉」。
+   抽屜展開後溢出擴大到 81px，情況更明顯。
+
+   修法：改 flex 直向排列（不依賴子元素數量——錯誤訊息列 .fishing-api-alert 是
+   條件顯示的，grid 隱式列一多一少就會重新分配所有列高，畫面比例整個改變）。
+   舞台卡吸收剩餘空間，抽屜只佔內容高度，展開面板自己捲。修好之後
+   scrollHeight == clientHeight，容器再也捲不動，位移就不可能發生。
+   --------------------------------------------------------------------------- */
+.fishing-game--fullscreen {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fishing-game--fullscreen > * {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.fishing-game--fullscreen > .fishing-play-surface {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fishing-game--fullscreen .fishing-play-surface > .fishing-stage-card {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* 覆寫上方 .fishing-game--fullscreen .fishing-stage-card 的 height: 100%：
+     在 flex 直向排列下那會等於「整個 play-surface 高度」，把抽屜擠出畫面。 */
+  height: auto;
+}
+
+.fishing-game--fullscreen .fishing-play-surface > .fishing-catch-stats-drawer {
+  flex: 0 0 auto;
+}
+
+/* 抽屜展開後改由自己捲，不再把高度推給外層（外層一被推高就會重現位移）。 */
+.fishing-game--fullscreen .fishing-catch-stats-drawer__panel {
+  max-height: min(24vh, 200px);
+  overflow-y: auto;
+}
+
+/* 但「自己捲」還不夠：抽屜展開後仍會多佔 48px，那 48px 是從舞台卡身上扣的，
+   漁場畫布因此縮一截。canvas 一縮 Pixi 就重算尺寸、整批魚位置跳動——這正是
+   「操作一下畫面就被壓縮」的另一種形狀。
+   全螢幕改成往上浮在舞台之上（absolute + bottom: 100%），版面高度完全不變，
+   畫布尺寸不動，魚群也不會因為開個統計面板而重排。 */
+.fishing-game--fullscreen .fishing-catch-stats-drawer {
+  /* position: relative 是必要的：唯一有定位的祖先是 .fishing-fullscreen-surface
+     （整個全螢幕面板），少了這行，下面的 bottom: 100% 會以「整個面板的高度」起算，
+     浮層直接被推到畫面上緣之外看不見。 */
+  position: relative;
+  overflow: visible;
+}
+
+.fishing-game--fullscreen .fishing-catch-stats-drawer[open] .fishing-catch-stats-drawer__panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  z-index: 12;
+  margin-bottom: 6px;
+  padding: 12px;
+  border: 1px solid rgba(255, 229, 140, 0.34);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(126, 13, 37, 0.96), rgba(8, 30, 48, 0.98));
+  box-shadow: 0 -14px 34px rgba(0, 0, 0, 0.46);
+}

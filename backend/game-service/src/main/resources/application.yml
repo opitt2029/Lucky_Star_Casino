@@ -1,5 +1,10 @@
 server:
   port: 8083
+  tomcat:
+    mbeanregistry:
+      # 開啟 Tomcat MBean 才會暴露 tomcat_threads_busy/current 指標（否則 /actuator/prometheus
+      # 只有 tomcat_sessions_*，看不到執行緒池飽和）。壓測診斷前提，執行期開銷可忽略。（T-090 觀測補齊）
+      enabled: true
 
 spring:
   config:
@@ -69,6 +74,9 @@ management:
       percentiles-histogram:
         # P99 直方圖（T-090 觀測性）：供 Prometheus histogram_quantile 計算延遲分位數
         "[http.server.requests]": true
+        # game→wallet outbound 呼叫的 P99（T-090 §5.2 分層歸因）：
+        # 有這條才不用靠「game P99 減 wallet P99」相減推論延遲主體在哪一層。
+        "[http.client.requests]": true
   endpoints:
     web:
       exposure:

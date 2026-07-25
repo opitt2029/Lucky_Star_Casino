@@ -9,8 +9,12 @@ import { fetchDiamondBalance } from '../store/slices/diamondSlice'
 import { fetchWallet } from '../store/slices/walletSlice'
 import { getBackgroundStyle } from '../theme/backgroundTheme'
 import { getBirthDateMax, isAdultBirthDate, socialProviders } from '../utils/memberPreferences'
+import { memberApi, extractError } from '../services/memberApi'
 
-const defaultLogin = { username: 'test', password: 'test1234' }
+const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
+const defaultLogin = useMockApi
+  ? { username: 'test', password: 'test1234' }
+  : { username: 'tester01', password: 'Password1' }
 const defaultRegister = {
   username: '',
   nickname: '',
@@ -31,6 +35,7 @@ export default function Member() {
   const [loginForm, setLoginForm] = useState(defaultLogin)
   const [registerForm, setRegisterForm] = useState(defaultRegister)
   const [memberNotice, setMemberNotice] = useState('')
+  const [socialLoading, setSocialLoading] = useState('')
   const from = location.state?.from?.pathname || '/games'
   const birthDateMax = getBirthDateMax()
   const registerAgeError = registerForm.birthDate && !isAdultBirthDate(registerForm.birthDate)
@@ -96,8 +101,19 @@ export default function Member() {
     }
   }
 
-  const handleSocialLogin = (provider) => {
-    setMemberNotice(`${provider.label} 登入目前需先綁定帳戶。請先用帳號密碼登入，再到會員中心完成綁定。`)
+  const handleSocialLogin = async (provider) => {
+    setSocialLoading(provider.id)
+    setMemberNotice('')
+    try {
+      const start = await memberApi.startSocialLogin(provider.id)
+      window.location.assign(start.authorizationUrl)
+    } catch (socialError) {
+      setMemberNotice(
+        extractError(socialError) ||
+          `${provider.label} 登入目前無法啟動，請確認帳戶已綁定。`,
+      )
+      setSocialLoading('')
+    }
   }
 
   const handleRegisterSubmit = async (event) => {
@@ -137,7 +153,8 @@ export default function Member() {
               登入後開始遊玩
             </h1>
             <p className="mt-5 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
-              登入或建立帳號後，就能進入遊戲大廳、鑽石錢包與會員中心。測試帳號 test / test1234 已預填，可直接體驗目前流程。
+              登入或建立帳號後，就能進入遊戲大廳、鑽石錢包與會員中心。測試帳號{' '}
+              {defaultLogin.username} / {defaultLogin.password} 已預填，可直接體驗目前流程。
             </p>
           </div>
           <DecorativeAsset assetKey="memberHero" className="min-h-[340px]" />
@@ -209,9 +226,10 @@ export default function Member() {
                     key={provider.id}
                     type="button"
                     onClick={() => handleSocialLogin(provider)}
+                    disabled={Boolean(socialLoading)}
                     className={`rounded border px-3 py-3 text-sm font-black transition hover:brightness-125 ${provider.accentClass}`}
                   >
-                    {provider.label}
+                    {socialLoading === provider.id ? '連線中...' : provider.label}
                   </button>
                 ))}
               </div>

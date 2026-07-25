@@ -1,7 +1,6 @@
 package com.luckystar.member.controller;
 
 import com.luckystar.member.dto.ApiResponse;
-import com.luckystar.member.dto.CompleteSocialBindingRequest;
 import com.luckystar.member.dto.ProfileResponse;
 import com.luckystar.member.dto.SocialBindingResponse;
 import com.luckystar.member.dto.SocialBindingStartResponse;
@@ -55,16 +54,6 @@ public class PlayerController {
         return ResponseEntity.ok(ApiResponse.success(
                 playerService.startSocialBinding(currentPlayerId(), provider),
                 "Social binding started"));
-    }
-
-    @PostMapping("/social-bindings/{provider}/complete")
-    public ResponseEntity<ApiResponse<SocialBindingResponse>> completeSocialBinding(
-            @PathVariable String provider,
-            @Valid @RequestBody(required = false) CompleteSocialBindingRequest request) {
-        String externalAccountId = request != null ? request.getExternalAccountId() : null;
-        return ResponseEntity.ok(ApiResponse.success(
-                playerService.completeSocialBinding(currentPlayerId(), provider, externalAccountId),
-                "Social binding completed"));
     }
 
     @DeleteMapping("/social-bindings/{provider}")

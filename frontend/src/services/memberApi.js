@@ -31,6 +31,12 @@ function mapProfile(data) {
   }
 }
 
+function gatewayUrl(path) {
+  if (!path || /^https?:\/\//i.test(path)) return path
+  const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '')
+  return `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`
+}
+
 const friendlyErrorMap = {
   'Network Error': '連線失敗，請稍後再試',
   'Invalid username or password': '帳號或密碼錯誤',
@@ -98,6 +104,35 @@ export const memberApi = {
     return { accessToken, refreshToken, expiresIn, player }
   },
 
+  async startSocialLogin(provider) {
+    if (useMockApi) {
+      return mockApi.startSocialLogin(provider)
+    }
+    const res = await api.post(`/api/v1/auth/social/${provider}/start`)
+    return {
+      ...res.data.data,
+      authorizationUrl: gatewayUrl(res.data.data.authorizationUrl),
+    }
+  },
+
+  async exchangeSocialLogin(ticket) {
+    if (useMockApi) {
+      return mockApi.exchangeSocialLogin(ticket)
+    }
+    const res = await api.post('/api/v1/auth/social/exchange', { ticket })
+    const { accessToken, refreshToken, expiresIn } = res.data.data
+    const profileRes = await api.get('/api/v1/player/profile', {
+      skipAuthRedirect: true,
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    return {
+      accessToken,
+      refreshToken,
+      expiresIn,
+      player: mapProfile(profileRes.data.data),
+    }
+  },
+
   async register({ username, email, password, nickname }) {
     if (useMockApi) {
       return mockApi.register({ username, email, password, nickname })
@@ -155,16 +190,10 @@ export const memberApi = {
       return mockApi.startSocialBinding(provider)
     }
     const res = await api.post(`/api/v1/player/social-bindings/${provider}/start`)
-    return res.data.data
-  },
-
-  async completeSocialBinding(provider, externalAccountId) {
-    if (useMockApi) {
-      return mockApi.completeSocialBinding(provider, externalAccountId)
+    return {
+      ...res.data.data,
+      authorizationUrl: gatewayUrl(res.data.data.authorizationUrl),
     }
-    const body = externalAccountId ? { externalAccountId } : {}
-    const res = await api.post(`/api/v1/player/social-bindings/${provider}/complete`, body)
-    return res.data.data
   },
 
   async removeSocialBinding(provider) {

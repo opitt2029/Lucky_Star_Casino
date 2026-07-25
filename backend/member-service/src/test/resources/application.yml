@@ -1,5 +1,34 @@
 spring:
+  datasource:
+    url: jdbc:h2:mem:memberdb;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
   jpa:
+    hibernate:
+      ddl-auto: create-drop
     properties:
       hibernate:
         dialect: org.hibernate.dialect.H2Dialect
+  kafka:
+    listener:
+      auto-startup: false
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: test-google-client
+            client-secret: test-google-secret
+            scope:
+              - openid
+              - profile
+              - email
+
+jwt:
+  secret: test-jwt-secret-must-be-at-least-32-bytes-long
+  access-token-expiry-ms: 900000
+  refresh-token-expiry-ms: 604800000
+
+internal:
+  secret: test-internal-secret-must-be-at-least-32-bytes-long

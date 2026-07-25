@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, Navigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import SocialProviderIcon from '../components/SocialProviderIcon'
 import { memberApi } from '../services/memberApi'
@@ -7,13 +7,13 @@ import { socialProviders } from '../utils/memberPreferences'
 
 export default function SocialBinding() {
   const { provider: providerParam } = useParams()
+  const [searchParams] = useSearchParams()
   const providerId = String(providerParam || '').toLowerCase()
   const provider = useMemo(
     () => socialProviders.find((item) => item.id === providerId),
     [providerId],
   )
   const [binding, setBinding] = useState(null)
-  const [startInfo, setStartInfo] = useState(null)
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
   const [successOpen, setSuccessOpen] = useState(false)
@@ -25,15 +25,16 @@ export default function SocialBinding() {
     let active = true
     setLoading(true)
     setError('')
-    setMessage('')
-    Promise.all([memberApi.getSocialBindings(), memberApi.startSocialBinding(provider.id)])
-      .then(([bindings, start]) => {
+    const bindingSucceeded = searchParams.get('status') === 'success'
+    setMessage(bindingSucceeded ? `${provider.label} 已完成綁定` : '')
+    setSuccessOpen(bindingSucceeded)
+    memberApi.getSocialBindings()
+      .then((bindings) => {
         if (!active) return
         setBinding((bindings || []).find((item) => item.provider === provider.id) || null)
-        setStartInfo(start)
       })
       .catch(() => {
-        if (active) setError('確認連結暫時無法產生，請稍後再試。')
+        if (active) setError('無法取得綁定狀態，請稍後再試。')
       })
       .finally(() => {
         if (active) setLoading(false)
@@ -41,22 +42,19 @@ export default function SocialBinding() {
     return () => {
       active = false
     }
-  }, [provider])
+  }, [provider, searchParams])
 
   if (!provider) return <Navigate to="/profile" replace />
 
-  const completeBinding = async () => {
+  const beginBinding = async () => {
     setWorking(true)
     setError('')
     setMessage('')
     try {
-      const next = await memberApi.completeSocialBinding(provider.id)
-      setBinding(next)
-      setMessage(provider.label + ' 已完成綁定')
-      setSuccessOpen(true)
-    } catch {
-      setError('綁定失敗，請稍後再試。')
-    } finally {
+      const start = await memberApi.startSocialBinding(provider.id)
+      window.location.assign(start.authorizationUrl)
+    } catch (bindingError) {
+      setError(bindingError.response?.data?.message || '無法啟動綁定，請稍後再試。')
       setWorking(false)
     }
   }
@@ -78,7 +76,6 @@ export default function SocialBinding() {
   }
 
   const bound = Boolean(binding?.bound)
-  const authorizationUrl = startInfo?.authorizationUrl || ''
   const panelClassName = ['luxury-panel rounded p-6', provider.accentClass, provider.glowClass]
     .filter(Boolean)
     .join(' ')
@@ -97,26 +94,28 @@ export default function SocialBinding() {
               <h1 className="brand-title text-3xl font-black">綁定 {provider.label}</h1>
               <p className="mt-2 text-sm font-bold text-yellow-100/70">
                 {bound
-                  ? '目前已完成示範綁定，可以回會員中心查看狀態。'
-                  : '確認連結產生後，按下完成綁定就會進入成功畫面。'}
+                  ? '此帳戶已完成 OAuth 綁定，現在可以使用第三方登入。'
+                  : '前往第三方官方授權頁，確認身分後會自動返回。'}
               </p>
             </div>
           </div>
         </div>
 
         <div className="luxury-panel-soft rounded p-6">
-          <h2 className="brand-title text-2xl font-black">確認你的綁定連結</h2>
+          <h2 className="brand-title text-2xl font-black">第三方帳戶授權</h2>
           <div className="mt-5 grid gap-3 text-sm font-bold text-yellow-100/72">
             <div className="rounded border border-yellow-200/15 bg-red-950/60 p-4">
-              <p className="text-yellow-100">本次確認連結</p>
+              <p className="text-yellow-100">授權方式</p>
               <p className="mt-2 break-all text-yellow-100/58">
-                {loading ? '正在產生確認連結...' : authorizationUrl || '目前沒有可用的確認連結'}
+                {loading
+                  ? '正在確認綁定狀態...'
+                  : `使用 ${provider.label} OAuth 2.0 / OpenID Connect 驗證`}
               </p>
             </div>
             <div className="rounded border border-yellow-200/15 bg-red-950/60 p-4">
               <p className="text-yellow-100">接下來會發生什麼</p>
               <p className="mt-2 text-yellow-100/58">
-                這是展示版綁定流程。系統會模擬完成驗證，讓你可以先確認使用者體驗與畫面狀態。
+                系統只保存第三方提供的穩定帳戶識別碼，不會取得或保存你的第三方密碼。
               </p>
             </div>
           </div>
@@ -140,16 +139,16 @@ export default function SocialBinding() {
                 disabled={working || loading}
                 className="red-gold-button rounded px-5 py-3 text-sm font-black disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {working ? '處理中...' : '解除示範綁定'}
+                {working ? '處理中...' : '解除綁定'}
               </button>
             ) : (
               <button
                 type="button"
-                onClick={completeBinding}
-                disabled={working || loading || !authorizationUrl}
+                onClick={beginBinding}
+                disabled={working || loading}
                 className="gold-button rounded px-5 py-3 text-sm font-black disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {working ? '綁定中...' : '確認並完成 ' + provider.label + ' 綁定'}
+                {working ? '正在前往授權...' : '使用 ' + provider.label + ' 完成綁定'}
               </button>
             )}
             <Link to="/profile" className="red-gold-button rounded px-5 py-3 text-sm font-black">
@@ -170,11 +169,11 @@ export default function SocialBinding() {
               {provider.label} 綁定成功
             </h2>
             <p className="mx-auto mt-3 max-w-sm text-sm font-bold leading-6 text-yellow-100/72">
-              已經幫你把 {provider.label} 帳戶加入會員中心。之後登入或驗證帳戶時，玩家會更清楚知道這個帳戶已經準備好了。
+              {provider.label} 帳戶已安全加入會員中心，之後可以直接從登入頁使用第三方登入。
             </p>
             <div className="mt-5 grid gap-2 rounded border border-yellow-200/15 bg-red-950/60 p-4 text-left text-sm font-bold text-yellow-100/70">
-              <p className="text-yellow-100">目前狀態：已完成示範綁定</p>
-              <p>你可以回會員中心查看綁定卡片，或留在此頁解除示範綁定後再試一次。</p>
+              <p className="text-yellow-100">目前狀態：已完成綁定</p>
+              <p>你可以回會員中心查看綁定卡片，或登出後測試第三方登入。</p>
             </div>
             <div className="mt-6 flex flex-wrap justify-center gap-3">
               <button

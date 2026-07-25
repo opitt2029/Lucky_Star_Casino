@@ -72,6 +72,22 @@ video {
   will-change: opacity, transform, filter;
 }
 
+/* 遊戲進入全螢幕時必須解除轉場層的 transform / filter / will-change。
+   這三個屬性任一存在，該元素就會成為底下所有 position: fixed 子孫的
+   containing block（CSS containing block 規則），fixed 便不再相對視窗定位——
+   全螢幕舞台（.baccarat-table--fullscreen / .slot-game-surface--fullscreen）
+   會從轉場層的偏移量起算 100vw/100vh，整塊歪掉並溢出視窗右下角，
+   把「離開全螢幕」等按鈕推到畫面外按不到。
+   animation 用的是 fill-mode: both，最後一格會被保留，所以光等動畫跑完沒有用，
+   必須在全螢幕期間明確關掉。 */
+body.baccarat-fullscreen-active .page-transition-stage,
+body.slot-fullscreen-active .page-transition-stage {
+  animation: none;
+  transform: none;
+  filter: none;
+  will-change: auto;
+}
+
 .page-transition-overlay {
   position: fixed;
   inset: 0;

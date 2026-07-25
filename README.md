@@ -17,8 +17,10 @@
 │   ├── wallet-service/        # 虛擬錢包服務 — Port 8082
 │   ├── game-service/          # 遊戲核心邏輯服務 — Port 8083
 │   ├── rank-service/          # 排行榜服務 — Port 8084
-│   └── admin-service/         # 後台管理延伸骨架 — Port 8086
-├── frontend/                  # 前端網頁應用 (React 18 / Vite) — Port 5173
+│   ├── admin-service/         # 後台管理服務（登入/玩家管理/報表/風控/GM 發幣）— Port 8086
+│   └── notification-service/  # 即時推播服務（WebSocket STOMP /ws）— Port 8087
+├── frontend/                  # 玩家端網頁應用 (React 18 / Vite) — Port 5173
+├── frontend-admin/            # 管理後台網頁應用 (React / Vite) — Port 5174
 ├── database/                  # 資料庫初始化腳本
 │   ├── mysql/                 # MySQL Schema（查詢讀庫）
 │   └── postgres/              # PostgreSQL Schema（帳務核心）
@@ -80,6 +82,7 @@
 |------|------|
 | 📄 [本機環境從零到一教學](docs/ENV_SETUP_GUIDE.md) | 初次加入專案的完整設置教學（推薦從這裡開始） |
 | 🏗️ [系統架構文件](docs/architecture.md) | 服務邊界、DB 分配、Kafka Topics、Port 表、請求流程圖 |
+| 🗺️ [系統架構圖（單頁）](docs/architecture-diagram.html) | 用戶端→Gateway→7 服務→Kafka→CQRS 資料層的視覺化總覽（瀏覽器開啟） |
 | 📋 [ADR-001 資料庫分配決策](docs/adr/ADR-001.md) | PostgreSQL（寫）+ MySQL（讀）CQRS 分離的決策過程 |
 | 📄 [專案基底功能說明](docs/PROJECT_BASE_EXPLANATION.md) | 系統底座現況、服務職責說明 |
 | ✅ [S0-W1 任務驗收統整（已封存）](docs/_雜物/archive/01-S0-W1基礎建置任務統整.md) | T-000 至 T-006 產物與驗證指令 |
