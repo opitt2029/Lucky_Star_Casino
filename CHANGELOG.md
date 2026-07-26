@@ -1,3 +1,26 @@
+## [feat] — 2026-07-26 — 團隊 commit 貢獻度圓餅圖產生器（SVG 可直接插入 PPT）
+
+### Added
+- `tools/contribution/generate-contribution-charts.mjs`：依 `git log --no-merges develop` 統計四位成員
+  的 commit 佔比，輸出 5 張向量 SVG 圓餅圖（整體＋後端／前端／基礎設施／文件四面向）、`data.json`
+  原始數據與 `contribution-report.html` 完整報告到 `docs/report/contribution/`。commit 增加後重跑一次
+  即自動更新。
+- `docs/report/contribution/`：上述產出（SVG 為 PowerPoint 2016+ 可直接插入的向量格式，插入後可
+  「轉換成圖形」編輯文字與配色；四張分面圖同尺寸，2×2 並排剛好一頁）。
+
+### 為什麼
+- 期末簡報需要呈現分工。分母採 develop（main 經 squash 只剩 22 筆會失真）、排除 merge commit
+  （避免負責合併的人虛胖）、不採程式碼行數（行數榜首優勢多來自機器產生的壓測 CSV 與 lockfile）。
+- 身分收斂靠工作目錄的 `.mailmap`（本機檔、依既有約定不進版控）：同一人多組 name/email 由 git 原生
+  機制合併，毋須改寫歷史。**在沒有 `.mailmap` 的機器上重跑會對未知作者名拋錯**（錯誤訊息會指路），
+  先依 `docs/幸運星幣城_工作分配補充-責任矩陣.md` §1 建好 `.mailmap` 再跑。
+- 同一成員在所有圖固定同一顏色（顏色跟人走、不跟名次走），跨圖可直接比對。
+
+### 如何驗證
+- `node tools/contribution/generate-contribution-charts.mjs` 重跑，console 數字與 `data.json` 一致；
+  五張 SVG 已用 Playwright 真瀏覽器渲染截圖逐張目檢（無疊字、無溢出）。純產圖工具，不影響服務行為，
+  未動任何後端／前端程式碼。
+
 ## [docs] — 2026-07-26 — AGENTS.md 依實際檔案狀態全面校正，補 3 條新雷區
 
 ### Changed

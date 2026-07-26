@@ -1,0 +1,358 @@
+<title>幸運星幣城 — 團隊 commit 貢獻度</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f4f4f0;
+    --card: #ffffff;
+    --ink: #16181c;
+    --ink-2: #4b5058;
+    --muted: #85899180;
+    --muted-solid: #7e838b;
+    --rule: #e2e2da;
+    --accent: #2a78d6;
+    --sheet-ring: rgba(20, 22, 26, 0.12);
+    --sheet-shadow: 0 1px 2px rgba(20, 22, 26, .06), 0 8px 24px -12px rgba(20, 22, 26, .18);
+    --code-bg: #edeee9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0f1012;
+      --card: #17181b;
+      --ink: #f2f3f5;
+      --ink-2: #b3b8c0;
+      --muted-solid: #868b93;
+      --rule: #2a2c31;
+      --accent: #6da7ec;
+      --sheet-ring: rgba(255, 255, 255, 0.14);
+      --sheet-shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 10px 30px -14px rgba(0, 0, 0, .8);
+      --code-bg: #202226;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0f1012; --card: #17181b; --ink: #f2f3f5; --ink-2: #b3b8c0;
+    --muted-solid: #868b93; --rule: #2a2c31; --accent: #6da7ec;
+    --sheet-ring: rgba(255,255,255,.14);
+    --sheet-shadow: 0 1px 2px rgba(0,0,0,.5), 0 10px 30px -14px rgba(0,0,0,.8);
+    --code-bg: #202226;
+  }
+
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif;
+    font-size: 16px;
+    line-height: 1.72;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 56px 24px 96px; display: flex; flex-direction: column; gap: 56px; }
+
+  header { display: flex; flex-direction: column; gap: 14px; }
+  .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--muted-solid); }
+  h1 { margin: 0; font-size: clamp(30px, 4.4vw, 44px); line-height: 1.15; font-weight: 800; letter-spacing: -.022em; text-wrap: balance; }
+  .lede { margin: 0; max-width: 62ch; font-size: 17px; color: var(--ink-2); }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .chip { font-size: 13px; padding: 4px 11px; border: 1px solid var(--rule); border-radius: 999px; color: var(--ink-2); background: var(--card); font-variant-numeric: tabular-nums; }
+  .chip b { color: var(--ink); font-weight: 650; }
+
+  section { display: flex; flex-direction: column; gap: 20px; }
+  h2 { margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -.01em; padding-bottom: 10px; border-bottom: 1px solid var(--rule); }
+  h2 span { color: var(--accent); font-variant-numeric: tabular-nums; font-weight: 700; margin-right: 10px; }
+  h3 { margin: 0 0 2px; font-size: 16px; font-weight: 700; }
+  p { margin: 0; max-width: 68ch; color: var(--ink-2); }
+  p strong, li strong { color: var(--ink); font-weight: 650; }
+
+  /* 圖卡固定亮底：它們就是要貼進投影片的素材，跟著頁面翻黑會跟 PPT 對不上 */
+  .sheet {
+    margin: 0; background: #fcfcfb; border-radius: 10px; padding: 8px 8px 0;
+    box-shadow: var(--sheet-shadow); outline: 1px solid var(--sheet-ring); outline-offset: -1px;
+    overflow-x: auto;
+  }
+  .sheet-svg { display: block; width: 100%; height: auto; }
+  .sheet figcaption {
+    padding: 9px 6px 11px; font-size: 12px; color: #898781;
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  .facets { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 20px; }
+
+  .tablewrap { overflow-x: auto; background: var(--card); border: 1px solid var(--rule); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; min-width: 720px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 12px 16px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+  tr:last-child th, tr:last-child td { border-bottom: 0; }
+  thead th { font-size: 12.5px; font-weight: 650; color: var(--ink-2); vertical-align: bottom; line-height: 1.35; }
+  thead th em { display: block; font-style: normal; font-size: 11.5px; color: var(--muted-solid); font-weight: 500; }
+  tbody th[scope="row"] { text-align: left; font-weight: 650; font-size: 15px; }
+  tbody th em { font-style: normal; font-weight: 500; font-size: 12px; color: var(--muted-solid); margin-left: 8px; }
+  .sw { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 9px; vertical-align: baseline; }
+  td .n { font-size: 15px; font-weight: 650; color: var(--ink); }
+  td .p { display: block; font-size: 12px; color: var(--muted-solid); }
+
+  ol.steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 18px; counter-reset: s; }
+  ol.steps > li { counter-increment: s; display: grid; grid-template-columns: 30px 1fr; gap: 16px; align-items: start; }
+  ol.steps > li::before {
+    content: counter(s); grid-row: span 2; font-size: 13px; font-weight: 700; color: var(--accent);
+    border: 1px solid var(--rule); border-radius: 50%; width: 30px; height: 30px;
+    display: grid; place-items: center; background: var(--card); font-variant-numeric: tabular-nums;
+  }
+  ol.steps p { margin-top: 3px; font-size: 15px; }
+  ul.plain { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; color: var(--ink-2); font-size: 15px; max-width: 68ch; }
+  code, pre { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  code { background: var(--code-bg); padding: 2px 6px; border-radius: 5px; font-size: .875em; color: var(--ink); }
+  pre { margin: 0; background: var(--code-bg); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.7; color: var(--ink); }
+  pre code { background: none; padding: 0; }
+
+  .callout { border-left: 3px solid var(--accent); padding: 2px 0 2px 18px; display: flex; flex-direction: column; gap: 8px; }
+  footer { border-top: 1px solid var(--rule); padding-top: 18px; font-size: 13px; color: var(--muted-solid); }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">幸運星幣城 Lucky Star Casino</div>
+    <h1>團隊 commit 貢獻度</h1>
+    <p class="lede">以 <code>develop</code> 分支的 git 提交紀錄為依據，統計四位成員的 commit 佔比。多組帳號身分（換機器、GitHub 網頁操作的 noreply 帳號、不同拼法）已用 <code>.mailmap</code> 收斂成同一人，不需要改寫歷史。</p>
+    <div class="meta">
+      <span class="chip">分支 <b>develop</b></span>
+      <span class="chip">總計 <b>389</b> 筆 commit</span>
+      <span class="chip">不含 merge commit</span>
+      <span class="chip">產生日期 <b>2026-07-26</b></span>
+    </div>
+  </header>
+
+  <section>
+    <h2><span>01</span>整體貢獻佔比</h2>
+    <figure class="sheet">
+      <svg xmlns="http://www.w3.org/2000/svg" class="sheet-svg" viewBox="0 0 940 560" role="img" aria-label="整體 commit 貢獻佔比">
+  <rect width="940" height="560" fill="#fcfcfb"/>
+  <text x="40" y="56" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="27" font-weight="700" fill="#0b0b0b">整體 commit 貢獻佔比</text>
+  <text x="40" y="84" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="15" fill="#52514e">幸運星幣城 Lucky Star Casino ・ develop 全部 commit（不含 merge） ・ 共 389 筆</text>
+  <line x1="40" y1="104" x2="900" y2="104" stroke="#e1e0d9" stroke-width="1"/>
+  <g>
+    <path d="M 288 306 L 288 138 A 168 168 0 1 1 235.95612440757404 465.7355158169907 Z" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 288 306 L 235.95612440757404 465.7355158169907 A 168 168 0 0 1 157.624678996665 200.0458793945353 Z" fill="#eb6834" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 288 306 L 157.624678996665 200.0458793945353 A 168 168 0 0 1 242.446975527339 144.29371700087486 Z" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 288 306 L 242.446975527339 144.29371700087486 A 168 168 0 0 1 287.99999999999994 138 Z" fill="#4a3aa7" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <text x="390.9" y="330.7" text-anchor="middle" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="24" font-weight="700" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">55.0%</text>
+    <text x="188.1" y="343.9" text-anchor="middle" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="24" font-weight="700" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">30.8%</text>
+    <text x="230.8" y="227.4" text-anchor="middle" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="24" font-weight="700" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">9.8%</text>
+  </g>
+  <g>
+    <polyline points="264.2,133.6 260.9,109.9 246.9,109.9" fill="none" stroke="#898781" stroke-width="1"/>
+    <text x="240.9" y="114.9" text-anchor="end" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="16" font-weight="650" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">許銘仁　4.4%</text>
+  </g>
+  <text x="610" y="180" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12" font-weight="600" letter-spacing="1.4" fill="#898781">成員 ・ 角色 ・ 佔比</text>
+  <line x1="610" y1="192" x2="900" y2="192" stroke="#e1e0d9" stroke-width="1"/>
+    <rect x="610" y="205" width="14" height="14" rx="3" fill="#2a78d6"/>
+    <text x="634" y="216" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="17" font-weight="600" fill="#0b0b0b">張鈞皓</text>
+    <text x="634" y="236" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="13" fill="#898781">組長 A</text>
+    <text x="900" y="216" text-anchor="end" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="18" font-weight="650" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">55.0%</text>
+    <text x="900" y="236" text-anchor="end" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="13" fill="#898781" style="font-variant-numeric:tabular-nums">214 commits</text>
+    <rect x="610" y="257" width="14" height="14" rx="3" fill="#eb6834"/>
+    <text x="634" y="268" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="17" font-weight="600" fill="#0b0b0b">林暐彧</text>
+    <text x="634" y="288" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="13" fill="#898781">組員 C</text>
+    <text x="900" y="268" text-anchor="end" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="18" font-weight="650" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">30.8%</text>
+    <text x="900" y="288" text-anchor="end" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="13" fill="#898781" style="font-variant-numeric:tabular-nums">120 commits</text>
+    <rect x="610" y="309" width="14" height="14" rx="3" fill="#1baf7a"/>
+    <text x="634" y="320" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="17" font-weight="600" fill="#0b0b0b">王竣揚</text>
+    <text x="634" y="340" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="13" fill="#898781">組員 E</text>
+    <text x="900" y="320" text-anchor="end" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="18" font-weight="650" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">9.8%</text>
+    <text x="900" y="340" text-anchor="end" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="13" fill="#898781" style="font-variant-numeric:tabular-nums">38 commits</text>
+    <rect x="610" y="361" width="14" height="14" rx="3" fill="#4a3aa7"/>
+    <text x="634" y="372" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="17" font-weight="600" fill="#0b0b0b">許銘仁</text>
+    <text x="634" y="392" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="13" fill="#898781">組員 D</text>
+    <text x="900" y="372" text-anchor="end" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="18" font-weight="650" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">4.4%</text>
+    <text x="900" y="392" text-anchor="end" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="13" fill="#898781" style="font-variant-numeric:tabular-nums">17 commits</text>
+  <text x="40" y="534" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12" fill="#898781">資料來源：git log --no-merges develop（經 .mailmap 收斂多組帳號身分）</text>
+</svg>
+
+      <figcaption>pie-overall.svg</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2><span>02</span>分面向拆解</h2>
+    <p>同一個人在每張圖都是同一個顏色（顏色跟人走、不跟名次走），所以四張圖可以並排看出「誰主要在哪一層出力」。每張圖的百分比各自以該面向的 commit 數為分母。</p>
+    <div class="facets">
+      <figure class="sheet sheet--facet">
+        <svg xmlns="http://www.w3.org/2000/svg" class="sheet-svg" viewBox="0 0 440 326" role="img" aria-label="後端服務">
+  <rect width="440" height="326" fill="#fcfcfb"/>
+  <text x="28" y="46" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="20" font-weight="700" fill="#0b0b0b">後端服務</text>
+  <text x="28" y="70" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#898781">backend/（7 個 Spring Boot 服務）</text>
+  <text x="28" y="90" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#898781" style="font-variant-numeric:tabular-nums">共 141 筆 commit</text>
+  <line x1="28" y1="106" x2="412" y2="106" stroke="#e1e0d9" stroke-width="1"/>
+  <g>
+    <path d="M 128 210 L 128 118 A 92 92 0 1 1 121.85507769544886 301.7945528333301 Z" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 128 210 L 121.85507769544886 301.7945528333301 A 92 92 0 0 1 59.08475603539752 149.05175023596394 Z" fill="#eb6834" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 128 210 L 59.08475603539752 149.05175023596394 A 92 92 0 0 1 92.08418668495844 125.30021042576857 Z" fill="#4a3aa7" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 128 210 L 92.08418668495844 125.30021042576857 A 92 92 0 0 1 127.99999999999999 118 Z" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <text x="185.0" y="217.2" text-anchor="middle" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="15" font-weight="700" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">51.1%</text>
+    <text x="75.2" y="236.9" text-anchor="middle" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="15" font-weight="700" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">35.5%</text>
+  </g>
+    <rect x="252" y="138" width="12" height="12" rx="3" fill="#2a78d6"/>
+    <text x="272" y="148" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">張鈞皓</text>
+    <text x="272" y="165" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">51.1%　72 commits</text>
+    <rect x="252" y="178" width="12" height="12" rx="3" fill="#eb6834"/>
+    <text x="272" y="188" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">林暐彧</text>
+    <text x="272" y="205" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">35.5%　50 commits</text>
+    <rect x="252" y="218" width="12" height="12" rx="3" fill="#4a3aa7"/>
+    <text x="272" y="228" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">許銘仁</text>
+    <text x="272" y="245" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">7.1%　10 commits</text>
+    <rect x="252" y="258" width="12" height="12" rx="3" fill="#1baf7a"/>
+    <text x="272" y="268" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">王竣揚</text>
+    <text x="272" y="285" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">6.4%　9 commits</text>
+</svg>
+
+        <figcaption>pie-backend.svg</figcaption>
+      </figure>
+      <figure class="sheet sheet--facet">
+        <svg xmlns="http://www.w3.org/2000/svg" class="sheet-svg" viewBox="0 0 440 326" role="img" aria-label="前端">
+  <rect width="440" height="326" fill="#fcfcfb"/>
+  <text x="28" y="46" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="20" font-weight="700" fill="#0b0b0b">前端</text>
+  <text x="28" y="70" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#898781">frontend/ + frontend-admin/</text>
+  <text x="28" y="90" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#898781" style="font-variant-numeric:tabular-nums">共 105 筆 commit</text>
+  <line x1="28" y1="106" x2="412" y2="106" stroke="#e1e0d9" stroke-width="1"/>
+  <g>
+    <path d="M 128 210 L 128 118 A 92 92 0 0 1 201.612286417031 265.18361431128807 Z" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 128 210 L 201.612286417031 265.18361431128807 A 92 92 0 0 1 45.71727849469701 251.1528096450382 Z" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 128 210 L 45.71727849469701 251.1528096450382 A 92 92 0 0 1 122.49801783705678 118.16466806136836 Z" fill="#eb6834" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 128 210 L 122.49801783705678 118.16466806136836 A 92 92 0 0 1 127.99999999999999 118 Z" fill="#4a3aa7" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <text x="179.0" y="189.7" text-anchor="middle" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="15" font-weight="700" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">35.2%</text>
+    <text x="122.9" y="272.1" text-anchor="middle" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="15" font-weight="700" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">32.4%</text>
+    <text x="78.6" y="186.7" text-anchor="middle" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="15" font-weight="700" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">31.4%</text>
+  </g>
+    <rect x="252" y="138" width="12" height="12" rx="3" fill="#2a78d6"/>
+    <text x="272" y="148" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">張鈞皓</text>
+    <text x="272" y="165" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">35.2%　37 commits</text>
+    <rect x="252" y="178" width="12" height="12" rx="3" fill="#1baf7a"/>
+    <text x="272" y="188" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">王竣揚</text>
+    <text x="272" y="205" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">32.4%　34 commits</text>
+    <rect x="252" y="218" width="12" height="12" rx="3" fill="#eb6834"/>
+    <text x="272" y="228" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">林暐彧</text>
+    <text x="272" y="245" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">31.4%　33 commits</text>
+    <rect x="252" y="258" width="12" height="12" rx="3" fill="#4a3aa7"/>
+    <text x="272" y="268" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">許銘仁</text>
+    <text x="272" y="285" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">1.0%　1 commits</text>
+</svg>
+
+        <figcaption>pie-frontend.svg</figcaption>
+      </figure>
+      <figure class="sheet sheet--facet">
+        <svg xmlns="http://www.w3.org/2000/svg" class="sheet-svg" viewBox="0 0 440 326" role="img" aria-label="資料庫・基礎設施・測試・CI">
+  <rect width="440" height="326" fill="#fcfcfb"/>
+  <text x="28" y="46" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="20" font-weight="700" fill="#0b0b0b">資料庫・基礎設施・測試・CI</text>
+  <text x="28" y="70" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#898781">database/ kafka/ tools/ tests/ .github/ docker-compose.yml</text>
+  <text x="28" y="90" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#898781" style="font-variant-numeric:tabular-nums">共 84 筆 commit</text>
+  <line x1="28" y1="106" x2="412" y2="106" stroke="#e1e0d9" stroke-width="1"/>
+  <g>
+    <path d="M 128 210 L 128 118 A 92 92 0 0 1 141.71188848820807 300.9724360127118 Z" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 128 210 L 141.71188848820807 300.9724360127118 A 92 92 0 0 1 45.11086415297744 170.08269600118467 Z" fill="#eb6834" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 128 210 L 45.11086415297744 170.08269600118467 A 92 92 0 0 1 81.99999999999996 130.32566285183168 Z" fill="#4a3aa7" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 128 210 L 81.99999999999996 130.32566285183168 A 92 92 0 0 1 127.99999999999999 118 Z" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <text x="184.9" y="211.0" text-anchor="middle" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="15" font-weight="700" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">47.6%</text>
+    <text x="82.1" y="249.1" text-anchor="middle" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="15" font-weight="700" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">34.5%</text>
+  </g>
+    <rect x="252" y="138" width="12" height="12" rx="3" fill="#2a78d6"/>
+    <text x="272" y="148" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">張鈞皓</text>
+    <text x="272" y="165" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">47.6%　40 commits</text>
+    <rect x="252" y="178" width="12" height="12" rx="3" fill="#eb6834"/>
+    <text x="272" y="188" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">林暐彧</text>
+    <text x="272" y="205" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">34.5%　29 commits</text>
+    <rect x="252" y="218" width="12" height="12" rx="3" fill="#4a3aa7"/>
+    <text x="272" y="228" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">許銘仁</text>
+    <text x="272" y="245" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">9.5%　8 commits</text>
+    <rect x="252" y="258" width="12" height="12" rx="3" fill="#1baf7a"/>
+    <text x="272" y="268" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">王竣揚</text>
+    <text x="272" y="285" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">8.3%　7 commits</text>
+</svg>
+
+        <figcaption>pie-infra.svg</figcaption>
+      </figure>
+      <figure class="sheet sheet--facet">
+        <svg xmlns="http://www.w3.org/2000/svg" class="sheet-svg" viewBox="0 0 440 326" role="img" aria-label="文件與規劃">
+  <rect width="440" height="326" fill="#fcfcfb"/>
+  <text x="28" y="46" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="20" font-weight="700" fill="#0b0b0b">文件與規劃</text>
+  <text x="28" y="70" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#898781">docs/（架構文件、ADR、壓測報告、計畫書）</text>
+  <text x="28" y="90" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#898781" style="font-variant-numeric:tabular-nums">共 166 筆 commit</text>
+  <line x1="28" y1="106" x2="412" y2="106" stroke="#e1e0d9" stroke-width="1"/>
+  <g>
+    <path d="M 128 210 L 128 118 A 92 92 0 1 1 70.05743197339903 281.46089007619986 Z" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 128 210 L 70.05743197339903 281.46089007619986 A 92 92 0 0 1 64.81887936835787 143.1258944304308 Z" fill="#eb6834" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 128 210 L 64.81887936835787 143.1258944304308 A 92 92 0 0 1 107.28565347191213 120.36230788382437 Z" fill="#4a3aa7" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 128 210 L 107.28565347191213 120.36230788382437 A 92 92 0 0 1 127.99999999999999 118 Z" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <text x="181.8" y="234.3" text-anchor="middle" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="15" font-weight="700" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">60.8%</text>
+    <text x="71.0" y="217.4" text-anchor="middle" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="15" font-weight="700" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">27.1%</text>
+  </g>
+    <rect x="252" y="138" width="12" height="12" rx="3" fill="#2a78d6"/>
+    <text x="272" y="148" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">張鈞皓</text>
+    <text x="272" y="165" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">60.8%　101 commits</text>
+    <rect x="252" y="178" width="12" height="12" rx="3" fill="#eb6834"/>
+    <text x="272" y="188" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">林暐彧</text>
+    <text x="272" y="205" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">27.1%　45 commits</text>
+    <rect x="252" y="218" width="12" height="12" rx="3" fill="#4a3aa7"/>
+    <text x="272" y="228" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">許銘仁</text>
+    <text x="272" y="245" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">8.4%　14 commits</text>
+    <rect x="252" y="258" width="12" height="12" rx="3" fill="#1baf7a"/>
+    <text x="272" y="268" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">王竣揚</text>
+    <text x="272" y="285" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">3.6%　6 commits</text>
+</svg>
+
+        <figcaption>pie-docs.svg</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2><span>03</span>完整數據</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th scope="col">成員</th><th scope="col">整體 commit 貢獻佔比<em>n=389</em></th><th scope="col">後端服務<em>n=141</em></th><th scope="col">前端<em>n=105</em></th><th scope="col">資料庫・基礎設施・測試・CI<em>n=84</em></th><th scope="col">文件與規劃<em>n=166</em></th></tr></thead>
+        <tbody>
+          <tr><th scope="row"><span class="sw" style="background:#2a78d6"></span>張鈞皓<em>組長 A</em></th><td><span class="n">214</span><span class="p">55.0%</span></td><td><span class="n">72</span><span class="p">51.1%</span></td><td><span class="n">37</span><span class="p">35.2%</span></td><td><span class="n">40</span><span class="p">47.6%</span></td><td><span class="n">101</span><span class="p">60.8%</span></td></tr>
+          <tr><th scope="row"><span class="sw" style="background:#eb6834"></span>林暐彧<em>組員 C</em></th><td><span class="n">120</span><span class="p">30.8%</span></td><td><span class="n">50</span><span class="p">35.5%</span></td><td><span class="n">33</span><span class="p">31.4%</span></td><td><span class="n">29</span><span class="p">34.5%</span></td><td><span class="n">45</span><span class="p">27.1%</span></td></tr>
+          <tr><th scope="row"><span class="sw" style="background:#1baf7a"></span>王竣揚<em>組員 E</em></th><td><span class="n">38</span><span class="p">9.8%</span></td><td><span class="n">9</span><span class="p">6.4%</span></td><td><span class="n">34</span><span class="p">32.4%</span></td><td><span class="n">7</span><span class="p">8.3%</span></td><td><span class="n">6</span><span class="p">3.6%</span></td></tr>
+          <tr><th scope="row"><span class="sw" style="background:#4a3aa7"></span>許銘仁<em>組員 D</em></th><td><span class="n">17</span><span class="p">4.4%</span></td><td><span class="n">10</span><span class="p">7.1%</span></td><td><span class="n">1</span><span class="p">1.0%</span></td><td><span class="n">8</span><span class="p">9.5%</span></td><td><span class="n">14</span><span class="p">8.4%</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>面向之間會重疊：一筆同時改到 <code>backend/</code> 和 <code>docs/</code> 的 commit，兩張圖都會算到，所以四個面向加總大於總數。</p>
+  </section>
+
+  <section>
+    <h2><span>04</span>這張圖是怎麼畫出來的</h2>
+    <ol class="steps">
+      <li><h3>先把身分收斂</h3><p>原始歷史裡有 8 組 name/email，直接跑 <code>git shortlog</code> 會把同一個人算成好幾位。專案根目錄的 <code>.mailmap</code> 把它們映射到同一個正式姓名，git 自己就會合併 —— <strong>不需要 rebase 改寫歷史</strong>（分支已共享，改寫會炸掉所有人的本機）。</p></li>
+      <li><h3>取數：只數 commit，排除 merge</h3><p>merge commit 不含實際改動，算進去會讓負責合併的人虛胖。<code>--no-merges</code> 排掉。</p></li>
+      <li><h3>選一個分支當分母</h3><p>用 <code>develop</code>（整合分支）。<code>main</code> 是 squash 過的，只剩 22 筆，拿來當分母會失真。</p></li>
+      <li><h3>四個人的顏色先綁死</h3><p>顏色代表「人」不代表「名次」。若照排名上色，換一張圖名次一變顏色就跟著換，讀者會誤以為是不同人。</p></li>
+      <li><h3>輸出成向量 SVG</h3><p>PPT 可以直接插入 SVG，投影放大不糊，插入後還能在 PPT 內按右鍵「轉換成圖形」改字改色。</p></li>
+    </ol>
+    <pre><code># 重新產圖（commit 增加後直接重跑，數字自動更新）
+node tools/contribution/generate-contribution-charts.mjs
+
+# 只想看數字不產圖
+git log --no-merges --pretty=%aN develop | sort | uniq -c | sort -rn</code></pre>
+  </section>
+
+  <section>
+    <h2><span>05</span>怎麼放進 PPT</h2>
+    <ul class="plain">
+      <li><strong>插入 → 圖片 → 此裝置</strong>，選 <code>docs/report/contribution/pie-*.svg</code>。PowerPoint 2016 以後原生支援 SVG。</li>
+      <li>圖已經自帶標題、副標與資料來源，<strong>整張貼滿一頁投影片就是完整的一頁</strong>，不必再另外打字。若你的版型已有標題列，插入後裁掉上方標題區即可。</li>
+      <li>要改字體或配色：在 PPT 裡對圖<strong>按右鍵 → 轉換成圖形</strong>，之後每個文字與色塊都能單獨編輯。</li>
+      <li>四張分面圖尺寸一致（440×326），並排成 2×2 剛好是一頁。</li>
+      <li>若簡報主題是深色底：這些圖是白底的，建議放在白色卡片上，不要直接透明疊在深色背景。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span>06</span>誠實的限制</h2>
+    <div class="callout">
+      <p><strong>commit 數不等於工作量。</strong>習慣小步提交的人數字天生比較高；把一整天的工作壓成一筆的人會被低估。這張圖適合呈現「參與的廣度與節奏」，不適合當作績效評分。</p>
+      <p><strong>那為什麼不用「程式碼行數」？</strong>試算過了，用行數會更失真：本專案行數前兩名的差距，幾乎完全來自 <code>docs/performance/assets/</code> 底下約 3.5 萬行機器產生的壓測 CSV，以及 1.3 萬行 <code>package-lock.json</code>。那些不是人寫的程式碼。相較之下，commit 數至少每一筆都對應一次真實的「做完一件事並提交」。</p>
+      <p>要更貼近實際分工，建議簡報時把這張圖跟 <strong>工作分配表（T-000～T-114）</strong> 並列：圖說明節奏，任務表說明範圍。</p>
+    </div>
+  </section>
+
+  <footer>資料來源：<code>git log --no-merges develop</code>，經 <code>.mailmap</code> 收斂帳號身分 ・ 由 <code>tools/contribution/generate-contribution-charts.mjs</code> 產生 ・ 2026-07-26</footer>
+</div>

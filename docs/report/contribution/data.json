@@ -1,0 +1,141 @@
+{
+  "ref": "develop",
+  "generatedAt": "2026-07-26",
+  "charts": [
+    {
+      "id": "overall",
+      "title": "整體 commit 貢獻佔比",
+      "total": 389,
+      "series": [
+        {
+          "name": "張鈞皓",
+          "value": 214,
+          "pct": 55
+        },
+        {
+          "name": "林暐彧",
+          "value": 120,
+          "pct": 30.8
+        },
+        {
+          "name": "王竣揚",
+          "value": 38,
+          "pct": 9.8
+        },
+        {
+          "name": "許銘仁",
+          "value": 17,
+          "pct": 4.4
+        }
+      ]
+    },
+    {
+      "id": "backend",
+      "title": "後端服務",
+      "total": 141,
+      "series": [
+        {
+          "name": "張鈞皓",
+          "value": 72,
+          "pct": 51.1
+        },
+        {
+          "name": "林暐彧",
+          "value": 50,
+          "pct": 35.5
+        },
+        {
+          "name": "許銘仁",
+          "value": 10,
+          "pct": 7.1
+        },
+        {
+          "name": "王竣揚",
+          "value": 9,
+          "pct": 6.4
+        }
+      ]
+    },
+    {
+      "id": "frontend",
+      "title": "前端",
+      "total": 105,
+      "series": [
+        {
+          "name": "張鈞皓",
+          "value": 37,
+          "pct": 35.2
+        },
+        {
+          "name": "王竣揚",
+          "value": 34,
+          "pct": 32.4
+        },
+        {
+          "name": "林暐彧",
+          "value": 33,
+          "pct": 31.4
+        },
+        {
+          "name": "許銘仁",
+          "value": 1,
+          "pct": 1
+        }
+      ]
+    },
+    {
+      "id": "infra",
+      "title": "資料庫・基礎設施・測試・CI",
+      "total": 84,
+      "series": [
+        {
+          "name": "張鈞皓",
+          "value": 40,
+          "pct": 47.6
+        },
+        {
+          "name": "林暐彧",
+          "value": 29,
+          "pct": 34.5
+        },
+        {
+          "name": "許銘仁",
+          "value": 8,
+          "pct": 9.5
+        },
+        {
+          "name": "王竣揚",
+          "value": 7,
+          "pct": 8.3
+        }
+      ]
+    },
+    {
+      "id": "docs",
+      "title": "文件與規劃",
+      "total": 166,
+      "series": [
+        {
+          "name": "張鈞皓",
+          "value": 101,
+          "pct": 60.8
+        },
+        {
+          "name": "林暐彧",
+          "value": 45,
+          "pct": 27.1
+        },
+        {
+          "name": "許銘仁",
+          "value": 14,
+          "pct": 8.4
+        },
+        {
+          "name": "王竣揚",
+          "value": 6,
+          "pct": 3.6
+        }
+      ]
+    }
+  ]
+}
