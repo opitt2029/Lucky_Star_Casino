@@ -1,7 +1,7 @@
 # 幸運星幣城 — 系統架構文件
 
 > 版本：v1.1  
-> 建立日期：2026-05-26｜最後校對：2026-07-13（依實際程式碼盤點修訂）  
+> 建立日期：2026-05-26｜最後校對：2026-07-26（補 `wallet_outbox`、更正 ADR-008 狀態）  
 > 負責人：組長 A
 >
 > 本檔描述**已實作**的架構。與程式碼衝突時以程式碼為準，並請順手回頭修本檔（AGENTS.md §5）。
@@ -225,6 +225,7 @@ Rank Service   ──publish rank.update     ──► Notification Service（�
 | `diamond_wallets` | Wallet | 鑽石錢包（T-101） |
 | `shop_redemptions` | Wallet | 商城兌換紀錄（ADR-006，與 `debit(SHOP_PURCHASE)` 同一交易內原子完成） |
 | `topup_orders` | Wallet | 自助加值訂單（模擬支付；orderNo 當冪等鍵） |
+| `wallet_outbox` | Wallet | Transactional Outbox（`wallet.credit`／`wallet.debit` 事件與 `wallet_transactions` 同交易寫入，由 `WalletOutboxPoller` 確認送達才標 SENT；勿改回裸發 Kafka，雷區 23） |
 | `game_rounds` | Game | 遊戲對局紀錄（`win_amount` 為**含本金**派彩，影響 RTP 口徑，雷區 17） |
 | `game_rtp_stats` | Game | RTP 統計（排程預算，熱路徑只讀 Redis 快取——T-090 Phase A） |
 | `cashback_records` | Game | 每日/每週回饋紀錄 |
@@ -424,7 +425,9 @@ Wallet Service  Kafka          Rank Service    Notification   前端 WS
 | [ADR-005](adr/ADR-005.md) | 月度累計簽到獎勵 + 簽到狀態改後端權威 | ✅ 已接受 |
 | [ADR-006](adr/ADR-006.md) | 禮品商城後端化（併入 wallet/admin、`SHOP_PURCHASE` 子型） | ✅ 已接受 |
 | [ADR-007](adr/ADR-007.md) | 以 Testcontainers 補真實資料庫整合測試（只新增、不取代 H2） | ✅ 已接受 |
-| ADR-008 | 捕魚 Redis session 原子化（Lua CAS） | 🅿️ 編號保留，**尚未動工**（見 `plans/01` Phase 3） |
+| [ADR-008](adr/ADR-008.md) | 捕魚 Redis session 原子化（Lua CAS + `FishingSession.version` 樂觀鎖） | ✅ 已接受（2026-07-21 落地，`FishingSessionStore.saveCas`） |
 | [ADR-009](adr/ADR-009.md) | game→wallet 最小 Saga 補償（`pending_wallet_credits` + 冪等重試） | ✅ 已接受 |
+| [ADR-010](adr/ADR-010.md) | 明知規模不需要，仍保留 Kafka 與 Redis | ✅ 已接受 |
+| [ADR-011](adr/ADR-011.md) | 第三方登入採 OIDC subject 綁定與一次性票據交換 | ✅ 已接受 |
 
 > 原 v1.0 此表把 ADR-002~005 標成「RNG 演算法／樂觀鎖／Kafka 邊界／JWT 雙 Token」，**與實際產出的 ADR 主題完全不同**，已於 2026-07-13 依 `docs/adr/` 實際檔案更正。

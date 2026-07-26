@@ -33,6 +33,41 @@
 
 ---
 
+## [docs] — 2026-07-26 — 新增功能架構圖 / Kafka 事件圖 / 雙資料庫歸屬圖（分工表用）
+
+### Added
+- `docs/幸運星幣城_功能架構與事件圖.md`：6 張 Mermaid 圖 + 1 張功能架構表——
+  ① 分層功能架構（前端／Gateway／7 服務／PG・MySQL・Redis・Kafka）
+  ② 功能模組 mindmap（對到 T-000~T-114 的分工顆粒度）
+  ③ Kafka 事件圖（8 業務 topic + 5 DLT，標出「指令 vs 事件」與 DLT→`dead_letter_messages`）
+  ④ 雙資料庫歸屬圖（PG 16 表 / MySQL 13 表，含 CQRS 讀視圖同步鏈）
+  ⑤ 一筆下注貫穿全系統 sequence（Gateway filter → debit → RNG → outbox → rank/推播）
+  ⑥ 0→1 建置階段 timeline（S0~S7）
+  另附服務 × 功能 × 端點數 × 事件 × DB × 任務編號對照表。
+
+### Changed
+- `docs/architecture.md`：§4 PostgreSQL 表清單**補上漏列的 `wallet_outbox`**（Transactional
+  Outbox，雷區 23），PG 表數由 15 → 16；§9 ADR 表把 **ADR-008 從「🅿️ 尚未動工」更正為
+  「✅ 已接受」**（`docs/adr/ADR-008.md` 已存在、`FishingSessionStore.saveCas` 已落地），
+  並補上漏列的 **ADR-010／ADR-011**（ADR 列表 10 → 12 筆）；檔頭「最後校對」改 2026-07-26。
+- `docs/幸運星幣城_工作分配表.xlsx`：`xl/sharedStrings.xml` 的「林瑋彧」× 3 全部更正為
+  **「林暐彧」**（本人最終用字），檔內 5 人姓名用字統一；`uniqueCount` 與 17 個 entry 不變。
+
+### Why
+- 撰寫分工表需要「0→1 全貌」的視覺附件；既有 `docs/architecture.md` 是文字表格、
+  `docs/database-er-diagrams.md` 是欄位級 ER 圖，缺一份「功能／事件／DB 三合一」的
+  服務層級圖可直接貼進報告與分工表。
+- 內容一律以程式碼盤點為準（`kafka/kafka-init.sh`、兩份 `init.sql`、`tools/audit/tasks.json`），
+  盤點時發現的三處文件漂移直接在來源文件修掉，避免下一個人再從 `architecture.md`
+  讀到錯的表清單與 ADR 狀態（AGENTS.md §5）。
+
+### Verified
+- 6 個 mermaid 區塊全部通過 `mermaid@11` 的 `mermaid.parse()`（jsdom 環境）：`ALL 6 OK`。
+- xlsx 改後 `zipfile.testzip()` 為 `None`、17 個 entry 與 `uniqueCount="468"` 不變。
+- 檔案為 UTF-8 + LF，符合 `.gitattributes` 的 `*.md text eol=lf`。
+
+---
+
 ## [chore] - 2026-07-24 - 第三方登入 PR 排除環境範例與忽略規則
 
 ### Changed
