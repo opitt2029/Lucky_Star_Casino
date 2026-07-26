@@ -20,11 +20,12 @@
 | 1 | `README.md` | 全貌、6 服務職責、Port、技術棧、分支規範 |
 | 2 | `docs/architecture.md` | 服務邊界、DB 分配、Kafka topics、請求流程 |
 | 3 | `CONTRIBUTING.md` | 分支命名、PR 流程、commit 規範 |
-| 4 | `AUDIT_REPORT.md`（附錄 A） | **目前進度真相**：T-000~T-107 逐項狀態、哪些是空殼 |
-| 5 | `docs/adr/ADR-001.md`、`ADR-002.md` | 已拍板架構決策（DB CQRS、wallet.credit 指令/事件分離） |
-| 6 | `DEPLOY.md` | 本機把環境跑起來的 SOP |
-| 7 | `docs/幸運星幣城_工作分配表.xlsx` | 任務與分工的**單一真相來源**（T-000~T-107） |
+| 4 | `AUDIT_REPORT.md`（附錄 A） | **目前進度真相**：T-000~T-114 逐項狀態、哪些是空殼 |
+| 5 | `docs/adr/ADR-001.md`、`ADR-002.md` | 已拍板架構決策（DB CQRS、wallet.credit 指令/事件分離）；ADR 現有 000~011 共 12 篇 |
+| 6 | `DEPLOY.md` | 本機把環境跑起來的 SOP（後端 7 服務已容器化，見雷區 2） |
+| 7 | `docs/幸運星幣城_工作分配表.xlsx` | 任務與分工的**單一真相來源**（T-000~T-114） |
 | 8 | `CHANGELOG.md` | 最近改了什麼、為什麼 |
+| 9 | `docs/幸運星幣城_功能架構與事件圖.md` | 服務層級的功能架構／Kafka 事件（8 業務 topic + 5 DLT）／雙資料庫歸屬（PG 16 表・MySQL 13 表）全貌圖 |
 
 > ⚠️ **查進度別只信 `AUDIT_REPORT.md`，務必拿程式碼/git 交叉驗證**：它是「手動維護的快照」，更新靠人記得去盤點，所以會落後實際程式碼（已合併的任務常被漏標成未完）。實例：wallet 的 T-027/T-028 早在 2026-06-01 就 commit 併入，卻在 6/17 盤點仍標 ❌/⚠️，害每次查進度都誤報 wallet「進行中」。判定某任務是否完成，至少做一項驗證：對應 Controller/Service 檔是否存在、`git log --oneline -- <檔>` 有無該 `T-0xx` commit、`git branch --contains <sha>` 是否在 develop/main、測試是否存在。發現與 AUDIT_REPORT 不符時，**以程式碼為準並順手更正文件**（依 §3 記 CHANGELOG）。
 >
@@ -35,7 +36,7 @@
 ## 2. ⚠️ 已知地雷（不讀會踩，務必記住）
 
 1. **沒有 `mvnw`**：用系統 `mvn`，不要用 `./mvnw`。
-2. **本機跑後端前要先把 `.env` 載入 shell**：`JWT_SECRET`、`INTERNAL_SECRET`、`CORS_ALLOWED_ORIGINS` 是「缺了就啟動失敗」的必填變數（無預設值）。詳見 DEPLOY.md §4。
+2. **後端 7 服務已全面容器化（2026-07-07 起），`.env` 由 compose 自己讀，不必 export 進 shell**：`docker compose up -d --build` 一次起 5 個基礎設施 + 7 個後端服務，**本機不需要裝 Java/Maven 也能跑後端**（跑測試才需要）。`docker-compose.yml` **沒有 `env_file:`**，靠的是 compose 對專案根 `.env` 的 `${VAR}` 變數替換——所以 ① `.env` 必須在 repo 根目錄、② 沒給預設值的必填變數（`JWT_SECRET`、`INTERNAL_SECRET`、`CORS_ALLOWED_ORIGINS`、各 `*_PORT`、DB 帳密）缺了會被代換成空字串，服務起不來且錯誤訊息不會說「你 .env 少了什麼」。**只有在容器外原生 `mvn spring-boot:run` 單一服務時才需要把 `.env` 載進 shell**。詳見 DEPLOY.md §2、§3。
 3. **測試一律用 H2 記憶體 DB**：`@SpringBootTest`（contextLoads）不連外部 DB。新服務寫測試比照 member/wallet：加 H2（test scope）、測試用 `application.yml` 提供 H2 資料源；wallet 另用 surefire `jpa.ddl-auto=create`（雙資料源）。否則 CI 跑不起來。**唯一例外（ADR-007）**：wallet-service 另有 `@Tag("containers")` 的 Testcontainers 真 DB 測試（`containers/` 套件，postgres:16+mysql:8.4 套真 schema、`ddl-auto=validate`），surefire 預設排除、`mvn -pl backend/wallet-service test -Pcontainers-test` 才跑（本機需 Docker，Windows 另需 `$env:DOCKER_HOST='npipe:////./pipe/dockerDesktopLinuxEngine'`，見 ADR-007；CI 已有獨立 step）。日常 `mvn test` 的零依賴約定不變；新增此類測試必須標 `@Tag("containers")` 並繼承 `AbstractDualDatasourceContainerTest`，否則會破壞零依賴。
 4. **Spring Boot 3.2+ 禁止同名 `@Bean` 方法**（`enforceUniqueMethods`）：重複會讓服務啟動丟 `BeanDefinitionParsingException` 直接掛。
 5. **wallet-service 是雙資料源（ADR-001）**：`spring.jpa.*` 無效，EntityManagerFactory 在 `DataSourceConfig` 手動建立；別套用單資料源的假設。
@@ -43,9 +44,12 @@
 7. **改 Kafka topic 要同步改 infra 測試**：`kafka/kafka-init.sh` 增刪 topic 後，更新 `tests/infra/kafka.test.js` 的 topic 清單與數量斷言，否則 CI 紅。
 8. **帳務操作=冪等 + 防超扣**：`wallet_transactions.idempotency_key` UNIQUE 防重複、`wallets.version` 防超扣。所有扣款/入帳都要遵循此模式。**（T-090 B2 起）`WalletService.debit()` 的防超扣改為「條件 UPDATE＋行鎖」**（`WalletDebitDao`：守衛與扣款壓成單一原子語句、`version = version + 1` 手動遞增，熱路徑 2 次 DB 往返；設計見 `docs/performance/T-090-B2-debit-roundtrip-design.md`）——debit **不再拋 409 樂觀鎖例外**（併發輸家改回餘額不足或冪等命中）；credit/gift/凍結等其他寫入方仍走 JPA `@Version` 樂觀鎖（撞到 debit 的版本遞增照樣 409）。動 debit SQL 必須同步 H2 方言分流（`FINAL TABLE`，雷區 3）並跑 `-Pcontainers-test`；**勿把 debit 改回讀改寫**，也勿在 PG 用「INSERT 後 catch UNIQUE 違規」取代 `ON CONFLICT`（PG 違規會 abort 整筆交易 25P02，H2 才允許 catch）。
 9. **`gem-prompt` 技能**（Claude Code）：產生後端實作提示詞，會先讀真實專案檔。開新後端任務可先用它。
-10. **服務完成度**：member / gateway / wallet 已實作；rank 已完成 T-040~T-044 排行榜核心（含週排行榜重置/每日快照）；**game 已完成 T-030~T-037 全部**（Provably Fair RNG / 老虎機 / 百家樂 / RNG 驗證 / RTP 統計）；**捕魚機升級 Phase 1~4 全部完成**（血量/傷害模型 → PixiJS 漁場引擎 → 戰鬥回饋/砲台差異化/新互動 → 魚種重設含 BOSS 龍王），另加 ADR-004 經濟再平衡，見下方雷區 16；**捕魚 Redis session 原子化（Lua CAS）已完成**（ADR-008），見 `docs/plans/01-八項架構改進施工藍圖.md` Phase 3；**admin 已完成 T-050~T-055 / T-105~T-106**（認證/玩家管理/流通量報表/RTP 監控/異常偵測含 `GET /admin/alerts` 查詢/GM 發幣/鑽石點數卡後台；T-051 停用同時經 member 內部 API `PATCH /internal/members/{id}/status` 持久化 `members.status` + Redis 即時封鎖）；**notification 已完成 T-070~T-073 全部**（port 8087，STOMP `/ws`+JWT 鑑權、消費 `notification.push`/`game.result`/`rank.update`，推播 best-effort 無 DLT）；**鑽石系統 T-100~T-107 全完成**（`diamond_cards`/`diamond_wallets` schema、`DiamondWalletService` 開戶 + `POST /redeem` 兌換 + `POST /exchange` 換星幣 + `GET /balance` 查詢、前端 Diamond.jsx + diamondSlice + diamondApi）。動工前先看 AUDIT_REPORT 附錄 A.13 進度統計與 CHANGELOG 確認。
+10. **服務完成度**：member / gateway / wallet 已實作；rank 已完成 T-040~T-044 排行榜核心（含週排行榜重置/每日快照）；**game 已完成 T-030~T-037 全部**（Provably Fair RNG / 老虎機 / 百家樂 / RNG 驗證 / RTP 統計）；**捕魚機升級 Phase 1~4 全部完成**（血量/傷害模型 → PixiJS 漁場引擎 → 戰鬥回饋/砲台差異化/新互動 → 魚種重設含 BOSS 龍王），另加 ADR-004 經濟再平衡，見下方雷區 16；**捕魚 Redis session 原子化（Lua CAS）已完成**（ADR-008），見 `docs/plans/01-八項架構改進施工藍圖.md` Phase 3；**admin 已完成 T-050~T-055 / T-105~T-106**（認證/玩家管理/流通量報表/RTP 監控/異常偵測含 `GET /admin/alerts` 查詢/GM 發幣/鑽石點數卡後台；T-051 停用同時經 member 內部 API `PATCH /internal/members/{id}/status` 持久化 `members.status` + Redis 即時封鎖）；**notification 已完成 T-070~T-073 全部**（port 8087，STOMP `/ws`+JWT 鑑權、消費 `notification.push`/`game.result`/`rank.update`，推播 best-effort 無 DLT）；**鑽石系統 T-100~T-107 全完成**（`diamond_cards`/`diamond_wallets` schema、`DiamondWalletService` 開戶 + `POST /redeem` 兌換 + `POST /exchange` 換星幣 + `GET /balance` 查詢、前端 Diamond.jsx + diamondSlice + diamondApi）；**追加任務 T-108~T-114 全完成**（停用玩家即時封鎖、gateway 補 `/api/v1/friends/**` 路由、捕魚機、CasinoShop、CheckIn、統一客服入口；T-110 一鍵啟動腳本已由容器化取代並移除，`tasks.json` 用 `override` 標記）；**第三方登入（Google / LINE / Apple）已整合進 member-service**（ADR-011，見雷區 28）；**觀測性（Prometheus + Grafana）已可用但屬選配 profile**（見 §3 Port）。動工前先看 AUDIT_REPORT 附錄 A.13 進度統計與 CHANGELOG 確認。
 11. **`friend.relationship.updated` 是完整好友清單事件**：member 在好友接受/刪除後，為雙方各發布 `{ playerId, friendIds }`；rank 依完整清單重建 `rank:friend:{playerId}`，不要改成只帶單筆新增/刪除的增量事件。
-12. **T-090 壓測腳本實測前置**：`tests/performance/slot-1000-players.jmx` 已建立，T-032 老虎機 API 已完成（實際端點 `POST /api/v1/game/slot/spin`，冪等鍵由伺服器端生成、非 client 傳入）。但實測前仍須**對齊 jmx 與報告假設契約**、準備 1,000 組已入金玩家 JWT 並啟動完整服務拓撲；沒有實測資料時不可填寫虛構 P99。詳見 `docs/performance/T-090-load-test-report.md`。
+12. **T-090 壓測已有多輪真實實測資料，別再自己造數字，也別把舊報告當現況**：老虎機（`tests/performance/slot-1000-players.jmx`，端點 `POST /api/v1/game/slot/spin`，冪等鍵伺服器端生成）與捕魚（`fishing-1000-players.jmx`）皆已跑過容量階梯。
+    - **跑壓測的正確流程**：`node tests/performance/provision-players.mjs` 產玩家與已入金 JWT 到 `players.csv`（token 過期用 `refresh-player-tokens.mjs` 換發，**別重跑 provision**）→ `tools/observability/run-capacity-ladder.ps1`（捕魚用 `run-fishing-ladder.ps1`）跑階梯 → `summarize-jtl.mjs`/`analyze-jtl.mjs` 出報告 → `tests/performance/run-accounting-reconciliation.ps1` 驗帳務零違規。**注意雷區 27**：這些 `.ps1` 要 UTF-8 with BOM，陣列參數不能經 `-File` 傳。
+    - **引用數字要標清楚是哪一輪、哪種拓撲**：`docs/performance/` 下有十幾份報告，結論會互相矛盾是因為環境不同。目前最新是 `T-090-new-env-ladder-20260724.md`（新環境、**co-located**）；**co-located（JMeter 與 SUT 同機）的 knee 被施壓機自身 24–35% CPU 污染，不可當作對外可引用的容量上限**——要乾淨的容量曲線必須分機重測。
+    - **沒有實測資料時不可填寫虛構 P99**（原始約定不變）。
 13. **前端遊戲（slot/baccarat/fishing 及新遊戲）四鐵則**：每個有下注的遊戲都必須遵守，否則會重現「沒錢狂按 / 視覺鎖脫鉤 / 音效當機 / 全螢幕版面跑掉」四類 bug。
     - **餘額守門**：下注/開火按鈕 `disabled` 條件必須含 `balance >= bet`（不足時顯示「星幣不足」），送出函式開頭再做一次 `if (balance < bet) return` 雙保險，**前端先擋、不要只靠後端退回**。參考 `Fishing.jsx`（buy-in disabled + `useFishingSession.fire()` 的 `insufficient`）、`SlotGame.jsx`（`canAfford`）、`Baccarat.jsx`（`notEnoughBalance`）。
     - **視覺鎖綁定真實流程**：忙碌/loading 狀態要跟著「請求 + 動畫」的實際生命週期釋放（redux `loading`、`phase` 狀態機、或 `try/finally` 回呼），**禁止用固定 `setTimeout(…, 2900)` 之類的魔術數字**解鎖。
@@ -80,6 +84,13 @@
     - **OAuth callback 必須經 gateway**：`OAUTH_PUBLIC_BASE_URL` 要指向 gateway（8080）而非 member（8081），且 gateway `jwt.whitelist` 必含 `/api/v1/auth/`（callback 由瀏覽器直接打進來、沒有 Bearer token，被 JWT filter 擋掉就整條登入死掉）。這條白名單同時也讓 `/api/v1/auth/oauth2/**` 免驗證——比照雷區 21 的 `/admin/`，**勿移出白名單**。
     - **`*_OAUTH_ENABLED` 目前擋不住直連授權端點**（已知缺口）：`SocialAuthService.requireEnabledProvider()` 只擋 `/api/v1/auth/social/{p}/start`，但 Spring Security 的 `/api/v1/auth/oauth2/authorization/{registrationId}` 永遠註冊（三個 registration 的 client-id/secret 都有 `oauth-not-configured` 預設值，auto-config 一定建立）且落在 permitAll。憑證已填但 `ENABLED=false` 時，直接打該 URL 仍能登入。要真正關閉得自訂 `ClientRegistrationRepository`（disabled 就不註冊）或在 `authorizationRequestResolver` 檢查。
     - **OAuth 環境變數刻意不在 `.env.example`**（PR #271 的決定），完整清單改由 `DEPLOY.md` §第三方登入設定 自帶，`cp .env.example .env` 不會帶到。改動這些變數時要改 DEPLOY.md 那個 dotenv 區塊，別去找 `.env.example`。另：`.gitignore` 的 `*.p8` / `apple-client-secret*.txt` 是 Apple 私鑰（只給下載一次）的唯一機械防線，由 `tests/infra/apple-oauth.test.js` 斷言守著，**勿再移除**。
+29. **改了後端程式碼或 `application.yml` 後，`docker compose up -d` 不加 `--build` 等於沒改**：容器沿用舊 image，**沒有熱重載**。這不只是「改了沒生效」的小事——它會讓你**對著錯的 runtime 下結論**。實例：2026-07-24 那輪壓測 `application.yml` 宣告 game／wallet PG 池 `maximum-pool-size: 40`，runtime 量到的 `hikaricp_connections_max` 卻是 game 10 / wallet pg 15 / wallet mysql 10（image 建於調池之前），差點把「池不是瓶頸」的結論建立在錯的前提上（見 `T-090-new-env-ladder-20260724.md` §5.1）。**規則**：① 改 code/設定後跑 `docker compose up -d --build <service>`；② **任何壓測或效能歸因前，先用 `/actuator/prometheus` 對一次關鍵設定值（池大小、heap、限流門檻）＝原始碼宣告值**，別假設 image 是新的。
+30. **`mem_limit` 與 `-Xmx` 必須成對出現，動一個就要動另一個**：`docker-compose.yml` 七個後端服務都是 `mem_limit: 1280m` + `JAVA_TOOL_OPTIONS: "-Xmx1g -XX:MaxMetaspaceSize=256m"`（T-090 P2）。理由是 JVM 的預設堆是「看得到的記憶體 × 25%」：**只設 `mem_limit` 不設 `-Xmx`** → 堆只有 320m，服務動不動 OOM；**只設 `-Xmx` 不設 `mem_limit`** → JVM 看的是主機 RAM（16G 機器 ≈ 3.8G），7 個 JVM 合計超賣主機。1g 堆 + 256m metaspace + 執行緒堆疊/直接記憶體剛好塞進 1280m 容器。**新增服務時兩行都要照抄**；要加堆就先加 `mem_limit`，別只改 `-Xmx`（容器會被 OOMKilled，`docker compose ps` 看到的是無限重啟、日誌卻無例外堆疊）。
+31. **Gateway 有「兩套獨立限流」＋熔斷，壓測看到 429/503 先分清是哪一層，調參有固定順序**（`gateway-service/application.yml`）：
+    - **`rate-limit.player`＝每玩家 token bucket**（`PlayerRateLimitGlobalFilter`，一般 10/s、game 5/s），懲罰的是**單一玩家**刷太快。
+    - **`concurrency-limit`＝AIMD 自適應在途上限卸載**（`/api/v1/game/`、`/api/v1/wallet/` 各自獨立計數），超過在途上限直接 429 + `Retry-After`，**不進 JWT/Redis/後端**。`max-in-flight` 是**初始值不是固定值**：每 `adjust-interval-ms` 看該 route 窗內 P95，超過 `latency-target-ms` 就 ×0.8 收緊（不低於 `floor`）、達標 +2 放寬（不高於 `ceiling`）。所以**同一份腳本兩次跑出不同的 429 數量是正常的**，別當成 flaky。
+    - **Resilience4j CB 是「災難保險絲」，被刻意調成永遠比 AIMD 晚介入**：wallet/game 兩個高吞吐 instance 用 `TIME_BASED` 10s 窗、`slow-call 4s/90%`、`min-calls 20`；AIMD 的收緊目標是 1.5s，先收緊、CB 才可能開路。**別把 CB 改回 `COUNT_BASED` size=10**——464/s 吞吐下那只代表 ~21ms 流量，瞬時抖動就誤觸開路（2026-07-09 那輪 503×2,024 的唯一來源）。
+    - **調參順序**：先確認是哪一層吐的（429 帶 `Retry-After` ＝ 卸載或限流、503 ＝ CB 開路），再只動那一層；三層一起動就再也歸因不了。低流量路由（member/rank/admin）維持原參數，無實證問題別動。
 
 ---
 
@@ -89,6 +100,7 @@
 - 套件根 `com.luckystar`、Java 21、Spring Boot 3.3.5、JJWT 0.12.6
 - DB：PostgreSQL（帳務寫庫）+ MySQL（查詢讀庫）CQRS；Redis（token/session/排行）；Kafka（事件）
 - Port：gateway 8080 / member 8081 / wallet 8082 / game 8083 / rank 8084 / admin 8086 / notification 8087；MySQL **3307** / PostgreSQL **5433** / Redis 6379 / Kafka 9092 / Kafka UI 8085
+- 觀測性是**選配 profile**：Prometheus 9090 / Grafana 3000（匿名 Admin），要 `docker compose --profile observability up -d` 才會起——**預設 `docker compose up -d` 不會啟動它們**，看不到 Grafana 先確認有沒有帶 profile
 - 前端兩個獨立專案：玩家端 `frontend/`（5173）、管理後台 `frontend-admin/`（5174，ADMIN JWT 與玩家 JWT 是兩套 secret 不可混用；dev 走 vite proxy `/admin`→8080 免碰 CORS 白名單，SPA 自身路由勿用 `/admin` 前綴）
 
 ### Git / 提交
@@ -116,8 +128,16 @@ mvn -pl backend/gateway-service,backend/member-service,backend/wallet-service,ba
 
 # 基礎設施腳本測試
 node --test tests/infra/*.test.js
+
+# 前端品質關卡（在 frontend/ 目錄下跑；CI 的 frontend-test job 就是這四步）
+cd frontend && npm run lint && npm test && npm run build && npm run e2e
+
+# 只跑全螢幕版面回歸（改任何遊戲的全螢幕 CSS 後必跑，見雷區 13）
+cd frontend && npx playwright test fullscreen-layout.spec.js
 ```
-> CI（`.github/workflows/ci.yml`）會在 PR 時自動跑上述兩者；務必本機先綠燈再開 PR。
+> CI（`.github/workflows/ci.yml`）有**三個 job**：基礎設施測試、後端服務測試（含 wallet 的 `-Pcontainers-test` Testcontainers 步驟）、Frontend quality gate（lint / vitest / build / playwright）。務必本機先綠燈再開 PR。
+> 後端雖已容器化，**測試仍是本機 `mvn` 直接跑（H2、零外部依賴）**，不需要先把 compose 起起來。
+> ⚠️ **repo 裡有兩份 playwright 設定，別跑錯**：`frontend/playwright.config.js`＝前端 UI e2e（`testDir: ./e2e`，自動起 mock 模式 dev server 於 5317，**全程不需後端**，CI 跑的是這份）；根目錄 `playwright.config.js`＝後端 API e2e（`testDir: ./tests/e2e`，`baseURL` 指向 gateway 8080，**需要完整服務拓撲起著**）。在錯的目錄下 `npx playwright test` 會抓到另一份設定而找不到測試或連不上服務。
 
 ---
 

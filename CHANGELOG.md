@@ -1,3 +1,112 @@
+## [feat] — 2026-07-26 — 團隊 commit 貢獻度圓餅圖產生器（SVG 可直接插入 PPT）
+
+### Added
+- `tools/contribution/generate-contribution-charts.mjs`：依 `git log --no-merges develop` 統計四位成員
+  的 commit 佔比，輸出 5 張向量 SVG 圓餅圖（整體＋後端／前端／基礎設施／文件四面向）、`data.json`
+  原始數據與 `contribution-report.html` 完整報告到 `docs/report/contribution/`。commit 增加後重跑一次
+  即自動更新。
+- `docs/report/contribution/`：上述產出（SVG 為 PowerPoint 2016+ 可直接插入的向量格式，插入後可
+  「轉換成圖形」編輯文字與配色；四張分面圖同尺寸，2×2 並排剛好一頁）。
+
+### 為什麼
+- 期末簡報需要呈現分工。分母採 develop（main 經 squash 只剩 22 筆會失真）、排除 merge commit
+  （避免負責合併的人虛胖）、不採程式碼行數（行數榜首優勢多來自機器產生的壓測 CSV 與 lockfile）。
+- 身分收斂靠工作目錄的 `.mailmap`（本機檔、依既有約定不進版控）：同一人多組 name/email 由 git 原生
+  機制合併，毋須改寫歷史。**在沒有 `.mailmap` 的機器上重跑會對未知作者名拋錯**（錯誤訊息會指路），
+  先依 `docs/幸運星幣城_工作分配補充-責任矩陣.md` §1 建好 `.mailmap` 再跑。
+- 同一成員在所有圖固定同一顏色（顏色跟人走、不跟名次走），跨圖可直接比對。
+
+### 如何驗證
+- `node tools/contribution/generate-contribution-charts.mjs` 重跑，console 數字與 `data.json` 一致；
+  五張 SVG 已用 Playwright 真瀏覽器渲染截圖逐張目檢（無疊字、無溢出）。純產圖工具，不影響服務行為，
+  未動任何後端／前端程式碼。
+
+---
+
+## [docs] — 2026-07-26 — AGENTS.md 依實際檔案狀態全面校正，補 3 條新雷區
+
+### Changed
+- `AGENTS.md` 雷區 2：**「本機跑後端前要先把 `.env` 載入 shell」已過時**——後端 7 服務自
+  2026-07-07 全面容器化，`docker-compose.yml` **沒有 `env_file:`**、靠 compose 對專案根 `.env`
+  的 `${VAR}` 變數替換，不必 export 進 shell；只有容器外原生 `mvn spring-boot:run` 才需要。
+- `AGENTS.md` 雷區 10（服務完成度）：補上 **T-108~T-114 全完成**（含 T-110 已由容器化取代並移除，
+  `tasks.json` 用 `override` 標記）、**第三方登入已整合進 member-service**（ADR-011）、觀測性為選配 profile。
+- `AGENTS.md` 雷區 12（T-090 壓測）：原文寫「實測前置」「沒有實測資料」，**現況是已跑過多輪真實
+  容量階梯**。改寫為：跑壓測的正確流程（`provision-players.mjs` → `refresh-player-tokens.mjs` →
+  `run-capacity-ladder.ps1` → `summarize-jtl.mjs` → 對帳）、以及「引用數字要標清楚哪一輪哪種拓撲、
+  co-located 的 knee 被施壓機 CPU 污染不可對外引用」。
+- `AGENTS.md` §1 必讀文件：任務範圍 T-000~T-107 → **T-000~T-114**；ADR 標注現有 000~011 共 12 篇；
+  新增第 9 列 `docs/幸運星幣城_功能架構與事件圖.md`。
+- `AGENTS.md` §3 Port：補上 **Prometheus 9090 / Grafana 3000 是選配 profile**
+  （`docker compose --profile observability up -d` 才會起）。
+- `AGENTS.md` §4 驗證指令：補前端品質關卡四步（lint / vitest / build / e2e）；更正 CI 敘述為
+  **三個 job**（原文只說兩者，漏了 Frontend quality gate 與 wallet `-Pcontainers-test` 步驟）；
+  點明 **repo 有兩份 playwright 設定**（`frontend/` 那份是前端 UI e2e、免後端；根目錄那份是打
+  gateway 8080 的 API e2e、需完整拓撲），跑錯目錄會抓到另一份。
+
+### Added
+- `AGENTS.md` 雷區 29：**改 code/設定後 `docker compose up -d` 不加 `--build` 等於沒改**，且會讓人
+  對著錯的 runtime 下結論——實例為 2026-07-24 那輪 `maximum-pool-size: 40` 宣告 vs runtime 量到
+  10/15/10。要求壓測或效能歸因前先用 `/actuator/prometheus` 對一次關鍵設定值。
+- `AGENTS.md` 雷區 30：**`mem_limit: 1280m` 與 `-Xmx1g` 必須成對**——只設前者堆只剩 320m 會 OOM，
+  只設後者 JVM 會看主機 RAM 25% 導致 7 個 JVM 超賣主機。新增服務兩行都要照抄。
+- `AGENTS.md` 雷區 31：**Gateway 兩套獨立限流 + 熔斷的判讀與調參順序**——`rate-limit.player`
+  （每玩家 token bucket）vs `concurrency-limit`（AIMD 在途上限卸載，`max-in-flight` 是初始值會自動
+  伸縮，故同腳本兩次 429 數不同屬正常非 flaky）vs Resilience4j CB（刻意調成永遠比 AIMD 晚介入，
+  勿改回 `COUNT_BASED` size=10）。
+
+### Why
+- AGENTS.md 是「AI/新組員開工前必讀」，它一旦落後就會反向製造地雷：雷區 2 會讓人以為要 export
+  環境變數、雷區 12 會讓人以為壓測還沒開始做。**文件漂移的成本比沒有文件更高**，因為讀者會信它。
+- 三條新雷都是本輪盤點時從程式碼與壓測報告裡撈出來、但從未寫進任何必讀文件的：容器 image 陳舊
+  （雷區 29）已經實際造成過一次錯誤歸因；`mem_limit`／`-Xmx` 的成對關係只寫在 `docker-compose.yml`
+  的行內註解；gateway 的 AIMD 卸載只寫在 `application.yml` 註解，壓測看到 429 很容易誤判成 bug。
+- 依 AGENTS.md §5「踩到新雷順手更新本檔」與 §3 CHANGELOG 規則辦理。
+
+### 如何驗證
+- `node --test tests/infra/*.test.js` → 155 pass / 0 fail（純文件變更，確認未波及既有斷言）。
+- 每條改寫都對照過來源檔：`docker-compose.yml`（env_file 為 0 處、`mem_limit`／`JAVA_TOOL_OPTIONS`
+  七服務齊備、observability profile）、`DEPLOY.md` §1/§3、`.github/workflows/ci.yml`（三 job）、
+  `tools/audit/tasks.json`（T-108~T-114）、`backend/gateway-service/.../application.yml`
+  （`concurrency-limit`／`rate-limit`／`resilience4j`）、`docs/performance/T-090-new-env-ladder-20260724.md` §5.1。
+
+---
+
+## [docs] — 2026-07-26 — 新增功能架構圖 / Kafka 事件圖 / 雙資料庫歸屬圖（分工表用）
+
+### Added
+- `docs/幸運星幣城_功能架構與事件圖.md`：6 張 Mermaid 圖 + 1 張功能架構表——
+  ① 分層功能架構（前端／Gateway／7 服務／PG・MySQL・Redis・Kafka）
+  ② 功能模組 mindmap（對到 T-000~T-114 的分工顆粒度）
+  ③ Kafka 事件圖（8 業務 topic + 5 DLT，標出「指令 vs 事件」與 DLT→`dead_letter_messages`）
+  ④ 雙資料庫歸屬圖（PG 16 表 / MySQL 13 表，含 CQRS 讀視圖同步鏈）
+  ⑤ 一筆下注貫穿全系統 sequence（Gateway filter → debit → RNG → outbox → rank/推播）
+  ⑥ 0→1 建置階段 timeline（S0~S7）
+  另附服務 × 功能 × 端點數 × 事件 × DB × 任務編號對照表。
+
+### Changed
+- `docs/architecture.md`：§4 PostgreSQL 表清單**補上漏列的 `wallet_outbox`**（Transactional
+  Outbox，雷區 23），PG 表數由 15 → 16；§9 ADR 表把 **ADR-008 從「🅿️ 尚未動工」更正為
+  「✅ 已接受」**（`docs/adr/ADR-008.md` 已存在、`FishingSessionStore.saveCas` 已落地），
+  並補上漏列的 **ADR-010／ADR-011**（ADR 列表 10 → 12 筆）；檔頭「最後校對」改 2026-07-26。
+- `docs/幸運星幣城_工作分配表.xlsx`：`xl/sharedStrings.xml` 的「林瑋彧」× 3 全部更正為
+  **「林暐彧」**（本人最終用字），檔內 5 人姓名用字統一；`uniqueCount` 與 17 個 entry 不變。
+
+### Why
+- 撰寫分工表需要「0→1 全貌」的視覺附件；既有 `docs/architecture.md` 是文字表格、
+  `docs/database-er-diagrams.md` 是欄位級 ER 圖，缺一份「功能／事件／DB 三合一」的
+  服務層級圖可直接貼進報告與分工表。
+- 內容一律以程式碼盤點為準（`kafka/kafka-init.sh`、兩份 `init.sql`、`tools/audit/tasks.json`），
+  盤點時發現的三處文件漂移直接在來源文件修掉，避免下一個人再從 `architecture.md`
+  讀到錯的表清單與 ADR 狀態（AGENTS.md §5）。
+
+### Verified
+- 6 個 mermaid 區塊全部通過 `mermaid@11` 的 `mermaid.parse()`（jsdom 環境）：`ALL 6 OK`。
+- xlsx 改後 `zipfile.testzip()` 為 `None`、17 個 entry 與 `uniqueCount="468"` 不變。
+- 檔案為 UTF-8 + LF，符合 `.gitattributes` 的 `*.md text eol=lf`。
+
+---
+
 ## [changed] -- 2026-07-26 -- Add first-entry game rules and abandon-on-leave handling
 
 ### Changed
@@ -24,6 +133,9 @@
 - `npm.cmd run lint` (frontend)
 - `npm.cmd run build` (frontend)
 - `mvn -pl backend/game-service test`
+
+---
+
 ## [changed] -- 2026-07-26 -- 將遊戲中獎公告欄文案改為繁體中文
 
 ### Changed
@@ -37,6 +149,8 @@
 - `npm.cmd run lint` (frontend)
 - `npm.cmd run build` (frontend)
 - Playwright route check: `/game/slot`、`/game/baccarat`、`/game/fishing` 的中獎公告欄顯示繁體中文標題、細節與派彩資訊，且沒有殘留英文 UI 文案。
+
+---
 
 ## [changed] -- 2026-07-26 -- Keep game win boards sticky in viewport
 
@@ -53,6 +167,8 @@
 - `npm.cmd run build` (frontend)
 - Playwright viewport/fullscreen check at 1366x768: slot, baccarat, and fishing boards stay fixed at the visible bottom after scrolling and inside fullscreen, render via the expected fullscreen host, show detailed payout content, and emit no console errors.
 
+---
+
 ## [changed] -- 2026-07-25 -- Scope live win boards to game pages
 
 ### Changed
@@ -67,6 +183,8 @@
 - `npm.cmd run lint` (frontend)
 - `npm.cmd run build` (frontend)
 - Playwright route check: `/games` has no live win board, while `/game/slot`, `/game/baccarat`, and `/game/fishing` each render only their own SLOT/BAC/FISH payout announcements with no console errors.
+
+---
 
 ## [added] -- 2026-07-25 -- Add live win announcement board
 
@@ -83,6 +201,8 @@
 - `npm.cmd run lint` (frontend)
 - `npm.cmd run build` (frontend)
 - Playwright visual check at 1366x768 and 390x844: live win board renders at the bottom-right, rotates mocked win content, collapses to a pill, stays off auth screens, does not overlap the friend panel, and emits no console errors.
+
+---
 
 ## [changed] -- 2026-07-25 -- Refresh slot game one-screen cockpit
 
@@ -104,6 +224,8 @@
 - `npm.cmd run build` (frontend)
 - `npm.cmd test -- SlotMachine Reel` (frontend)
 - Playwright visual check at 1366x768: normal/fullscreen/restored states kept the slot reels visible, dashboard metrics fit, fullscreen button text contained no brackets, `.slot-payline` was hidden, `.slot-reel-window` kept a non-white gradient after exiting fullscreen, fullscreen reels filled the cabinet inner height, settled fullscreen spins restored to window mode without blank reel tracks, button/API fullscreen exits no longer collapsed reels to 17px, and coin wins used the `fx-rain-fall-neon` trail animation.
+
+---
 
 ## [feat] -- 2026-07-25 -- Polish topup and diamond wallet flows
 
@@ -127,6 +249,552 @@
 - `npm.cmd run build` (frontend)
 - `npm.cmd test` (frontend)
 - `mvn -pl backend/wallet-service test`
+
+---
+
+## [fix] — 2026-07-25 — 還原 Apple 私鑰忽略規則，補齊第三方登入的文件與雷區
+
+### Fixed
+- `.gitignore`：還原 `*.p8` 與 `apple-client-secret*.txt` 兩條忽略規則（PR #271 一併撤掉）。
+
+### Added
+- `tests/infra/apple-oauth.test.js`：新增「Apple OAuth 私鑰不得進入 repo」測試群組——斷言
+  `.gitignore` 含上述兩條規則，並用 `git ls-files` 確認 repo 內沒有已追蹤的 `.p8` /
+  `apple-client-secret*.txt`。
+- `DEPLOY.md` §第三方登入設定：自帶完整 15 個 OAuth 變數的 dotenv 區塊，並明寫「這些變數刻意
+  不在 `.env.example`，`cp .env.example .env` 不會帶到」。另補 Apple client secret 會過期
+  （180 天、無監控）與 `OAUTH_PUBLIC_BASE_URL` 必須指向 gateway 8080 兩則提醒。
+- `AGENTS.md` 雷區 28：第三方登入的四條約束（session policy 由 STATELESS 改為 IF_REQUIRED
+  且 session 在記憶體→單副本限制、callback 必須經 gateway 且 `/api/v1/auth/` 要留在
+  `jwt.whitelist`、`*_OAUTH_ENABLED` 擋不住直連 `/oauth2/authorization/{id}` 的已知缺口、
+  OAuth 變數不在 `.env.example`）。
+
+### Why
+- **`.gitignore` 那兩條規則本身不含任何機密**，撤掉它不會讓 repo 更乾淨，只會讓 Apple 簽章私鑰
+  更容易被誤 commit——而 `.p8` 在 Apple 後台只給下載一次，外洩等於要重新建 key 並重簽 secret。
+  PR #271 的目的是「不把 OAuth 憑證欄位放進範本」，`.gitignore` 是被整批 revert 順手帶走的。
+- 撤掉後 `DEPLOY.md:101` 的「專案也已忽略所有 `.p8` 檔案」變成假敘述，而同一份文件又用
+  `APPLE_PRIVATE_KEY_PATH` 引導使用者把 `.p8` 放進專案 —— 文件教你放進來、gitignore 又不擋了。
+- 之所以補測試而不只是改回檔案：**PR #271 能無聲刪掉這兩行，正是因為當時沒有任何測試守著**。
+  同理，PR #270 原本用 `env.test.js` 守 `.env.example` 的 15 個變數，#271 把範本與斷言一起
+  刪掉後，DEPLOY.md 與範本的漂移也失去守門——這次改成讓 DEPLOY.md 自帶清單、不再依賴範本，
+  從結構上消掉這個耦合（尊重 #271「不動 `.env.example`」的決定）。
+
+### 如何驗證
+- `node --test tests/infra/*.test.js` → 155 pass / 0 fail（原 152，新增 3 項）。
+- `git ls-files '*.p8' 'apple-client-secret*.txt'` → 空輸出（確認歷史上沒有誤 commit 過）。
+- `git check-ignore -v test.p8` → 命中 `.gitignore:*.p8`。
+
+---
+
+## [chore] - 2026-07-24 - 第三方登入 PR 排除環境範例與忽略規則
+
+### Changed
+- 撤回 PR #270 對 `.env.example` 與 `.gitignore` 的修改，第三方登入憑證維持只存在本機 `.env`。
+- 移除依賴 OAuth 範例變數的 infra 斷言；Spring 與 Docker Compose 的執行期設定不變。
+
+### Why
+- 依專案提交需求，第三方登入成品 PR 不納入 `.env.example` 與 `.gitignore` 變更。
+
+### Verified
+- `node --test tests/infra/*.test.js`
+
+---
+
+## [perf] — 2026-07-24 — T-090 新環境容量階梯壓測（PR #264 合併後重跑）
+
+### Added
+- `docs/performance/T-090-new-env-ladder-20260724.md`：在 PR #264 合併後的新環境（tomcat mbean＋
+  `-Xmx1g`＋`mem_limit 1280m`）重跑 co-located 容量階梯（25/50/100/150/300 併發），與併入前
+  baseline（`fcaa14b`）對照。
+- 產出資料：`tests/performance/results/ladder-20260724-142712/`。
+
+### 結果
+- **T-091 九項 SQL 對帳 0 違規**（高卸載 300 併發 74% 下仍守住）。
+- 相較 baseline：低負載 P99 大幅下降（25 併發 534→58ms）、**150 併發首次零卸載撐住**（46%→0%）、
+  吞吐 124→219/s。knee 仍在 100→150 併發、真瓶頸仍是 co-located CPU 爭搶（不變）。
+- **為什麼**：使用者要求「依新環境壓測一次」。**如何驗證**：`run-capacity-ladder.ps1` 跑階梯 exit 0＋
+  `accounting-reconciliation.sql` 9/9 PASS。
+- ⚠️ caveat：runtime 連線池上限（game 10／wallet pg 15）低於 `application.yml` 宣告的 40 —— 記入報告 §5，
+  下輪正式壓測前應查清並重建 image。
+
+---
+
+## [perf][observability] — 2026-07-24 — T-090 架構瓶頸驗證：實測否證使用者全部六個調校方向，補 Tomcat 觀測＋堆/記憶體衛生
+
+### Added
+- `docs/performance/T-090-bottleneck-verification-20260724.md`：負載期實測驗證報告。用每 2s scrape
+  wallet/game/member 內部指標（HikariCP、GC、debit/credit 延遲、Tomcat 執行緒池），逐項判定使用者提出的
+  六個調校方向是不是本站容量瓶頸。
+
+### Changed
+- 六個 Tomcat 服務（member/wallet/game/rank/admin/notification）`application.yml` 新增
+  `server.tomcat.mbeanregistry.enabled: true`：解鎖 `tomcat_threads_busy/current` 指標。gateway 為
+  reactive Netty，不適用故不改。
+- `docker-compose.yml` 七服務新增 `JAVA_TOOL_OPTIONS: -Xmx1g -XX:MaxMetaspaceSize=256m` ＋ `mem_limit: 1280m`：
+  原本無 -Xmx 且無 mem_limit → JVM 依主機 RAM 25%(≈3.8G) 設堆 → 7 JVM 可超賣 15G 主機。兩者必須並設
+  （只設 mem_limit 會讓 JVM 抓其 25%=320m 過小易 OOM/GC thrash）。
+
+### 為什麼（六個方向逐項實測，全部否證）
+- **3 HikariCP**：wallet/game pg 連線池峰值 22/40（45% 閒置）、零 timeout → 非瓶頸。
+- **4 GC**：僅佔 ~1.2% 時間、無 OOM → 非瓶頸。
+- **5 同步耦合**：debit 64ms＋credit 68ms≈130ms << P99 1600ms → 真但非主因。
+- **1/2 acceptCount／執行緒池**（補測）：Tomcat busy 峰值 **151/200**（49 條空）、acceptCount 佇列從未觸發
+  → 加 max-threads/acceptCount 無效。busy 卡 151 是因 gateway AIMD 上游先卸載。
+- **6 Redis**：6/7 服務已用；擴用需具體快取場景（餘額不可快取），非容量瓶頸。
+- **真瓶頸**：151 條 busy 執行緒當下 pg pool 才用 10–15/40 → 執行緒**排不到 CPU**。co-located 12 核硬扛
+  7 JVM＋DB＋Kafka＋JMeter(24–35% CPU) 的排程爭搶。要拿真實容量須分機重測。
+
+### 如何驗證
+- `WalletServiceApplicationTests` contextLoads **PASS**（yml 屬性不破壞啟動）。
+- `docker compose config` 通過；重建 image 後量測確認 `tomcat_threads_busy` 現身、heap 實際限到 0.97GB、
+  七服務全 healthy、6985 wallets 資料保留。
+- 帳務未受影響：壓測後 T-091 對帳 9/9 PASS。
+
+---
+
+## [perf] — 2026-07-24 — game→wallet HTTP client 加上觀測儀表（T-090 §5.2 分層歸因）
+
+> 對應 `docs/performance/T-090-遠端施壓機壓測計畫-20260723.md` §5.2 與本輪 co-located 驗證報告
+> `docs/performance/T-090-colocated-ladder-20260724.md`：先前膝點延遲分層只能靠「game spin P99
+> 減 wallet 伺服器端 P99」相減推論，因為 game 對 wallet 的 outbound 呼叫**完全沒有儀表**
+> （實測 `http_client_requests` = 0）。這一筆把那條指標接起來。
+
+---
+
+## [fix] - 2026-07-24 - 修正真實 API 模式測試帳號無法登入
+
+### Changed
+- 登入頁依 `VITE_USE_MOCK_API` 選擇測試帳號：Mock 使用 `test / test1234`，真實 API 使用資料庫種子帳號 `tester01 / Password1`。
+- 登入頁提示文字與實際預填帳密共用同一份設定，避免畫面文件與可登入帳號再次漂移。
+
+### Why
+- 前端原本固定預填 Mock 帳號，但本機切換至真實 API 後，MySQL 並不存在該帳號，所有登入請求都會回傳 401。
+
+### Verified
+- Gateway 登入 API：`tester01 / Password1` 回傳 HTTP 200；原 `test / test1234` 回傳 HTTP 401。
+- `npm test -- --run`：10 個測試檔、70 項測試通過。
+- `npm run lint`、`npm run build` 通過。
+
+---
+
+## [feat] - 2026-07-24 - 補齊 Apple 第三方登入憑證工具鏈
+
+### Added
+- 新增 `tools/generate-apple-client-secret.mjs`，以 Apple Sign in `.p8` 私鑰產生 ES256 client-secret JWT。
+- 新增 Apple JWT header、claims、P-256 簽章與最長有效期自動測試。
+
+### Changed
+- Apple callback 改由獨立的 `APPLE_REDIRECT_URI` 設定，支援 Apple 要求的公開 HTTPS Return URL。
+- `.env.example`、Docker Compose、部署文件與 ADR-011 補齊 Services ID、Team ID、Key ID、私鑰及 HTTPS 網域設定。
+- Git 忽略 `.p8` 與 client-secret 暫存檔，避免 Apple 私鑰或 JWT 被提交。
+
+### Why
+- Apple 不接受 `localhost`／IP callback，且 token endpoint 要求以 P-256 私鑰簽出的 ES256 client-secret JWT。
+
+### Verified
+- `node --test tests/infra/apple-oauth.test.js`：2 項測試通過。
+- Apple Developer 憑證建立與實際登入驗證待後台登入完成後執行。
+
+---
+
+## [fix] - 2026-07-24 - 修正 LINE OAuth callback 驗證失敗
+
+### Changed
+- LINE Login 僅要求 `openid profile` scope，避免尚未通過 LINE email 權限審核時阻擋登入。
+- 移除會建立自我委派代理的全域 `AuthenticationManager` Bean，避免 OAuth callback 遞迴驗證並觸發 `StackOverflowError`。
+- OIDC ID Token 解碼依 provider 選擇演算法：LINE Web Login 使用 `HS256`，Google／Apple 維持 `RS256`。
+- 會員資料物件更新時不再重複查詢第三方綁定狀態，避免總覽卡片誤顯示為未綁定。
+
+### Why
+- LINE Web Login 的 ID Token 由 Channel Secret 以 `HS256` 簽署，Spring Security 預設的 `RS256` 無法驗證。
+
+### Verified
+- `mvn -pl backend/member-service test`：101 項測試通過，包含 LINE `HS256`、其他 provider `RS256` 與 AuthenticationManager 回歸測試。
+- `npm test -- --run`：10 個測試檔、70 項測試通過；`npm run lint`、`npm run build` 通過。
+- Docker Member Service、Gateway 健康；LINE 實際帳戶綁定、資料庫狀態與登出後直接登入均驗證通過。
+- 會員中心總覽正確顯示 LINE 已綁定，且瀏覽器無 console error／warning。
+
+---
+
+## [feat] — 2026-07-24 — 新增 Google、LINE、Apple 第三方登入與真實帳戶綁定
+
+### Added
+- Member Service 整合 Spring Security OAuth2 Client，新增第三方登入起始、callback 與一次性 ticket 交換流程。
+- 新增 `member_social_accounts` MySQL schema／V12 migration，以 OIDC `(provider, sub)` 保存帳戶綁定。
+- 前端新增 `/auth/callback`，登入頁與會員中心改為實際 OAuth 導向；Mock 模式同步提供可測流程。
+- 新增 ADR-011，記錄不以 email 自動合併、JWT 不進 URL、綁定與登入 ticket TTL 等安全決策。
+
+### Changed
+- 帳密與第三方登入共用停權檢查、JWT 簽發及 refresh token Redis 儲存。
+- 移除可由前端自行提交 `externalAccountId` 的示範綁定端點。
+- API request interceptor 保留呼叫端明確指定的 Authorization header，避免 callback 換票後抓 profile 時被舊 token 覆蓋。
+- 將 `PasswordEncoder` 移至獨立設定類，解除 SecurityConfig、OAuth handler、SocialAuthService 與 AuthService 間的啟動循環依賴。
+- 將 member-service 的空殼啟動測試改為真正的 `@SpringBootTest`，並以 H2 與測試用 OAuth 設定驗證完整 Spring context。
+- 自訂 Kafka listener factory 明確遵循 `spring.kafka.listener.auto-startup`，測試環境可停用 consumer 且不需外部 broker。
+
+### Why
+- 原 LINE／Google／Apple 按鈕及社群綁定只回傳 demo 資料，無法向供應商驗證身分；一次性 ticket 可避免 access/refresh token 洩漏到 URL、瀏覽器歷史或代理日誌。
+
+### Verified
+- `npm test`：10 個測試檔、70 項測試通過。
+- `npm run lint`、`npm run build` 通過。
+- `mvn -pl backend/member-service test`：98 項測試通過，包含完整 Spring context 啟動驗證。
+- `node --test tests/infra/*.test.js`：161 項測試通過。
+- 瀏覽器 Mock 驗證：未綁定提示、Google 綁定、登出後第三方登入與 callback 回到 `/games` 均通過，無 console error／warning。
+- Docker 實機驗證（最新 `develop` 基底）：Gateway／Member Service 健康、Google OAuth 同意後成功綁定既有會員，未登入狀態再以 Google 登入可回到 `/games`，瀏覽器無 error／warning。
+
+---
+
+## [docs] — 2026-07-24 — 簡報新增「網站架構全景」投影片
+
+### Added
+- `docs/report/幸運星幣城(看這個).pptx`：在第 8 頁「系統架構」之後插入一張深色**全景架構圖**
+  （新第 9 頁，投影片總數 19 → 20）。四層由上而下：用戶端(5173/5174) → API Gateway(8080，
+  金色焦點帶含五道 Filter) → 7 微服務(8081~8087，含 Notification) → Kafka 事件匯流排
+  (command/event 分離) → PostgreSQL 寫／MySQL 讀 CQRS＋Redis。含 `/internal` 同步 REST 註解。
+- 產圖腳本存於 scratchpad（非 repo）：以 python-pptx 原生 shapes 繪製、可在 PPT 內續編。
+
+### 為什麼
+- 原第 8 頁「系統架構」是淺色文字摘要，缺一張能一眼看懂完整拓撲（含 Kafka/資料層）的全景圖。
+- 沿用簡報既有視覺系統（深藍底 #141833／藏藍卡 #3A4076／金 #C9A227、Cambria 標題＋Calibri 內文），
+  新頁與整份簡報同一套語言，非外掛貼圖。
+
+### 如何驗證
+- 已用 PowerPoint COM 匯出該頁 PNG 目視檢查：四層版面對齊、無溢出、深色底金字可讀。
+- ⚠️ 產生器 `build.js` 仍不在硬碟（commit 12cf14a 只加了 pptxgenjs 依賴、產生器本身未進 git），
+  故本次比照上一筆採「直接編修 .pptx」；已先備份 `幸運星幣城.backup-20260724-111412.pptx`。
+
+---
+
+## [docs] — 2026-07-24 — 新增單頁系統架構圖並修正 README 架構樹
+
+### Added
+- `docs/architecture-diagram.html`：可在瀏覽器開啟的單頁視覺化架構圖（用戶端 → Gateway →
+  7 微服務 → Kafka 事件匯流排 → CQRS 資料層），支援深/淺色主題。內容依 `docs/architecture.md`
+  v1.1（服務邊界、Port、Kafka topics 的 command/event 分離、Redis/DB 分配）繪製。
+- README「專案文件」表新增一列指向該圖。
+
+### Fixed
+- README「專案架構」目錄樹**漂移修正**：補上遺漏的 `notification-service`（:8087）與
+  `frontend-admin`（:5174），並把 `admin-service` 的過期敘述「後台管理延伸骨架」更正為
+  實際職責（已完成 T-050~T-055 等）。舊樹停在 6 後端服務、admin 仍寫成骨架，與現況不符
+  （AGENTS.md §5：發現文件漂移順手更正）。
+
+### 為什麼
+- 之前只有純文字的 architecture.md，缺一張能一眼看懂服務拓撲的總覽圖；新圖便於簡報/新人上手。
+- README 是新人第一份讀物，架構樹漏了整個 notification 服務會誤導。以較新的 architecture.md
+  v1.1 為準對齊。
+
+### 如何驗證
+- 瀏覽器開啟 `docs/architecture-diagram.html`，切換系統深/淺色主題確認皆正常；對照
+  architecture.md §7 Port 表逐一核對服務與埠號。純文件變更，不影響程式行為，無需跑測試。
+
+---
+
+## [docs] — 2026-07-24 — 30 分鐘簡報版面修正：附錄歸位、圖表標籤補零
+
+> 對 `docs/report/幸運星幣城-30分鐘簡報-優化版.pptx` 做外科式版面修正，不動任何主題內容/配色/字體。
+> ⚠️ **產生器 `build.js` 已不存在**（原在 `docs/report/assets/簡報產生器/`，從未進 git、現已從硬碟消失、
+> 無法從 git 復原），故本次改為**直接編修 .pptx**（`python-pptx` + 直改 chart XML），已先備份原檔。
+
+### Fixed
+- **附錄投影片歸位**：「附錄・技術棧」被誤置於實體第 2 張（標題頁之後、議程頁之前），但其頁尾頁碼
+  是寫死的「19」——對照全篇頁碼可判定它原本是最後一張、被拖到了前面。改以 `sldIdLst` 重排移回
+  **最後一張**：實體位置(19) 從此與頁碼(19) 對上，簡報流程也回復正常（標題 → 議程 → …）。
+- **第 16 頁壓測圖表資料標籤**：資料標籤數字格式從 `0.##"%"` 改為 `0.0#"%"`。舊格式遇到整數值
+  78.0 會渲染成 `78.%`（像漏字的錯字），新格式強制至少一位小數 → `78.0%`；其餘 89.3% / 0.05% /
+  68.5% 顯示不變。壓測數字口徑（雙軌陳述）未動。
+
+### 為什麼
+兩者都是「看得到的版面瑕疵」而非內容問題：附錄出現在第 2 張會讓評審一開場就困惑；圖表 `78.%`
+在董事長面前像打錯字。其餘 18 頁設計已一致專業，依 CLAUDE.md §3「外科式修改、不重構沒壞的東西」
+原則不動。
+
+### 如何驗證
+- 用 PowerPoint COM 將改後 .pptx 逐張匯出 PNG 檢視：實體第 2 張＝議程總覽(頁碼 2)、最後一張＝
+  附錄技術棧(頁碼 19)、第 16 頁圖表標籤顯示 `78.0%`。共 19 張、順序與頁碼一致。
+- 原檔已備份至 scratchpad（`backup-YYYYMMDD-HHmmss.pptx`）。
+
+---
+
+## [perf] — 2026-07-23 — wallet outbox 投遞器改平行 ack、可調批次（解 T-090 遠端壓測瓶頸）
+
+> 對應 T-090 遠端施壓機壓測報告（2026-07-23，SUT `10.0.102.84`）§3~§4.1 根因與修法建議。
+
+### Changed
+- `backend/wallet-service/.../service/WalletOutboxPoller.java`：背景投遞器的併發模型重構。
+  舊版在 `for` 迴圈裡逐筆 `.get(10s)` 等 broker ack，是 **O(N) 循序阻塞**——即使單筆 ack 5ms，
+  100 筆也要 ~500ms，實測投遞上限僅 ~100 events/s。改為兩段式：①依 `createdAt` 由舊到新
+  **依序射出整批 `send()`**（非阻塞，只入 producer buffer）②**統一等所有 ack**（平行返回，
+  整輪耗時 ≈ 最慢單筆 ack，而非 N×ack）。刻意**保留 `fixedDelay`**（不改 `fixedRate`），
+  因本 poller 對撈出列未加鎖（單實例假設），`fixedRate` 於 scheduler pool>1 時可能兩輪並跑重送。
+- `backend/wallet-service/.../repository/WalletOutboxRepository.java`：`findTop100By...`（寫死 100/輪，
+  壓測下的吞吐瓶頸）改為 `findByStatusOrderByCreatedAtAsc(status, Pageable)`，批次大小可調。
+- `backend/wallet-service/src/main/resources/application.yml`：新增 `wallet.outbox.batch-size`
+  （預設 500，`WALLET_OUTBOX_BATCH_SIZE`）；`poll-interval-ms` 預設 1000ms→200ms。兩者合計把
+  投遞上限拉到 ~batch/interval（500/0.2s ≈ 2,500 events/s），遠高於舊版 ~100/s。
+- `backend/wallet-service/.../service/WalletOutboxPollerTest.java`：三個既有測試改 stub 新的
+  `Pageable` 查詢方法；新增 `publishPendingEvents_wholeBatchSent_marksAllSent` 守門多筆批次處理。
+
+### Added
+- `docs/performance/T-090-outbox-fix-validation-20260723.md` + `docs/performance/assets/sut-docker-stats-{A-oldcode,B-newcode}-*.csv`：
+  SUT 本機自壓 A/B 驗證與資源快照。
+
+**為什麼**：分機壓測（JMeter 未成瓶頸、SUT CPU 有餘裕）下容量仍卡在 ~160 req/s，根因是每個 spin
+產生 ~2 筆 wallet 事件（debit+credit），事件產生速率一過 ~150 req/s 就追平 poller 上限，
+`outbox PENDING` 跨階累積到 3~4 萬筆、拖慢後續帳務查詢造成雪崩。平行化「等 ack」是最大槓桿；
+批次/間隔可調是配套。**順序安全**：只平行化等待、不改送出順序，idempotent producer（`acks=all`
+預設）保證同 key 不重排。
+**如何驗證**：① `mvn -pl backend/wallet-service test` → 174 tests 全綠（含更新後的
+`WalletOutboxPollerTest` 4 筆）。② **SUT 本機自壓 A/B**（`docs/performance/T-090-outbox-fix-validation-20260723.md`）：
+同一施壓器對舊/新 image 各跑 60s×80 併發——`wallet_outbox_pending_events` 峰值由舊 code 的
+**26,285 降到 189（~140×）**、排空由「>120s 排不完（~80/s）」變 **9s**；部署瞬間繼承的 10,635 筆積壓
+新 code ≤12s 清空；負載前後 T-091 對帳皆 9/9 PASS。co-located 自壓故容量數字不對外引用，
+**可對外的容量天花板仍須照壓測報告 §5 由 LG 分機重跑階梯確認**。
+
+---
+
+## [fixed] — 2026-07-23 — 百家樂／捕魚機全螢幕：一按下注、一開抽屜整個版面就跑掉
+
+> 承 #253 / #255 的同一類雷：全螢幕容器把高度分配交給「子元素數量」或「內容多寡」，
+> 玩家一操作就重排。老虎機在 #255 修過一次，這次把剩下兩款一起收斂，並補上回歸測試。
+
+### Fixed
+- `frontend/src/styles/games/baccarat.css`：全螢幕牌桌改用 flex 直向排列。
+  原本 cockpit override 宣告 `grid-template-rows: auto auto minmax(0, 1fr)` 共三列，
+  但 `.baccarat-table` 在全螢幕**只有兩個可見子元素**——狀態列（`.baccarat-status-bar`）
+  與路紙側欄（`.baccarat-side-panel`）都被 `display: none` 收掉了。於是牌桌
+  `.baccarat-table-felt` 掉進第二個 `auto` 列，高度跟著「內容」跑（felt 自己的
+  `height: 100%` 對 auto 列是循環定義，會退回 auto），而第三列 `1fr` 空著卻吃掉
+  全部剩餘空間。實測 1920x1080：按下注前牌桌 672px、結算後 837px，**表頭以下整塊
+  往下位移 165px**，同時底部固定空著 270px（「畫面被壓縮」）。1366x768 更嚴重：
+  `1fr` 縮到 0 後，felt 內的側注格與結算面板被 `overflow: hidden` 直接裁掉 54px。
+  改 flex 後牌桌 `flex: 1 1 auto` 恆等於剩餘空間，不再依賴「宣告列數 == 子元素數」
+  這個會被 `display: none` 破功的假設。
+- `frontend/src/styles/games/baccarat.css`：結算面板 `.baccarat-settlement` 改固定高度
+  `clamp(160px, 26vh, 300px)`。它所在的 grid 列是 `auto`，尺寸取自內容的 max-content：
+  空狀態 195px、結算後長出金額欄位變成 336px，差額全部從牌桌那列 `minmax(0, 1fr)` 扣。
+  它本來就是 `overflow-y: auto`，固定高度後列高不再隨內容變動，內容真放不下由它自己捲。
+  （`--empty` 變體另有 `max-height: 132px` 會把固定高度夾回去，一併解除。）
+- `frontend/src/components/Fishing.css`：全螢幕 `.fishing-game--fullscreen` 改 flex 直向排列，
+  `.fishing-play-surface` 吸收剩餘空間、舞台卡 `flex: 1 1 auto`、統計抽屜 `flex: 0 0 auto`。
+  原本 `.fishing-play-surface` 是 `display: block`，內含「`height: 100%` 的
+  `.fishing-stage-card`（858px）」＋「`.fishing-catch-stats-drawer`（50px）」＝908px，
+  超出它自己的 858px。溢出往上累積成 `.fishing-main` 的 `scrollHeight` 1114 > 1080。
+  `.fishing-main` 是 `overflow: hidden`，沒有捲軸但**仍可被程式捲動**——瀏覽器把剛點開的
+  `<details>` 捲進可視範圍時 `scrollTop` 變成 33，整個全螢幕面板往上位移 33px，
+  而玩家沒有捲軸可以捲回來。這就是「一操作整個畫面就跑掉」。
+- `frontend/src/components/Fishing.css`：`.fishing-catch-stats-drawer__panel` 加
+  `max-height: min(24vh, 200px); overflow-y: auto`，抽屜展開由自己捲，不把高度推給外層。
+  另外全螢幕改成「往舞台之上浮」（`position: absolute; bottom: 100%`，抽屜自身補
+  `position: relative` 當定位基準）——只讓它自己捲還不夠，展開仍會多佔 48px 而那 48px
+  是從舞台卡扣的，canvas 一縮 Pixi 就重算尺寸讓整批魚跳位，是同一個 bug 的另一種形狀。
+- `frontend/src/components/Reel.jsx`：修 **PR #255 回報的「SPIN 永久卡在 SPINNING」**。
+  `nextFrame()` 只包 `requestAnimationFrame`，但視窗被其他視窗完全遮蔽 / 分頁切到背景時
+  Chrome 會停掉 rAF（`setTimeout` 仍會被節流地觸發），那個 Promise 就永遠不 resolve，
+  `SlotMachine.runReels` 卡在 `phase='spinning'`：按鈕卡在 disabled、狀態停在「減速中」、
+  餘額不更新（`onSettled` 在 `runReels` 之後才呼叫）、且**完全沒有 console 錯誤**——
+  與 #255 的描述逐條吻合。修法：`nextFrame` 讓 rAF 與逾時賽跑，`animateReel` 加看門狗
+  （`duration + 1200ms` 寬限，正常路徑一定是 `step()` 先跑完、行為不變）。
+  順帶修 `startedAt` 用 `!startedAt` 判斷「尚未起算」的問題：rAF 的 timestamp 可能就是 0，
+  那一幀會被當成沒起算過而丟掉，動畫實際少跑一格；改用 `=== null`。
+
+### Added
+- `frontend/e2e/fullscreen-layout.spec.js`：全螢幕版面穩定性回歸測試（1920x1080 / 1366x768 × 三款遊戲）。
+  斷言統一寫成「做完一次真實操作後，關鍵容器的座標/尺寸必須完全不變」＋「全螢幕容器
+  `scrollHeight <= clientHeight`（不可被捲走）」，而不是比對寫死的像素值——後者會隨
+  美術調整誤報，前者才是真正的不變量。
+- `frontend/src/components/Reel.test.jsx`、`frontend/src/components/SlotMachine.test.jsx`：
+  轉輪動畫與視覺鎖的單元測試。核心情境是「把 rAF 完全凍結」（等同視窗被遮蔽/背景分頁），
+  驗證動畫 Promise 仍會結束、SPIN 仍會解鎖；另涵蓋 `targetY` 必為格高整數倍（不停半格）、
+  第一幀 timestamp 為 0、`signal` 已中止、`trackElement` 為 null、`onSpin` 拋錯等邊界。
+
+### 為什麼
+版面 bug 用 jsdom 單元測試抓不到（jsdom 沒有版面引擎），必須在真瀏覽器量。三次事故
+（#253 按鍵被蓋、#255 轉輪第三行被裁、本次兩款全螢幕位移）根因是同一個：**容器的高度
+分配依賴了會變動的東西**（子元素數量、內容 max-content）。因此修法一律收斂成 flex
+「主角吃剩餘空間、配角只佔內容高度」，並把不變量寫成 e2e 斷言擋住下一次。
+
+### 如何驗證
+- `npx playwright test fullscreen-layout.spec.js` → **6 passed**（三款遊戲 × 兩種解析度）
+- 反向驗證測試有效性：`git stash` 退掉兩支 CSS 修正後重跑 →
+  百家樂與捕魚機**立刻紅**、老虎機（#255 已修）維持綠，確認不是假綠燈
+- `npm run lint`（eslint src）無輸出；`npx vitest run` → 8 檔 56 測試全綠
+- 版面量測（Playwright 實測 1920x1080）：
+  百家樂 felt 下注前後皆為 `17,113 1886x950`、`grid-template-rows` 完全一致；
+  捕魚 `.fishing-main` scrollHeight 1114 → **1080**（== clientHeight），scrollTop 恆 0
+- 全站巡檢 38 項（公開頁 / 12 個受保護頁 / 三款遊戲完整下注流程 / 全站浮動元件）
+  皆通過，無 console error
+
+### 關於 PR #255 遺留的「SPIN 永久卡在 SPINNING」
+該現象在一般瀏覽操作下不容易重現（本次 mock 模式連轉兩局皆正常、餘額正確扣款
+999,999,999,999 → 999,999,994,999），因為它只在 **rAF 停擺**時發生——視窗被其他視窗
+完全遮蔽、或分頁切到背景。根因與修法見上方 `Reel.jsx` 條目，並由
+`Reel.test.jsx` / `SlotMachine.test.jsx` 以「凍結 rAF」的方式穩定重現與守門
+（反向驗證：退掉 `Reel.jsx` 修正後這 4 個測試立刻紅）。
+
+---
+
+## [docs] — 2026-07-23 — 新增雙資料庫 ER 圖文件
+
+### Added
+- `docs/database-er-diagrams.md`：PostgreSQL 寫庫（16 張表）與 MySQL 讀庫（12 張表）的
+  ER 圖，含每張表的用途清單與跨庫 CQRS 資料流圖。圖以 SVG 向量圖呈現（`docs/assets/er/`，
+  mermaid-cli 渲染，放大不失真），Mermaid 原始碼收在摺疊區塊、文末附重新產圖 SOP。
+  依 `database/postgres/init.sql`、`database/mysql/init.sql` 現況繪製；因微服務不設實體外鍵，
+  所有關聯以虛線（非識別關聯）表示，並註明一致性改由冪等鍵、樂觀鎖與 Kafka 事件保證。
+
+**為什麼**：專案至今沒有一張完整的 schema 總覽圖，查表關係只能翻兩份 init.sql；
+ER 圖對新成員導覽與 DBA 學習（表設計、約束、CQRS 分工）都有幫助。
+**如何驗證**：純文件，無程式碼變更；Mermaid 語法以 GitHub 渲染確認。
+
+---
+
+## [fixed] — 2026-07-23 — 老虎機全螢幕轉輪第三行被裁掉（螢幕越矮越明顯）
+
+> 承同日前一筆全螢幕修正的後續回報：使用者在全螢幕看不到轉輪最下面那行，但同事的螢幕正常。
+
+### Fixed
+- `frontend/src/components/SlotMachine.jsx`：符號格高（`getResponsiveSymbolHeight`）原本**只看視窗寬度**
+  （480 / 768 兩個斷點），桌機一律固定 170px，完全不管視窗高度。全螢幕時機台高度被視窗鎖死，
+  轉輪窗（`.slot-cabinet`）能分到多少高度由版面決定——實測 1536x672 只有 207px，
+  但三行需要 510px，於是第二行只露 14px、**第三行整個被 `overflow: hidden` 裁掉**。
+  高解析度螢幕分得到足夠高度所以看不出問題，這就是「我的被蓋住、同事的沒有」的來源。
+  改為全螢幕時以 `ResizeObserver` 量測轉輪窗實際可用高度（`clientHeight` 扣掉上下 padding）
+  再除以三決定格高，一般頁面維持原本的寬度斷點邏輯不變。
+  轉輪窗在全螢幕是 `height: 100%` 由外層決定，不會反過來被格高撐開，因此沒有量測↔縮放的循環。
+- `frontend/src/components/slotMachine.css`：全螢幕把 `--slot-reel-height` 綁回
+  `calc(var(--slot-symbol-height) * 3)`。`index.css` 的 `@media (min-width: 1024px)` 把它寫死成
+  `32rem`(512px)，讓轉輪窗高度與格高**脫鉤**；格高縮小後窗口仍是 512px，多出來的高度會露出
+  第四格再被外框切斷（看起來像轉輪下面卡了半排符號）。
+- `frontend/src/components/slotMachine.css`：全螢幕的 `.slot-machine` 由 grid 改 flex。
+  機台實際有 5 個子元素（跑馬燈 / topper / 轉輪窗 / 控制列 / 狀態列），原本
+  `grid-template-rows: auto minmax(0,1fr) auto auto` 只有四列，`1fr` 落在高度 0 的裝飾層上，
+  真正該吃剩餘空間的轉輪窗反而只拿到 `auto`。flex 不依賴子元素數量與順序。
+
+### Changed
+- `frontend/src/components/slotMachine.css`：全螢幕壓縮裝飾件把高度讓給轉輪——燈泡列縮小、
+  機台內重複的「Lucky Star Deluxe / 星幣老虎機」標題收起（全螢幕頂列已經有一模一樣的標題）、
+  GRAND 獎池縮成單行並解除 `min-height: 74px`、拉桿降到 88px。
+  綜合結果：轉輪窗 207px → 250px，格高 51px → 68px，三行完整且無多餘露出。
+
+### 為什麼
+使用者回報全螢幕看不到轉輪最下面那行、但同事的正常。根因是格高只看寬度不看高度，
+所以問題只在矮螢幕出現——這也是為什麼先前只檢查按鈕遮擋沒抓到它。
+
+### 如何驗證
+- `npx eslint src/` 無輸出
+- `npx vitest run` → 8 檔 56 測試全綠
+- `npx vite build` → 成功
+- 瀏覽器實測（1536x672 全螢幕）：三行 tile 全部落在轉輪窗可視範圍內、
+  轉輪窗高度 204px 恰等於 3×格高（68px）、轉動結束後 tile 座標仍精準對齊格線
+  （動畫位移與格高同源，縮放不會讓轉輪停在半格）
+
+### 已知問題（本次未處理）
+- 老虎機按下 SPIN 後，轉輪動畫會停，但 SPIN 按鈕**永久卡在 disabled 的「SPINNING」**、
+  餘額未扣、狀態文字停在「轉輪由左至右自然減速中...」，30 秒仍未釋放，可重現且無 console 錯誤。
+  在**未套用本次修改的一般頁面**（格高仍是原本的 170px）同樣重現，故研判為既有問題、
+  與本次版面修改無關，但尚未完成對照驗證，本次未修。違反 AGENTS.md 雷區 13 的
+  「視覺鎖必須綁定真實流程」鐵則，建議另開任務處理。
+
+---
+
+## [fixed] — 2026-07-23 — 全螢幕版面互相覆蓋按不到按鍵；老虎機全螢幕定位；新增區塊說明標誌
+
+### Fixed
+- `frontend/src/styles/games/baccarat.css`：修掉百家樂全螢幕「區塊互相覆蓋、按鍵按不了」。
+  根因不是 z-index 疊層，而是**格線軌道高度不足 + `overflow: hidden` 硬裁**：全螢幕的
+  `.baccarat-table-felt` 是固定高度 grid，上面每個 breakpoint 各自用 `minmax(固定px, auto)`
+  指定列高，視窗一矮 auto 列就被壓縮。實測 1536x674：籌碼列內容需 137px 只分到 117px，
+  「開始發牌」底部落在 682px（視窗只有 674px）被切在畫面外按不到；結算面板內容需 188px
+  只分到 113px，「下注金額」等欄位被硬裁，看起來像被側注面板蓋住。
+  修法三層：① 籌碼列與下注區改 `min-content`，互動控制列一定拿到內容需要的高度
+  ② 牌桌改 `minmax(0, 1fr)` 吸收剩餘空間 ③ 資訊型面板改 `overflow-y: auto` 自己捲動
+  （`min-height: 0` 是 grid 子項能縮到內容以下的必要條件）。修正後「開始發牌」底部回到 640px。
+- `frontend/src/index.css`：全螢幕期間關掉 `.page-transition-stage` 的
+  `transform / filter / will-change`。這三個屬性任一存在就會讓該元素成為底下所有
+  `position: fixed` 子孫的 containing block，全螢幕舞台會從轉場層的偏移量起算
+  100vw/100vh 而整塊歪掉、溢出視窗右下角。轉場動畫是 `fill-mode: both`（保留最後一格），
+  等動畫跑完沒有用，必須明確關閉。此問題同時影響百家樂與老虎機。
+- `frontend/src/components/slotMachine.css`：`.slot-game-surface--fullscreen` 補上
+  `position: fixed; inset: 0; z-index: 1000`（百家樂早有、老虎機漏了）。缺少時整塊從文件流
+  原位起算 100vw/100vh，右側資訊欄與「離開全螢幕」按鈕會被切出畫面。
+- `frontend/src/styles/games/baccarat.css`：`.baccarat-result-item span` 由 `block` 改為
+  `flex`，讓標籤旁的說明標誌不會掉到下一行把數值擠開；並補上全螢幕下面板標題的行距
+  （縮到 0.86rem 後眉標與主標會黏在一起）。
+
+### Changed
+- `frontend/src/components/slotMachine.css`、`frontend/src/pages/SlotGame.jsx`：老虎機全螢幕
+  右欄改用 flex 並把「下注面額」「本局狀態」排到最前（新增 `.slot-bet-panel` /
+  `.slot-status-panel` 語意 class）。原本順序會把下注面額推到最底（面板 scrollHeight 918px
+  vs 可視 562px），玩家得先捲動才能改注額。
+
+### Added
+- `frontend/src/components/InfoHint.jsx`、`frontend/src/components/infoHint.css`：區塊說明標誌。
+  一顆驚嘆號小圓鈕，點下去就地展開說明卡，支援 Esc 與點擊外部關閉、`align` 可切左右對齊。
+  **刻意不沿用 `GameRuleCard` 的 `createPortal(document.body)` 作法**——全螢幕時瀏覽器只渲染
+  進入全螢幕的那棵子樹，掛在 body 底下的 portal 會整個看不見（老虎機全螢幕之所以要把規則卡
+  `display: none` 就是這個原因）。面板樣式選擇器寫成 `.info-hint .info-hint__panel`（權重 0,2,0）
+  以免被宿主頁面的 `.某區塊 span { display: flex }` 命中而把標題壓成直排。
+- 說明標誌掛載點：百家樂＝側注追蹤、咪牌、本場損益、路單分析、返水、roundId；
+  老虎機＝下注面額（MAX 的實際意義）、本局狀態、最近派彩（含本金口徑）。
+- `frontend/src/components/MetricCard.jsx`：新增選用的 `hint` prop（不傳則行為完全不變）。
+
+### 為什麼
+使用者回報百家樂全螢幕有區塊互相覆蓋、某些按鍵按不了，並希望老虎機也有堪用的全螢幕，
+以及看不懂的區塊（例如「側注追蹤」到底是什麼）能就地查說明。
+
+### 如何驗證
+- `npx eslint src/` 無輸出
+- `npx vitest run` → 8 檔 56 測試全綠
+- `npx vite build` → 成功
+- 瀏覽器實測（1536x674）：全螢幕下對舞台內所有 button/input 做遮擋與溢出檢測
+  （`elementFromPoint` 命中自己 + rect 不超出視窗），百家樂與老虎機皆為 0 個問題按鈕；
+  9 顆說明標誌逐一開闔，全部在視窗內、Esc 可關。
+
+---
+
+## [fixed] — 2026-07-23 — 容量階梯：修掉「某一階失敗卻靜默沿用上一階數據」的假數據路徑
+
+> 承 PR #250（文件層先擋住）的腳本層根治。
+
+### Fixed
+- `tools/observability/run-capacity-ladder.ps1`：每階只採計**這一階新出現**的結果資料夾。
+  舊寫法是「取 `results/` 底下最新的一個資料夾」，不驗證它是否由這一階產生。
+  `run-slot-load-test.ps1` 在 `players.csv` 列數 < `-Threads` 時會 `throw`，而該 `throw`
+  發生在 `New-Item $resultDir` **之前** ⇒ 那一階不會留下自己的資料夾 ⇒ 舊寫法會取到
+  **上一階**的資料夾、拿上一階的 JTL 重算，產出一列標著這一階 `offeredRpsTarget` 的假數據，
+  整輪跑完看起來完全正常。取不到新資料夾時改為大聲中止並指出最可能的原因。
+- `tools/observability/run-capacity-ladder.ps1`：新增開跑前的 `players.csv` 列數檢查
+  （≥ 全階最高執行緒數）。玩家數是開跑前就能確定的事，不該讓階梯跑到 30 分鐘後最貴的
+  高階才失敗。
+- `tools/observability/run-capacity-ladder.ps1`：擋掉用 `powershell -File` 傳陣列參數造成的
+  靜默變形。實測 `-ThreadsPerStep 100,3000` 經 `-File` 會被當成單一字串再轉型成 **1003000**
+  （逗號被當千分位），**不會報錯**；`-OfferedRpsSteps` 同時被壓成 1 元素，所以既有的
+  「兩陣列等長」檢查也抓不到。
+- `docs/performance/T-090-遠端施壓機壓測計畫-20260723.md`：更正 #250 寫錯的一條驗收條件。
+  `gateExitCode` 非 0 是**預期中的正常結果**（runner 在驗收 gate 沒過時就 throw，高階本來就會不過），
+  不能拿它當中止或作廢的依據；真正分得出「跑了但沒過」與「根本沒跑」的是逐階 `runId` 不重複。
+
+### Why
+- 這與 2026-07-22（#247）修掉的「summarize 失敗靜默寫空白列」是同一類 bug，只是換了個入口：
+  **量測腳本沉默地拿到錯的東西，比大聲失敗危險得多**——空白列至少看得出異常，
+  沿用上一階的數據則完全看不出來，而且會直接進到對外引用的容量報告裡。
+- 觸發條件就在既有計畫裡：計畫 provision 2,500 名玩家，但主階梯最高階要開 3,000 條執行緒。
+
+### Verification
+- `node --test tests/infra/jmeter.test.js` — 11/11 pass
+- PowerShell 語法檢查：`[System.Management.Automation.Language.Parser]::ParseFile(...)` 無錯誤
+- 隔離重現測試（5 項全過，含重現舊寫法的 bug）：正常階取到自己的資料夾；runner 失敗時
+  新寫法得到 `$null` 會中止，舊寫法則取到上一階的資料夾
+- 端對端實跑三個守衛：`players.csv` 不存在 / 列數不足 / 陣列被 `-File` 吃掉，
+  三種情況都在第 0 秒中止並印出可執行的修正指令
+- 未做：需要 3,000 名已 provision 玩家 + JMeter 的完整階梯實跑（會寫入 SUT 資料庫），
+  故「取不到新資料夾就中止」這條走隔離重現驗證
+
+---
+
 ## [fixed] -- 2026-07-23 -- Restore remote CI green gates
 
 ### Fixed
@@ -141,6 +809,8 @@
 - mvn -B -ntp -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/admin-service,backend/game-service,backend/rank-service,backend/notification-service clean test
 - mvn -B -ntp -pl backend/wallet-service test -Pcontainers-test
 - npm.cmd run lint / npm.cmd test / npm.cmd run build / npm.cmd run e2e (frontend)
+
+---
 
 ## [docs] — 2026-07-22 — T-090 B1-續 審閱：歸因方向成立，但補「outbound 呼叫零儀表」與「無逾時/無斷路器」兩項
 
@@ -178,6 +848,9 @@
 - 純文件，未動任何程式碼。
 
 feature/weiyu-t090-D-client-bottleneck
+
+---
+
 ## [docs] — 2026-07-22 — T-090 分層歸因：膝點延遲不在 wallet DB/outbox，在 game→wallet 未調校的 RestClient
 
 > 承 5000rps 報告 §7.B1 的開放問題（「pending≈0 且 CPU 未滿 → 單筆交易延遲 → 該不該做 B 案」）。
@@ -190,6 +863,7 @@ feature/weiyu-t090-D-client-bottleneck
   **如何驗證**：Prometheus `histogram_quantile` 逐服務／逐 uri P99 + `hikaricp_connections_*` + `system_cpu_usage`（皆取膝點兩階窗）；程式碼路徑核對 `SlotService.settleInternal` → `WalletClient`／`WalletClientConfig`／`GameResultEventPublisher`／`RiskControlService`。純文件、不動程式碼。
 
 ---
+
 ## [perf] — 2026-07-22 — T-090 壓測 harness 支援遠端施壓機 + 修掉兩個「會靜默放寬檢查」的 bug
 
 > 承前一筆（5,000 req/s 階梯報告）的改善建議 A1~A4。最硬的結論是「施壓機與 SUT 同機導致量不準」，
@@ -238,6 +912,8 @@ feature/weiyu-t090-D-client-bottleneck
 - `run-accounting-reconciliation.ps1` 走 docker 退路實跑：**九項檢查全 0，Result: PASS**。
 - 環境快照實測：game=40、wallet=50、member=40（prometheus 退路）、admin=20（prometheus 退路）、rank=10。
 
+---
+
 ## [perf] — 2026-07-22 — T-090 加壓到 5,000 req/s 容量階梯：連線池 40/50 驗證 +84% 吞吐，但 5,000 打不到（施壓機先飽和）
 
 > 依 #246（熱路徑池統一 40）落地後的重測。目標是把「上升 → 觸頂 → 卸載 → 施壓機撐不住」整條曲線量完，
@@ -273,6 +949,8 @@ feature/weiyu-t090-D-client-bottleneck
   **實質 0 帳務違規。**
 - 環境已釘死：重建 game/wallet/member image 對齊 develop `d8f9370`，actuator 實測
   game pool 40、wallet 50（40 Postgres + 10 MySQL）。
+
+---
 
 ## [perf] — 2026-07-22 — T-090 A 案二次上調：熱路徑 HikariCP 池 24/32/16 → 統一 40（依 CPU 僅 ~40%）
 
@@ -408,6 +1086,7 @@ hashTree 標籤平衡（slot 5/5、fishing 6/6）、`ConstantTimer` 已 0 顆、
 序列化格式按 JMeter 5.6.3 慣例手寫（表達式屬性存為 `stringProp`）。**首次實跑前務必用 JMeter GUI 開一次
 兩支 jmx，確認 Timer 正確載入（TestBean 若欄位不合會被靜默丟棄→退回無節奏爆發，數字會失真）。**
 
+---
 
 ## [perf] — 2026-07-22 — T-090 壓測後續優化 A/C：調大 HikariCP 連線池 + 移除壓測不真實的餘額輪詢
 
@@ -575,6 +1254,9 @@ DB 與 rank 的 Redis 兩個服務邊界，放任一服務內都破壞邊界（�
 - 對本機 live 拓撲（compose postgres:5433 + redis:6379）實跑 `--dry-run`：日贏分 DB 2 / Redis 2 一致；
   全服星幣 DB 60 / Redis 5——**正好印證 P4 要解的漂移**（55 個沒在玩的玩家不在 ZSET 內）。
   未對 live Redis 執行破壞性重建（僅 dry-run 驗證）。
+
+---
+
 ## [perf] — 2026-07-21 — 藍圖 04 P3：排行榜廣播查詢節流改 Redis（閘門前移）
 
 ### Changed
@@ -598,6 +1280,9 @@ DB 與 rank 的 Redis 兩個服務邊界，放任一服務內都破壞邊界（�
 ### Verification
 - `mvn -pl backend/rank-service test` → **Tests run: 69, Failures: 0, Errors: 0**
   （`RankServiceTest` 由 24 例增為 25 例）。
+
+---
+
 ## [feat] — 2026-07-21 — 藍圖 04 P2：wallet Transactional Outbox（事件不再靜默丟失）
 
 ### Added
@@ -647,6 +1332,9 @@ Outbox 把「待發事件」與帳務異動寫進同一 Postgres 交易（原子
   → **Tests run: 17, Failures: 0, Errors: 0**（含新 `WalletOutboxContainerTest` 4 例；schema 無漂移）。
 - 手動端對端（`docker compose stop kafka` → credit 應成功入帳、outbox PENDING → start kafka →
   數秒轉 SENT）**尚待人工執行**（需完整服務拓撲 + 真 broker）。
+
+---
+
 ## [fix] — 2026-07-21 — 藍圖 04 P1：rank 消費去重（修 `addDailyWinnings` 重複累加）
 
 ### Changed
@@ -729,6 +1417,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - P3 亦因實查而改寫：`maybeBroadcastTop10` 已有節流機制，真缺口是「閘門位置在昂貴查詢之後」
   與「節流狀態存 JVM 記憶體」，而非「完全沒有節流」。
 
+---
+
 ## [fix] — 2026-07-21 — 捕魚機殘血回收改「整場一次 floor」，修正低注額有效回收率只有 0.62
 
 ### Changed
@@ -766,6 +1456,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - 新增回歸測試 `FishingServiceCrossBatchTest#residualRecoveryIsFlooredOncePerSession`（單發 10 星幣、銅炮、對龍王打 30 發不致死）同時斷言三件事：① 回收額精確等於「整場累傷一次換算」② 嚴格大於舊版逐發 floor 的加總 ③ 有效回收率貼齊 0.70 且不超過 0.70。
 - `cd frontend && npx vitest run` → 56 passed；`npx eslint src/services/mockApi.js` 無錯誤。
 
+---
+
 ## [fix] — 2026-07-21 — 捕魚機命中判定改逐魚種橢圓＋解析解，命中框與圖案對齊
 
 ### Changed
@@ -790,6 +1482,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### 注意（後續換圖時）
 - `FISH_HITBOX` 是**依現行 PNG 的 alpha 通道量測**而來。之後在 `frontend/src/casino-fx/assets/registry.js` 的 `ART_OVERRIDES` 換圖，必須重新量測並更新本表，否則該魚會退回 `FISH_HITBOX_FALLBACK` 的鬆散命中框。
 
+---
+
 ## [feat] — 2026-07-21 — Provably Fair 公平性驗證展示頁（Task 5–9，接續 PR #225）
 
 ### Added
@@ -808,6 +1502,9 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### 如何驗證
 - `cd frontend && npx vitest run src/services/provablyFairMock.test.js src/components/fairness/panels/SlotFairPanel.test.jsx` 全綠。
 - `cd frontend && npx eslint src/pages/ProvablyFair.jsx src/components/fairness/panels/*.jsx` 無錯誤。
+
+---
+
 ## [feat] — 2026-07-21 — 捕魚機 Redis session 原子化（Lua CAS，ADR-008）：八項架構改進全數完成
 
 ### Added
@@ -829,6 +1526,9 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### Verification
 - `mvn -pl backend/game-service test`：196 個測試全綠（含新增的 3 個 CAS 測試與既有跨批累傷/風控/補償測試迴歸）。
 - 手動雙分頁連打＋top-up 驗證待部署環境進行（ADR-008「驗證」節已列為待辦）。
+
+---
+
 ## [changed] -- 2026-07-23 -- Adjust shop toast and gate inventory voucher use
 
 ### Changed
@@ -843,6 +1543,9 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### Verification
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
+
+---
+
 ## [changed] -- 2026-07-23 -- Keep shop redemption toast in viewport
 
 ### Changed
@@ -855,6 +1558,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
 
+---
+
 ## [changed] -- 2026-07-23 -- Show shop redemption toast
 
 ### Changed
@@ -866,6 +1571,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### Verification
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
+
+---
 
 ## [added] -- 2026-07-23 -- Expand reward shop catalog
 
@@ -889,6 +1596,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - npm.cmd run build --prefix frontend passed.
 - mvn -pl backend/wallet-service test passed.
 
+---
+
 ## [changed] -- 2026-07-23 -- Humanize social binding success dialog
 
 ### Changed
@@ -901,6 +1610,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - rg -n "\?{3,}|蝬|撌|銝|嚗|甈|蝣|摰|雿|憭|蝡|隤" frontend/src/pages/SocialBinding.jsx found no matches.
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
+
+---
 
 ## [changed] -- 2026-07-22 -- Make social account binding a demo-only flow
 
@@ -920,6 +1631,9 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
 - docker compose up -d --build member-service completed; docker compose ps member-service shows `Up ... (healthy)`.
+
+---
+
 ## [fixed] -- 2026-07-22 -- Restore readable profile center copy
 
 ### Fixed
@@ -932,6 +1646,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - rg -n "\?{3,}" frontend/src/pages/Profile.jsx frontend/src/pages/SocialBinding.jsx frontend/src/pages/Member.jsx frontend/src/components/AppShell.jsx found no matches.
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
+
+---
 
 ## [added] -- 2026-07-22 -- Add third-party account binding flow
 
@@ -949,6 +1665,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - npm.cmd run build --prefix frontend passed.
 - mvn -pl backend/member-service test passed.
 
+---
+
 ## [changed] -- 2026-07-22 -- Hide fairness verification from player navigation
 
 ### Changed
@@ -961,6 +1679,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### Verification
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
+
+---
 
 ## [added] -- 2026-07-21 -- Add player front-back integration entry points
 
@@ -980,6 +1700,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - npm.cmd run build --prefix frontend passed.
 - mvn -pl backend/member-service test passed.
 
+---
+
 ## [added] -- 2026-07-21 -- Complete friend request UI flow
 
 ### Added
@@ -995,6 +1717,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
 
+---
+
 ## [fixed] -- 2026-07-21 -- Expand fishing buy-in and settlement fullscreen surface
 
 ### Fixed
@@ -1007,6 +1731,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### Verification
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
+
+---
 
 ## [changed] -- 2026-07-20 -- Fit fishing buy-in and settlement to fullscreen
 
@@ -1021,6 +1747,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
 
+---
+
 ## [added] -- 2026-07-20 -- Add fishing fullscreen access to buy-in and settlement
 
 ### Added
@@ -1033,6 +1761,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### Verification
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
+
+---
 
 ## [removed] -- 2026-07-20 -- Remove fishing settlement verification details
 
@@ -1047,6 +1777,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
 
+---
+
 ## [added] -- 2026-07-20 -- Add fishing catch statistics drawer
 
 ### Added
@@ -1058,6 +1790,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### Verification
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
+
+---
 
 ## [fixed] -- 2026-07-20 -- Prevent duplicate fishing defeat animations
 
@@ -1071,6 +1805,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
 
+---
+
 ## [changed] -- 2026-07-20 -- Smooth fishing hit reactions
 
 ### Changed
@@ -1082,6 +1818,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### Verification
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
+
+---
 
 ## [fixed] -- 2026-07-20 -- Improve fishing defeat responsiveness and blocker effects
 
@@ -1099,6 +1837,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
 
+---
+
 ## [changed] -- 2026-07-20 -- Show fishing special fish effect timers
 
 ### Added
@@ -1114,6 +1854,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### Verification
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
+
+---
 
 ## [changed] -- 2026-07-20 -- Sync game rules to frontend presentation
 
@@ -1131,6 +1873,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
 
+---
+
 ## [changed] -- 2026-07-20 -- Show top fishing notices for every defeated fish
 
 ### Changed
@@ -1143,6 +1887,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### Verification
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
+
+---
 
 ## [changed] -- 2026-07-19 -- Treat Caishen and Money Tree as special fishing targets
 
@@ -1159,6 +1905,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
 
+---
+
 ## [fixed] -- 2026-07-19 -- Fix fishing capture notice names for Boss variants
 
 ### Fixed
@@ -1172,6 +1920,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
 
+---
+
 ## [changed] -- 2026-07-19 -- Reduce fishing stage spawn density
 
 ### Changed
@@ -1184,6 +1934,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### Verification
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
+
+---
 
 ## [fixed] -- 2026-07-19 -- Fix fishing session ammo and balance state
 
@@ -1200,6 +1952,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
 
+---
+
 ## [changed] -- 2026-07-19 -- Center fishing top-up modal in game surface
 
 ### Changed
@@ -1211,6 +1965,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### Verification
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
+
+---
 
 ## [fixed] -- 2026-07-19 -- Fix fishing buy-in fish guide data
 
@@ -1224,6 +1980,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### Verification
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
+
+---
 
 ## [changed] -- 2026-07-17 -- Tune fishing hit feedback and rare fish effects
 
@@ -1252,6 +2010,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
 
+---
+
 ## [changed] -- 2026-07-16 -- Move fishing fullscreen control into stage marquee
 
 ### Changed
@@ -1264,6 +2024,8 @@ ZINCRBY 前崩潰會漏計一筆，但漏計（排行些微偏低）傷害遠小
 ### Verification
 - npm.cmd run lint in frontend passed.
 - npm.cmd run build in frontend passed.
+
+---
 
 ## [changed] -- 2026-07-16 -- Add fullscreen cockpit layouts to player games
 
@@ -1312,6 +2074,9 @@ AUDIT_REPORT 附錄 A 僅剩的兩筆前端/測試 ⚠️ 即這兩項的「驗�
 - `node tests/e2e/full-chain.mjs`：18 PASS / 0 WARN / 0 FAIL，連跑兩輪全綠（docker compose 15 容器拓樸，develop fd3b465）。
 - `npm run e2e:realws`：1 passed（2.8s）。
 - 迴歸：`npm run lint` 乾淨；`npm run e2e`（mock）2 passed / 2 skipped（realtime-ws 正確 skip、fishing skip 為既有）。
+
+---
+
 ## [docs] — 2026-07-18 — T-090 B2 收尾：1,000 韌性輪＋T-091 對帳完成，B2 列 ✅
 
 ### Added
@@ -1338,6 +2103,8 @@ B2 交接的剩餘驗證（1,000 韌性＋T-091）完成，B2 選配收尾閉環
 - 1,000 韌性輪 gate：accepted 成功率 99.7% ≥95% PASS、idempotency/overdraw 0/0。
 - T-091：9 項檢查 0 新違規（3 筆種子錢包已逐筆徹查定性，報告見
   `tests/performance/results/accounting-20260718-192939/`）。
+
+---
 
 ## [perf] — 2026-07-18 — T-090 B2：wallet debit 交易 DB 往返 4→2（雷區 8 全套流程）
 
@@ -1372,6 +2139,8 @@ B1 JFR 定案：單機 Postgres debit 容量 ≈550–600 交易/秒，往返數
   與歷輪 393 ms（weiyu 機器）跨機不可比，達標判定以原機器複測為準。
 - 未完項（交接）：1,000 韌性輪＋T-091 對帳＋報告收尾，見 `docs/performance/T-090-B2-工作紀錄-20260718.md`。
 
+---
+
 ## [docs] — 2026-07-18 — AUDIT_REPORT：T-090 ⚠️→✅（E3 驗收通過，移除 override）
 
 ### Changed
@@ -1383,6 +2152,7 @@ PR #218 合併後 T-090 已於 E3 結案輪在 D1-c 語意下正式驗收通過�
 
 ### Verification
 
+---
 
 ## [test] — 2026-07-18 — T-090 E3 結案輪：150 全綠驗收 PASS＋1,000 韌性 PASS＋T-091 乾淨，第二輪閉環
 
@@ -1400,6 +2170,8 @@ E3 是第二輪藍圖的結案輪：首輪套用 D1-final（選 c）＋D2 雙模
 - provisioning 947/1,000（auth 限流 429 缺 53）→ 補量 60 名合併 1,007 列；refresh 1,007 名僅 6.4 秒。
 - 兩輪 acceptance report（新模板含宣告容量/Gate mode/成功率欄）＋ JTL ＋ HTML 落 `tests/performance/results/20260718-10*`；T-091 報告落 `accounting-20260718-104929`。
 
+---
+
 ## [changed] — 2026-07-18 — T-090 D1-final 拍板（選 c）＋ D2 落地：gate 與拓樸宣告綁定
 
 ### Changed
@@ -1415,6 +2187,8 @@ D1 三懸案不拍板則「上線標準」無法閉環。選 c 的理由（藍�
 ### Verification
 - 07-18 歷史 JTL 迴放：150 輪（`20260718-031827`）驗收模式 **PASS**（P99 393 ms/429=0）；1,000 輪（`20260718-033439`）韌性模式 **PASS**（成功率 97.7% ≥95%、帳務 0）；反向驗證＝同一 1,000 輪 JTL 用驗收模式判 **FAIL** exit 1（gate 有效）、非法參數 exit 2。
 - `node --test tests/infra/jmeter.test.js`：11/11 綠。
+
+---
 
 ## [test] — 2026-07-18 — T-090 壓測前臨發 token 腳本（解 JWT 15 分鐘到期工件）
 
@@ -1432,6 +2206,8 @@ D1 三懸案不拍板則「上線標準」無法閉環。選 c 的理由（藍�
 - Provision 2 名 → CSV 三欄格式正確 → refresh 0.1 秒完成、解 JWT 驗證 `iat` 前進 14 秒、新 token 效期 900 秒整。
 - 舊格式 CSV：exit=1、檔案未被改寫。
 
+---
+
 ## [fix] — 2026-07-18 — T-090 provision 腳本 admin 密碼改讀 .env 同一真相來源（治本 401）
 
 ### Fixed
@@ -1443,6 +2219,8 @@ D1 三懸案不拍板則「上線標準」無法閉環。選 c 的理由（藍�
 ### Verification
 - `PLAYERS=1`、不帶 `ADMIN_PASS` 實跑：admin 登入成功、GM 發幣 1,000,000 到帳、CSV 寫出（1 成功 / 0 失敗）。
 - DB 佐證：`admin_action_logs` GM_GRANT 1,201 筆、1,201 個錢包 ≥500,000（07-18 凌晨輪發幣管線正常）。
+
+---
 
 ## [test] — 2026-07-18 — T-090 E1+E2 對照重跑：150 全綠首達、1,000 併發 503 歸零；provision 腳本防靜默退化
 
@@ -1458,6 +2236,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### Verification
 - 手動重現 `/admin/gm/grant` 全管線（HTTP 200 → Kafka → wallet 入帳 1,000,100）確認端點無 bug；provision 200/200、1,000/1,000 全成功，DB 驗 `balance>=500000` 錢包數吻合。
 - 兩輪 acceptance report + JTL 落 `tests/performance/results/20260718-*`；T-091 由容器內 psql 執行，3 筆既知 1001–1003 歷史髒資料已逐筆查證非本輪產生。
+
+---
 
 ## [changed] — 2026-07-17 — T-090 E1+E2：game/wallet CB 改時間窗＋AIMD 延遲窗排除卸載樣本（消滅 CB/AIMD 互踩）
 
@@ -1476,6 +2256,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `mvn -pl backend/gateway-service test`：47/47 全綠（原 41 ＋ 新增 6）。
 - 對照重跑（150/1,000 併發）排定於落地後執行，判準＝503 桶 2,024 → 趨近 0、accepted 成功率 78.4% → 90%+。
 
+---
+
 ## [changed] -- 2026-07-16 -- Restore baccarat side panel and move rules to page top
 
 ### Changed
@@ -1490,6 +2272,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
 - Playwright layout QA passed at 1100x900 and 1500x900: rules above table, side panel contains roadmap only, 1500px side panel restored to right rail, 1100px side panel remains below felt, bodyOverflowX 0.
+
+---
 
 ## [changed] -- 2026-07-16 -- Move baccarat roadmap to page top and remove fairness panel
 
@@ -1509,6 +2293,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - npm.cmd run build --prefix frontend passed.
 - rg confirmed Baccarat.jsx only renders BaccaratRoadmap once at the page top and no longer contains baccarat-api-panel or fairness verification copy.
 
+---
+
 ## [changed] -- 2026-07-14 -- Keep baccarat side panel below the table
 
 ### Changed
@@ -1523,6 +2309,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
 - Playwright layout QA passed at 1100x900, 1500x900, and 1800x900: side panel below felt, aligned full width, static position, and bodyOverflowX 0.
+
+---
 
 ## [fixed] -- 2026-07-14 -- Prevent baccarat wide-desktop clipping
 
@@ -1539,6 +2327,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - npm.cmd run build --prefix frontend passed.
 - Playwright wide-desktop QA passed at 1600x900 and 1800x900: felt aspect-ratio auto, table/felt overflow visible, deepestOverflow <= 0, feltOverflowY 0, bodyOverflowX 0.
 
+---
+
 ## [fixed] -- 2026-07-14 -- Polish baccarat side bets, squeeze hint, and deal animation
 
 ### Fixed
@@ -1554,6 +2344,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
 
+---
+
 ## [changed] -- 2026-07-14 -- Move baccarat reveal button into duel grid center
 
 ### Changed
@@ -1567,6 +2359,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### Verification
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
+
+---
 
 ## [fixed] -- 2026-07-14 -- Rebalance baccarat fullscreen card and side-bet areas
 
@@ -1584,6 +2378,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - npm.cmd run build --prefix frontend passed.
 - Playwright fullscreen QA passed at 1440x900 and 2048x768: all 8 side-bet buttons visible, duel taller than betting mat, overflowX 0, tableOverflowY 0.
 
+---
+
 ## [fixed] -- 2026-07-14 -- Separate baccarat page and fullscreen scroll layouts
 
 ### Fixed
@@ -1598,6 +2394,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
 - Playwright scroll QA passed: normal table contains side-panel, no side-panel vertical scrollbar, fullscreen hides side-panel, body and table overflow are hidden, and settlement remains visible.
+
+---
 
 ## [fixed] -- 2026-07-14 -- Reposition baccarat fullscreen settlement panel
 
@@ -1614,6 +2412,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - npm.cmd run build --prefix frontend passed.
 - Playwright layout QA measured refreshed fullscreen layouts at 1440x900 and 1100x800: settlement above side bets, in viewport, useful size true, duel compact true, and zero overflow.
 
+---
+
 ## [fixed] -- 2026-07-14 -- Compact baccarat fullscreen card arena and settlement rail
 
 ### Fixed
@@ -1629,6 +2429,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - npm.cmd run build --prefix frontend passed.
 - Playwright layout QA measured fullscreen layouts at 1440x900 and 1100x800 with zero overflow; duel-grid was reduced to 780x150 and 792x144, and empty settlement rail to 105px tall.
 
+---
+
 ## [fixed] -- 2026-07-13 -- Refine baccarat side panel and fullscreen table layout
 
 ### Fixed
@@ -1643,6 +2445,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
 - Playwright layout QA passed for refreshed baccarat page at 1440x900 and 1100x800 fullscreen-class layouts with zero side-bet overlap and zero horizontal overflow.
+
+---
 
 ## [changed] -- 2026-07-13 -- Integrate baccarat side bets and empty settlement rail
 
@@ -1660,6 +2464,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - npm.cmd run build --prefix frontend passed.
 - Playwright QA passed for refreshed baccarat page, side-bet tracking, fullscreen layout class, settlement, and roadmap update.
 
+---
+
 ## [changed] -- 2026-07-13 -- Add baccarat interaction polish
 
 ### Changed
@@ -1675,6 +2481,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - npm.cmd run lint --prefix frontend passed.
 - npm.cmd run build --prefix frontend passed.
 
+---
+
 ## [fix] -- 2026-07-13 -- Restore baccarat theme background and panel layout
 
 ### Fixed
@@ -1689,6 +2497,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - npm.cmd run lint frontend passed.
 - npm.cmd run build frontend passed.
 
+---
+
 ## [fix] -- 2026-07-13 -- Compact baccarat side metrics
 
 ### Fixed
@@ -1700,6 +2510,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### Verification
 - npm.cmd run lint frontend passed.
 - npm.cmd run build frontend passed.
+
+---
 
 ## [fix] -- 2026-07-13 -- Adjust baccarat interaction and responsive layout
 
@@ -1714,6 +2526,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### Verification
 - npm.cmd run lint frontend passed.
 - npm.cmd run build frontend passed.
+
+---
 
 ## [changed] -- 2026-07-13 -- Rebuild desktop baccarat table UI
 
@@ -1730,6 +2544,22 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - npm.cmd run lint frontend passed.
 - npm.cmd run build frontend passed.
 
+---
+
+## [docs] -- 2026-07-14 -- 修正 AGENTS.md 與 ci.yml 的 @EmbeddedKafka 漂移：程式碼從未用內嵌 broker
+
+### Changed
+- `AGENTS.md` §4 驗證指令註解、`.github/workflows/ci.yml` backend-test job 註解：移除「game/rank/notification 另用 `@EmbeddedKafka` 起內嵌 broker」的說法，改為實際的 Kafka 隔離手法——game 無 `@KafkaListener`（`KafkaTemplate` producer 延遲連線，contextLoads 不碰網路）、rank/notification 測試 `application.yml` 設 `spring.kafka.listener.auto-startup: false`、事件邏輯測試以 Mockito mock `KafkaTemplate`（如 `GameResultEventPublisherTest`）。
+
+### 為什麼
+- `grep -r EmbeddedKafka backend/` 零命中——整個 backend 沒有任何 `@EmbeddedKafka`，此說法自 2026 年中寫入後即與程式碼不符（依 AGENTS.md 自身「以程式碼為準並順手更正文件」原則修正）。留著會誤導：新增服務的人可能真的去引入 EmbeddedKafka（慢、吃記憶體、偶發 flaky），而不是沿用現行三個更輕的隔離技巧。
+- 註：`docs/report/PROJECT_ANALYSIS.md` 等日期快照報告中同一說法未改（屬歷史快照，不回溯修訂）。
+
+### 如何驗證
+- 純文件/註解變更，無程式行為影響。佐證可重現：`grep -r "EmbeddedKafka" backend/` 無結果；`backend/rank-service/src/test/resources/application.yml` 與 `backend/notification-service/src/test/resources/application.yml` 均含 `listener.auto-startup: false`；game-service 測試設定檔註解自述「無 @KafkaListener、不於啟動時連線」。
+
+---
+
 ## [docs] -- 2026-07-14 -- ADR-004 補修訂紀錄：追認砲台傷害 14/22/32 為定案值，收掉最後一筆已知 ADR 漂移
 
 ### Changed
@@ -1743,6 +2573,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 
 ### 如何驗證
 - 純文件變更，無程式行為影響。考證依據可重現：`git log --all -S '{0, 14, 22, 32}' -- backend/game-service` 唯一命中 `440b6df`；`git show 440b6df` 確認訊息/CHANGELOG 未提傷害調整；現行 `FishingCombat.java:67` 與 `contracts/fishing-combat.json` 均為 `[0, 14, 22, 32]`。
+
+---
 
 ## [docs] -- 2026-07-13 -- interview-prep 補三個缺口：契約守門決策、風控門檻的蒙地卡羅論證、Kafka partition 分層
 
@@ -1803,6 +2635,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### 如何驗證
 - 純文件變更，不影響程式行為。所有敘述逐項比對真實檔案：`docker-compose.yml`（7 服務 + observability profile）、`.env.example`（CHANGE_ME 佔位符）、`kafka/kafka-init.sh`（8+5 topic）、兩套 `init.sql`（15+11 表）、gateway `application.yml`（路由順序、jwt.whitelist、concurrency-limit）、各服務 `DataSourceConfig`（wallet/admin 雙 EMF）、`GmRewardService`（GM 發幣走 `wallet.credit.request`）、`FishingSessionStore`（無 version/Lua → P3 確實未動工）、`TopupController`、`RealtimeBridge.jsx`、`rankSlice/walletSlice`（BUG-001~005 已修）。
 - `python docs/game-math/verify_rtp.py` 實跑：老虎機 RTP 0.93830 / 命中率 0.30681，與 `SlotSymbol` Javadoc（93.8% / 30.7%）吻合，確認 game-math 無漂移。
+
+---
+
 ## [changed] -- 2026-07-13 -- 高流量 Kafka topic 拉高 partition 數並補測試斷言
 
 ### Changed
@@ -1817,6 +2652,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `node --test tests/infra/kafka.test.js`：25 個測試全過。
 - 提醒：`--if-not-exists` 對已存在的 topic 不生效，既有環境要套用新 partition 數須手動 `kafka-topics --alter --partitions 6`，或 `docker-compose down -v` 清 volume 後重建。
 
+---
+
 ## [docs] -- 2026-07-13 -- 修正 Redis key 命名文件與實際程式碼漂移（refresh/blacklist）
 
 ### Changed
@@ -1828,6 +2665,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 
 ### 如何驗證
 - 純文件變更；核對 `backend/member-service/src/main/java/com/luckystar/member/service/TokenRedisService.java`、`AuthService.java` 實際 key 字串與行為一致。
+
+---
 
 ## [changed] -- 2026-07-13 -- Highlight special fishing targets
 
@@ -1847,6 +2686,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run test -- FishingFishInfoPanel fishingFishConfig` (frontend): passed, 1 file / 2 tests.
 - `npm.cmd run build` (frontend): passed.
 
+---
+
 ## [changed] -- 2026-07-13 -- Separate fishing blocker guide
 
 ### Changed
@@ -1862,6 +2703,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run test -- FishingFishInfoPanel fishingFishConfig` (frontend): passed, 1 file / 2 tests.
 - `npm.cmd run build` (frontend): passed.
 
+---
+
 ## [changed] -- 2026-07-12 -- Improve fishing lobby fish guide layout
 
 ### Changed
@@ -1876,6 +2719,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run test -- FishingFishInfoPanel fishingFishConfig` (frontend): passed, 1 file / 2 tests.
 - `npm.cmd run build` (frontend): passed.
 
+---
+
 ## [changed] -- 2026-07-12 -- Raise demo player star coin balance
 
 ### Changed
@@ -1888,6 +2733,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 
 ### Verification
 - `npm.cmd run test`: passed, 6 files / 42 tests.
+
+---
 
 ## [fix] -- 2026-07-12 -- Stabilize fishing lobby controls and fish king variants
 
@@ -1909,6 +2756,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `cd frontend && npm run test`: passed, 7 files / 44 tests.
 - `cd frontend && npm run build`: passed.
 - `cd frontend && npm run e2e`: passed, 1 skipped.
+
+---
+
 ## [docs] -- 2026-07-10 -- 九份 ADR 補「現況校驗」章節，對齊程式碼實際狀態並記錄文件漂移
 
 ### Added
@@ -1927,6 +2777,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 
 ### 如何驗證
 - 純文件變更；每份 ADR 新增章節引用的檔案路徑/行號、migration 版號、常數值均由 Explore agent 實際讀取程式碼確認，非憑空推測。
+
+---
+
 ## [docs] -- 2026-07-10 -- interview-prep 與組員A報告對齊 7/10 現況（ADR-009 補償、gateway -150 併發卸載、C3+B1 最終數據）
 
 ### Changed
@@ -1944,6 +2797,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### 如何驗證
 - 純文件變更；內容逐一對照 `FilterOrder.java`、`RouteConcurrencyLimitGlobalFilter`/`AdaptiveInFlightLimiter`、gateway `application.yml`（concurrency-limit/timelimiter）、`SlotService.settleInternal`、`WalletCompensationService`/`WalletCompensationRetryJob`（30s/指數退避）、`RiskControlService`（Lua 並發閘）、`kafka-init.sh`（8+5 topic）與 `13`/`T-090` 報告數據。
 
+---
+
 ## [docs] -- 2026-07-10 -- 新增組員A五天衝刺「完整詳答」檔（含 Docker 七服務實作教學章）
 
 ### Added
@@ -1959,6 +2814,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### 如何驗證
 - 純文件變更；詳答內容逐段核對 `docs/interview-prep/00/02/09/10/11/13`、`docker-compose.yml`、`backend/wallet-service/Dockerfile`、`docs/performance/T-090-load-test-report.md`，數字與檔案路徑一致。
 
+---
+
 ## [docs] -- 2026-07-10 -- interview-prep 13：補 C3+B1 對照重跑數據（150 P99 -48%、1,000 成功+430%/401歸零）
 
 ### Changed
@@ -1971,6 +2828,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### 如何驗證
 - 純文件變更；內文數字逐一比對 `docs/performance/T-090-load-test-report.md`「2026-07-09 C3+B1 效果對照重跑」章節一致。
 
+---
+
 ## [docs] -- 2026-07-10 -- 新增組員A（組長）五天衝刺與面試準備整合檔
 
 ### Added
@@ -1982,6 +2841,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 
 ### 如何驗證
 - 純文件新增，不影響程式行為；內文所有數字與檔案路徑均比對 `T-090-load-test-report.md`、`13-壓測與效能調校.md`、`00-index.md` §5 一致。
+
+---
 
 ## [test] -- 2026-07-09 -- T-090 C3+B1 效果對照重跑（150/1,000 併發）：wallet 路徑保護生效、401 歸零、成功 +430%
 
@@ -1997,6 +2858,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 
 ### 如何驗證
 - 暖機（棄置）→ 2.5 分鐘輪距 → `run-slot-load-test.ps1 -Threads 150 -Max429Ratio 0` → 重新 provision 1,000 名（兼輪距）→ `-Threads 1000`；對帳 `accounting-reconciliation.sql` 經 `docker exec lucky-star-postgres psql` 執行，9 項檢查除歷史髒資料外全 0。
+
+---
 
 ## [docs] -- 2026-07-09 -- interview-prep：新增 13-壓測與效能調校（T-090 戰役）＋既有筆記對齊 7 月現況
 
@@ -2014,6 +2877,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 
 ### 如何驗證
 - 純文件變更，無程式行為影響。數字逐一對照 `docs/performance/T-090-load-test-report.md`（5xx 78%→0、−72%、成功 +126%、429 46.2%）、`T-090-B1-wallet-debit-analysis.md`（≈550–600 筆/秒、pool size A/B、dead tuple 8.57%）、`T-090-C3-gateway-shedding-design-evaluation.md`（方案 D 拍板）；ADR-007/009 存在於 `docs/adr/`；CI 範圍對照 `.github/workflows/ci.yml` 第 79–90 行；地雷 22 條對照 `AGENTS.md` §2。
+
+---
 
 ## [perf] -- 2026-07-09 -- T-090 C3：gateway 併發上限動態化（AIMD 在途上限）＋ wallet 路徑納管
 
@@ -2033,6 +2898,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `mvn -pl backend/gateway-service test`：41/41 綠（`RouteConcurrencyLimitGlobalFilterTest` 13 個：原 C1 六個語意全保留＋wallet 獨立計數＋AIMD 收緊/放寬/floor-ceiling 夾住/無流量不調/窗歸零/收緊低於在途時計數不毀）。
 - 對照壓測（150/1,000 併發，照 C1 SOP）待跑，跑完補充至 `T-090-load-test-report.md`。
 
+---
+
 ## [fix] -- 2026-07-09 -- T-090 B1：wallet-service HikariCP maximum-pool-size 巢狀 key 失效（實際一直跑預設 10，非宣稱的 15/10）＋剖析報告
 
 ### Fixed
@@ -2048,6 +2915,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - **重要**：A/B 量測（150 併發、隔離直打 wallet-service debit，繞開 game-service/gateway）顯示 pool size 從 10 提升到 15、甚至實驗值 60，延遲量級都沒有顯著改善（avg 一直落在 280~430ms、p99 420~860ms），且穩態下連線池未被打滿——**這個修正單獨不會讓 debit 變快**，純粹是讓設定檔說的話算數，為後續調校建立正確的基準線。完整分析與尚未解開的瓶頸（初步指向單機 CPU/執行緒競爭）見 `docs/performance/T-090-B1-wallet-debit-analysis.md`。
 - code-reviewer 審查 PASS（範圍窄：僅連線池容量設定，未動帳務/冪等/樂觀鎖邏輯）。
 
+---
+
 ## [changed] -- 2026-07-08 -- Fishing bottom cannon and hit reactions
 
 ### Changed
@@ -2061,6 +2930,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint` from `frontend/`
 - `npm.cmd run build` from `frontend/`
 - `git diff --check`
+
+---
 
 ## [changed] -- 2026-07-08 -- Fishing control dock outside canvas and smaller field sprites
 
@@ -2077,6 +2948,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run build` from `frontend/`
 - `git diff --check`
 
+---
+
 ## [changed] -- 2026-07-07 -- Fishing spawn frequency follows backend weights
 
 ### Changed
@@ -2090,6 +2963,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint` from `frontend/`
 - `npm.cmd run build` from `frontend/`
 - `git diff --check`
+
+---
 
 ## [fixed] -- 2026-07-07 -- Fishing blocker size and turtle direction
 
@@ -2106,6 +2981,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 - `git diff --check`
+
+---
 
 ## [fixed] -- 2026-07-07 -- Fishing field mask direction and size pass
 
@@ -2124,6 +3001,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run build`
 - `git diff --check`
 
+---
+
 ## [changed] -- 2026-07-07 -- Fishing stage background cleanup
 
 ### Changed
@@ -2137,6 +3016,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run build`
 - `git diff --check`
 
+---
+
 ## [changed] -- 2026-07-07 -- Fishing field sprite sizes reduced
 
 ### Changed
@@ -2149,6 +3030,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 - `git diff --check`
+
+---
 
 ## [changed] -- 2026-07-07 -- Fishing cannon and stage background reference artwork
 
@@ -2166,6 +3049,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 
+---
+
 ## [fixed] -- 2026-07-07 -- Fishing blocker PNG decode artifacts
 
 ### Fixed
@@ -2178,6 +3063,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `python` PNG header check
 - `npm.cmd run lint`
 - `npm.cmd run build`
+
+---
 
 ## [changed] -- 2026-07-07 -- Fishing blocker reference artwork
 
@@ -2197,6 +3084,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 
+---
+
 ## [changed] -- 2026-07-07 -- Fishing caishen and money tree reference artwork
 
 ### Changed
@@ -2215,6 +3104,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 
+---
+
 ## [fixed] -- 2026-07-07 -- Fishing gold dragon white residue removal
 
 ### Fixed
@@ -2228,6 +3119,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 
+---
+
 ## [fixed] -- 2026-07-07 -- Fishing gold dragon alpha cleanup
 
 ### Fixed
@@ -2240,6 +3133,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `python` PNG header check
 - `npm.cmd run lint`
 - `npm.cmd run build`
+
+---
 
 ## [changed] -- 2026-07-07 -- Fishing reference fish artwork set
 
@@ -2258,6 +3153,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 
+---
+
 ## [changed] -- 2026-07-07 -- Fishing gold dragon reference artwork
 
 ### Changed
@@ -2274,6 +3171,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 
+---
+
 ## [changed] -- 2026-07-07 -- Fishing pixiu render size
 
 ### Changed
@@ -2285,6 +3184,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### Verified
 - `npm.cmd run lint`
 - `npm.cmd run build`
+
+---
 
 ## [changed] -- 2026-07-07 -- Fishing pixiu reference artwork
 
@@ -2302,6 +3203,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 
+---
+
 ## [changed] -- 2026-07-07 -- Fishing non-fish prize artwork
 
 ### Changed
@@ -2318,6 +3221,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 
+---
+
 ## [changed] -- 2026-07-07 -- Fishing high-value species fish silhouettes
 
 ### Changed
@@ -2333,6 +3238,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 
+---
+
 ## [changed] -- 2026-07-07 -- Fishing angelfish and pixiu artwork polish
 
 ### Changed
@@ -2347,6 +3254,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 
+---
+
 ## [fixed] -- 2026-07-07 -- Fishing fish direction and size tuning
 
 ### Changed
@@ -2359,6 +3268,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### Verified
 - `npm.cmd run lint`
 - `npm.cmd run build`
+
+---
 
 ## [changed] -- 2026-07-07 -- Fishing selected fish visual redesign
 
@@ -2375,6 +3286,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 
+---
+
 ## [changed] -- 2026-07-07 -- Fishing contract fish SVG assets
 
 ### Added
@@ -2390,6 +3303,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `python` SVG XML parse check
 - `npm.cmd run lint`
 - `npm.cmd run build`
+
+---
 
 ## [changed] -- 2026-07-07 -- Fishing backend contract alignment
 
@@ -2411,6 +3326,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run test`
 - `mvn -pl backend/game-service test`
 
+---
+
 ## [feat] -- 2026-07-06 -- Fishing blocker effects and stage polish
 
 ### Added
@@ -2429,6 +3346,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 
+---
+
 ## [test] -- 2026-07-08 -- T-090 C1+C2 效果對照重跑：成功數 +126%、401 −63%、spin 延遲腰斬；殘餘失敗移位到未受保護的 wallet 路徑
 
 ### Added
@@ -2441,6 +3360,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 
 ### 如何驗證
 - 全數字出自 `results/20260708-15*` JTL 與 Prometheus range query（窗口迄 epoch 1783496829）；對帳 `docker exec psql` 九項僅既有 player 1001–1003 髒資料，照例排除。
+
+---
 
 ## [perf] -- 2026-07-08 -- T-090 C1：gateway 遊戲路徑全局併發上限（超限 429 快速卸載）＋驗收 gate 語意拍板
 
@@ -2462,6 +3383,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `mvn -pl backend/gateway-service test` 全綠（40 tests，含新 6 個）。
 - 實測效果（C1+C2 疊加）待重跑 T-090 150/1,000 對照後回填報告。
 
+---
+
 ## [perf] -- 2026-07-08 -- T-090 C2：gateway JWT filter Redis 撤銷檢查加瞬時錯誤短重試（fail-closed 語意不變）
 
 ### Changed
@@ -2475,6 +3398,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### 如何驗證
 - `mvn -pl backend/gateway-service test` 全綠；`JwtAuthenticationGlobalFilterTest` 新增 2 測試：`redisTransientError_recoversOnRetry_isForwarded`（第一次訂閱失敗、重試成功 → 放行且確認真的重試過）、`redisPersistentError_retriesThenStillFailsClosedWith401`（持續故障 → 重試耗盡仍 401 且不轉發，鎖住 fail-closed 不回歸）。
 - 實測效果待下一輪 T-090 重跑對照 401 桶（藍圖統一驗證流程）。
+
+---
 
 ## [fix] -- 2026-07-08 -- 修補玩家停用的稽核破口：Redis 封鎖改 best-effort，不再因 Redis 失敗回滾稽核
 
@@ -2490,6 +3415,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 
 ### 如何驗證
 - `mvn -pl backend/admin-service test`：94 全綠（`AdminPlayerServiceTest` 10 項，含新增的 Redis best-effort 案例）。
+
+---
 
 ## [changed] -- 2026-07-08 -- 後台稽核全面收斂為強一致：鑽石卡生成 + 商城目錄變更由 best-effort 改硬失敗
 
@@ -2510,6 +3437,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### 如何驗證
 - `mvn -pl backend/admin-service test`：93 全綠（`AdminShopServiceTest` 5 項含新增、`DiamondCardServiceTest` 6 項含改寫）。
 
+---
+
 ## [changed] -- 2026-07-08 -- 後台告警「已處理」分頁 + 玩家封鎖稽核由 best-effort 收斂為同交易強一致
 
 ### 背景
@@ -2528,6 +3457,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### 如何驗證
 - `mvn -pl backend/admin-service test`：92 全綠（`AdminPlayerServiceTest` 9 項含改寫後兩項）。
 - `cd frontend-admin && npx vite build`：綠燈，產出 `dist/assets/Dashboard-*.js`。
+
+---
 
 ## [fix] -- 2026-07-08 -- 後台告警「標記已處理」補稽核：記錄處理者 resolved_by + 落 admin_action_logs
 
@@ -2551,6 +3482,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 
 ### 如何驗證
 - `mvn -pl backend/admin-service test`：92 全綠（含改寫後的 `AdminAlertServiceTest`，7 項）。
+
+---
 
 ## [perf] -- 2026-07-08 -- T-090 效能調校 Phase A（A1–A4）：風控統計移出熱路徑
 
@@ -2578,6 +3511,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `mvn -pl backend/game-service test`：190 tests 全綠（含 `RiskControlServiceTest` 新增 9 個 A1/A2/A4 測試：快取命中不查 DB、miss 降級直查、HSETNX 回填、Lua 並發閘、best-effort 不拋例外）。
 - 效能對照（150 併發迴歸基準 + 1,000 併發趨勢）待重跑 T-090/T-091 後回填報告——依藍圖統一驗證流程，帳務 gate 為不可回歸硬底線。
 
+---
+
 ## [docs] -- 2026-07-08 -- T-090 效能調校藍圖：P99/5xx/失敗樣本的分階段施工計畫
 
 ### Added
@@ -2589,6 +3524,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 
 ### 如何驗證
 - 純文件新增，無行為變更；各 Phase 落地時依計畫內驗證流程重跑 T-090/T-091 並回填進度表。
+
+---
 
 ## [test] -- 2026-07-08 -- T-090 1,000 併發完整重跑（TimeLimiter 修正後驗證）
 
@@ -2611,6 +3548,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `tests/performance/results/20260708-103916/acceptance-report.md`、`results/accounting-20260708-104156/accounting-reconciliation.csv`；Prometheus range query（`increase(...[90s])`，窗口迄 10:40:24）可複驗，PromQL 見報告內嵌。
 - 迴歸自查：`node --test tests/infra/*.test.js` 綠燈（本次未動任何程式碼/設定，僅文件與測試產物）。
 
+---
+
 ## [fix] -- 2026-07-08 -- gateway 補 Resilience4j TimeLimiter 設定，解決 T-090 thundering herd 熔斷
 
 ### 背景
@@ -2626,6 +3565,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### 如何驗證
 - 150 併發（`tests/performance/results/20260708-101629/acceptance-report.md`）：HTTP 5xx 由修正前 13,563（78.0%）降至 **0**；失敗樣本由 13,563 降至 4（0.05%）；idempotency/overdraw 全程 0。
 - P99（2,667 ms）仍未達 < 500 ms 門檻——歸類為下一輪效能調校的獨立課題（風控聚合/注單稽核在高併發下變重），不在本次修正範圍。
+
+---
 
 ## [test] -- 2026-07-08 -- T-090 壓測完整重跑（Phase 2b 完成）：根因鏈確認、帳務對帳 PASS
 
@@ -2647,6 +3588,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### 如何驗證
 - `tests/performance/results/20260708-100306/acceptance-report.md`（150 併發）、`tests/performance/results/20260708-100442/acceptance-report.md`（1000 併發）、`tests/performance/results/accounting-20260708-100542/accounting-reconciliation.csv`。
 - Prometheus range query（`increase(...[90s])` at test-window timestamp）可重跑複驗，見報告內嵌 PromQL。 develop
+
+---
 
 ## [feat] -- 2026-07-08 -- 玩家端「交易紀錄」與「遊戲紀錄」統整為單一時間軸頁
 
@@ -2671,6 +3614,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### 如何驗證
 - `cd frontend && npx vite build`：綠燈，產出 `dist/assets/Records-*.js` chunk。
 
+---
+
 ## [fix] -- 2026-07-08 -- 後台 RTP 監控：無下注樣本改標 NO_DATA，不再誤報 ABNORMAL
 
 ### 背景
@@ -2688,6 +3633,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### 如何驗證
 - `mvn -pl backend/admin-service test`：92 全綠（含新增回歸 `RtpReportServiceTest.noBetSample_isNoData_notAbnormal`）。
 - 重啟 admin-service 後查 `GET /admin/reports/rtp`：SLOT/FISHING（當前快照無資料）status=`NO_DATA`、deviation=0；BACCARAT（有 24 局資料）維持 `NORMAL`。
+
+---
 
 ## [feat] -- 2026-07-07 -- AUDIT_REPORT 附錄 A 自動盤點：tools/audit/ 依證據清單重生進度表（Phase 8）
 
@@ -2713,6 +3660,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `node tools/audit/generate-audit-snapshot.mjs --check` 退出碼 0；手動改壞表格一格後退出碼 1、重跑工具復原。
 - `node --test tests/infra/*.test.js` 142 全綠（不受影響）。
 
+---
+
 ## [security] -- 2026-07-07 -- Secret 管理：範本全佔位符化、CI 密鑰 run 內生成、輪替 SOP（Phase 7）
 
 ### 背景
@@ -2735,6 +3684,7 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - CI 綠：觀察下一個 fork PR 的 run——「產生本次 run 專用測試密鑰」step 成功、backend-test 兩個 mvn step 照常通過。
 - 依新 `.env.example` 重建 `.env`（填入生成值）後 `docker compose up -d --build`，12 容器 healthy、註冊/登入 smoke 正常。
 
+---
 
 ## [chore] -- 2026-07-07 -- PR #172 容器化收尾：補 .dockerignore、刪殘留 stop-backend.bat、修正 mock 旗標誤植、同步過期文件
 
@@ -2762,6 +3712,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - 加上 `.dockerignore` 後 `docker compose build member-service` 成功，build context 由整個 repo 縮為 root pom + backend/。
 - `curl -X POST http://localhost:8080/api/v1/auth/register ...` 經 gateway 註冊回 `success:true`（容器拓撲端到端正常）。
 
+---
+
 ## [refactor] -- 2026-07-07 -- 玩法契約單一來源化：repo 根 contracts/*.json + ContractParityTest 守門（Phase 5）
 
 ### 背景
@@ -2784,6 +3736,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `mvn -pl backend/game-service test` 綠燈（180 tests，含新增 `ContractParityTest` 4 個）。
 - `cd frontend && npm run build` 成功、`npm test` 綠燈（36 tests）。
 - mock 三遊戲以臨時 vitest smoke 實跑驗證（spinSlot 盤面/派彩、baccaratBet 押閒派彩、fishing start→shots→end 結算），驗畢即刪。
+
+---
 
 ## [feat] -- 2026-07-07 -- game→wallet 最小 Saga 補償：credit 失敗落補償單、排程冪等重試（Phase 4，ADR-009）
 
@@ -2808,6 +3762,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### 如何驗證
 - `mvn -pl backend/game-service test` 綠燈（176 tests，含新增 10 個補償測試與 3 個失敗路徑測試）。
 - 手動：kill wallet → 打一局 slot（命中）→ 重啟 wallet → 30 秒內補償入帳；`pending_wallet_credits` 標 DONE、`wallet_transactions.idempotency_key` 與補償單一致；`node tools/reconciliation/reconcile-game-wallet.mjs` 對帳通過。
+
+---
+
 ## [fix] -- 2026-07-07 -- postgres init.sql 補上 cashback_records 表，修復全新環境 docker compose 啟動失敗
 
 ### Fixed
@@ -2819,6 +3776,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### 如何驗證
 - 乾淨 docker volume 下 `docker compose up -d --build`：12 個容器（5 infra + 7 後端）全數 `healthy`。
 - 透過 gateway（8080）完成註冊 -> 登入 -> 查餘額冒煙測試，皆回傳 200/201。
+
+---
 
 ## [feat] -- 2026-07-07 -- 後端服務全面容器化：docker compose up -d --build 一鍵啟動 7 服務（取代多視窗手動啟動）
 
@@ -2844,6 +3803,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `node --test tests/infra/*.test.js` 全綠（142 tests pass，含新增的後端容器化測試群組）。
 - `docker compose up -d --build` 需開發者本機驗證 12 個容器（5 infra + 7 後端）皆達 `healthy`，並透過 gateway 走完整 smoke test（註冊 → 登入 → 查餘額 → 老虎機 spin）。
 
+---
+
 ## [fix] -- 2026-07-07 -- member/admin 放行 /actuator/prometheus ＋ T-090 重跑中途進度記錄
 
 ### Fixed
@@ -2857,6 +3818,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 
 ### Verified
 - `mvn -pl backend/member-service,backend/admin-service test` 綠燈；重啟兩服務後 Prometheus targets 7/7 up；`curl :8081/actuator/prometheus`、`:8086/actuator/prometheus` 皆 200。
+
+---
 
 ## [feat] -- 2026-07-07 -- 觀測性上線：7 服務曝露 Prometheus 指標＋compose 選配監控棧（T-090 前置）
 
@@ -2876,6 +3839,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 
 ### Verified
 - `node --test tests/infra/*.test.js` 全綠；`docker compose config --profile observability` 解析通過；七模組 `mvn test` 全綠（見 PR）。
+
+---
 
 ## [test] -- 2026-07-07 -- wallet-service 新增 Testcontainers 真實資料庫測試（ADR-007）
 
@@ -2899,6 +3864,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### Verified
 - `mvn -pl backend/wallet-service test`：161 tests 全綠（containers 測試被排除，行為不變）。
 - `mvn -pl backend/wallet-service test -Pcontainers-test`（本機 Docker Desktop）：8 個容器測試全綠。
+
+---
 
 ## [fix] -- 2026-07-08 -- admin-service 補稽核紀錄、鑽石點數卡權限收斂、捕魚機 RTP 誤判、預設種子密碼收斂
 
@@ -2924,6 +3891,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `mvn -pl backend/admin-service test`：91 tests 全過（含新增的 `AdminPlayerServiceTest`/`DiamondCardServiceTest` 稽核 best-effort 案例、`RtpReportServiceTest` 的 FISHING 正常判定案例、`AdminSecurityIntegrationTest` 新增的 OPERATOR 403 / SUPER_ADMIN 201 端到端案例）。
 - `frontend-admin`：`npm run lint` 無錯誤；`npm test -- --run` 2 個測試檔、14 tests 全過。
 
+---
+
 ## [feat] -- 2026-07-07 -- T-054 補完：告警查詢/處理 API + Dashboard 未處理告警列表
 
 ### Added
@@ -2938,6 +3907,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 
 ### Verified
 - `mvn -pl backend/admin-service test` 綠燈；frontend-admin `npm test`（14 tests）/ `lint` / `build` 全過。
+
+---
 
 ## [feat] -- 2026-07-07 -- T-051 補完：玩家停用狀態持久化到 members.status（member 內部 API）
 
@@ -2956,6 +3927,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### Verified
 - `mvn -pl backend/admin-service,backend/member-service test` 綠燈（新增 admin setStatus 4 例改版含 member 失敗不動 Redis、member updateStatus 3 例）。
 
+---
+
 ## [fix] -- 2026-07-07 -- MySQL 初始化腳本補 SET NAMES utf8mb4：中文種子資料匯入即亂碼
 
 ### Fixed
@@ -2968,6 +3941,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### Verified
 - 重建後查 `members.nickname` = 測試員一/二/三、`shop_items` 中文正常；Postgres 錢包種子（1001~1003 各 10000）與 Kafka topics（kafka-init）自動重建。
 - ⚠️ 注意：volume 重建後 `admin_users` 為空，`AdminUserSeeder` 是啟動期 CommandLineRunner，須**重啟 admin-service** 讓種子帳號重新寫入才能登入後台。
+
+---
 
 ## [feat] -- 2026-07-07 -- 管理後台 8 個功能頁完成 API 串接（脫離 stub）
 
@@ -2995,6 +3970,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm run lint` 乾淨；`npm run build` 成功（各頁 code-split 正常，最大頁 ShopItems 6.7 kB）。
 - 端到端需啟動 gateway + admin-service 後以 seeder 帳號登入手動驗證（依 DEPLOY.md）。
 
+---
+
 ## [fix] -- 2026-07-07 -- gateway 放行 /admin/**：後台 API 先前整條被 gateway 401 擋死
 
 ### Fixed
@@ -3008,6 +3985,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### Verified
 - `mvn -pl backend/gateway-service test`：26 tests 全綠（含新增 1）。
 - 手動驗證項（重啟 gateway 後）：frontend-admin（5174）以 seeder 帳號登入應成功、stub 頁可導航。
+
+---
 
 ## [feat] -- 2026-07-07 -- 新增管理後台前端骨架 frontend-admin/（獨立 Vite 專案）
 
@@ -3041,6 +4020,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### Verified
 - `npm run lint` 乾淨、`npm run build` 成功、`npx vitest run` 36/36 綠。
 
+---
+
 ## [chore] -- 2026-07-07 -- 新增 .claude/agents 六角色 subagent 定義
 
 ### Added
@@ -3051,6 +4032,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 
 ### Verified
 - 以 general-purpose agent 載入角色 prompt 實測：code-reviewer 審 179d9bb（照雷區清單審、實跑 vitest、找到 SlotGame animationend 冒泡問題、輸出 PASS/FAIL 格式）；ui-ux 產出 Lobby 近期贏分規格（正確查證後端資料源、拒用 botFeed 假資料）。新 agent 檔需重啟 session 才註冊。
+
+---
 
 ## [feat] -- 2026-07-06 -- 前端三遊戲沉浸感升級：程序化 BGM 大改版＋環境音＋視覺打磨
 
@@ -3076,6 +4059,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm run test` 35 passed（含新增 21）；`npm run lint` 乾淨；`npm run build` 成功。
 - 手動驗證項（開發者本機）：`npm run dev` 進三遊戲聽層次與 intensity 增厚、fishing↔boss crossfade、遊戲中關「音樂」<0.5s 靜音、捕魚頁 perfMode 下神光熄滅/FPS 無劣化。
 
+---
+
 ## [changed] -- 2026-07-06 -- 調高百家樂風控全局 RTP 門檻（1.02 → 1.20）
 
 ### Changed
@@ -3090,6 +4075,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### Verified
 - `mvn -pl backend/game-service test` 全綠。
 - 模擬（窗口 500、45/45/10 押注輪廓、返水 1%）：門檻 1.02/1.05/1.10/1.15/1.20 的閉環強制改判率分別為 7.42%/3.66%/0.65%/0.08%/0.003%，實得 RTP 0.971/0.979/0.985/0.986/0.985（自然值 ≈0.985）。
+
+---
+
 ## [test] -- 2026-07-06 -- 新增網站設定面板 e2e 測試（SiteSettings）
 
 ### Added
@@ -3101,6 +4089,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 
 ### Verified
 - `npx playwright test e2e/site-settings.spec.js` 1 passed（7.9s）。
+
+---
+
 ## [docs] -- 2026-07-06 -- 真後端全鏈路 smoke test 結果紀錄（無程式變更）
 
 ### Verified
@@ -3114,6 +4105,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 
 ### Why
 - 本輪前置診斷只跑過 mock 模式；此筆補上真後端鏈路驗證的結果與分歧清單，避免下次重查。
+
+---
+
 ## [changed] -- 2026-07-06 -- 調高老虎機風控全局 RTP 門檻（0.97 → 1.30）
 
 ### Changed
@@ -3128,6 +4122,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### Verified
 - `mvn -pl backend/game-service test` 全綠。
 - 模擬腳本（等注額、窗口 500）：門檻 0.97/0.99/1.20/1.30 的閉環贏局沒收率分別為 5.93%/5.19%/0.30%/0.06%，實得 RTP 0.880/0.891/0.935/0.938。
+
+---
+
 ## [docs] -- 2026-07-06 -- 修正 AGENTS.md 雷區 16 過時的砲台傷害數值
 
 ### Fixed
@@ -3138,6 +4135,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 
 ### Verified
 - 對照 `FishingCombat.java` 與 `frontend/src/services/mockApi.js`，三處數值一致；純文件修改，無程式行為變更。
+
+---
+
 ## [removed] -- 2026-07-05 -- Fishing buy-in entry note panel
 
 ### Removed
@@ -3150,6 +4150,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### Verified
 - `npm.cmd run lint`
 - `npm.cmd run build`
+
+---
+
 ## [changed] -- 2026-07-05 -- Fishing missed shots consume ammo
 
 ### Changed
@@ -3165,6 +4168,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run build`
 - `npm.cmd run test`
 - `mvn -pl backend/game-service clean test`
+
+---
+
 ## [changed] -- 2026-07-05 -- Fishing blocker shots consume session balance
 
 ### Changed
@@ -3180,6 +4186,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run build`
 - `npm.cmd run test`
 - `mvn -pl backend/game-service clean test`
+
+---
+
 ## [changed] -- 2026-07-05 -- Fishing evil blocker pressure scaling
 
 ### Changed
@@ -3196,6 +4205,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 - `npm.cmd run test`
+
+---
+
 ## [fixed] -- 2026-07-05 -- Fishing evil blocker asset pipeline
 
 ### Fixed
@@ -3210,6 +4222,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 - `npm.cmd run test`
+
+---
+
 ## [changed] -- 2026-07-05 -- Fishing evil blocker size tiers
 
 ### Changed
@@ -3224,6 +4239,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 - `npm.cmd run test`
+
+---
+
 ## [changed] -- 2026-07-05 -- Fishing blocker durability and cleaner hit feedback
 
 ### Added
@@ -3240,6 +4258,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 - `npm.cmd run test`
+
+---
+
 ## [changed] -- 2026-07-05 -- Fishing blocker creature variety
 
 ### Added
@@ -3255,6 +4276,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 ### Verified
 - `npm.cmd run lint`
 - `npm.cmd run build`
+
+---
+
 ## [changed] -- 2026-07-05 -- Fishing live ammo switching and hit feedback
 
 ### Added
@@ -3274,6 +4298,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run build`
 - `npm.cmd run test`
 - `mvn -pl backend/game-service test`
+
+---
+
 ## [fixed] -- 2026-07-05 -- Fishing fullscreen top-up and entry flow refinements
 
 ### Changed
@@ -3289,6 +4316,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 - `npm.cmd run test`
+
+---
+
 ## [fixed] -- 2026-07-04 -- Jackpot fish king front silhouette cleanup
 
 ### Fixed
@@ -3302,6 +4332,9 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 - `npm.cmd run lint`
 - `npm.cmd run build`
 - `npm.cmd run test`
+
+---
+
 ## [changed] -- 2026-07-04 -- Fishing fullscreen and golden dragon king guide
 
 ### Added
@@ -3327,6 +4360,8 @@ E1+E2（PR #217）落地後需對照重跑驗證兩項判準（503 歸零、acce
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+---
+
 ## [changed] -- 2026-07-04 -- Fishing page API alignment and control dock refinement
 ### Added
 - `frontend/src/services/fishingApi.js`: added a fishing-specific adapter over the existing game API mock/real switch.
@@ -3347,6 +4382,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`
 
+---
+
 ## [changed] -- 2026-07-04 -- Baccarat table UI rebuilt into casino-style layout
 ### Added
 - `frontend/src/components/baccarat/*`: added Baccarat-specific table header, status bar, hand/card panels, betting mat, chip tray, settlement panel, roadmap tabs, and disabled Side Bet UI.
@@ -3365,6 +4402,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Verified
 - `cd frontend && npm run lint`
 - `cd frontend && npm run build`
+
+---
+
 ## [changed] -- 2026-07-04 -- Site settings button moved into header
 ### Changed
 - `frontend/src/App.jsx`: removed the global floating settings button from the root site chrome.
@@ -3377,6 +4417,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Verified
 - `cd frontend && npm run lint`
 - `cd frontend && npm run build`
+
+---
 
 ## [changed] -- 2026-07-03 -- Centralized site settings panel
 ### Added
@@ -3395,6 +4437,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run lint`
 - `cd frontend && npm run build`
 
+---
+
 ## [changed] -- 2026-07-03 -- Mock wallet test balance set to 999999999
 ### Changed
 - `frontend/src/services/mockApi.js`: set mock star coin wallets to `999999999` for the active player, seeded demo/test accounts, and new mock registrations.
@@ -3405,6 +4449,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Verified
 - `cd frontend && npm run lint`
 - `cd frontend && npm run build`
+
+---
 
 ## [changed] -- 2026-07-03 -- Quick toolbar no longer covers game views as much
 ### Changed
@@ -3417,6 +4463,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Verified
 - `cd frontend && npm run lint`
 - `cd frontend && npm run build`
+
+---
 
 ## [fix] — 2026-07-03 — 捕魚場中加值三修：彈藥進場固定（契約對齊）、top-up 併發鎖、亂碼註解/訊息復原
 
@@ -3445,6 +4493,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `mvn -pl backend/game-service test`（後端僅註解/文案變更，需綠燈確認未破壞）。
 - 前端手動路徑：mock 模式進場選銀/金砲 → 場中彈藥鈕呈 disabled → 開火中按「臨時加值」→ 加值瞬間子彈暫停、完成後恢復 → 收網結算 → 重新進場可換彈藥。
 
+---
+
 ## [docs] — 2026-07-01 — 健檢後續補丁：AGENTS.md 措辭修正、CI 擋關擴大、CHANGELOG 格式修復
 
 > **背景**：全面健檢 7 個微服務 + gateway 時累積了幾個「該補但先擱著」的小項目，這次一次補齊，避免累積成下一輪健檢的重複發現。
@@ -3463,6 +4513,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### 如何驗證
 - 純文件 + CI 設定變更，不影響服務執行邏輯，無需跑後端測試。
 - `.github/workflows/ci.yml` 改動已用 `actionlint`（若本機有裝）或直接看 diff 確認語法未破壞（YAML 縮排/清單語法沿用既有風格，僅擴充 `-pl` 清單與註解）。
+
+---
 
 ## [fix] — 2026-07-01 — Gateway 補上 `/ws` 路由，補上即時推播的最後一哩
 
@@ -3485,6 +4537,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - HTTP 層：`curl http://localhost:8080/ws/info`（經 gateway）與直連 `http://localhost:8087/ws/info` 回傳結構相同的 SockJS info JSON，且未帶 `Authorization` header 也未被 401 擋下。
   - WebSocket 層：用 Node 24 原生 `WebSocket` 對兩個位址送出不帶 JWT 的 STOMP `CONNECT` 帧，經 gateway（`ws://localhost:8080/ws`）與直連（`ws://localhost:8087/ws`）收到的 STOMP `ERROR` 帧內容逐位元組相同——證實 gateway 對真實 WebSocket 升級與雙向 STOMP 訊框轉發完全透明（`ERROR` 為預期結果，因故意未帶 JWT 觸發 `StompAuthChannelInterceptor` 拒絕）。
 
+---
+
 ## [docs] — 2026-07-01 — 新增 API 串接與架構面試文件（含離線彩圖 HTML）
 
 > **背景**：`docs/interview-prep/` 缺一份專講「API 怎麼串接、為什麼這樣串」的面試文件。現有資料只零散涵蓋：`LOCAL_API_INTEGRATION_GUIDE.md` 偏「怎麼跑起來」（操作）、`architecture.md` 偏規格、`interview-prep/01`+`02` 只零星提到。本次補一份**全鏈路、技術參考＋面試「為什麼」混合**的文件，用「玩老虎機一局」貫穿前端 axios → Gateway → 服務間 REST → Kafka，並以連結指向上述三份避免重複。
@@ -3501,6 +4555,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - 文中事實已逐項對回程式碼核對：路由順序（`gateway-service/application.yml`）、filter order 數值（`FilterOrder.java`）、topic 清單（`kafka/kafka-init.sh`）、冪等鍵字串 `slot-bet-`/`slot-win-`（`SlotService.java:157,176`）、axios 攔截器與 `WalletClientConfig`/`CheckinService` outbox 片段皆取自實檔。
 - 離線 HTML 以 headless Edge 渲染驗證：3 張 mermaid 圖全部輸出 inline SVG（svgCount=3、零 console error），並確認產物無 `<script>`/`<link>`/外部 `src`。
 
+---
+
 ## [changed] -- 2026-07-01 -- Fishing ammo dock and shortage top-up modal
 ### Changed
 - `frontend/src/pages/Fishing.jsx`: rebuilt the in-canvas fishing control dock into ammo amount summary, three ammo choices, cannon bay, and settle action; removed the always-visible live top-up field.
@@ -3514,6 +4570,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Verified
 - `cd frontend && npm run lint`
 - `cd frontend && npm run build`
+
+---
 
 ## [changed] -- 2026-07-01 -- Fishing in-stage controls and live top-up
 ### Added
@@ -3537,6 +4595,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run test`
 - `mvn -pl backend/game-service test`
 
+---
+
 ## [changed] -- 2026-06-30 -- Fishing buy-in flow and cannon switching
 ### Changed
 - `frontend/src/pages/Fishing.jsx`: changed the fishing entry flow so players enter only a buy-in amount before the round, then switch bullet amount and cannon type inside the game control panel.
@@ -3554,6 +4614,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run test`
 - Playwright smoke: unauthenticated users are redirected to login; after login, /game/fishing shows buy-in-only entry, no old locked-settings copy, active bullet/cannon controls after entering the stage, and no page errors.
 
+---
+
 ## [changed] -- 2026-06-30 -- Fishing Traditional Chinese copy polish
 ### Changed
 - `frontend/src/pages/Fishing.jsx`: rewrote the visible `/game/fishing` copy in Traditional Chinese, including hero text, HUD labels, buy-in flow, settlement screen, rule dialog content, fish table labels, skill panel text, and verification messages.
@@ -3566,6 +4628,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`
 - Playwright smoke: `/game/fishing` hero/rules/HUD copy renders in Traditional Chinese, the rules dialog opens, HUD metric content is centered, and no page errors were emitted.
+
+---
+
 ## [changed] -- 2026-06-30 -- Fishing viewport stat strip and ray targeting cleanup
 ### Changed
 - `frontend/src/pages/Fishing.jsx`: removed the `fishing-stat-strip` summary row above the fishing table.
@@ -3578,6 +4643,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`
 - Playwright smoke: `/game/fishing` has no `.fishing-stat-strip`, the Pixi canvas loads, the in-stage settle control remains present, and no page errors were emitted.
+
+---
+
 ## [changed] -- 2026-06-30 -- Fishing settle control integrated into stage
 ### Changed
 - `frontend/src/pages/Fishing.jsx`: moved the fishing settle action from the external cannon dock into the game stage frame so it appears as an in-game lower-right control.
@@ -3590,6 +4658,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`
 - Playwright smoke: `/game/fishing` starts in mock mode without localhost 8080 refused requests; the settle button is visible inside `.fishing-stage-frame` and absent from `.fishing-control-dock`.
+
+---
+
 ## [fixed] -- 2026-06-30 -- Fishing rules dialog visibility
 ### Fixed
 - `frontend/src/components/GameRuleCard.jsx`: renders the rules dialog through `createPortal(document.body)` so `/game/fishing` side-panel child-order CSS cannot hide the modal after pressing the rules button.
@@ -3601,6 +4672,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`
 - Playwright smoke: `/game/fishing` Guide button opens a visible `[role="dialog"]` with `display: grid`, and Escape closes it.
+
+---
+
 ## [changed] -- 2026-06-30 -- Fishing cannon console status cleanup
 ### Changed
 - `frontend/src/pages/Fishing.jsx`: removed the Auto fire controls, moved boss/error/settling table feedback into the `aria-label="Fishing table status"` marquee, and relocated the settle action to the far-right side of the cannon console.
@@ -3612,6 +4686,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run lint`
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`
+
+---
+
 ## [changed] — 2026-06-30 — 捕魚規則區上移並精簡下方資訊
 
 ### Changed
@@ -3626,6 +4703,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run lint`
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`
+
+---
+
 ## [changed] — 2026-06-30 — 捕魚舞台加寬並將資訊面板移至下方
 
 ### Changed
@@ -3640,6 +4720,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run lint`
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`
+
+---
+
 ## [fixed] — 2026-06-29 — 捕魚垂直生成改為視窗外進場
 
 ### Fixed
@@ -3653,6 +4736,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run lint`
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`
+
+---
+
 ## [changed] — 2026-06-29 — 捕魚新增垂直與斜角生成位置
 
 ### Changed
@@ -3666,6 +4752,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run lint`
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`
+
+---
+
 ## [changed] — 2026-06-29 — 捕魚魚群加入上下與斜向游動
 
 ### Changed
@@ -3679,6 +4768,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run lint`
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`
+
+---
+
 ## [changed] — 2026-06-29 — 捕魚射擊改為彈道路徑優先碰撞
 
 ### Changed
@@ -3692,6 +4784,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run lint`
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`
+
+---
+
 ## [fixed] — 2026-06-29 — 收斂前端 console 警告與捕魚頁首載樣式
 
 ### Fixed
@@ -3708,6 +4803,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`
 - Playwright mock console check: React Router future warning 消失、無 `/ws/info` failed request；首次進入 `/game/fishing` lobby 時 `.fishing-stat-strip` 已套用 grid 樣式。
+
+---
+
 ## [fixed] — 2026-06-29 — 重做捕魚機 canvas 底部砲台區
 
 ### Fixed
@@ -3722,6 +4820,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`
 - Playwright mock smoke: mock 登入後可進 `/game/fishing` 並載入 Pixi canvas；頁面無水平 overflow、無 page error。
+
+---
+
 ## [changed] — 2026-06-29 — 重構捕魚機紅金深海娛樂城介面
 
 ### Changed
@@ -3736,6 +4837,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`
 - Playwright mock smoke: 未登入 `/game/fishing` 導向 `/member?mode=login`；mock 登入後可進場並載入 Pixi canvas；390/430/768/1024/1440 viewport 無水平 overflow、無 page error。
+
+---
+
 ## [fixed] — 2026-06-29 — 停用捕魚命中後全頁掉落特效
 
 ### Fixed
@@ -3747,6 +4851,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Verified
 - `cd frontend && npm run lint`
 - `cd frontend && npm run build`
+
+---
+
 ## [fixed] — 2026-06-29 — 修正捕魚結算金幣雨殘留與砲台縮放覆蓋
 
 ### Fixed
@@ -3761,6 +4868,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`（Vitest 7 passed）
 - Playwright mock verification：進場後 canvas 非空渲染；點結算後 `.fx-layer` 數量為 0，確認金幣雨不殘留到結算畫面。
+
+---
+
 ## [fixed] — 2026-06-29 — 修正捕魚機金幣殘留、魚面向與砲台比例
 
 ### Fixed
@@ -3776,6 +4886,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`（Vitest 7 passed）
 - Playwright mock verification：未登入 `/game/fishing` 導向 `/member?mode=login`；已登入可進場、點擊舞台、顯示 control dock；390/430/768/1024/1440 無 horizontal overflow，canvas 非空渲染，新 SVG 魚素材載入 5 個，無 page error。
+
+---
+
 ## [changed] — 2026-06-29 — 重製捕魚機魚群素材與舞台打擊感
 
 ### Added
@@ -3794,6 +4907,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run lint`
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`（Vitest 7 passed）
+
+---
+
 ## [changed] — 2026-06-29 — 強化 /game/fishing 深海彩金捕魚介面
 
 ### Added
@@ -3812,6 +4928,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`（Vitest 7 passed）
 - Playwright mock verification：未登入 `/game/fishing` 導向 `/member?mode=login`；已登入可切 x5、進場、等待 Pixi canvas、點擊舞台發射；390/430/768/1024/1440 viewport 無 horizontal overflow，canvas 皆有非空渲染。未啟動後端時僅忽略既有 realtime/API 資源 `ERR_CONNECTION_REFUSED` 訊息。
+
+---
+
 ## [changed] — 2026-06-29 — 捕魚機畫面升級為街機海底風格
 
 ### Changed
@@ -3826,6 +4945,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run lint`
 - `cd frontend && npm run build`
 - Playwright mock flow: 登入測試帳號後進入 `/game/fishing`、開局、確認 canvas/HUD 顯示、無 page error，並以臨時截圖確認畫面。
+
+---
 
 ## [changed] — 2026-06-28 — 前端路由層級 lazy loading
 
@@ -3843,6 +4964,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run test`（7 passed）
 - `cd frontend && npm run build`（主 JS 約 441 kB / gzip 140 kB → 310 kB / gzip 103 kB）
 - `cd frontend && npm run e2e`（1 passed, 1 skipped）
+
+---
+
 ## [changed] — 2026-06-28 — 前端正式模式與 CI 擋關收斂
 
 ### Added
@@ -3865,6 +4989,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run test`（7 passed）
 - `cd frontend && npm run build`
 - `cd frontend && npm run e2e`（1 passed, 1 skipped）
+
+---
+
 ## [changed] — 2026-06-27 — 整合測試面板改為獨立工具頁
 
 ### Changed
@@ -3878,6 +5005,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run lint`
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`
+
+---
 
 ## [feat] — 2026-06-27 — 新增前後端整合測試面板
 
@@ -3896,6 +5025,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npm run build`
 - `cd frontend && npm run test`
 
+---
+
 ## [docs] — 2026-06-30 — 校正 AUDIT_REPORT 過時進度標記（以程式碼為準）
 
 > **背景**：盤點待辦時發現 `AUDIT_REPORT.md` 數處標記落後實際程式碼（AGENTS.md §1 已知問題）。逐項以程式碼/檔案交叉驗證後更正，並依 §1 規定「以程式碼為準並順手更正文件」。
@@ -3911,6 +5042,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### 如何驗證
 - 對應檔案存在性與內容已逐項 grep/glob 確認（`rankApi`/`walletApi.getTransactions` 引用、`docs/adr/ADR-003~005.md` 存在）。
 - 純文件更動，不影響程式行為，無需跑測試。
+
+---
 
 ## [feat] — 2026-06-29 — 後端禮品商城服務（兌換 / 後台目錄 / LOG 紀錄）
 
@@ -3935,6 +5068,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **為什麼併入而非新微服務**：商城本質是「星幣 sink + 紀錄」，wallet 已有全部帳務機件；獨立微服務需跨服務 HTTP 扣款＋大量樣板，與鑽石/加值/贈送同住 wallet 的慣例不符。
 - **如何驗證**：`mvn -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/admin-service test` → wallet 155 + admin 75 全綠（BUILD SUCCESS）。整合：套用 V10/V13 migration、起服務、前端 `VITE_USE_MOCK_API=false`，`/shop` 兌換 → 星幣降且重整不還原、`/transactions` 出現 `SHOP_PURCHASE`、`/inventory` 見禮品；後台 `POST /admin/shop/items` 新增即時反映。前端 `npm run lint && build` 綠。
 
+---
+
 ## [feat] — 2026-06-29 — 禮品商城兌換落地 + 我的背包頁 + 好友浮窗改右側標籤
 
 > **背景**：玩家回報 `/shop` 禮品商城兩個問題：① 右下角「好友列表」浮窗的觸發膠囊（246px 寬）壓住第三張卡片的「兌換」鈕，點不到；② 按「兌換」沒有真實效果——鑽石/星幣沒扣、也沒拿到物品。
@@ -3957,6 +5092,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### 為什麼/如何驗證
 - **為什麼前端落地**：後端無商城服務，且本次需求是修玩家體感問題、非新建微服務；維持 mock 預設體驗一致。
 - **如何驗證**：mock 模式 `cd frontend && npm run dev` → `/shop` 按兌換，header 星幣即時下降且**重新整理仍維持**；`/transactions` 出現「商城兌換－<品名>」負數紀錄；`/inventory` 看到禮品；星幣不足時按鈕 disabled。靜態檢查 `npm run lint && npm run build` 綠燈。
+
+---
 
 ## [feat] — 2026-06-29 — 每月累計簽到獎勵 + 簽到月曆改後端權威
 
@@ -3989,6 +5126,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - 前端 `npm run lint`/`npm run build`/`npm run test`：lint 乾淨、build 成功、vitest 15 passed。
 - 跑真實後端前須套用 MySQL V9 / Postgres V12 migration（否則 member `validate` 啟動失敗、wallet 讀庫撞 `chk_wt_sub_type`）。
 
+---
+
 ## [Removed/Fixed] — 2026-06-29 — 移除老虎機/捕魚機殘留幸運值保底 + 好友併發 409 + 送禮前端防呆
 
 > **背景**：原以為「幸運值」已從所有遊戲移除，實際只有百家樂清乾淨；**老虎機與捕魚機的幸運值仍在運作**——前端 `useFortuneMeter` 蓄滿後送 `fortuneReady`，後端據此**強制必中**（老虎機保底中線三連 `spinGuaranteedWin`、捕魚機本批保底捕獲 `resolveShotGuaranteed`），真實影響結算與 RTP，並非純視覺。本次將其前後端機制、視覺、死碼、測試、mock 全部移除。順帶修好友併發 500→409 與送禮前端防呆。
@@ -4020,6 +5159,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - 前端 `npm run lint` + `npm run build`：刪檔後無殘留 import，Rollup 不報 missing module。
 - grep `fortune|guaranteedShotSeq|FortuneMeter|LuckyAura`：`frontend/src` 與 `backend/game-service/src` 皆無活躍引用。
 
+---
+
 ## [Fixed] — 2026-06-25 — 捕魚退款／結算本金返還被誤計入「今日贏幣榜」（新增 REFUND 子型）
 
 > **問題**（Bug 5：退款／剩餘本金被算成 WIN）：`game-service` 的 `WalletClient.credit()` 寫死 `subType="WIN"`，而捕魚兩處入帳都走它——(1) buy-in 退款（session 建立失敗補償，`FishingService` line 151）、(2) 場次結算把剩餘局內餘額返還錢包（line 497）。`rank-service` 的 `WalletBalanceChangedConsumer` 只在 `subType=="WIN"` 時 `addDailyWinnings`，於是退款與本金返還被灌進「今日贏幣王」排行榜，污染榜單可信度。
@@ -4041,6 +5182,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `mvn -pl backend/game-service,backend/wallet-service test`：全綠（game-service 含 FishingServiceTest、wallet-service 含 InternalWalletControllerCreditTest 共 150 測試）。
 - rank 端 `WalletBalanceChangedConsumerTest.handleWalletBalanceChanged_nonWinSubType_doesNotAccumulateDailyWinnings` 既有測試證明非 WIN 子型不累加今日贏幣。
 
+---
+
 ## [Fixed] — 2026-06-25 — fresh DB 缺 CASHBACK 子類型導致返利入帳被 CHECK 約束擋下（init.sql 與補丁/契約對齊）
 
 > **問題**（Bug 4：CASHBACK 白名單不同步）：虧損返利鏈路 `CashbackEventPublisher` 發 `wallet.credit.request`（subType=CASHBACK）→ `WalletCreditRequestListener` → `WalletService.credit` 寫庫。本專案無 Flyway 自動執行，schema 由 docker-entrypoint-initdb.d 載入的 `database/{postgres,mysql}/init.sql` 建立；而兩份 init.sql 的 `chk_wt_sub_type` CHECK 約束**未含 CASHBACK**（MySQL 讀端更落後，連 `DIAMOND_EXCHANGE`/`TOPUP` 都缺）。雖有補丁 V9（postgres）/ V6（mysql）加上 CASHBACK，但 migration 資料夾不被載入 → **fresh DB 上返利入帳會被 CHECK constraint 擋下，讀端同步也會掛**。附帶 `CreditRequest.@Pattern` 也漏列 CASHBACK（Kafka listener 路徑未觸發 bean validation，非運行時阻斷點，但屬契約不一致）。
@@ -4056,6 +5199,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### 如何驗證
 - 對比 `database/postgres/migration/V9__add_cashback_records.sql` 與 `database/mysql/migration/V6__add_cashback_subtype.sql` 的 CHECK 末態，確認 init.sql 子類型清單完全一致。
 - `mvn -pl backend/wallet-service test`：H2 contextLoads 與既有測試綠燈。
+
+---
 
 ## [Fixed] — 2026-06-25 — 排行榜/錢包流水/贈幣改接真實 API，並修正前端訂閱不存在的 WS topic
 
@@ -4079,6 +5224,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `cd frontend && npx eslint <改動檔>`：無錯誤。
 - `cd frontend && npx vite build`：建置成功（`✓ built`）。
 - mock 模式（預設 `VITE_USE_MOCK_API !== 'false'`）三條路徑仍回退 `mockApi`，玩家體驗不變。
+
+---
 
 ## [Fixed] — 2026-06-25 — stop-all／stop-backend 無法關閉 cmd 服務視窗（啟動端改 cmd、停止端仍只認 PowerShell）
 
@@ -4218,6 +5365,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - 真實後端 fishing API（start→shots→end）回傳 hp/tier/spawnWeight 與 crit/damage/hpRemaining 實測通過。
 
 ---
+
 ## [Fixed] — 2026-06-24 — 老虎機機台面板標示與音效修正（賠付線數、左二同小獎誤播惋惜音）
 
 > 兩個與玩法/體驗一致性相關的問題：
@@ -4232,6 +5380,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 **為什麼**：標示需反映真實賠付線數；派彩當下不應播失落音（正常娛樂城不會在贏錢時播輸錢音）。因賠付表所有符號 pair 皆 ≥ 1x，`isNearMiss && !isLineWin` 恆為派彩局，惋惜音邏輯實際永遠誤觸發。
 **如何驗證**：`npm run lint`（frontend）全綠；後端與賠付數值未動（RTP/測試/mock 不受影響）。
+
+---
 
 ## [Fixed] — 2026-06-24 — 老虎機側欄結果搶跑（劇透）：結算改在輪停瞬間揭曉
 
@@ -4249,6 +5399,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 **為什麼**：result-leak 來自「結果寫入 redux 的時點」與「轉輪揭曉時點」不一致；把所有 result-derived 顯示與副作用統一綁到輪停（`handleSettled`）即可同步。`onSettled` 在 `onSpinComplete`（解鎖視覺鎖）之前呼叫，故 `settled` 必先填好再顯示，無空窗閃爍。
 **如何驗證**：`npm run lint`（frontend）全綠；後端未動。走查時序：`runReels` → `onSettled`（set settled/balance）→ finally `onSpinComplete`（解鎖）；thunk 失敗時 `onSettled` 不觸發，不誤記損益/局數（與原行為一致）。
 
+---
+
 ## [Fixed] — 2026-06-24 — 老虎機視覺鎖脫鉤：移除魔術數字 `setTimeout(2900)` 解鎖
 
 > 問題：`SlotGame.jsx` 的 `handleSpinRound` 在 `finally` 用固定 `setTimeout(…, 2900)` 解除視覺鎖（visualLock），
@@ -4262,6 +5414,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 **為什麼**：固定 2900ms 與實際動畫長度（一般 2600ms、near-miss 3500ms）不一致，是脫鉤根因；`onSpinComplete` 才是綁定真實流程的解鎖點。
 **如何驗證**：`mvn -q -pl backend/game-service test -Dtest='Slot*'` 全綠（35 案，未動後端）；前端走查 `onSpin` 拋例外（餘額不足/網路失敗）時，`SlotMachine.spin()` 的 catch→finally 仍呼叫 `onSpinComplete`，visualLock 不會卡住。
+
+---
 
 ## [Added] — 2026-06-24 — 完整遊戲紀錄/注單稽核（流水號 / 局號 / 毫秒時間戳 / 餘額變化）＋遊戲重開小計歸零
 
@@ -4295,6 +5449,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### 如何驗證
 - `mvn -pl backend/game-service test` → **BUILD SUCCESS，Tests run: 155, Failures: 0, Errors: 0**（含新增 `GameHistoryServiceTest` 4 案）。
 - 前端走 mock：玩老虎機/百家樂/捕魚後開「遊戲紀錄」頁，應見每局注單號、局號、毫秒下注/派彩時間、`投注前 → 派彩後` 餘額；重新進場遊戲頁本場小計歸零。
+
+---
 
 ## [Fixed] — 2026-06-24 — 前端百家樂 mock 對齊後端引擎（補和局 push + 補牌規則）
 
@@ -4369,6 +5525,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - wallet-service 為雙資料源、EntityManagerFactory 在 `DataSourceConfig` 手動建立（AGENTS.md 雷區 5），同樣有 DB 慢開機崩潰風險，但不在本次範圍，待後續評估是否於手動 EMF 加同類重試。
 
 ---
+
 ## [Changed] — 2026-06-23 — 捕魚機戰鬥回饋 + 砲台差異化 + 新互動（Phase 3）
 
 > 捕魚機升級第三階段：把 Phase 1 後端已回傳、Phase 2 引擎尚未演出的 `crit/damage/hpRemaining` 接上戰鬥回饋
@@ -4427,6 +5584,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### 如何驗證
 - `cd frontend && npm run lint`（綠）、`npm run build`（綠）。
 - 手測：老虎機/百家樂/捕魚進行中分別點導航列、上一頁、重整、關分頁，皆正確彈窗；確認後導向目標頁、取消後留在原頁。
+
+---
+
 ## [Changed] — 2026-06-23 — 捕魚機 PixiJS 漁場引擎（Phase 2：取代 DOM 漁場 + 紋理烘焙 + 效能模式 + §6 HUD 飄移修復）
 
 > 捕魚機升級第二階段：把 React-DOM 漁場改成 **PixiJS canvas 遊戲引擎**，根治 H5/手機連發+特效「當機」；
@@ -4457,6 +5617,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `npm run dev` 進 `/game/fishing`：進場→連發→命中火花 + 捕獲派彩浮字 + 頁面 FX 分級→收網結算→逐發驗證面板（契約未變）。
 - 效能：手機/H5 連發 + boss + 金幣雨同時不當機；切「效能模式」降載生效；切背景分頁 ticker 暫停。
 
+---
+
 ## [Changed] — 2026-06-23 — 捕魚機改「血量/傷害」模型（Phase 1：後端引擎 + mock + 測試 + ADR-003）
 
 > 捕魚機升級的第一階段：把「每發獨立判定命中」改為真·血量/傷害模型（魚有血、砲台有傷害、暴擊扣更多血、
@@ -4485,6 +5647,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `mvn -pl backend/game-service test` → **131 tests 全綠，BUILD SUCCESS**（含 RTP band / 暴擊 / 保底 / PF 重放）。
 - `npm run lint && npm run build`（frontend）通過。
 
+---
+
 ## [Fixed] — 2026-06-23 — 登入偶發「第一次失敗、原帳密第二次又成功」：登入流程加逾時放寬+重試、401 攔截器不再洗掉登入錯誤
 
 ### Fixed
@@ -4501,6 +5665,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `npx eslint src/services/api.js src/services/memberApi.js` 通過（0 error）。
 - 手動：連真實後端、服務剛啟動時登入，首次請求逾時/暫時 401 會自動重試而非直接失敗；帳密打錯則顯示「帳號或密碼不正確」且不再整頁重載。
 
+---
+
 ## [Added] — 2026-06-23 — 捕魚機支援「按住滑鼠連發」（朝游標方向持續開火）
 
 ### Added
@@ -4515,6 +5681,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### 如何驗證
 - `npx eslint src/components/FishingArena.jsx` 通過（0 error）。
 - 手動：進場後按住滑鼠掃過魚群可連續開火並扣局內餘額；放開/收網結算即停；空海域只見曳光不扣注。
+
+---
 
 ## [fix] — 2026-06-23 — game-service 內部 secret env var 名稱錯誤導致 wallet 401
 
@@ -4546,6 +5714,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Verified
 - `mvn -pl backend/member-service test`：72 tests，0 failures，BUILD SUCCESS。
 
+---
+
 ## [feat] -- 2026-06-23 -- Complete T-092 Swagger OpenAPI aggregation
 
 ### Added
@@ -4564,6 +5734,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `node --test tests/infra/swagger.test.js --test-reporter=spec`: 5 tests passed, 0 failures.
 - `mvn -pl backend/gateway-service,backend/notification-service test`: gateway 23 tests and notification 19 tests passed, 0 failures.
 
+---
+
 ## [Changed] — 2026-06-22 — 老虎機娛樂化 RTP：中線改兩階賠付「左二同小獎 + 三連大獎」（RTP ≈93.8%、命中率 ≈30.7%）
 
 ### Changed
@@ -4578,6 +5750,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 **如何驗證**：`mvn -pl backend/game-service test`（BUILD SUCCESS，121 tests / slot 相關測試全綠）；`cd frontend && npm run lint && npm run build`（皆綠）。RTP/命中率另以解析式 + 200 萬局蒙地卡羅交叉確認（93.83% / 30.68%）。
 > 註：本分支原另記一筆「補回 develop 建置破口（等同 6501e4c）」，因 develop 已含等義修復（見「修復 develop 編譯/建置破口」），合併時去重移除。
 
+---
+
 ## [docs] -- 2026-06-22 -- Align T-090 load test audit status
 
 ### Changed
@@ -4588,6 +5762,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Verified
 - `npm test -- --test-reporter=spec tests/infra/jmeter.test.js`: 122 infra tests passed, including the T-090 JMeter contract checks.
+
+---
 
 ## [feat] — 2026-06-23 — 百家樂畫面優化（籌碼列 / 顏色區分 / 天牌徽章 / 版面重排）
 
@@ -4641,6 +5817,8 @@ mvn -pl backend/game-service test
 ```
 全部 139 個測試通過（含 20 個新增返利測試）。
 
+---
+
 ## [feat] — 2026-06-23 — 百家樂改為反水機制，移除幸運值保底
 
 ### Changed
@@ -4663,6 +5841,8 @@ mvn -pl backend/game-service test
 ```
 所有 34 個百家樂相關測試均通過。
 
+---
+
 ## [fix] -- 2026-06-22 -- Complete T-055 GM coin grant API
 
 ### Changed
@@ -4677,6 +5857,8 @@ mvn -pl backend/game-service test
 ### Verified
 - `mvn -pl backend/admin-service test`: 71 tests passed, 0 failures.
 
+---
+
 ## [fix] -- 2026-06-22 -- Complete T-054 admin anomaly alerts
 
 ### Changed
@@ -4689,6 +5871,8 @@ mvn -pl backend/game-service test
 
 ### Verified
 - `mvn -pl backend/admin-service test`: 70 tests passed, 0 failures.
+
+---
 
 ## [fix] -- 2026-06-22 -- Align T-045 daily winnings rank Redis key and reset
 
@@ -4704,6 +5888,8 @@ mvn -pl backend/game-service test
 ### Verified
 - `mvn -pl backend/rank-service test`: 68 tests passed, 0 failures.
 
+---
+
 ## [fix] — 2026-06-22 — 修復 develop 編譯/建置破口（「幸運值保底」功能未驗證即合併）
 
 ### Fixed
@@ -4718,6 +5904,8 @@ mvn -pl backend/game-service test
 ### How to verify
 - `mvn -pl backend/game-service test` → 109 tests 全綠、BUILD SUCCESS。
 - `cd frontend && npm run lint && npm run build` → 綠燈。
+
+---
 
 ## [fix] — 2026-06-22 — 捕魚機幸運值卡死 + PF 保底射擊 RNG 偏移
 
@@ -4766,6 +5954,8 @@ mvn -pl backend/game-service test
 **為什麼**：風控攔截保底轉動時原本保留中獎盤面但派彩為 0，玩家可截圖搭配 /verify 結果舉證詐騙（T-信任/法律漏洞）；同時 `reportRound(false)` 未重置幸運值導致每轉都被攔截的死循環（T-UX 死循環）。
 **如何驗證**：觸發風控限制後，老虎機轉動不再出現三連符號配零派彩的盤面；幸運值滿格但風控攔截後，幸運值重置為 0，下一局可正常累積。
 
+---
+
 ## [feat] — 2026-06-18 — 幸運值全滿保底必中（老虎機 / 百家樂 / 捕魚機）
 
 ### Added
@@ -4786,6 +5976,8 @@ mvn -pl backend/game-service test
 
 **為什麼**：幸運值滿代表玩家已累積足夠「氣力」，應保底觸發一次中獎以兌現期待感。
 **如何驗證**：老虎機累積至幸運值 100 後下注，確認中線三連必中；百家樂幸運值滿時押注確認派彩；捕魚機幸運值滿時開炮確認第一發必中。
+
+---
 
 ## [fix] — 2026-06-18 — 多帳號 localStorage 數據隔離（幸運值 & 百家樂咪牌）
 
@@ -4861,6 +6053,8 @@ mvn -pl backend/game-service test
   `docker exec lucky-star-mysql mysql -ulucky_user -plucky_password -e "SELECT username FROM lucky_star_casino.members WHERE id BETWEEN 1001 AND 1003;"` 應見 tester01~03；
   PostgreSQL `SELECT player_id,balance FROM wallets WHERE player_id BETWEEN 1001 AND 1003;` 應見三筆 10000。
 - 以 tester01 / `Password1` 透過 Gateway 登入成功，餘額顯示 10000。
+
+---
 
 ## [feat] — 2026-06-18 — 鑽石無限測試帳號：tadge003 / weiyu10366 換星幣不受餘額限制
 
@@ -4944,6 +6138,7 @@ mvn -pl backend/game-service test
 - 手動：桌機左側只剩一顆「工具」按鈕，點擊展開/收合；右下角好友面板與工具列不重疊。
 
 ---
+
 ## [fix] — 2026-06-17 — 好友清單改真實資料 + 捕魚進場扣款退款補償
 
 ### Fixed
@@ -4966,6 +6161,7 @@ mvn -pl backend/game-service test
 - 手動（player 1169）：好友面板顯示「目前沒有好友」（真實 friendships=0）。
 
 ---
+
 ## [feat] — 2026-06-17 — 玩家自助加值（模擬支付儲值訂單）
 
 ### Added
@@ -4990,6 +6186,7 @@ mvn -pl backend/game-service test
 - 端到端（直打 wallet:8082，player 1169）：建單 P500 → 付款 `CREDITED`、餘額 200→600,200；重複付款→409。
 - 透過 gateway:8080（真實 JWT，X-User-Id 注入）：方案/建單/付款全鏈路 200，入帳成功。
 - 前端：`npm run lint` 0 問題、`npm run build` 成功。
+
 ---
 
 ## [docs] — 2026-06-17 — AUDIT_REPORT 附錄 A 重新盤點 + AGENTS.md 服務完成度同步
@@ -5044,23 +6241,6 @@ mvn -pl backend/game-service test
 
 ---
 
-## [fix] — 2026-06-16 — gateway 補上 `/api/v1/friends/**` 路由
-
-### Added
-- `backend/gateway-service/src/main/resources/application.yml`：新增 route `member-friends`（`Path=/api/v1/friends/**` → member-service，套 CircuitBreaker 與既有 member 路由一致）。
-
-### Fixed
-- 好友 API（`POST /api/v1/friends/request`、`PUT /{id}/accept`、`PUT /{id}/reject`、`GET /api/v1/friends`、`DELETE /{id}`）實作在 member-service，但 gateway 路由表漏了這段前綴，導致經 gateway 呼叫一律回 **404**，前端無法使用好友功能。補上路由後恢復正常。
-
-### Why
-- 全流程 smoke test 時發現：好友端點直連 member:8081 正常，但走 gateway:8080 回 404，比對 `application.yml` 確認路由缺漏。
-
-### How to verify
-- 重啟 gateway 後走 gateway:8080 實測：申請 → `200`、重送 → `409`（正確擋重複）、接受 → `200`、雙方 `GET /api/v1/friends` → `200` 且互相在清單中。
-- 設定層變更，未動程式碼；gateway 模組測試 `mvn -pl backend/gateway-service test` 綠燈。
-
----
-
 ## [chore] — 2026-06-16 — 新增 Windows 一鍵啟動/關閉腳本（start-all.bat / stop-all.bat）
 
 ### Added
@@ -5077,6 +6257,8 @@ mvn -pl backend/game-service test
 ### Verified
 - 解析：修正後以全新 `cmd` 執行，輸出無 garbled「not recognized」、`.env` 正確載入 43 個變數（`JWT_SECRET`/`CORS_ALLOWED_ORIGINS`/`INTERNAL_SECRET` 皆到位）；檔案確認無 UTF-8 BOM。
 - 端到端：`start-all.bat` 起的 member(8081)/wallet(8082)/game(8083) `actuator/health` 皆 `UP`、gateway(8080) 回 `200`；`stop-all.bat` 正確停掉 8080–8083 四個行程、基礎設施保留。
+
+---
 
 ## [feat] — 2026-06-16 — T-114 統一客服入口（SupportModal/uiSlice）+ 工作分配表 xlsx 改真名與新增任務
 
@@ -5098,6 +6280,8 @@ mvn -pl backend/game-service test
 - `frontend`：`npm run lint` 無錯、`npm run build` 成功。
 - 報告：`node build-split.mjs` + `node build-html.mjs` 成功；`docs/report` 無殘留代號。
 - xlsx：`unzip -t` 無錯、5 分頁 XML 皆良構（`XmlDocument.LoadXml`）；解析後文字確認真名已寫入（張鈞皓 21／黃崇瑜 18／林瑋彧 15／許銘仁 25／王竣揚 14 hits）、代號僅剩 T-108 說明欄刻意提及（組長A×1、組員B×1）、T-108~T-114 七列與 dimension `A1:J88` 到位。
+
+---
 
 ## [fix] — 2026-06-16 — 登出黑名單前綴對齊（撤銷生效）+ 前端破產補助入口（客服說明）+ 報告補強
 
@@ -5124,6 +6308,8 @@ mvn -pl backend/game-service test
 - `frontend`：`npm run lint` 無錯、`npm run build` 成功。
 - 報告：`node build-split.mjs` + `node build-html.mjs` + `node make-pdf.mjs` 皆成功；`grep 組長A|組員B…` 於 `docs/report` 已無殘留代號。
 
+---
+
 ## [test] — 2026-06-16 — T-090 / T-091：老虎機高併發壓測本機實跑 + 帳務一致性對帳
 
 ### Added
@@ -5146,6 +6332,8 @@ mvn -pl backend/game-service test
 - **T-091 對帳**（壓測後對 live PostgreSQL 跑 `accounting-reconciliation.sql`）：9 項檢查全 **PASS / 0 violations**（無負餘額、無重複冪等鍵、餘額與流水帳完全吻合、frozen 歸零）。
 - `node --test tests/infra/*.test.js`：122 pass / 0 fail。
 
+---
+
 ## [feat] — 2026-06-15 — T-092：Swagger UI / OpenAPI 文件整合（各服務 + gateway 聚合）
 
 ### Added
@@ -5165,6 +6353,8 @@ mvn -pl backend/game-service test
 - 各服務 `mvn -pl backend/<svc> test` 全綠：member 70、wallet 142、game 106、rank 66、admin 68、gateway 21（springdoc 未破壞 context/security）。
 - `mvn -T1C test-compile`（全 reactor）BUILD SUCCESS。
 
+---
+
 ## [feat] — 2026-06-15 — T-073（notification 端）：排行榜變動廣播消費端
 
 ### Added
@@ -5175,6 +6365,8 @@ mvn -pl backend/game-service test
 
 ### Verified
 - `mvn -pl backend/notification-service test`：19 pass / 0 fail（新增 RankUpdateConsumerTest：廣播到 /topic/rank、壞 JSON ack 不互動 template、合法訊息 dispatch+ack）。
+
+---
 
 ## [feat] — 2026-06-15 — T-054 / T-055：異常玩家偵測規則引擎 + GM 手動發放星幣
 
@@ -5199,6 +6391,8 @@ mvn -pl backend/game-service test
 ### Verified
 - `mvn -pl backend/admin-service test`：68 pass / 0 fail（含三規則邊界 49,999/50,001、100/101、20/21；consumer 壞訊息丟棄；GM payload + 日誌；GmController 權限 OPERATOR→403 / SUPER_ADMIN→200）。
 
+---
+
 ## [feat] — 2026-06-15 — T-045 / T-073（rank 端）：今日贏幣王排行榜 + 排行榜變動廣播事件
 
 ### Added
@@ -5217,6 +6411,8 @@ mvn -pl backend/game-service test
 ### Verified
 - `mvn -pl backend/rank-service test`：66 pass / 0 fail（新增 daily-winnings 累加/排序/自己名次、WIN-only 累加、TOP10 變動才廣播、兩端點等案例）。
 
+---
+
 ## [fix] — 2026-06-15 — game-service 捕魚機閒置回收：Redis KEYS→SCAN + 排程韌性
 
 ### Changed
@@ -5231,6 +6427,8 @@ mvn -pl backend/game-service test
 
 ### Docs
 - `docs/幸運星幣城_工作分配表.xlsx`：新增 **T-038 捕魚機遊戲實作（邏輯 + Session + API）**（RNG Game Service / 組員B / S2-W5 / ✅ 已完成）至全部 4 個分頁；此功能先前已實作但未登錄於追蹤表（SSOT）。同步修正各分頁小計/總計公式與 視覺化甘特圖 組員B 合計（51h、9 項）。
+
+---
 
 ## [feat] — 2026-06-15 — T-070/T-071/T-072：notification-service 即時推播（WebSocket/STOMP + Kafka 橋接）
 
@@ -5255,6 +6453,8 @@ mvn -pl backend/game-service test
 - `mvn -pl backend/notification-service test`：16 pass / 0 fail。
 - `node --test tests/infra/*.test.js`：121 pass / 0 fail（infra 未變動，回歸確認）。
 
+---
+
 ## [feat] — 2026-06-15 — T-105/T-106：鑽石點數卡後台 API（批量生成 + 列表查詢）
 
 ### Added
@@ -5271,6 +6471,8 @@ mvn -pl backend/game-service test
 
 ### Verified
 - `mvn -pl backend/admin-service test`：52 pass / 0 fail。
+
+---
 
 ## [feat] — 2026-06-15 — T-051/T-052/T-053：Admin 管理/報表 API（玩家管理 + 星幣流通量 + RTP 監控）
 
@@ -5295,6 +6497,8 @@ mvn -pl backend/game-service test
 ### Verified
 - `mvn -pl backend/admin-service test`：43 pass / 0 fail。
 - `mvn -pl backend/gateway-service test`：21 pass / 0 fail（含 JWT filter 既有案例，封鎖檢查未破壞 fail-closed 行為）。
+
+---
 
 ## [feat] — 2026-06-15 — T-050：Admin 後台 JWT 認證地基（角色區分 + Spring Security）
 
@@ -5321,6 +6525,8 @@ mvn -pl backend/game-service test
 ### Verified
 - `mvn -pl backend/admin-service test`：19 pass / 0 fail。
 
+---
+
 ## [feat] — 2026-06-15 — T-041/T-042：好友排行榜納入本人 + 新增「查自己好友名次」API
 
 ### Added
@@ -5339,6 +6545,8 @@ mvn -pl backend/game-service test
 ### Verified
 - `mvn -pl backend/rank-service test`：49 pass / 0 fail（RankServiceTest 14、RankControllerTest 7）。
 
+---
+
 ## [feat] — 2026-06-15 — T-002：Docker Compose 環境收尾，Kafka 改 KRaft（移除 Zookeeper）、MySQL 對齊 8.4
 
 ### Changed
@@ -5356,6 +6564,8 @@ mvn -pl backend/game-service test
 ### Verified
 - `docker compose config --quiet`：通過（含 `${KAFKA_CLUSTER_ID}` 等變數插值無誤）。
 - `node --test tests/infra/*.test.js`：121 pass / 0 fail（含更新後的 compose KRaft 斷言與 kafka-init topic 斷言）。
+
+---
 
 ## [fix] — 2026-06-15 — 捕魚機對局無法持久化（game_type 約束缺 FISHING）+ 全功能實機 smoke test 腳本
 
@@ -5377,6 +6587,8 @@ mvn -pl backend/game-service test
 - 修復後重啟 game-service，`node tests/smoke/smoke.mjs`：`fishing/{id}/end` 對局正常持久化、`verify-shot` 回 200。整體 26 PASS（唯一非綠為 slot/spin 服務剛啟動的冷啟動暫態，暖機後 200；以及連續重跑時 rtp/verify 觸發的 429 限流，皆非 bug）。
 - 前端 `npm run lint`（無錯）、`npm run build`（成功）、`npm run e2e`（1 passed）。
 
+---
+
 ## [test] — 2026-06-15 — 捕魚機 e2e（Playwright）：進場 → 開火 → 收網 → 逐發公平性驗證
 
 ### Added
@@ -5394,6 +6606,8 @@ mvn -pl backend/game-service test
 ### Verified
 - `npm run e2e`：`1 passed`（headless Chromium，約 12.7s）。
 - 純前端測試工具，未動後端/Kafka/infra。
+
+---
 
 ## [feat] — 2026-06-15 — 捕魚機前端（含音效）：頁面 + 漁場互動 + 接上 casino-fx 捕魚音效/BGM
 
@@ -5421,6 +6635,8 @@ mvn -pl backend/game-service test
 - 功能（mock 模式）：進場→開火數發→收網結算→結算頁出現逐發清單→點「驗證」顯示 `✓ 已驗證` 且 hit/payout 與紀錄一致；QuickToolbar「捕魚機」鈕未登入導 login、已登入進 `/game/fishing`。
 - 純前端任務，未動後端/Kafka/infra，後端測試不受影響。
 
+---
+
 ## [feat] — 2026-06-12 — 捕魚機後端（game-service fishing 模組：buy-in 制 + 批次結算）
 
 ### Added
@@ -5440,6 +6656,9 @@ mvn -pl backend/game-service test
 
 ### Verified
 - `mvn -pl backend/game-service test` → 全綠（既有 + RtpStats 更新共 20 個測試類、0 失敗）。fishing 專屬單元測試（FishSpecies 重放/FishingService 冪等與射速/Controller WebMvc）於下一階段補齊。
+
+---
+
 ## [feat] -- 2026-06-12 -- Add T-044 daily rank snapshots
 
 ### Added
@@ -5453,6 +6672,8 @@ mvn -pl backend/game-service test
 
 ### Verified
 - `mvn -pl backend/rank-service test`: 44 tests passed, 0 failures.
+
+---
 
 ## [feat] -- 2026-06-12 -- Add T-043 weekly rank reset
 
@@ -5475,6 +6696,8 @@ mvn -pl backend/game-service test
 ### Verified
 - `mvn -pl backend/rank-service test`: 38 tests passed, 0 failures.
 
+---
+
 ## [test] — 2026-06-12 — Add T-091 accounting reconciliation checks
 
 ### Added
@@ -5495,6 +6718,8 @@ mvn -pl backend/game-service test
 - Synthetic `psql --csv` verification: runner returned PASS with zero violations and failed non-zero when one check reported a violation; both runs wrote CSV and Markdown reports.
 - `node --test tests/infra/*.test.js`: 121 tests passed, 0 failures.
 
+---
+
 ## [docs] — 2026-06-12 — 新增專題提案書（可直接轉 PDF：邊界 1cm、頁尾頁碼、白底）
 
 ### Added
@@ -5509,6 +6734,8 @@ mvn -pl backend/game-service test
 
 ### Verified
 - `node tools/screenshot/make-pdf.mjs` 產出 24 頁 PDF；以 pdf.js 渲染第 2/6/7 頁人工確認：頁尾置中頁碼、1cm 邊界、SVG 線框與截圖正常、白底無多餘樣式。
+
+---
 
 ## [fix] — 2026-06-12 — 全專案除錯體檢：修復 wallet/game 三項風險 + 產出總體檢報告
 
@@ -5530,6 +6757,8 @@ mvn -pl backend/game-service test
 - `mvn -pl backend/wallet-service,backend/game-service test` → BUILD SUCCESS（wallet 142 / game 106 測試全綠）。
 - `node tools/screenshot/check-html.mjs` → HTML 報告 8 張 Mermaid 全部渲染、0 破圖、無 console error。
 
+---
+
 ## [docs] — 2026-06-09 — Sync game-service T-030~T-037 completion across docs
 
 ### Changed
@@ -5544,6 +6773,9 @@ mvn -pl backend/game-service test
 - 以 game-service 工作樹實際檔案佐證：`baccarat/`、`session/`、`controller/{Baccarat,Verification,Rtp}Controller.java`、`service/{Baccarat,Verification,RtpStats}Service.java`、`entity/GameRtpStat.java` 皆存在且為完整實作（非空殼），並各帶測試類。
 - `git log -- <path>` 確認 T-033~T-037 的功能提交（`7f5d513`/`6d9aae5`/`0910d29`/`710b1a8`/`d860154`）已在 develop 歷史中。
 - 純文件變更，不影響任何程式碼行為。
+
+---
+
 ## [fix] — 2026-06-09 — wallet-service 內部密鑰過濾器只保護 /internal/**
 
 ### Fixed
@@ -5555,6 +6787,9 @@ mvn -pl backend/game-service test
 ### Verified
 - 端到端實測（docker compose 全套 + member/wallet/game/gateway）：修正前 `GET /api/v1/wallet/balance` 回 **401**；修正並重啟 wallet 後回 **200**，`POST /api/v1/wallet/bankruptcy-aid` 亦回 200（+1000 星幣）。
 - 老虎機 `POST /api/v1/game/slot/spin`（走 `/internal/**` 派彩）在修正前後皆正常，確認內部端點保護未被破壞。
+
+---
+
 ## [chore] — 2026-06-10 — 本機部署：一鍵啟動腳本與前端 mock 開關修正
 
 ### Added
@@ -5573,6 +6808,8 @@ mvn -pl backend/game-service test
 - `start-backend.ps1`：以 PowerShell AST `ParseFile` 驗證語法無誤；`.env` 解析邏輯乾跑（只解析、不啟動服務）正確讀到 41 個變數，含 `JWT_SECRET` / `INTERNAL_SECRET` / `CORS_ALLOWED_ORIGINS` / 各 `*_SERVICE_URL`。
 - 未改動 `src`，前端 `npm run lint` 不受影響（前次已通過）。
 
+---
+
 ## [fix] — 2026-06-10 — 修正百家樂前後端串接三處問題（餘額同步 / 下注上限 / 錯誤訊息）
 
 ### Fixed
@@ -5588,6 +6825,8 @@ mvn -pl backend/game-service test
 ### Verified
 - `npm --prefix frontend run lint`：通過（`eslint src` 無錯誤）。
 - 端到端（待起完整後端拓撲實測）：押一區開對家（輸）→ 餘額即時下降；面額已無 7,000/10,000、輸入超過 5,000 由前端攔下；故意餘額不足 → 顯示後端中文「星幣餘額不足」。老虎機 regression：spin 餘額正常。
+
+---
 
 ## [feat] — 2026-06-09 — 前端老虎機/百家樂改打真實 game-service（T-083/T-087）
 
@@ -5607,6 +6846,8 @@ mvn -pl backend/game-service test
   - 百家樂：押閒家 100 → 後端發牌（閒 7 點勝莊 5 點）、派彩 200 → 餘額 900→800→1000（淨 +100）；卡牌字串正確解析、winner/點數/餘額對應一致。
 - Vite HMR 重載 `gameSlice.js`、`Baccarat.jsx` 皆無編譯錯誤。
 
+---
+
 ## [docs] — 2026-06-05 — Sync task progress status across docs
 
 ### Changed
@@ -5620,6 +6861,8 @@ mvn -pl backend/game-service test
 ### Verified
 - 解壓 xlsx 重讀，狀態欄與變更一致；其餘 cell / 樣式 / 工作表未動。
 - T-090 報告 Status 與 game-service 實作（`SlotController` / `SlotService`）一致；報告未虛構任何 P99 / 吞吐數據。
+
+---
 
 ## [test] — 2026-06-04 — Add T-090 JMeter slot pressure-test plan
 
@@ -5644,6 +6887,8 @@ mvn -pl backend/game-service test
 - `node --test tests/infra/*.test.js`: 116 tests passed, 0 failures.
 - Real pressure-test metrics were not produced because T-032 is not implemented, JMeter is not installed, Docker is not running, and 1,000 funded player credentials are unavailable.
 
+---
+
 ## [feat] — 2026-06-04 — Implement leaderboard query APIs
 
 ### Added
@@ -5667,6 +6912,8 @@ mvn -pl backend/game-service test
 - `mvn -pl backend/rank-service test`: final Rank API/security suite 26 tests passed, 0 failures.
 - `node --test tests/infra/*.test.js`: 107 tests passed, 0 failures.
 
+---
+
 ## [feat] — 2026-06-04 — Implement friend leaderboard rebuild and top-20 API
 
 ### Added
@@ -5687,6 +6934,8 @@ mvn -pl backend/game-service test
 - `mvn -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/rank-service test`: all four modules passed (Member 70, Wallet 142, Rank 18), 0 failures.
 - `node --test tests/infra/*.test.js`: 106 tests passed, 0 failures.
 
+---
+
 ## [feat] - 2026-06-03 - Implement Rank Service global coins leaderboard
 
 ### Added
@@ -5705,6 +6954,8 @@ mvn -pl backend/game-service test
 
 ### Verified
 - `mvn -pl backend/rank-service test`: 10 tests passed, 0 failures.
+
+---
 
 ## [feat] — 2026-06-03 — 遊戲 RTP 統計排程與 API（T-037）
 
@@ -5936,6 +7187,8 @@ client DTO）`javac` 編譯通過。Lombok 檔案與 `@SpringBootTest` 待團隊
 行為 smoke 檢查（確定性、commit/verify、範圍、拒絕取樣、均勻分布卡方 14.72<30、跨區塊、邊界例外）
 全數通過；JUnit 測試已隨碼提交，待團隊 `mvn -pl backend/game-service test` 環境執行。
 
+---
+
 ## [changed] — 2026-06-02 — 優化前端文案、桌面字級與手機浮動元件
 
 ### Changed
@@ -6116,3 +7369,18 @@ client DTO）`javac` 編譯通過。Lombok 檔案與 `@SpringBootTest` 待團隊
 
 ### Verified
 - `mvn -pl backend/wallet-service test` → 142 tests, 0 failures
+
+---
+
+## [fix] - 2026-07-24 - Align LINE Login OAuth scopes
+
+### Changed
+- Removed the unapproved `email` scope from the LINE OAuth registration while retaining `openid` and `profile`.
+- Configured the local LINE Login channel callback as `http://localhost:8080/api/v1/auth/oauth2/callback/line`.
+
+### Why
+- LINE requires a separate review before a channel may request email access; account linking only needs the stable OIDC subject and profile.
+
+### Verified
+- `mvn -pl backend/member-service test`: 98 tests passed.
+- Docker Member Service and Gateway are healthy; the authorization redirect targets `access.line.me` with `scope=openid profile`.
