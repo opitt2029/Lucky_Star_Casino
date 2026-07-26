@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="326" viewBox="0 0 440 326" role="img" aria-label="前端">
+  <rect width="440" height="326" fill="#fcfcfb"/>
+  <text x="28" y="46" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="20" font-weight="700" fill="#0b0b0b">前端</text>
+  <text x="28" y="70" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#898781">frontend/ + frontend-admin/</text>
+  <text x="28" y="90" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#898781" style="font-variant-numeric:tabular-nums">共 105 筆 commit</text>
+  <line x1="28" y1="106" x2="412" y2="106" stroke="#e1e0d9" stroke-width="1"/>
+  <g>
+    <path d="M 128 210 L 128 118 A 92 92 0 0 1 201.612286417031 265.18361431128807 Z" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 128 210 L 201.612286417031 265.18361431128807 A 92 92 0 0 1 45.71727849469701 251.1528096450382 Z" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 128 210 L 45.71727849469701 251.1528096450382 A 92 92 0 0 1 122.49801783705678 118.16466806136836 Z" fill="#eb6834" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 128 210 L 122.49801783705678 118.16466806136836 A 92 92 0 0 1 127.99999999999999 118 Z" fill="#4a3aa7" stroke="#fcfcfb" stroke-width="2" stroke-linejoin="round"/>
+    <text x="179.0" y="189.7" text-anchor="middle" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="15" font-weight="700" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">35.2%</text>
+    <text x="122.9" y="272.1" text-anchor="middle" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="15" font-weight="700" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">32.4%</text>
+    <text x="78.6" y="186.7" text-anchor="middle" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="15" font-weight="700" fill="#0b0b0b" style="font-variant-numeric:tabular-nums">31.4%</text>
+  </g>
+    <rect x="252" y="138" width="12" height="12" rx="3" fill="#2a78d6"/>
+    <text x="272" y="148" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">張鈞皓</text>
+    <text x="272" y="165" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">35.2%　37 commits</text>
+    <rect x="252" y="178" width="12" height="12" rx="3" fill="#1baf7a"/>
+    <text x="272" y="188" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">王竣揚</text>
+    <text x="272" y="205" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">32.4%　34 commits</text>
+    <rect x="252" y="218" width="12" height="12" rx="3" fill="#eb6834"/>
+    <text x="272" y="228" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">林暐彧</text>
+    <text x="272" y="245" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">31.4%　33 commits</text>
+    <rect x="252" y="258" width="12" height="12" rx="3" fill="#4a3aa7"/>
+    <text x="272" y="268" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="14" font-weight="600" fill="#0b0b0b">許銘仁</text>
+    <text x="272" y="285" font-family="system-ui, -apple-system, "Segoe UI", "Microsoft JhengHei", sans-serif" font-size="12.5" fill="#52514e" style="font-variant-numeric:tabular-nums">1.0%　1 commits</text>
+</svg>
