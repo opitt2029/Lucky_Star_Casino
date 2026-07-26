@@ -1,74 +1,87 @@
-import api from './api'
+﻿import api from './api'
 import { mockApi } from './mockApi'
 
 const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
 
-// 後端 RankEntryResponse { playerId, username, rank, score } → 前端榜單列形狀。
-// 與 mockApi.getRank 的 { id, nickname, score } 對齊，讓 Rank.jsx / LeaderboardPanel 共用同一份欄位。
-function toRow(entry) {
+export const RANK_SCOPES = ['GLOBAL', 'FRIENDS']
+export const RANK_CATEGORIES = ['COINS', 'DAILY_WINNINGS', 'SLOT', 'BACCARAT', 'FISHING']
+
+function toRow(entry = {}) {
+  const id = entry.playerId ?? entry.id
+  const nickname = entry.nickname || entry.name || entry.username || `玩家 ${id ?? ''}`.trim()
   return {
-    id: entry.playerId,
-    nickname: entry.username,
-    score: entry.score,
-    rank: entry.rank,
+    id,
+    playerId: id,
+    username: entry.username || null,
+    nickname,
+    name: nickname,
+    avatarUrl: entry.avatarUrl || entry.avatar || '',
+    rank: Number(entry.rank ?? 0),
+    score: Number(entry.score ?? 0),
+    scoreUnit: entry.scoreUnit || '星幣',
+    roundCount: entry.roundCount ?? null,
+    totalBet: entry.totalBet ?? null,
+    totalPayout: entry.totalPayout ?? null,
+    winRate: entry.winRate ?? null,
+    trend: entry.trend || '',
   }
 }
 
-// 封裝對 rank-service（透過 Gateway）真實 API 的呼叫。
-// 玩家身分由 gateway 驗證 JWT 後以 X-User-Id 注入，好友榜不需另帶參數。
+function keyOf(scope, category) {
+  return `${scope}:${category}`
+}
+
 export const rankApi = {
-  // 全球榜 + 好友榜 + 今日贏幣王 + 我的名次。mock 模式沿用 mockApi.getRank 既有形狀。
-  async getRanks(playerId) {
+  async getLeaderboard({ scope = 'GLOBAL', category = 'COINS', limit = 100 } = {}) {
     if (useMockApi) {
-      const rank = await mockApi.getRank()
-      const dailyWinnings = (rank.globalRank || []).slice(0, 20).map((row, index) => ({
-        ...row,
-        rank: index + 1,
-        score: Math.max(0, Math.floor(row.score * 0.08)),
-      }))
-      return {
-        ...rank,
-        dailyWinnings,
-        myDailyWinnings: dailyWinnings.find((row) => String(row.id) === String(playerId)) || null,
-      }
+      return (await mockApi.getLeaderboard({ scope, category, limit })).map(toRow)
     }
-
-    // RankController 直接回傳 List<RankEntryResponse>（未包 ApiResponse），故取 res.data。
-    const [globalRes, friendRes, dailyRes] = await Promise.all([
-      api.get('/api/v1/rank/global'),
-      api.get('/api/v1/rank/friends'),
-      api.get('/api/v1/rank/daily/winnings', { params: { limit: 100 } }),
-    ])
-    const globalRank = (globalRes.data || []).map(toRow)
-    const friendRank = (friendRes.data || []).map(toRow)
-    const dailyWinnings = (dailyRes.data || []).map(toRow)
-
-    let myGlobalRank = null
-    let myDailyWinnings = null
-    if (playerId != null) {
-      try {
-        const me = (await api.get(`/api/v1/rank/global/${playerId}`)).data
-        myGlobalRank = { rank: me.rank, nickname: me.username, score: me.score }
-      } catch (error) {
-        // 未上榜時後端回 404，視為「無名次」，不應擋住整個榜單載入。
-        if (error?.response?.status !== 404) throw error
-      }
-
-      try {
-        const me = (await api.get('/api/v1/rank/daily/winnings/me')).data
-        myDailyWinnings = { rank: me.rank, nickname: me.username, score: me.score }
-      } catch (error) {
-        if (error?.response?.status !== 404) throw error
-      }
-    }
-
-    return { globalRank, friendRank, dailyWinnings, myGlobalRank, myDailyWinnings }
+    const response = await api.get('/api/v1/rank/leaderboard', {
+      params: { scope, category, limit },
+    })
+    return (response.data || []).map(toRow)
   },
 
-  // 即時 /topic/rank 廣播（RankUpdateEvent { type, entries:[RankEntryResponse], updatedAt }）
-  // → 前端榜單列陣列，與 getRanks 同一形狀，供 RealtimeBridge upsert 進 globalRank。
+  async getMyRanks() {
+    if (useMockApi) return mockApi.getMyRanks()
+    const response = await api.get('/api/v1/rank/me')
+    return Object.fromEntries(
+      Object.entries(response.data || {}).map(([key, value]) => [key, toRow(value)]),
+    )
+  },
+
+  async getRankPlayer(playerId, { scope = 'GLOBAL', category = 'COINS' } = {}) {
+    if (useMockApi) return mockApi.getRankPlayer(playerId, { scope, category })
+    const response = await api.get(`/api/v1/rank/players/${playerId}`, {
+      params: { scope, category },
+    })
+    return response.data
+  },
+
+  async getRanks(playerId) {
+    if (useMockApi && mockApi.getRank) return mockApi.getRank()
+    const [globalRank, friendRank, dailyWinnings, myRanks] = await Promise.all([
+      this.getLeaderboard({ scope: 'GLOBAL', category: 'COINS' }),
+      this.getLeaderboard({ scope: 'FRIENDS', category: 'COINS', limit: 100 }),
+      this.getLeaderboard({ scope: 'GLOBAL', category: 'DAILY_WINNINGS' }),
+      playerId == null ? Promise.resolve({}) : this.getMyRanks(),
+    ])
+    return {
+      globalRank,
+      friendRank,
+      dailyWinnings,
+      myGlobalRank: myRanks[keyOf('GLOBAL', 'COINS')] || null,
+      myDailyWinnings: myRanks[keyOf('GLOBAL', 'DAILY_WINNINGS')] || null,
+    }
+  },
+
   normalizeBroadcast(payload) {
     const entries = payload?.entries
-    return Array.isArray(entries) ? entries.map(toRow) : []
+    return {
+      scope: payload?.scope || 'GLOBAL',
+      category: payload?.category || 'COINS',
+      items: Array.isArray(entries) ? entries.map(toRow) : [],
+      updatedAt: payload?.updatedAt || new Date().toISOString(),
+    }
   },
 }

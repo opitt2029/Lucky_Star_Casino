@@ -8,12 +8,7 @@ import { useDailyCheckIn } from '../hooks/useDailyCheckIn'
 import { socialProviders } from '../utils/memberPreferences'
 import SocialProviderIcon from '../components/SocialProviderIcon'
 import { memberApi } from '../services/memberApi'
-import casinoFemaleBlackjackDealer from '../assets/avatars/casino-female-blackjack-dealer.webp'
-import casinoFemalePokerAce from '../assets/avatars/casino-female-poker-ace.webp'
-import casinoFemaleRouletteHost from '../assets/avatars/casino-female-roulette-host.webp'
-import casinoMaleDealer from '../assets/avatars/casino-male-dealer.webp'
-import casinoMaleHighRoller from '../assets/avatars/casino-male-high-roller.webp'
-import casinoMaleSlotChampion from '../assets/avatars/casino-male-slot-champion.webp'
+import { avatarPresets } from '../data/avatarPresets'
 
 const MAX_AVATAR_SIZE = 300 * 1024
 const allowedAvatarTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
@@ -23,15 +18,6 @@ const checkInMilestones = [
   { day: 21, bonus: 3000 },
   { day: 30, bonus: 5000 },
 ]
-const avatarPresets = [
-  { id: 'male-dealer', label: '男性荷官', src: casinoMaleDealer },
-  { id: 'male-high-roller', label: '豪客玩家', src: casinoMaleHighRoller },
-  { id: 'male-slot-champion', label: '老虎機冠軍', src: casinoMaleSlotChampion },
-  { id: 'female-blackjack-dealer', label: '黑傑克女荷官', src: casinoFemaleBlackjackDealer },
-  { id: 'female-roulette-host', label: '輪盤主持人', src: casinoFemaleRouletteHost },
-  { id: 'female-poker-ace', label: '撲克高手', src: casinoFemalePokerAce },
-]
-
 function readAssetAsDataUrl(src) {
   return fetch(src)
     .then((response) => {

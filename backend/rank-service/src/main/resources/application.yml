@@ -1,4 +1,4 @@
-server:
+﻿server:
   port: 8084
   tomcat:
     mbeanregistry:
@@ -72,3 +72,9 @@ logging:
   level:
     com.luckystar.rank: ${LOG_LEVEL_APP:INFO}
     org.hibernate.SQL: ${LOG_LEVEL_SQL:OFF}
+
+app:
+  dev-seed:
+    enabled: ${RANK_DEV_SEED_ENABLED:false}
+    player-count: ${RANK_DEV_SEED_PLAYER_COUNT:100}
+    random-seed: ${RANK_DEV_SEED_RANDOM_SEED:20260727}

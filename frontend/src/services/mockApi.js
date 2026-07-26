@@ -563,6 +563,173 @@ function getTaipeiDateKey(date = new Date()) {
   return new Date(date.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
 
+
+const RANK_SCOPE_VALUES = ['GLOBAL', 'FRIENDS']
+const RANK_CATEGORY_VALUES = ['COINS', 'DAILY_WINNINGS', 'SLOT', 'BACCARAT', 'FISHING']
+const RANK_GAME_VALUES = ['SLOT', 'BACCARAT', 'FISHING']
+
+function rankKey(scope, category) {
+  return `${scope}:${category}`
+}
+
+function rankUnit(category) {
+  return RANK_GAME_VALUES.includes(category) ? '淨贏分' : '星幣'
+}
+
+const RANK_NAME_PREFIXES = [
+  'Velvet',
+  'Lucky',
+  'Crimson',
+  'Neon',
+  'Golden',
+  'Jade',
+  'Moonlit',
+  'Royal',
+  'Midnight',
+  'Starlit',
+  'Ruby',
+  'Sapphire',
+  'Solar',
+  'Ivory',
+  'Mirage',
+  'Aurora',
+]
+const RANK_NAME_ALIASES = [
+  'Ace',
+  'Nova',
+  'Vesper',
+  'Comet',
+  'Crown',
+  'Orbit',
+  'Roulette',
+  'Joker',
+  'Maven',
+  'Cipher',
+  'Echo',
+  'Blitz',
+  'Ember',
+  'Quest',
+  'Dealer',
+  'Rider',
+  'Jackpot',
+  'Muse',
+]
+const RANK_NAME_TITLES = [
+  '',
+  'Prime',
+  'Rush',
+  'Bloom',
+  'Spark',
+  'Pulse',
+  'Charm',
+  'Glide',
+  'Flare',
+  'Drift',
+  'Vault',
+  'Wave',
+]
+
+function rankNickname(index) {
+  const prefix = RANK_NAME_PREFIXES[(index * 7 + 3) % RANK_NAME_PREFIXES.length]
+  const alias = RANK_NAME_ALIASES[(index * 11 + 5) % RANK_NAME_ALIASES.length]
+  const title = RANK_NAME_TITLES[(index * 13 + 2) % RANK_NAME_TITLES.length]
+  return title ? `${prefix} ${alias} ${title}` : `${prefix} ${alias}`
+}
+function makeRankProfile(id, index, nickname = rankNickname(index)) {
+  return {
+    playerId: id,
+    id,
+    username: `mock-rank-${index + 1}`,
+    nickname,
+    avatarUrl: '',
+    joinedAt: new Date(Date.UTC(2026, 0, 1 + (index % 180), 10, 0, 0)).toISOString(),
+  }
+}
+
+function rankScoreFor(category, index, current = false) {
+  if (current) return category === 'COINS' ? 50000 : category === 'DAILY_WINNINGS' ? 4200 : 3600
+  const base = {
+    COINS: 220000,
+    DAILY_WINNINGS: 96000,
+    SLOT: 88000,
+    BACCARAT: 82000,
+    FISHING: 94000,
+  }[category]
+  return Math.max(0, base - index * 775 + ((index * 97) % 1600))
+}
+
+function makeRankRow(profile, category, index, current = false) {
+  const score = rankScoreFor(category, index, current)
+  const roundCount = RANK_GAME_VALUES.includes(category) ? 36 + ((index * 7) % 240) : null
+  const totalBet = RANK_GAME_VALUES.includes(category) ? 15000 + index * 2100 : null
+  const totalPayout = RANK_GAME_VALUES.includes(category) ? totalBet + score : null
+  const winRate = RANK_GAME_VALUES.includes(category) ? Math.round((38 + ((index * 11) % 45)) * 10) / 10 : null
+  return {
+    ...profile,
+    rank: 0,
+    score,
+    scoreUnit: rankUnit(category),
+    roundCount,
+    totalBet,
+    totalPayout,
+    winRate,
+    gameType: RANK_GAME_VALUES.includes(category) ? category : null,
+    trend: index % 3 === 0 ? '+12%' : index % 3 === 1 ? '+5%' : '-2%',
+  }
+}
+
+function sortAndRank(rows) {
+  return [...rows]
+    .sort((a, b) => Number(b.score || 0) - Number(a.score || 0) || String(a.playerId).localeCompare(String(b.playerId)))
+    .map((row, index) => ({ ...row, rank: index + 1 }))
+}
+
+function ensureRankFixtures(db) {
+  db.rankProfiles = db.rankProfiles || {}
+  db.rankingsV2 = db.rankingsV2 || {}
+  const currentId = currentPlayerId()
+  const currentUser = db.users.find((item) => item.player?.id === currentId)?.player
+  const currentProfile = {
+    playerId: currentId,
+    id: currentId,
+    username: currentUser?.username || 'demo-player',
+    nickname: currentUser?.nickname || '前端負責人',
+    avatarUrl: currentUser?.avatarUrl || '',
+    joinedAt: new Date(Date.UTC(2026, 0, 15, 10, 0, 0)).toISOString(),
+  }
+  db.rankProfiles[currentId] = { ...(db.rankProfiles[currentId] || {}), ...currentProfile }
+
+  const profiles = [currentProfile]
+  for (let index = 0; index < 120; index += 1) {
+    const profile = makeRankProfile(`rank-${index + 1}`, index)
+    db.rankProfiles[profile.playerId] = { ...(db.rankProfiles[profile.playerId] || {}), ...profile }
+    profiles.push(profile)
+  }
+  for (const friend of db.friends[currentId] || []) {
+    const profile = {
+      playerId: friend.id,
+      id: friend.id,
+      username: friend.username || friend.nickname,
+      nickname: friend.nickname || friend.username,
+      avatarUrl: friend.avatarUrl || '',
+      joinedAt: new Date(Date.UTC(2026, 1, 5, 10, 0, 0)).toISOString(),
+    }
+    db.rankProfiles[profile.playerId] = { ...(db.rankProfiles[profile.playerId] || {}), ...profile }
+    profiles.push(profile)
+  }
+
+  for (const category of RANK_CATEGORY_VALUES) {
+    const rows = profiles.map((profile, index) => makeRankRow(profile, category, index, profile.playerId === currentId))
+    db.rankingsV2[rankKey('GLOBAL', category)] = sortAndRank(rows).slice(0, 100)
+    const friendIds = new Set([currentId, ...(db.friends[currentId] || []).map((friend) => friend.id)])
+    db.rankingsV2[rankKey('FRIENDS', category)] = sortAndRank(rows.filter((row) => friendIds.has(row.playerId))).slice(0, 100)
+  }
+}
+
+function findMockRankRow(db, playerId, scope, category) {
+  ensureRankFixtures(db)
+  return (db.rankingsV2[rankKey(scope, category)] || []).find((row) => String(row.playerId) === String(playerId))
+}
 export function readStoredSession() {
   return readJson(SESSION_KEY, null)
 }
@@ -1198,25 +1365,93 @@ export const mockApi = {
     }
     return { sessionId, abandoned: true }
   },
-  async getRank() {
+  async getLeaderboard({ scope = 'GLOBAL', category = 'COINS', limit = 100 } = {}) {
     await wait(260)
     const db = getDb()
+    const normalizedScope = RANK_SCOPE_VALUES.includes(scope) ? scope : 'GLOBAL'
+    const normalizedCategory = RANK_CATEGORY_VALUES.includes(category) ? category : 'COINS'
+    ensureRankFixtures(db)
+    saveDb(db)
+    return (db.rankingsV2[rankKey(normalizedScope, normalizedCategory)] || []).slice(0, limit)
+  },
+
+  async getMyRanks() {
+    await wait(180)
+    const db = getDb()
     const playerId = currentPlayerId()
-    const player = db.users.find((item) => item.player.id === playerId)?.player
-    const rows = [...db.ranks].sort((a, b) => b.score - a.score).slice(0, 100)
-    const myIndex = rows.findIndex((row) => row.id === playerId)
-    const friendNames = new Set((db.friends[playerId] || []).map((friend) => friend.nickname))
+    ensureRankFixtures(db)
+    const result = {}
+    for (const scope of RANK_SCOPE_VALUES) {
+      for (const category of RANK_CATEGORY_VALUES) {
+        const row = findMockRankRow(db, playerId, scope, category)
+        if (row) result[rankKey(scope, category)] = row
+      }
+    }
+    saveDb(db)
+    return result
+  },
+
+  async getRankPlayer(playerId, { scope = 'GLOBAL', category = 'COINS' } = {}) {
+    await wait(220)
+    const db = getDb()
+    ensureRankFixtures(db)
+    const profile = db.rankProfiles?.[playerId]
+    if (!profile) throw new Error('找不到這位玩家')
+    const currentId = currentPlayerId()
+    const friendIds = new Set((db.friends[currentId] || []).map((friend) => String(friend.id)))
+    const gameRanks = Object.fromEntries(
+      RANK_GAME_VALUES.map((game) => [
+        game,
+        findMockRankRow(db, playerId, 'GLOBAL', game)?.rank ?? null,
+      ]),
+    )
+    const gameRows = RANK_GAME_VALUES
+      .map((game) => findMockRankRow(db, playerId, 'GLOBAL', game))
+      .filter(Boolean)
+    const totalRounds = gameRows.reduce((sum, row) => sum + Number(row.roundCount || 0), 0)
+    const weightedWins = gameRows.reduce(
+      (sum, row) => sum + (Number(row.roundCount || 0) * Number(row.winRate || 0)) / 100,
+      0,
+    )
+    const favorite = [...gameRows].sort((a, b) => Number(b.roundCount || 0) - Number(a.roundCount || 0))[0]
+    saveDb(db)
     return {
-      globalRank: rows,
-      friendRank: rows.filter((row) => friendNames.has(row.nickname)).slice(0, 20),
-      myGlobalRank: {
-        rank: myIndex >= 0 ? myIndex + 1 : rows.length,
-        nickname: player?.nickname || 'Player',
-        score: db.wallets[playerId]?.balance || 0,
+      playerId: profile.playerId,
+      username: profile.username,
+      nickname: profile.nickname,
+      avatarUrl: profile.avatarUrl,
+      joinedAt: profile.joinedAt,
+      friendStatus:
+        String(playerId) === String(currentId) ? 'SELF' : friendIds.has(String(playerId)) ? 'FRIEND' : 'NONE',
+      selectedRank: findMockRankRow(db, playerId, scope, category)?.rank ?? null,
+      globalRank: findMockRankRow(db, playerId, 'GLOBAL', 'COINS')?.rank ?? null,
+      dailyRank: findMockRankRow(db, playerId, 'GLOBAL', 'DAILY_WINNINGS')?.rank ?? null,
+      gameRanks,
+      stats: {
+        roundCount: totalRounds,
+        winRate: totalRounds ? Math.round((weightedWins / totalRounds) * 1000) / 10 : null,
+        favoriteGame: favorite?.gameType || null,
       },
     }
   },
 
+  async getRank() {
+    const playerId = currentPlayerId()
+    const [globalRank, friendRank, dailyWinnings, myRanks] = await Promise.all([
+      this.getLeaderboard({ scope: 'GLOBAL', category: 'COINS' }),
+      this.getLeaderboard({ scope: 'FRIENDS', category: 'COINS' }),
+      this.getLeaderboard({ scope: 'GLOBAL', category: 'DAILY_WINNINGS' }),
+      this.getMyRanks(),
+    ])
+    return {
+      globalRank,
+      friendRank,
+      dailyWinnings,
+      myGlobalRank: myRanks['GLOBAL:COINS'] || null,
+      myDailyWinnings: myRanks['GLOBAL:DAILY_WINNINGS'] || null,
+      playerId,
+    }
+  },
   async getFriends() {
     await wait(240)
     const db = getDb()

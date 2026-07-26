@@ -1,0 +1,6 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="slot">
+  <rect x="18" y="18" width="92" height="92" rx="12" fill="#45070b" stroke="#f8c84c" stroke-width="6"/>
+  <rect x="30" y="38" width="68" height="42" rx="6" fill="#fff2bc"/>
+  <text x="64" y="68" font-family="Arial, sans-serif" font-size="26" font-weight="900" text-anchor="middle" fill="#8b1114">777</text>
+  <circle cx="64" cy="94" r="7" fill="#f8c84c"/>
+</svg>

@@ -1,3 +1,49 @@
+## [changed] -- 2026-07-27 -- Make rank seed player names less robotic
+
+### Changed
+- `frontend`: replace numbered rank mock names with deterministic casino-style aliases.
+- `rank-service`: update optional dev seed player nicknames to use the same non-sequential naming style.
+- `rank-service`: keep dev seed avatar URLs empty so the frontend website avatar fallback is used consistently.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+- `mvn -pl backend/rank-service test`
+
+---
+## [fix] -- 2026-07-27 -- Fix rank player drawer layering and avatar fallback
+
+### Changed
+- `frontend`: render the rank player drawer through a body portal with isolated scrolling so the sticky header cannot cover it.
+- `frontend`: share casino avatar presets across Profile and Rank, and assign deterministic fallback avatars to every rank player.
+- `frontend`: remove missing mock `/avatars/default-*.webp` rank avatar paths.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run build`
+
+---
+## [feat] -- 2026-07-27 -- Expand /rank leaderboard scopes and game rankings
+
+### Added
+- `rank-service`: add unified `GET /api/v1/rank/leaderboard`, `GET /api/v1/rank/me`, and `GET /api/v1/rank/players/{playerId}` APIs for GLOBAL/FRIENDS scopes and COINS/DAILY_WINNINGS/SLOT/BACCARAT/FISHING categories.
+- `rank-service`: consume `game.result` with `roundId`/`eventId` dedup and maintain Redis game profit/stat leaderboards.
+- `rank-service`: optional deterministic dev seed behind `RANK_DEV_SEED_ENABLED=false` by default.
+- `frontend`: rebuild `/rank` with scope/category filters, five-minute refresh, realtime `/topic/rank` global-coin updates, podium, searchable rows, and a public player drawer.
+- `frontend`: add local rank SVG assets and mock API fixtures that mirror the backend rank contract.
+
+### Changed
+- `game-service`: enrich `game.result` payloads with common ranking fields while preserving existing game-specific fields.
+- `rank-service`: extend rank entries with public display metadata and game stats without exposing private player fields.
+
+### Verified
+- `mvn -pl backend/rank-service clean test`
+- `mvn -pl backend/game-service clean test`
+- `npm.cmd run lint`
+- `npm.cmd run test`
+- `npm.cmd run build`
+
+---
 ## [feat] — 2026-07-26 — 團隊 commit 貢獻度圓餅圖產生器（SVG 可直接插入 PPT）
 
 ### Added
