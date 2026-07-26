@@ -8,6 +8,10 @@
   overflow: hidden;
 }
 
+.fx-layer--announcement {
+  z-index: 35;
+}
+
 /* ---- 金幣噴發 ---- */
 
 .fx-gold-burst__coin {
@@ -31,7 +35,8 @@
     opacity: 1;
   }
   55% {
-    transform: translate(var(--burst-dx), var(--burst-dy)) scale(1) rotate(calc(var(--burst-spin) * 240deg));
+    transform: translate(var(--burst-dx), var(--burst-dy)) scale(1)
+      rotate(calc(var(--burst-spin) * 240deg));
     opacity: 1;
   }
   100% {
@@ -49,7 +54,8 @@
   left: var(--rain-left);
   width: var(--rain-size);
   height: var(--rain-size);
-  animation: fx-rain-fall var(--rain-duration) cubic-bezier(0.3, 0.1, 0.85, 1) var(--rain-delay) both;
+  animation: fx-rain-fall var(--rain-duration) cubic-bezier(0.3, 0.1, 0.85, 1) var(--rain-delay)
+    both;
   /* 移除 per-frame drop-shadow（手機 GPU 殺手，§2.3）；大量雨滴同時 filter 會掉幀 */
 }
 
@@ -102,7 +108,8 @@
 
 .fx-brush-banner--level-3 .fx-brush-banner__text {
   font-size: clamp(96px, 19vw, 250px);
-  animation: fx-banner-pop 0.62s cubic-bezier(0.18, 1.4, 0.4, 1) both,
+  animation:
+    fx-banner-pop 0.62s cubic-bezier(0.18, 1.4, 0.4, 1) both,
     fx-banner-quake 0.5s ease-in-out 0.62s 3;
 }
 
@@ -138,10 +145,19 @@
 }
 
 @keyframes fx-banner-quake {
-  0%, 100% { transform: translate(0, 0); }
-  25% { transform: translate(-6px, 4px); }
-  50% { transform: translate(5px, -5px); }
-  75% { transform: translate(-4px, -3px); }
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  25% {
+    transform: translate(-6px, 4px);
+  }
+  50% {
+    transform: translate(5px, -5px);
+  }
+  75% {
+    transform: translate(-4px, -3px);
+  }
 }
 
 @keyframes fx-banner-sheen {
@@ -154,27 +170,33 @@
 
 .fx-ticker {
   position: fixed;
-  top: 8px;
+  top: max(8px, env(safe-area-inset-top));
   left: 50%;
   transform: translateX(-50%);
-  z-index: 80;
+  z-index: 40;
   display: flex;
   align-items: center;
   gap: 8px;
-  max-width: min(92vw, 720px);
+  width: max-content;
+  max-width: min(calc(100vw - 24px), 720px);
   padding: 7px 16px;
   border-radius: 999px;
   border: 1px solid rgba(248, 213, 106, 0.5);
   background: linear-gradient(180deg, rgba(70, 4, 8, 0.94), rgba(28, 2, 4, 0.94));
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.5), inset 0 0 18px rgba(248, 213, 106, 0.12);
+  box-shadow:
+    0 6px 22px rgba(0, 0, 0, 0.5),
+    inset 0 0 18px rgba(248, 213, 106, 0.12);
   pointer-events: none;
   animation: fx-ticker-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .fx-ticker--big {
   border-color: rgba(255, 234, 160, 0.9);
-  box-shadow: 0 6px 26px rgba(201, 13, 24, 0.55), 0 0 30px rgba(248, 213, 106, 0.4);
-  animation: fx-ticker-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both,
+  box-shadow:
+    0 6px 26px rgba(201, 13, 24, 0.55),
+    0 0 30px rgba(248, 213, 106, 0.4);
+  animation:
+    fx-ticker-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both,
     fx-ticker-glow 1.1s ease-in-out 0.5s infinite;
 }
 
@@ -183,6 +205,7 @@
 }
 
 .fx-ticker__viewport {
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
 }
@@ -212,15 +235,25 @@
 }
 
 @keyframes fx-ticker-glow {
-  0%, 100% { filter: brightness(1); }
-  50% { filter: brightness(1.4); }
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.4);
+  }
 }
 
 @keyframes fx-ticker-scroll {
-  0%, 12% { transform: translateX(0); }
-  88%, 100% { transform: translateX(min(0px, calc(min(92vw, 720px) - 100% - 60px))); }
+  0%,
+  12% {
+    transform: translateX(0);
+  }
+  88%,
+  100% {
+    transform: translateX(min(0px, calc(min(calc(100vw - 24px), 720px) - 100% - 64px)));
+  }
 }
-
 
 /* Futuristic red-gold coin rain polish. */
 .fx-rain__drop--coin {
@@ -238,7 +271,12 @@
   width: max(3px, calc(var(--rain-size) * 0.14));
   height: var(--rain-trail, 46px);
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(255, 247, 204, 0), rgba(255, 49, 69, 0.76), rgba(255, 214, 92, 0.42));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 247, 204, 0),
+    rgba(255, 49, 69, 0.76),
+    rgba(255, 214, 92, 0.42)
+  );
   opacity: 0.72;
   transform: translateX(-50%) rotate(-8deg);
   mix-blend-mode: screen;
@@ -250,7 +288,12 @@
   inset: -38%;
   z-index: -1;
   border-radius: 999px;
-  background: radial-gradient(circle, rgba(255, 247, 204, 0.72), rgba(255, 49, 69, 0.34) 34%, transparent 68%);
+  background: radial-gradient(
+    circle,
+    rgba(255, 247, 204, 0.72),
+    rgba(255, 49, 69, 0.34) 34%,
+    transparent 68%
+  );
   opacity: calc(0.32 + var(--rain-flare, 0.6) * 0.28);
   transform: scale(var(--rain-depth, 1));
 }
@@ -269,20 +312,30 @@
 
 @keyframes fx-rain-fall-neon {
   0% {
-    transform: translate3d(0, -14vh, 0) scale(calc(var(--rain-depth, 1) * 0.72)) rotateX(62deg) rotateZ(0deg);
+    transform: translate3d(0, -14vh, 0) scale(calc(var(--rain-depth, 1) * 0.72)) rotateX(62deg)
+      rotateZ(0deg);
     opacity: 0;
   }
   8% {
     opacity: 1;
   }
   58% {
-    transform: translate3d(calc(var(--rain-drift) * 0.72), 62vh, 0) scale(var(--rain-depth, 1)) rotateX(18deg)
-      rotateZ(calc(var(--rain-spin) * 340deg));
+    transform: translate3d(calc(var(--rain-drift) * 0.72), 62vh, 0) scale(var(--rain-depth, 1))
+      rotateX(18deg) rotateZ(calc(var(--rain-spin) * 340deg));
     opacity: 1;
   }
   100% {
-    transform: translate3d(var(--rain-drift), 118vh, 0) scale(calc(var(--rain-depth, 1) * 0.88)) rotateX(70deg)
-      rotateZ(calc(var(--rain-spin) * 760deg));
+    transform: translate3d(var(--rain-drift), 118vh, 0) scale(calc(var(--rain-depth, 1) * 0.88))
+      rotateX(70deg) rotateZ(calc(var(--rain-spin) * 760deg));
     opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fx-ticker,
+  .fx-ticker--big,
+  .fx-ticker__text,
+  .fx-rain__drop,
+  .fx-rain__drop--coin {
+    animation: none;
   }
 }

@@ -13,7 +13,12 @@ const DENSITY = {
 }
 
 // 一次性墜落雨（金幣 / 紅包共用底層）。trigger 遞增即觸發一波，播完自動清除。
-export default function FallRain({ trigger = 0, artId = 'coin', density = 'light' }) {
+export default function FallRain({
+  trigger = 0,
+  artId = 'coin',
+  density = 'light',
+  className = '',
+}) {
   const [waves, setWaves] = useState([])
 
   useEffect(() => {
@@ -46,10 +51,14 @@ export default function FallRain({ trigger = 0, artId = 'coin', density = 'light
   if (waves.length === 0) return null
 
   return (
-    <div className="fx-layer" aria-hidden="true">
+    <div className={['fx-layer', className].filter(Boolean).join(' ')} aria-hidden="true">
       {waves.flatMap((wave) =>
         wave.drops.map((drop) => (
-          <span key={drop.key} className={`fx-rain__drop fx-rain__drop--${artId} fx-rain__drop--${density}`} style={drop.style}>
+          <span
+            key={drop.key}
+            className={`fx-rain__drop fx-rain__drop--${artId} fx-rain__drop--${density}`}
+            style={drop.style}
+          >
             <Art id={artId} />
           </span>
         ))
@@ -59,10 +68,12 @@ export default function FallRain({ trigger = 0, artId = 'coin', density = 'light
 }
 
 // 語意化包裝：中獎金幣雨（分級）與紅包雨。
-export function CoinRainPro({ trigger, density = 'heavy' }) {
-  return <FallRain trigger={trigger} artId="coin" density={density} />
+export function CoinRainPro({ trigger, density = 'heavy', className = '' }) {
+  return <FallRain trigger={trigger} artId="coin" density={density} className={className} />
 }
 
-export function RedEnvelopeRain({ trigger, density = 'heavy' }) {
-  return <FallRain trigger={trigger} artId="slot-red-envelope" density={density} />
+export function RedEnvelopeRain({ trigger, density = 'heavy', className = '' }) {
+  return (
+    <FallRain trigger={trigger} artId="slot-red-envelope" density={density} className={className} />
+  )
 }

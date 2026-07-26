@@ -9,6 +9,7 @@ import PageTransition from './components/PageTransition'
 import QuickToolbar from './components/QuickToolbar'
 import FriendFloatingPanel from './components/FriendFloatingPanel'
 import SupportModal from './components/SupportModal'
+import GlobalAnnouncementHost from './casino-fx/announce/GlobalAnnouncementHost'
 
 const Lobby = lazy(() => import('./pages/Lobby'))
 const SlotGame = lazy(() => import('./pages/SlotGame'))
@@ -26,16 +27,19 @@ const Diamond = lazy(() => import('./pages/Diamond'))
 const Topup = lazy(() => import('./pages/Topup'))
 const TopupPayment = lazy(() => import('./pages/TopupPayment'))
 const ProvablyFair = lazy(() => import('./pages/ProvablyFair'))
+const NotFound = lazy(() => import('./pages/NotFound'))
 
 const enableDevTools = import.meta.env.VITE_ENABLE_DEV_TOOLS === 'true'
 const Fairness = enableDevTools ? lazy(() => import('./pages/Fairness')) : null
-const IntegrationTestPage = enableDevTools ? lazy(() => import('./pages/IntegrationTestPage')) : null
+const IntegrationTestPage = enableDevTools
+  ? lazy(() => import('./pages/IntegrationTestPage'))
+  : null
 
 function RouteFallback() {
   return (
     <div className="route-fallback" role="status" aria-live="polite">
       <span className="route-fallback__mark" aria-hidden="true" />
-      <span>?頛銝?..</span>
+      <span>頁面載入中...</span>
     </div>
   )
 }
@@ -47,7 +51,11 @@ function LazyPage({ children }) {
 function PrivateRoute({ children }) {
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
   const location = useLocation()
-  return isAuthenticated ? children : <Navigate to="/member?mode=login" replace state={{ from: location }} />
+  return isAuthenticated ? (
+    children
+  ) : (
+    <Navigate to="/member?mode=login" replace state={{ from: location }} />
+  )
 }
 
 function ProtectedPage({ children }) {
@@ -66,10 +74,10 @@ function SiteChrome() {
 
   return (
     <>
+      <GlobalAnnouncementHost />
       <QuickToolbar />
       <FriendFloatingPanel />
       <SupportModal />
-
     </>
   )
 }
@@ -245,7 +253,14 @@ export default function App() {
             />
           )}
           {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route
+            path="*"
+            element={
+              <LazyPage>
+                <NotFound />
+              </LazyPage>
+            }
+          />
         </Routes>
       </PageTransition>
       <SiteChrome />

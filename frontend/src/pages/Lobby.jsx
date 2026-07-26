@@ -2,9 +2,14 @@ import { useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import AppShell from '../components/AppShell'
 import MetricCard from '../components/MetricCard'
-import { gameCatalog, getBackgroundStyle, getDecorativeAssetStyle } from '../theme/backgroundTheme'
+import { BACKGROUND_ASSET_FOLDER, decorativeAssets, gameCatalog, getBackgroundStyle, getDecorativeAssetStyle } from '../theme/backgroundTheme'
+
+const lobbyGames = gameCatalog.filter((game) => game.id !== 'provably-fair')
+
 
 function GameCard({ game, index }) {
+  const asset = decorativeAssets[game.assetKey]
+  const imageSrc = asset?.image ? `${BACKGROUND_ASSET_FOLDER}${asset.image}` : ''
   const hoverTone =
     index % 2 === 0
       ? 'hover:shadow-[0_28px_80px_rgba(248,213,106,0.18)] hover:[transform:translateY(-6px)_scale(1.01)]'
@@ -20,9 +25,11 @@ function GameCard({ game, index }) {
       ].join(' ')}
     >
       <div
-        className="decorative-asset min-h-64 transition duration-700 group-hover:scale-105 group-hover:saturate-125"
+        className="decorative-asset game-card-art-frame min-h-64 transition duration-700 group-hover:scale-105 group-hover:saturate-125"
         style={getDecorativeAssetStyle(game.assetKey)}
-      />
+      >
+        {imageSrc && <img className="game-card-art" src={imageSrc} alt={`${game.title} 遊戲插圖`} loading="lazy" />}
+      </div>
       <div className="relative grid content-between overflow-hidden p-6 sm:p-8">
         <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-yellow-200/70 to-transparent opacity-0 transition duration-500 group-hover:opacity-100" />
         <div>
@@ -73,15 +80,17 @@ export default function Lobby() {
 
         <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
           <MetricCard label="目前星幣" value={balance.toLocaleString()} caption="用於下注與結算" tone="light" />
-          <MetricCard label="可玩遊戲" value={gameCatalog.length.toString()} caption="目前開放項目" />
+          <MetricCard label="可玩遊戲" value={lobbyGames.length.toString()} caption="目前開放項目" />
         </div>
       </section>
 
       <section className="mt-6 grid gap-5 xl:grid-cols-2">
-        {gameCatalog.map((game, index) => (
+        {lobbyGames.map((game, index) => (
           <GameCard key={game.to} game={game} index={index} />
         ))}
       </section>
     </AppShell>
   )
 }
+
+

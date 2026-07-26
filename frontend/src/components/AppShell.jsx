@@ -10,11 +10,8 @@ import { fetchWallet, resetWallet } from '../store/slices/walletSlice'
 import { openSupport, setPendingNavigation, clearPendingNavigation } from '../store/slices/uiSlice'
 import { useDailyCheckIn } from '../hooks/useDailyCheckIn'
 import { getTaipeiDateKey } from '../utils/checkInDates'
-import { useSitePreferences } from '../utils/sitePreferences'
 import { getBackgroundStyle } from '../theme/backgroundTheme'
 import CoinRain from './CoinRain'
-import AnnouncementTicker from '../casino-fx/announce/AnnouncementTicker'
-import { startBotFeed, stopBotFeed } from '../casino-fx/announce/botFeed'
 import LeaveGameModal from './LeaveGameModal'
 import { GAME_LEAVE_CONFIRMED_EVENT } from '../hooks/useGameLeaveGuard'
 import SiteSettings from './SiteSettings'
@@ -75,9 +72,9 @@ export default function AppShell({ children }) {
   const balance = wallet.balance
   const notifications = useSelector((state) => state.game.notifications)
   const leaveGuard = useSelector((state) => state.ui.leaveGuard)
-  const playerName = player?.nickname || player?.username || (isAuthenticated ? 'Demo Player' : '訪客')
+  const playerName =
+    player?.nickname || player?.username || (isAuthenticated ? 'Demo Player' : '訪客')
   const canShowAvatar = player?.avatarUrl && !avatarFailed
-  const [preferences] = useSitePreferences()
 
   // 簽到（後端權威）：月曆/累計天數/連續天數/月度里程碑領取皆來自 hook
   const checkin = useDailyCheckIn()
@@ -103,17 +100,6 @@ export default function AppShell({ children }) {
     }
     dispatch(fetchRanks())
   }, [dispatch, isAuthenticated])
-
-  // 全服喜報機器人：營造「全服都有人在贏」的氛圍（idempotent，多頁掛載只會啟動一次）。
-  useEffect(() => {
-    if (preferences.announcementsEnabled) {
-      startBotFeed()
-    } else {
-      stopBotFeed()
-    }
-
-    return () => stopBotFeed()
-  }, [preferences.announcementsEnabled])
 
   useEffect(() => {
     setAvatarFailed(false)
@@ -190,7 +176,6 @@ export default function AppShell({ children }) {
   return (
     <div className="theme-background min-h-screen text-zinc-50" style={getBackgroundStyle('app')}>
       <CoinRain />
-      <AnnouncementTicker />
       <ErrorBoundary>
         <Suspense fallback={null}>
           <RealtimeBridge />
@@ -200,7 +185,9 @@ export default function AppShell({ children }) {
       <header
         className={[
           'sticky top-0 z-30 border-b backdrop-blur transition-all duration-500',
-          isScrolled ? 'scrolled-header border-yellow-200/30 py-0' : 'border-yellow-200/15 bg-red-950/82',
+          isScrolled
+            ? 'scrolled-header border-yellow-200/30 py-0'
+            : 'border-yellow-200/15 bg-red-950/82',
         ].join(' ')}
       >
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
@@ -234,7 +221,10 @@ export default function AppShell({ children }) {
                   <span className="min-w-0 truncate font-black">{playerName}</span>
                 </button>
                 {avatarMenuOpen && (
-                  <div className="luxury-panel absolute right-0 top-14 z-40 w-56 max-w-[calc(100vw-2rem)] rounded p-2 shadow-2xl" role="menu">
+                  <div
+                    className="luxury-panel absolute right-0 top-14 z-40 w-56 max-w-[calc(100vw-2rem)] rounded p-2 shadow-2xl"
+                    role="menu"
+                  >
                     <button
                       type="button"
                       onClick={handleOpenSupport}
@@ -267,7 +257,14 @@ export default function AppShell({ children }) {
                   className="red-gold-button relative grid h-full min-h-12 w-full place-items-center rounded px-4 py-2 transition sm:w-12"
                   aria-label="通知中心"
                 >
-                  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
                     <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
                     <path d="M13.7 21a2 2 0 0 1-3.4 0" />
                   </svg>
@@ -284,19 +281,28 @@ export default function AppShell({ children }) {
                       <button
                         type="button"
                         onClick={() => dispatch(clearNotifications())}
-                    className="red-gold-button rounded px-2 py-1 text-xs font-bold"
+                        className="red-gold-button rounded px-2 py-1 text-xs font-bold"
                       >
                         清空
                       </button>
                     </div>
                     <div className="mt-3 grid max-h-80 gap-2 overflow-auto">
                       {notifications.length === 0 ? (
-                        <p className="rounded bg-red-950/70 p-3 text-sm text-yellow-100/60">目前沒有新通知</p>
+                        <p className="rounded bg-red-950/70 p-3 text-sm text-yellow-100/60">
+                          目前沒有新通知
+                        </p>
                       ) : (
                         notifications.map((item) => (
-                          <div key={item.id || item.createdAt} className="rounded border border-yellow-200/15 bg-red-950/70 p-3">
-                            <p className="text-sm font-black text-yellow-100">{item.title || '系統通知'}</p>
-                            <p className="mt-1 text-xs leading-5 text-yellow-100/64">{item.message || '你有一則新通知'}</p>
+                          <div
+                            key={item.id || item.createdAt}
+                            className="rounded border border-yellow-200/15 bg-red-950/70 p-3"
+                          >
+                            <p className="text-sm font-black text-yellow-100">
+                              {item.title || '系統通知'}
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-yellow-100/64">
+                              {item.message || '你有一則新通知'}
+                            </p>
                           </div>
                         ))
                       )}
@@ -442,7 +448,9 @@ export default function AppShell({ children }) {
             </div>
 
             {/* 月度累計簽到獎勵：達標可手動領取 */}
-            <p className="mt-5 gold-muted text-xs font-black uppercase tracking-[0.25em]">本月累計獎勵</p>
+            <p className="mt-5 gold-muted text-xs font-black uppercase tracking-[0.25em]">
+              本月累計獎勵
+            </p>
             {(checkin.claimMessage || checkin.claimError) && (
               <p
                 className={[
@@ -461,9 +469,15 @@ export default function AppShell({ children }) {
                   key={m.milestoneDays}
                   className="flex items-center justify-between rounded border border-yellow-200/15 bg-red-950/70 px-3 py-2 text-sm"
                 >
-                  <span className={m.reached ? 'font-black text-yellow-100' : 'font-bold text-yellow-100/62'}>
+                  <span
+                    className={
+                      m.reached ? 'font-black text-yellow-100' : 'font-bold text-yellow-100/62'
+                    }
+                  >
                     累計 {m.milestoneDays} 天
-                    <span className="ml-2 font-black text-yellow-200">+{m.rewardAmount.toLocaleString()}</span>
+                    <span className="ml-2 font-black text-yellow-200">
+                      +{m.rewardAmount.toLocaleString()}
+                    </span>
                   </span>
                   <button
                     type="button"
