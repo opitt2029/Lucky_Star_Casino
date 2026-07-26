@@ -5,15 +5,14 @@ import GameRuleCard from '../components/GameRuleCard'
 import SlotMachine from '../components/SlotMachine'
 import InfoHint from '../components/InfoHint'
 import WinningTicker from '../components/WinningTicker'
-import { spinSlot, clearGameResult } from '../store/slices/gameSlice'
+import InteractiveGameBackdrop from '../components/InteractiveGameBackdrop'
+import { clearGameResult } from '../store/slices/gameSlice'
 import { setBalance } from '../store/slices/walletSlice'
 import { soundEngine } from '../casino-fx/sound/SoundEngine'
 import { useBgm } from '../casino-fx/sound/useBgm'
-import GoldBurst from '../casino-fx/fx/GoldBurst'
-import { CoinRainPro, RedEnvelopeRain } from '../casino-fx/fx/FallRain'
-import BrushBanner, { pickBannerForMultiplier } from '../casino-fx/fx/BrushBanner'
 import { announcePlayerWin } from '../casino-fx/announce/announceBus'
 import { useGameLeaveGuard } from '../hooks/useGameLeaveGuard'
+import { gameApi } from '../services/gameApi'
 
 const betOptions = [100, 500, 1000, 'MAX']
 
@@ -35,29 +34,64 @@ function formatCoins(value) {
   return Number(value || 0).toLocaleString()
 }
 
+function getPaylineSymbols(grid) {
+  return Array.isArray(grid?.[1]) ? grid[1] : []
+}
+
+function classifySlotOutcome(result) {
+  if (!result) return 'idle'
+
+  const winningCells = result.winningCells ?? []
+  const multiplier = Number(result.multiplier ?? 0)
+  if (multiplier >= 70 && winningCells.length === 3) return 'jackpot'
+  if (winningCells.length === 3) return 'line'
+  if (winningCells.length === 2 || multiplier > 0) return 'pair'
+
+  const payline = getPaylineSymbols(result.grid)
+  const [left, middle, right] = payline
+  if (left && middle && right && (left === right || middle === right)) return 'near-miss'
+  return 'miss'
+}
+
+function getSlotPrizeLabel(result) {
+  const payline = getPaylineSymbols(result?.grid)
+  const [left] = payline
+  const multiplier = Number(result?.multiplier ?? 0)
+  const winningCells = result?.winningCells ?? []
+
+  if (multiplier >= 70 && winningCells.length === 3) return '幸運 7 三連線'
+  if (winningCells.length === 3) return `${left || '中線'} 三連線`
+  if (winningCells.length === 2 || multiplier > 0) return `${left || '中線'} 左二同`
+  return '未中獎'
+}
+
 export default function SlotGame() {
   const dispatch = useDispatch()
   const fullscreenTargetRef = useRef(null)
+  const activeRoundRef = useRef(null)
   const [selectedBet, setSelectedBet] = useState(100)
   const [visualLock, setVisualLock] = useState(false)
+  const [roundLoading, setRoundLoading] = useState(false)
+  const [leaveGuardActive, setLeaveGuardActive] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [fullscreenMessage, setFullscreenMessage] = useState('')
   const [sessionProfit, setSessionProfit] = useState(null)
   const [sessionRounds, setSessionRounds] = useState(0)
   const [settled, setSettled] = useState(null)
-  const [burstTrigger, setBurstTrigger] = useState(0)
-  const [coinTrigger, setCoinTrigger] = useState(0)
-  const [coinDensity, setCoinDensity] = useState('light')
-  const [envelopeTrigger, setEnvelopeTrigger] = useState(0)
-  const [banner, setBanner] = useState({ trigger: 0, text: '', level: 1 })
+  const [visibleGrid, setVisibleGrid] = useState(null)
+  const [outcomeKind, setOutcomeKind] = useState('idle')
+  const [resultNotice, setResultNotice] = useState(null)
   const [shaking, setShaking] = useState(false)
 
   const balance = useSelector((state) => state.wallet.balance)
   const player = useSelector((state) => state.auth.player)
-  const { status, loading, error, slotGrid, winningCells } = useSelector((state) => state.game)
+  const { status, error, slotGrid } = useSelector((state) => state.game)
   const fullscreenSupported = typeof document !== 'undefined' && Boolean(document.fullscreenEnabled)
 
-  useBgm('slot', true, { intensity: loading || visualLock ? 2 : 1 })
+  const busy = roundLoading || visualLock
+  const roundInProgress = busy || leaveGuardActive
+
+  useBgm('slot', true, { intensity: busy ? 2 : 1 })
 
   const syncFullscreenState = (active) => {
     const fullscreenTarget = fullscreenTargetRef.current
@@ -73,8 +107,9 @@ export default function SlotGame() {
   const lastMultiplier = settled ? settled.multiplier : null
   const payoutCaption =
     lastMultiplier === null ? '尚未完成本局' : lastMultiplier > 0 ? `中線倍率 ${lastMultiplier}x` : '本局未中獎'
-  const roundStatus = loading || visualLock ? 'spinning' : status
+  const roundStatus = busy ? 'spinning' : status
   const hasLineWin = (settled?.winningCells?.length ?? 0) > 0
+  const machineGrid = visibleGrid ?? slotGrid
   const topAwardHit = (settled?.multiplier ?? 0) >= 70 && (settled?.winningCells?.length ?? 0) === 3
   const sessionProfitLabel =
     sessionProfit === null
@@ -85,11 +120,25 @@ export default function SlotGame() {
   const sessionProfitTone = sessionProfit === null ? '' : sessionProfit >= 0 ? 'slot-mini-metric--up' : 'slot-mini-metric--down'
   const flowLabel = roundStatus === 'spinning' ? '轉動中' : roundStatus === 'result' ? '已結算' : '待下注'
 
-  useGameLeaveGuard(loading || visualLock, '老虎機正在轉動，離開頁面可能會中斷視覺結算。')
+  useGameLeaveGuard(roundInProgress, '老虎機正在轉動，離開頁面可能會中斷視覺結算。', {
+    onLeave: () => {
+      const roundId = activeRoundRef.current
+      activeRoundRef.current = null
+      setLeaveGuardActive(false)
+      return gameApi.abandonSlotRound({ roundId, keepalive: true })
+    },
+  })
 
   useEffect(() => {
     dispatch(clearGameResult())
+    activeRoundRef.current = null
+    setLeaveGuardActive(false)
     setSettled(null)
+    setVisibleGrid(null)
+    setOutcomeKind('idle')
+    setResultNotice(null)
+    setSessionProfit(null)
+    setSessionRounds(0)
   }, [dispatch])
 
   useEffect(() => {
@@ -139,35 +188,63 @@ export default function SlotGame() {
   const handleSpinRound = async () => {
     if (balance < resolvedBet) return null
     const betAtSpin = resolvedBet
+    const clientSeed = `slot-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
     setSettled(null)
+    setResultNotice(null)
+    setOutcomeKind('spinning')
+    activeRoundRef.current = null
+    setLeaveGuardActive(true)
     setVisualLock(true)
-    return dispatch(spinSlot({ bet: betAtSpin })).unwrap()
+    setRoundLoading(true)
+    try {
+      const prepared = await gameApi.prepareSlotRound({ bet: betAtSpin, clientSeed })
+      activeRoundRef.current = prepared?.roundId ?? null
+      if (prepared?.grid) setVisibleGrid(prepared.grid)
+      if (prepared?.wallet) dispatch(setBalance(prepared.wallet))
+      return prepared
+    } catch (error) {
+      setLeaveGuardActive(false)
+      setOutcomeKind(classifySlotOutcome(settled))
+      setVisualLock(false)
+      throw error
+    } finally {
+      setRoundLoading(false)
+    }
   }
-
-  const handleSettled = (spinResult) => {
+  const handleSettled = async (spinResult) => {
     if (!spinResult || spinResult.game !== 'slot') return
+    const roundId = spinResult.roundId
+    if (!roundId) return
+    const settledResult = await gameApi.settleSlotRound({ roundId })
+    activeRoundRef.current = null
+    setLeaveGuardActive(false)
 
-    const multiplier = spinResult.multiplier ?? 0
-    const payout = spinResult.payout ?? 0
+    const multiplier = settledResult.multiplier ?? 0
+    const payout = settledResult.payout ?? 0
+    const finalGrid = settledResult.grid ?? spinResult.grid ?? visibleGrid
+    const finalWinningCells = settledResult.winningCells ?? spinResult.winningCells ?? []
     const won = payout > 0
+    const nextSettled = { payout, multiplier, grid: finalGrid, winningCells: finalWinningCells }
 
-    setSettled({ payout, multiplier, winningCells: spinResult.winningCells ?? [] })
-    dispatch(setBalance(spinResult.wallet))
-    setSessionProfit((prev) => (prev ?? 0) + payout - (spinResult.bet ?? 0))
+    setVisibleGrid(finalGrid)
+    setOutcomeKind(classifySlotOutcome(nextSettled))
+    setSettled(nextSettled)
+    setResultNotice({
+      id: roundId,
+      item: getSlotPrizeLabel(nextSettled),
+      amount: payout,
+      multiplier,
+      tone: won ? 'win' : 'miss',
+    })
+    dispatch(setBalance(settledResult.wallet))
+    setSessionProfit((prev) => (prev ?? 0) + payout - (settledResult.bet ?? 0))
     setSessionRounds((prev) => prev + 1)
 
     if (!won) return
 
-    const bannerPick = pickBannerForMultiplier(multiplier)
-    setBanner((prev) => ({ trigger: prev.trigger + 1, ...bannerPick }))
-    setBurstTrigger((n) => n + 1)
-
     if (multiplier >= 8) {
       soundEngine.play('winEpic')
       setShaking(true)
-      setCoinDensity('epic')
-      setCoinTrigger((n) => n + 1)
-      setEnvelopeTrigger((n) => n + 1)
       announcePlayerWin({
         playerName: player?.nickname || player?.username,
         game: 'slot',
@@ -175,21 +252,12 @@ export default function SlotGame() {
       })
     } else if (multiplier >= 3) {
       soundEngine.play('winBig')
-      setCoinDensity('heavy')
-      setCoinTrigger((n) => n + 1)
     } else {
       soundEngine.play('winSmall')
-      setCoinDensity('light')
-      setCoinTrigger((n) => n + 1)
     }
   }
-
   return (
     <AppShell>
-      <GoldBurst trigger={burstTrigger} origin={{ x: 38, y: 48 }} />
-      <CoinRainPro trigger={coinTrigger} density={coinDensity} />
-      <RedEnvelopeRain trigger={envelopeTrigger} density="heavy" />
-      <BrushBanner trigger={banner.trigger} text={banner.text} level={banner.level} />
       <section
         ref={fullscreenTargetRef}
         className={[
@@ -197,6 +265,7 @@ export default function SlotGame() {
           isFullscreen ? 'slot-game-surface--fullscreen' : '',
         ].join(' ')}
       >
+        <InteractiveGameBackdrop theme="slot" active={roundInProgress || topAwardHit} />
         <WinningTicker game="slot" />
         <div className="slot-game-topbar">
           <div>
@@ -228,12 +297,12 @@ export default function SlotGame() {
               fullscreen={isFullscreen}
               fitToContainer
               jackpotHit={topAwardHit}
-              winAmount={lastPayout ?? 0}
-              winMultiplier={lastMultiplier ?? 0}
-              grid={slotGrid}
-              winningCells={winningCells}
-              spinning={loading}
-              canSpin={canAfford && !visualLock}
+              grid={machineGrid}
+              winningCells={settled?.winningCells ?? []}
+              outcomeKind={outcomeKind}
+              readyLabel={settled ? '下一局' : 'SPIN'}
+              spinning={roundLoading}
+              canSpin={canAfford && !roundInProgress}
               onSpin={handleSpinRound}
               onSettled={handleSettled}
               onSpinComplete={() => setVisualLock(false)}
@@ -286,7 +355,7 @@ export default function SlotGame() {
                     key={option}
                     type="button"
                     onClick={() => setSelectedBet(option)}
-                    disabled={loading || visualLock}
+                    disabled={roundInProgress}
                     className={[
                       'slot-bet-chip',
                       selectedBet === option ? 'slot-bet-chip--active' : '',
@@ -311,7 +380,7 @@ export default function SlotGame() {
               <div className="slot-status-grid">
                 <div>
                   <span>流程</span>
-                  <strong className={['slot-signal', loading || visualLock ? 'slot-signal--active' : status === 'result' ? 'slot-signal--ready' : 'slot-signal--idle'].join(' ')}>{flowLabel}</strong>
+                  <strong className={['slot-signal', busy ? 'slot-signal--active' : status === 'result' ? 'slot-signal--ready' : 'slot-signal--idle'].join(' ')}>{flowLabel}</strong>
                 </div>
                 <div>
                   <span>中線</span>
@@ -323,6 +392,7 @@ export default function SlotGame() {
             </div>
 
             <GameRuleCard
+              gameKey="slot"
               title="老虎機規則"
               subtitle="三轉輪中線判定，下注後由動畫結算同一局結果。"
               rules={slotRules}
@@ -332,6 +402,19 @@ export default function SlotGame() {
             {error && <p className="slot-inline-alert">{error}</p>}
           </aside>
         </div>
+
+        {resultNotice && !roundInProgress && (
+          <div
+            key={resultNotice.id}
+            className={['slot-round-result-pop', resultNotice.tone === 'win' ? 'slot-round-result-pop--win' : 'slot-round-result-pop--miss'].join(' ')}
+            aria-live="polite"
+          >
+            <span>本局結果</span>
+            <strong>{resultNotice.item}</strong>
+            <em>{resultNotice.tone === 'win' ? `+${formatCoins(resultNotice.amount)} 星幣` : '0 星幣'}</em>
+            {resultNotice.multiplier > 0 && <small>{resultNotice.multiplier}x paid</small>}
+          </div>
+        )}
       </section>
     </AppShell>
   )

@@ -158,6 +158,20 @@ function leverPull(ctx, dest, { pitch = 1, volume = 1, when }) {
 function reelTick(ctx, dest, { pitch = 1, volume = 1, when }) {
   noiseHit(ctx, dest, { start: when, decay: 0.025, peak: 0.1 * volume, filterType: 'bandpass', freq: 4200 * pitch, q: 4 })
 }
+const SLOT_SPIN_NOTES = [196, 246.94, 293.66, 369.99]
+function slotSpinPulse(ctx, dest, { pitch = 1, volume = 1, when }) {
+  SLOT_SPIN_NOTES.slice(0, 3).forEach((freq, index) => {
+    tone(ctx, dest, {
+      type: index === 0 ? 'triangle' : 'sine',
+      freq: freq * pitch,
+      start: when + index * 0.055,
+      attack: 0.012,
+      decay: 0.24,
+      peak: 0.055 * volume,
+    })
+  })
+  noiseHit(ctx, dest, { start: when, decay: 0.08, peak: 0.025 * volume, filterType: 'lowpass', freq: 1100 })
+}
 
 // 單一轉輪停止 thunk（低頻重落）。
 function reelStop(ctx, dest, { pitch = 1, volume = 1, when }) {
@@ -234,6 +248,7 @@ export const SFX_RECIPES = {
   lockOn,
   leverPull,
   reelTick,
+  slotSpinPulse,
   reelStop,
   heartbeat,
   cardDeal,

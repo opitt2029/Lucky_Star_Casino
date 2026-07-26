@@ -13,10 +13,33 @@ const RED_DEEP = '#7a060e'
 function GoldGradient({ id, vertical = false }) {
   return (
     <linearGradient id={id} x1="0" y1="0" x2={vertical ? '0' : '1'} y2={vertical ? '1' : '0.6'}>
-      <stop offset="0" stopColor={GOLD_BRIGHT} />
-      <stop offset="0.5" stopColor={GOLD} />
+      <stop offset="0" stopColor="#fff8cf" />
+      <stop offset="0.18" stopColor={GOLD_BRIGHT} />
+      <stop offset="0.46" stopColor={GOLD} />
+      <stop offset="0.72" stopColor="#d99620" />
       <stop offset="1" stopColor={GOLD_DEEP} />
     </linearGradient>
+  )
+}
+
+function SvgSurfaceDefs({ id, glow = GOLD }) {
+  return (
+    <>
+      <filter id={`${id}-cast`} x="-28%" y="-34%" width="160%" height="178%">
+        <feDropShadow dx="0" dy="5" stdDeviation="4" floodColor="#130306" floodOpacity="0.42" />
+        <feDropShadow dx="0" dy="0" stdDeviation="2.6" floodColor={glow} floodOpacity="0.28" />
+      </filter>
+      <radialGradient id={`${id}-gloss`} cx="34%" cy="22%" r="58%">
+        <stop offset="0" stopColor="#ffffff" stopOpacity="0.92" />
+        <stop offset="0.24" stopColor="#ffffff" stopOpacity="0.44" />
+        <stop offset="1" stopColor="#ffffff" stopOpacity="0" />
+      </radialGradient>
+      <linearGradient id={`${id}-rim`} x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stopColor="#ffffff" stopOpacity="0.74" />
+        <stop offset="0.45" stopColor="#ffffff" stopOpacity="0.12" />
+        <stop offset="1" stopColor="#000000" stopOpacity="0.28" />
+      </linearGradient>
+    </>
   )
 }
 
@@ -110,17 +133,26 @@ export function SlotCherry(props) {
   return (
     <svg viewBox="0 0 100 100" {...props}>
       <defs>
-        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#ff6a78" />
-          <stop offset="1" stopColor="#b30716" />
+        <SvgSurfaceDefs id={gid} glow="#ff3f58" />
+        <radialGradient id={`${gid}-cherry`} cx="34%" cy="26%" r="68%">
+          <stop offset="0" stopColor="#fff1f3" />
+          <stop offset="0.18" stopColor="#ff8a98" />
+          <stop offset="0.58" stopColor="#dc1428" />
+          <stop offset="1" stopColor="#64030a" />
+        </radialGradient>
+        <linearGradient id={`${gid}-stem`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#75e88a" />
+          <stop offset="1" stopColor="#166d32" />
         </linearGradient>
       </defs>
-      <path d="M50 42c2-15 11-25 25-31" stroke="#2f9e44" strokeWidth="5" strokeLinecap="round" fill="none" />
-      <path d="M70 18c-13-5-24 0-31 11 13 5 24 1 31-11Z" fill="#43c463" stroke="#176d32" strokeWidth="2" />
-      <circle cx="38" cy="60" r="20" fill={`url(#${gid})`} stroke="#73020a" strokeWidth="3" />
-      <circle cx="62" cy="62" r="19" fill={`url(#${gid})`} stroke="#73020a" strokeWidth="3" />
-      <ellipse cx="31" cy="51" rx="6" ry="4" fill="#fff0f0" opacity="0.72" transform="rotate(-28 31 51)" />
-      <ellipse cx="56" cy="53" rx="5" ry="3.4" fill="#fff0f0" opacity="0.62" transform="rotate(-28 56 53)" />
+      <ellipse cx="50" cy="84" rx="31" ry="7" fill="#200207" opacity="0.28" />
+      <path d="M48 42c3-16 13-26 28-31" stroke={`url(#${gid}-stem)`} strokeWidth="6" strokeLinecap="round" fill="none" filter={`url(#${gid}-cast)`} />
+      <path d="M71 18c-14-6-26-1-33 11 14 6 26 2 33-11Z" fill="url(#${gid}-stem)" stroke="#0c4e22" strokeWidth="2" filter={`url(#${gid}-cast)`} />
+      <circle cx="38" cy="61" r="21" fill={`url(#${gid}-cherry)`} stroke="#510106" strokeWidth="2.8" filter={`url(#${gid}-cast)`} />
+      <circle cx="63" cy="63" r="20" fill={`url(#${gid}-cherry)`} stroke="#510106" strokeWidth="2.8" filter={`url(#${gid}-cast)`} />
+      <ellipse cx="32" cy="51" rx="7" ry="4.5" fill="url(#${gid}-gloss)" transform="rotate(-28 32 51)" />
+      <ellipse cx="56" cy="53" rx="6.2" ry="4" fill="url(#${gid}-gloss)" transform="rotate(-28 56 53)" />
+      <path d="M25 67c7 11 22 13 31 5M50 70c8 11 23 11 31 2" stroke="#2d0105" strokeWidth="2" strokeLinecap="round" opacity="0.3" />
     </svg>
   )
 }
@@ -130,15 +162,20 @@ export function SlotLemon(props) {
   return (
     <svg viewBox="0 0 100 100" {...props}>
       <defs>
-        <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#fff9a8" />
-          <stop offset="0.48" stopColor="#ffe04f" />
-          <stop offset="1" stopColor="#c89400" />
-        </linearGradient>
+        <SvgSurfaceDefs id={gid} glow="#ffe04f" />
+        <radialGradient id={`${gid}-lemon`} cx="34%" cy="24%" r="72%">
+          <stop offset="0" stopColor="#fffde1" />
+          <stop offset="0.24" stopColor="#fff46f" />
+          <stop offset="0.62" stopColor="#f7c411" />
+          <stop offset="1" stopColor="#9c6b00" />
+        </radialGradient>
       </defs>
-      <path d="M17 53c0-19 17-34 37-34 13 0 24 5 30 13-3 3-5 7-5 12 0 21-16 37-37 37-12 0-22-4-29-12 3-4 4-9 4-16Z" fill={`url(#${gid})`} stroke="#916500" strokeWidth="3" />
-      <path d="M30 58c8-17 21-27 39-31" stroke="#fff7b6" strokeWidth="4" strokeLinecap="round" opacity="0.7" />
-      <path d="M72 22c7-8 14-10 22-8-2 9-9 14-20 14" fill="#3fb85a" stroke="#167238" strokeWidth="2" />
+      <ellipse cx="50" cy="82" rx="34" ry="8" fill="#332300" opacity="0.22" />
+      <path d="M16 53c0-20 17-35 38-35 14 0 25 5 31 14-4 3-6 8-6 13 0 22-16 38-38 38-13 0-23-4-30-13 3-4 5-9 5-17Z" fill={`url(#${gid}-lemon)`} stroke="#805400" strokeWidth="3" filter={`url(#${gid}-cast)`} />
+      <path d="M26 55c9-17 23-27 43-31" stroke="#fffbd0" strokeWidth="5" strokeLinecap="round" opacity="0.72" />
+      <path d="M31 67c16 7 36 6 51-5" stroke="#8a5c00" strokeWidth="2.1" strokeLinecap="round" opacity="0.28" />
+      <path d="M72 21c8-8 15-10 23-8-2 10-9 15-21 15" fill="#42c765" stroke="#126c32" strokeWidth="2" filter={`url(#${gid}-cast)`} />
+      <ellipse cx="41" cy="38" rx="22" ry="9" fill="url(#${gid}-gloss)" transform="rotate(-25 41 38)" />
     </svg>
   )
 }
@@ -147,12 +184,18 @@ export function SlotBell(props) {
   const gid = useId()
   return (
     <svg viewBox="0 0 100 100" {...props}>
-      <defs><GoldGradient id={gid} vertical /></defs>
-      <path d="M40 18c0-6 4-10 10-10s10 4 10 10" fill="none" stroke={GOLD_DEEP} strokeWidth="5" strokeLinecap="round" />
-      <path d="M22 72c8-8 10-20 10-34 0-13 8-22 18-22s18 9 18 22c0 14 2 26 10 34H22Z" fill={`url(#${gid})`} stroke={GOLD_DEEP} strokeWidth="3" />
-      <path d="M19 72h62c3 0 5 2 5 5s-2 5-5 5H19c-3 0-5-2-5-5s2-5 5-5Z" fill="#ffeaa0" stroke={GOLD_DEEP} strokeWidth="3" />
-      <circle cx="50" cy="82" r="7" fill={GOLD_DEEP} />
-      <path d="M39 31c-4 8-5 20-4 31" stroke="#fff7cc" strokeWidth="4" strokeLinecap="round" opacity="0.56" />
+      <defs>
+        <GoldGradient id={gid} vertical />
+        <SvgSurfaceDefs id={gid} glow={GOLD_BRIGHT} />
+      </defs>
+      <ellipse cx="50" cy="88" rx="34" ry="7" fill="#2b1700" opacity="0.24" />
+      <path d="M40 19c0-6 4-11 10-11s10 5 10 11" fill="none" stroke={GOLD_DEEP} strokeWidth="5" strokeLinecap="round" filter={`url(#${gid}-cast)`} />
+      <path d="M22 72c8-8 10-20 10-34 0-13 8-22 18-22s18 9 18 22c0 14 2 26 10 34H22Z" fill={`url(#${gid})`} stroke={GOLD_DEEP} strokeWidth="3" filter={`url(#${gid}-cast)`} />
+      <path d="M31 67c8 5 30 7 38 0" stroke="#7a4500" strokeWidth="2" opacity="0.28" fill="none" />
+      <path d="M19 72h62c3 0 5 2 5 5s-2 5-5 5H19c-3 0-5-2-5-5s2-5 5-5Z" fill="#ffeaa0" stroke={GOLD_DEEP} strokeWidth="3" filter={`url(#${gid}-cast)`} />
+      <circle cx="50" cy="82" r="7" fill="#754000" />
+      <path d="M39 31c-4 8-5 20-4 31" stroke="#fff9db" strokeWidth="4.2" strokeLinecap="round" opacity="0.64" />
+      <ellipse cx="50" cy="35" rx="18" ry="10" fill={`url(#${gid}-gloss)`} />
     </svg>
   )
 }
@@ -161,9 +204,20 @@ export function SlotStar(props) {
   const gid = useId()
   return (
     <svg viewBox="0 0 100 100" {...props}>
-      <defs><GoldGradient id={gid} /></defs>
-      <path d="M50 9l10.5 25.3 27.3 2.2-20.8 18 6.4 26.8L50 67.1 26.6 82.3 33 55.5l-20.8-18 27.3-2.2L50 9Z" fill={`url(#${gid})`} stroke="#8b4d00" strokeWidth="3" />
-      <path d="M50 22l6.7 16.2 17.4 1.4-13.3 11.5 4.1 17.1L50 58.5 35.1 68.2l4.1-17.1-13.3-11.5 17.4-1.4L50 22Z" fill="#fff3b8" opacity="0.45" />
+      <defs>
+        <GoldGradient id={gid} />
+        <SvgSurfaceDefs id={gid} glow={GOLD_BRIGHT} />
+        <linearGradient id={`${gid}-inner`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#fff8c9" />
+          <stop offset="0.55" stopColor="#f5bf2d" />
+          <stop offset="1" stopColor="#9a5a00" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="50" cy="86" rx="32" ry="7" fill="#2d1800" opacity="0.24" />
+      <path d="M50 9l10.5 25.3 27.3 2.2-20.8 18 6.4 26.8L50 67.1 26.6 82.3 33 55.5l-20.8-18 27.3-2.2L50 9Z" fill={`url(#${gid})`} stroke="#7c4300" strokeWidth="3" strokeLinejoin="round" filter={`url(#${gid}-cast)`} />
+      <path d="M50 21l7.1 17 18.2 1.5-13.9 12 4.3 18.1L50 59.2 34.3 69.6l4.3-18.1-13.9-12 18.2-1.5L50 21Z" fill={`url(#${gid}-inner)`} opacity="0.86" />
+      <path d="M36 38c11-13 24-15 40-7" stroke="#fff8d7" strokeWidth="4" strokeLinecap="round" opacity="0.52" />
+      <path d="M50 9l2 49" stroke="#fff4b5" strokeWidth="1.8" opacity="0.34" />
     </svg>
   )
 }
@@ -173,35 +227,64 @@ export function SlotSeven(props) {
   return (
     <svg viewBox="0 0 100 100" {...props}>
       <defs>
+        <SvgSurfaceDefs id={gid} glow="#ff4356" />
         <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#ff5968" />
-          <stop offset="0.55" stopColor="#d20a18" />
-          <stop offset="1" stopColor="#75030b" />
+          <stop offset="0" stopColor="#ff8590" />
+          <stop offset="0.24" stopColor="#ff2036" />
+          <stop offset="0.64" stopColor="#b00614" />
+          <stop offset="1" stopColor="#530207" />
+        </linearGradient>
+        <linearGradient id={`${gid}-edge`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#fff2bd" />
+          <stop offset="0.48" stopColor="#ffcc55" />
+          <stop offset="1" stopColor="#7a3b00" />
         </linearGradient>
       </defs>
-      <path d="M20 16h63l-5 19c-16 11-25 28-31 51H22c6-23 18-42 35-56H16l4-14Z" fill={`url(#${gid})`} stroke="#4d0007" strokeWidth="4" strokeLinejoin="round" />
-      <path d="M28 24h41M43 78c5-17 13-32 26-44" stroke="#fff0a8" strokeWidth="5" strokeLinecap="round" opacity="0.48" />
-      <path d="M18 14h63" stroke="#fff7c6" strokeWidth="3" strokeLinecap="round" opacity="0.72" />
+      <ellipse cx="50" cy="88" rx="34" ry="7" fill="#240004" opacity="0.28" />
+      <path d="M20 16h63l-5 19c-16 11-25 28-31 51H22c6-23 18-42 35-56H16l4-14Z" fill={`url(#${gid})`} stroke="#3d0005" strokeWidth="4" strokeLinejoin="round" filter={`url(#${gid}-cast)`} />
+      <path d="M20 16h63l-2 9H23z" fill={`url(#${gid}-edge)`} opacity="0.98" />
+      <path d="M28 25h41M43 78c5-17 13-32 26-44" stroke="#fff0a8" strokeWidth="5" strokeLinecap="round" opacity="0.54" />
+      <path d="M60 31c-11 15-20 31-25 52" stroke="#4b0007" strokeWidth="3" opacity="0.2" />
+      <ellipse cx="43" cy="34" rx="24" ry="9" fill={`url(#${gid}-gloss)`} transform="rotate(-12 43 34)" />
     </svg>
   )
 }
-
 // ---- 捕魚機魚種 ----
 
 function FishBase({ body, tail, fin, eye = '#1b0b06', children, ...props }) {
+  const gid = useId()
   return (
     <svg viewBox="0 0 100 100" {...props}>
-      <path d={`M88 50c0 0-16 22-44 22C26 72 12 60 12 50s14-22 32-22c28 0 44 22 44 22Z`} fill={body} stroke="rgba(0,0,0,0.25)" strokeWidth="1.6" />
-      <path d="M88 50 100 34v32L88 50Z" fill={tail} />
-      <path d="M44 28c2-7 10-10 16-8-3 4-4 8-4 10" fill={fin} />
-      <path d="M44 72c2 7 10 10 16 8-3-4-4-8-4-10" fill={fin} />
-      <circle cx="28" cy="46" r="4" fill="#fff" />
-      <circle cx="27" cy="46" r="2.2" fill={eye} />
-      {children}
+      <defs>
+        <SvgSurfaceDefs id={gid} glow={body} />
+        <radialGradient id={`${gid}-body`} cx="36%" cy="26%" r="70%">
+          <stop offset="0" stopColor="#ffffff" stopOpacity="0.82" />
+          <stop offset="0.28" stopColor={body} />
+          <stop offset="0.78" stopColor={body} />
+          <stop offset="1" stopColor={tail} />
+        </radialGradient>
+        <linearGradient id={`${gid}-tail`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#ffffff" stopOpacity="0.55" />
+          <stop offset="0.32" stopColor={tail} />
+          <stop offset="1" stopColor="#000000" stopOpacity="0.24" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="52" cy="79" rx="35" ry="7" fill="#03101a" opacity="0.22" />
+      <g filter={`url(#${gid}-cast)`}>
+        <path d="M88 50c0 0-16 22-44 22C26 72 12 60 12 50s14-22 32-22c28 0 44 22 44 22Z" fill={`url(#${gid}-body)`} stroke="rgba(0,0,0,0.28)" strokeWidth="1.8" />
+        <path d="M88 50 100 34v32L88 50Z" fill={`url(#${gid}-tail)`} stroke="rgba(0,0,0,0.2)" strokeWidth="1.2" />
+        <path d="M44 28c2-7 10-10 16-8-3 4-4 8-4 10" fill={fin} opacity="0.92" />
+        <path d="M44 72c2 7 10 10 16 8-3-4-4-8-4-10" fill={fin} opacity="0.78" />
+        <path d="M26 38c16-9 37-9 55 2" stroke="#ffffff" strokeWidth="4" strokeLinecap="round" opacity="0.28" />
+        <path d="M27 61c15 8 36 10 55 1" stroke="#000000" strokeWidth="2.2" strokeLinecap="round" opacity="0.12" />
+        <circle cx="28" cy="46" r="4.4" fill="#fff" />
+        <circle cx="27" cy="46" r="2.3" fill={eye} />
+        <circle cx="26" cy="44.8" r="0.9" fill="#ffffff" />
+        {children}
+      </g>
     </svg>
   )
 }
-
 export function KoiFish(props) {
   return (
     <FishBase body="#f4f1ea" tail="#e6404b" fin="#e6404b" {...props}>
@@ -407,22 +490,31 @@ function cannonSvg(p, gid, props) {
     <svg viewBox="0 0 100 100" {...props}>
       <defs>
         <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor={p.bright} />
+          <stop offset="0" stopColor="#ffffff" stopOpacity="0.92" />
+          <stop offset="0.18" stopColor={p.bright} />
           <stop offset="0.5" stopColor={p.mid} />
-          <stop offset="1" stopColor={p.deep} />
+          <stop offset="0.78" stopColor={p.deep} />
+          <stop offset="1" stopColor={p.stroke} />
+        </linearGradient>
+        <SvgSurfaceDefs id={gid} glow={p.bright} />
+        <linearGradient id={`${gid}-barrel`} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor={p.deep} />
+          <stop offset="0.28" stopColor={p.bright} />
+          <stop offset="0.58" stopColor={p.mid} />
+          <stop offset="1" stopColor={p.stroke} />
         </linearGradient>
       </defs>
-      {/* 底座 */}
-      <path d="M22 92c0-12 12-20 28-20s28 8 28 20H22Z" fill={p.ring} stroke={p.stroke} strokeWidth="2" />
-      <circle cx="50" cy="74" r="12" fill={`url(#${gid})`} stroke={p.stroke} strokeWidth="2" />
-      {/* 炮管 */}
-      <path d="M42 70 36 22c0-6 6-10 14-10s14 4 14 10l-6 48" fill={`url(#${gid})`} stroke={p.stroke} strokeWidth="2.4" />
-      <rect x="34" y="14" width="32" height="10" rx="5" fill={p.cap} stroke={p.stroke} strokeWidth="2" />
-      <path d="M44 34h12M45 44h10" stroke={p.stroke} strokeWidth="2" strokeLinecap="round" opacity="0.7" />
+      <ellipse cx="50" cy="93" rx="31" ry="6" fill="#05070c" opacity="0.34" />
+      <path d="M22 92c0-12 12-20 28-20s28 8 28 20H22Z" fill={p.ring} stroke={p.stroke} strokeWidth="2" filter={`url(#${gid}-cast)`} />
+      <circle cx="50" cy="74" r="12" fill={`url(#${gid})`} stroke={p.stroke} strokeWidth="2.2" filter={`url(#${gid}-cast)`} />
+      <path d="M42 70 36 22c0-6 6-10 14-10s14 4 14 10l-6 48" fill={`url(#${gid}-barrel)`} stroke={p.stroke} strokeWidth="2.6" filter={`url(#${gid}-cast)`} />
+      <ellipse cx="50" cy="21" rx="17" ry="7" fill={p.cap} stroke={p.stroke} strokeWidth="2.2" />
+      <ellipse cx="48" cy="20" rx="9" ry="3" fill="#ffffff" opacity="0.3" />
+      <path d="M44 32c2 11 2 24 0 36M56 32c-2 11-2 24 0 36" stroke="#ffffff" strokeWidth="2.2" strokeLinecap="round" opacity="0.28" />
+      <path d="M42 48h16M43 58h14" stroke={p.stroke} strokeWidth="2" strokeLinecap="round" opacity="0.5" />
     </svg>
   )
 }
-
 export function Cannon(props) {
   return cannonSvg(CANNON_PALETTES.gold, useId(), props)
 }
@@ -435,11 +527,25 @@ export function CannonSilver(props) {
 
 // 簡單金幣（粒子特效用，輕量）。
 export function SimpleCoin(props) {
+  const gid = useId()
   return (
     <svg viewBox="0 0 100 100" {...props}>
-      <circle cx="50" cy="50" r="44" fill={GOLD} stroke={GOLD_DEEP} strokeWidth="5" />
-      <circle cx="50" cy="50" r="30" fill="none" stroke={GOLD_DEEP} strokeWidth="3" opacity="0.5" />
-      <ellipse cx="38" cy="36" rx="10" ry="6" fill="#fffbe0" opacity="0.85" />
+      <defs>
+        <GoldGradient id={gid} />
+        <SvgSurfaceDefs id={gid} glow={GOLD_BRIGHT} />
+        <radialGradient id={`${gid}-coin`} cx="34%" cy="24%" r="72%">
+          <stop offset="0" stopColor="#fffbe7" />
+          <stop offset="0.24" stopColor={GOLD_BRIGHT} />
+          <stop offset="0.62" stopColor={GOLD} />
+          <stop offset="1" stopColor={GOLD_DEEP} />
+        </radialGradient>
+      </defs>
+      <ellipse cx="50" cy="88" rx="33" ry="7" fill="#2d1800" opacity="0.24" />
+      <circle cx="50" cy="50" r="44" fill={`url(#${gid}-coin)`} stroke={GOLD_DEEP} strokeWidth="5" filter={`url(#${gid}-cast)`} />
+      <circle cx="50" cy="50" r="31" fill="none" stroke="#fff2a6" strokeWidth="2" opacity="0.56" />
+      <circle cx="50" cy="50" r="24" fill="none" stroke={GOLD_DEEP} strokeWidth="2.6" opacity="0.42" />
+      <ellipse cx="38" cy="35" rx="12" ry="7" fill={`url(#${gid}-gloss)`} />
+      <path d="M32 66c12 10 32 11 46 0" stroke="#6f3a00" strokeWidth="2.4" strokeLinecap="round" opacity="0.26" />
     </svg>
   )
 }

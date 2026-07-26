@@ -324,6 +324,13 @@ public class BaccaratService {
         return m;
     }
 
+    public boolean abandon(long playerId, String roundId) {
+        boolean deleted = sessionService.delete(playerId, roundId);
+        if (deleted) {
+            log.info("baccarat round abandoned roundId={} playerId={}", roundId, playerId);
+        }
+        return deleted;
+    }
     private static long nz(Long v) {
         return v == null ? 0L : v;
     }

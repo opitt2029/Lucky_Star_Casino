@@ -1,24 +1,41 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { useDispatch } from 'react-redux'
 import { activateLeaveGuard, deactivateLeaveGuard } from '../store/slices/uiSlice'
 
-/**
- * 遊戲進行中的「離開防呆」通用 hook。
- *
- * `active` 為 true 時：
- *  - 更新 Redux leaveGuard 狀態，讓 AppShell 導航列攔截連結點擊並彈出確認視窗。
- *  - `beforeunload`（關閉分頁 / 重新整理）：跳出瀏覽器原生確認框。
- *  - `popstate`（上一頁 / 手勢返回）：原生 confirm 確認後才離開。
- *
- * @param {boolean} active  是否啟用攔截（遊戲進行中為 true）
- * @param {string}  message 確認框提示文字（AppShell 自訂視窗使用）
- */
-export function useGameLeaveGuard(active, message = '遊戲進行中，確定要離開嗎？') {
-  const dispatch = useDispatch()
+export const GAME_LEAVE_CONFIRMED_EVENT = 'lucky-star-game-leave-confirmed'
 
-  // 同步 Redux leaveGuard 狀態供 AppShell 使用
+/**
+ * Shared guard for games that already accepted a bet or are resolving a round.
+ * The browser listener stays mounted while the game page is mounted, then checks
+ * the latest active ref at event time so quick tab-close actions do not miss it.
+ */
+export function useGameLeaveGuard(
+  active,
+  message = '遊戲尚未完成，離開後本局將視為放棄且不會派發未結算獎金。',
+  options = {},
+) {
+  const dispatch = useDispatch()
+  const activeRef = useRef(active)
+  const messageRef = useRef(message)
+  const onLeaveRef = useRef(options.onLeave)
+  const invokedRef = useRef(false)
+
+  activeRef.current = active
+  messageRef.current = message
+
+  useEffect(() => {
+    onLeaveRef.current = options.onLeave
+  }, [options.onLeave])
+
+  const invokeLeave = useCallback((reason) => {
+    if (!activeRef.current || invokedRef.current) return
+    invokedRef.current = true
+    onLeaveRef.current?.({ reason })
+  }, [])
+
   useEffect(() => {
     if (active) {
+      invokedRef.current = false
       dispatch(activateLeaveGuard({ message }))
     } else {
       dispatch(deactivateLeaveGuard())
@@ -28,24 +45,36 @@ export function useGameLeaveGuard(active, message = '遊戲進行中，確定要
     }
   }, [active, dispatch, message])
 
-  // 攔截 tab 關閉 / 整頁重新整理（只能用瀏覽器原生框）
-  useEffect(() => {
-    if (!active) return undefined
+  useLayoutEffect(() => {
+    const previousBeforeUnload = window.onbeforeunload
     const onBeforeUnload = (event) => {
+      if (!activeRef.current) return undefined
+      const warning = messageRef.current || '遊戲尚未完成，確定要離開嗎？'
       event.preventDefault()
-      event.returnValue = ''
-      return ''
+      event.returnValue = warning
+      return warning
     }
-    window.addEventListener('beforeunload', onBeforeUnload)
-    return () => window.removeEventListener('beforeunload', onBeforeUnload)
-  }, [active])
+    const onPageHide = () => invokeLeave('pagehide')
+    const onConfirmedNavigation = () => invokeLeave('navigation')
 
-  // 攔截上一頁 / 手勢返回（popstate）
+    window.onbeforeunload = onBeforeUnload
+    window.addEventListener('beforeunload', onBeforeUnload, { capture: true })
+    window.addEventListener('pagehide', onPageHide, { capture: true })
+    window.addEventListener(GAME_LEAVE_CONFIRMED_EVENT, onConfirmedNavigation)
+    return () => {
+      window.onbeforeunload = previousBeforeUnload
+      window.removeEventListener('beforeunload', onBeforeUnload, { capture: true })
+      window.removeEventListener('pagehide', onPageHide, { capture: true })
+      window.removeEventListener(GAME_LEAVE_CONFIRMED_EVENT, onConfirmedNavigation)
+    }
+  }, [invokeLeave])
+
   useEffect(() => {
     if (!active) return undefined
 
     const onPopState = () => {
       if (window.confirm(message)) {
+        invokeLeave('history')
         window.removeEventListener('popstate', onPopState)
         window.history.back()
       } else {
@@ -56,7 +85,7 @@ export function useGameLeaveGuard(active, message = '遊戲進行中，確定要
     window.history.pushState(null, '', window.location.href)
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
-  }, [active, message])
+  }, [active, invokeLeave, message])
 }
 
 export default useGameLeaveGuard

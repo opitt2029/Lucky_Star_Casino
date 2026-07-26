@@ -14,7 +14,7 @@ import Reel, {
 import './slotMachine.css'
 
 const defaultSymbols = ['🍒', '🍋', '🔔', '⭐', '7️⃣']
-const reelDurations = [1800, 2200, 2600]
+const reelDurations = [4800, 5200, 5600]
 const reelLoops = [5, 6, 7]
 // near-miss（前兩輪中線同符號）時第三輪額外慢停時間：anticipation 演出的核心。
 const anticipationExtraMs = 900
@@ -60,8 +60,8 @@ export default function SlotMachine({
   fullscreen = false,
   fitToContainer = false,
   jackpotHit = false,
-  winAmount = 0,
-  winMultiplier = 0,
+  outcomeKind = 'idle',
+  readyLabel = 'SPIN',
 }) {
   const [responsiveSymbolHeight, setResponsiveSymbolHeight] = useState(() =>
     getResponsiveSymbolHeight(compact)
@@ -83,8 +83,22 @@ export default function SlotMachine({
   const winningCellSet = useMemo(() => new Set(winningCells.map(([row, col]) => `${row}-${col}`)), [winningCells])
   const visualBusy = phase !== 'idle' || externalSpinning
   const hasWin = winningCells.length > 0
-  const showWinPop = hasWin && !visualBusy && winAmount > 0
   const shouldFitCabinet = fullscreen || fitToContainer
+  const outcomeClass = !visualBusy && outcomeKind && outcomeKind !== 'idle' ? 'slot-machine--' + outcomeKind : ''
+  const cabinetOutcomeClass = outcomeClass ? 'slot-cabinet--' + outcomeKind : ''
+  const outcomeLabel = visualBusy
+    ? 'RUN'
+    : outcomeKind === 'jackpot'
+      ? '70X'
+      : outcomeKind === 'line'
+        ? '3 OF KIND'
+        : outcomeKind === 'pair'
+          ? 'PAIR'
+          : outcomeKind === 'near-miss'
+            ? 'NEAR'
+            : outcomeKind === 'miss'
+              ? 'MISS'
+              : 'READY'
 
   useEffect(() => {
     return () => abortRef.current?.abort()
@@ -94,14 +108,25 @@ export default function SlotMachine({
   useEffect(() => {
     if (phase !== 'spinning') return undefined
     let elapsed = 0
+    let pulseStep = 0
+    const spinAudioWindow = Math.max(...reelDurations) + anticipationExtraMs
     const timer = window.setInterval(() => {
       elapsed += 90
-      const slowdown = Math.min(elapsed / 2600, 1)
+      const slowdown = Math.min(elapsed / spinAudioWindow, 1)
       if (Math.random() > slowdown * 0.7) {
-        soundEngine.play('reelTick', { volume: 0.5 - slowdown * 0.3, pitch: 1 - slowdown * 0.2 })
+        soundEngine.play('reelTick', { volume: 0.5 - slowdown * 0.3, pitch: 1 - slowdown * 0.18 })
       }
     }, 90)
-    return () => window.clearInterval(timer)
+    const pulseTimer = window.setInterval(() => {
+      const slowdown = Math.min(elapsed / spinAudioWindow, 1)
+      const pitch = [0.88, 0.98, 1.08, 1.2][pulseStep % 4]
+      pulseStep += 1
+      soundEngine.play('slotSpinPulse', { volume: 0.28 - slowdown * 0.1, pitch })
+    }, 420)
+    return () => {
+      window.clearInterval(timer)
+      window.clearInterval(pulseTimer)
+    }
   }, [phase])
 
   // anticipation：第三輪慢停時的心跳鼓點。
@@ -292,7 +317,7 @@ export default function SlotMachine({
 
       await runReels(targetGrid)
       // 轉輪演出全部結束後才通知外層結算（慶祝特效在輪停的瞬間爆發才有衝擊力）。
-      onSettled?.(spinResult)
+      await onSettled?.(spinResult)
     } catch {
       setAnticipating(false)
       setPhase('idle')
@@ -309,6 +334,7 @@ export default function SlotMachine({
         compact ? 'slot-machine--compact' : '',
         shouldFitCabinet ? 'slot-machine--fit' : '',
         visualBusy ? 'slot-machine--live' : '',
+        outcomeClass,
       ].join(' ')}
       style={{ '--slot-symbol-height': `${symbolHeight}px` }}
     >
@@ -339,9 +365,9 @@ export default function SlotMachine({
           phase === 'spinning' ? 'slot-cabinet--settling' : '',
           anticipating ? 'slot-cabinet--anticipation' : '',
           hasWin && !visualBusy ? 'slot-cabinet--win' : '',
+          cabinetOutcomeClass,
         ].join(' ')}
       >
-        <div className="slot-payline" aria-hidden="true" />
         <div className="slot-reels" aria-live="polite">
           {displayColumns.map((column, colIndex) => (
             <Reel
@@ -359,13 +385,6 @@ export default function SlotMachine({
           ))}
         </div>
         <div className="slot-machine__glass" aria-hidden="true" />
-        {showWinPop && (
-          <div className={['slot-win-pop', jackpotHit ? 'slot-win-pop--jackpot' : ''].join(' ')} aria-live="polite">
-            <span>{jackpotHit ? 'GRAND HIT' : 'LINE WIN'}</span>
-            <strong>{Number(winAmount || 0).toLocaleString()}</strong>
-            <em>{winMultiplier}x paid</em>
-          </div>
-        )}
       </div>
 
       <div className="slot-console">
@@ -380,7 +399,7 @@ export default function SlotMachine({
           </div>
           <div>
             <span>WIN</span>
-            <strong>{hasWin && !visualBusy ? 'PAID' : 'READY'}</strong>
+            <strong>{outcomeLabel}</strong>
           </div>
         </div>
         <button
@@ -389,7 +408,7 @@ export default function SlotMachine({
           disabled={visualBusy || !canSpin}
           className="slot-spin-button gold-button rounded text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {visualBusy ? 'SPINNING' : !canSpin ? '星幣不足' : 'SPIN'}
+          {visualBusy ? 'SPINNING' : !canSpin ? '星幣不足' : readyLabel}
         </button>
         <div className={['slot-lever', visualBusy ? 'slot-lever--active' : ''].join(' ')} aria-hidden="true">
           <span />

@@ -16,6 +16,7 @@ import CoinRain from './CoinRain'
 import AnnouncementTicker from '../casino-fx/announce/AnnouncementTicker'
 import { startBotFeed, stopBotFeed } from '../casino-fx/announce/botFeed'
 import LeaveGameModal from './LeaveGameModal'
+import { GAME_LEAVE_CONFIRMED_EVENT } from '../hooks/useGameLeaveGuard'
 import SiteSettings from './SiteSettings'
 
 const navItems = [
@@ -177,6 +178,7 @@ export default function AppShell({ children }) {
 
   const handleLeaveConfirm = () => {
     const path = leaveGuard.pendingPath
+    window.dispatchEvent(new window.Event(GAME_LEAVE_CONFIRMED_EVENT))
     dispatch(clearPendingNavigation())
     if (path) navigate(path)
   }

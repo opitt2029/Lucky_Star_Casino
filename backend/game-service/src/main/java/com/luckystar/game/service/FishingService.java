@@ -122,10 +122,10 @@ public class FishingService {
                                     String requestedClientSeed) {
         Optional<FishingSession> existing = sessionStore.find(playerId);
         if (existing.isPresent() && existing.get().isActive()) {
-            log.info("fishing session resumed playerId={} sessionId={}", playerId, existing.get().getSessionId());
-            return toView(existing.get(), true, null);
+            sessionStore.delete(playerId);
+            log.info("fishing active session abandoned before new start playerId={} sessionId={}",
+                    playerId, existing.get().getSessionId());
         }
-
         // 面額/入場金額守門（玩家自選；DTO 已驗，這裡為直接呼叫與防禦性二保險）
         if (betPerShot < MIN_BET || betPerShot > MAX_BET) {
             throw new IllegalArgumentException("子彈面額需介於 " + MIN_BET + "~" + MAX_BET + " 星幣");
@@ -204,6 +204,21 @@ public class FishingService {
                 .map(session -> toView(session, true, null));
     }
 
+    public boolean abandon(long playerId, String sessionId) {
+        Optional<FishingSession> existing = sessionStore.find(playerId);
+        if (existing.isEmpty() || !existing.get().isActive()) {
+            return false;
+        }
+        FishingSession session = existing.get();
+        if (!session.getSessionId().equals(sessionId)) {
+            return false;
+        }
+        boolean deleted = sessionStore.delete(playerId);
+        if (deleted) {
+            log.info("fishing session abandoned playerId={} sessionId={}", playerId, sessionId);
+        }
+        return deleted;
+    }
     /**
      * 批次射擊：逐發判定並更新局內餘額。
      *

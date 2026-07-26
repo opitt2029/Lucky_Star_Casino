@@ -1,3 +1,29 @@
+## [changed] -- 2026-07-26 -- Add first-entry game rules and abandon-on-leave handling
+
+### Changed
+- `frontend/src/components/GameRuleCard.jsx`: auto-open rules on first game entry per game key, with a "do not show again" checkbox persisted in localStorage.
+- `frontend/src/hooks/useGameLeaveGuard.js` and `frontend/src/components/AppShell.jsx`: wire browser close/navigation warnings to best-effort game abandon callbacks.
+- `frontend/src/pages/SlotGame.jsx`, `frontend/src/pages/Baccarat.jsx`, and `frontend/src/pages/Fishing.jsx`: reset round-local UI state on entry and attach per-game leave handling.
+- `frontend/src/services/gameApi.js`, `frontend/src/services/mockApi.js`, and `frontend/src/services/fishingApi.js`: add abandon calls and split Baccarat into place-bet/settle flow so leaving before reveal does not credit the current round.
+- `backend/game-service`, `frontend/src/pages/SlotGame.jsx`, and `frontend/src/services/mockApi.js`: split slot play into prepared-round/settle steps so the stake is debited before reel animation and winnings are credited only after settlement.
+- `frontend/src/hooks/useGameLeaveGuard.js` and `frontend/e2e/slot-leave-guard.spec.js`: keep the browser unload listener mounted on game pages and add a slot regression test so spinning rounds trigger the close-page warning reliably.
+- `frontend/src/components/InteractiveGameBackdrop.*` plus slot, baccarat, and fishing pages/styles: add pointer-reactive themed background motion for the three game rooms without blocking game controls or fullscreen layouts.
+- `frontend/src/pages/SlotGame.jsx`: remove the old celebratory overlay effects from slot wins, including brush-banner text and red-envelope/coin rain, leaving the machine feedback and themed backdrop as the win presentation.
+- `frontend/src/pages/SlotGame.jsx`: keep the final backend-provided reel grid visible after settlement and carry that visible grid into the next spin for a seamless follow-up round.
+- `frontend/src/components/SlotMachine.jsx`, `frontend/src/casino-fx/sound/*`, and `frontend/src/components/slotMachine.css`: extend slot reel animations by three seconds, add a throttled spin-music pulse through `soundEngine`, remove the reel-overlay win pop, and add distinct backend-result visual states for miss, near-miss, pair, line win, and jackpot outcomes.
+- `frontend/src/pages/SlotGame.jsx`, `frontend/src/components/SlotMachine.jsx`, `frontend/src/components/slotMachine.css`, and `frontend/src/casino-fx/sound/bgmThemes.js`: prevent the post-spin grid from flashing back to the default reels, remove the center payline, show each round result in a bottom popup, change the settled spin button to `下一局`, and retune slot BGM toward a faster suspense arcade feel.
+- `frontend/src/casino-fx/assets/svgArt.jsx`: upgrade shared game SVG artwork with richer metallic gradients, cast shadows, gloss layers, and 3D-style slot symbols/fish fallback/cannon/coin surfaces.
+- `frontend/public/images/game/slot/*.svg` + `frontend/src/casino-fx/assets/registry.js`: add regenerated 3D SVG slot-symbol files and route the slot game to the new image assets.
+- `frontend/src/index.css` + `frontend/src/components/slotMachine.css`: clamp regenerated slot SVG symbols to reel-cell dimensions across normal, compact, mobile, and fullscreen layouts.
+- `backend/game-service`: add slot, baccarat, and fishing abandon endpoints; fishing now drops an active session when starting a fresh one instead of resuming stale state.
+
+### Why
+- Players should see rules once, be able to opt out afterward, always enter games from a clean state, and lose only the active stake/session balance when they close or leave before settlement.
+
+### Verification
+- `npm.cmd run lint` (frontend)
+- `npm.cmd run build` (frontend)
+- `mvn -pl backend/game-service test`
 ## [changed] -- 2026-07-26 -- 將遊戲中獎公告欄文案改為繁體中文
 
 ### Changed

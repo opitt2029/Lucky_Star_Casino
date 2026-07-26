@@ -35,6 +35,11 @@ import {
 
 // AI 圖替換表：assetId → public 路徑。預設空，逐步填入。
 const ART_OVERRIDES = {
+  'slot-cherry': '/images/game/slot/slot-cherry-3d.svg?v=20260726-generated',
+  'slot-lemon': '/images/game/slot/slot-lemon-3d.svg?v=20260726-generated',
+  'slot-bell': '/images/game/slot/slot-bell-3d.svg?v=20260726-generated',
+  'slot-star': '/images/game/slot/slot-star-3d.svg?v=20260726-generated',
+  'slot-seven': '/images/game/slot/slot-seven-3d.svg?v=20260726-generated',
   'fishing-stage-background': '/images/fishing/fishing-stage-background-reference.png?v=20260707-reference',
   'cannon-copper': '/images/fishing/cannon-small-reference.png?v=20260707-reference-transparent',
   'cannon-silver': '/images/fishing/cannon-medium-reference.png?v=20260707-reference-transparent',

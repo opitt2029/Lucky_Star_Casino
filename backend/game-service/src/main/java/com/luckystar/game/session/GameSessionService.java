@@ -38,6 +38,8 @@ public class GameSessionService {
     private static final String F_GAME_TYPE = "gameType";
     private static final String F_BET_AMOUNT = "betAmount";
     private static final String F_BALANCE_BEFORE = "balanceBefore";
+    private static final String F_BALANCE_AFTER_BET = "balanceAfterBet";
+    private static final String F_RISK_INTERCEPT = "riskIntercept";
     private static final String F_BET_PLAYER = "betPlayer";
     private static final String F_BET_BANKER = "betBanker";
     private static final String F_BET_TIE = "betTie";
@@ -154,6 +156,8 @@ public class GameSessionService {
         putIfNotNull(h, F_GAME_TYPE, s.getGameType());
         putIfNotNull(h, F_BET_AMOUNT, s.getBetAmount());
         putIfNotNull(h, F_BALANCE_BEFORE, s.getBalanceBefore());
+        putIfNotNull(h, F_BALANCE_AFTER_BET, s.getBalanceAfterBet());
+        putIfNotNull(h, F_RISK_INTERCEPT, s.getRiskIntercept());
         putIfNotNull(h, F_BET_PLAYER, s.getBetPlayer());
         putIfNotNull(h, F_BET_BANKER, s.getBetBanker());
         putIfNotNull(h, F_BET_TIE, s.getBetTie());
@@ -177,6 +181,8 @@ public class GameSessionService {
                 .gameType(h.get(F_GAME_TYPE))
                 .betAmount(parseLong(h.get(F_BET_AMOUNT)))
                 .balanceBefore(parseLong(h.get(F_BALANCE_BEFORE)))
+                .balanceAfterBet(parseLong(h.get(F_BALANCE_AFTER_BET)))
+                .riskIntercept(parseBoolean(h.get(F_RISK_INTERCEPT)))
                 .betPlayer(parseLong(h.get(F_BET_PLAYER)))
                 .betBanker(parseLong(h.get(F_BET_BANKER)))
                 .betTie(parseLong(h.get(F_BET_TIE)))
@@ -199,6 +205,10 @@ public class GameSessionService {
         return StringUtils.hasText(v) ? Long.valueOf(v) : null;
     }
 
+
+    private static Boolean parseBoolean(String v) {
+        return StringUtils.hasText(v) ? Boolean.valueOf(v) : null;
+    }
     private static Instant parseInstant(String v) {
         return StringUtils.hasText(v) ? Instant.parse(v) : null;
     }

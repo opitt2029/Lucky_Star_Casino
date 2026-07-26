@@ -361,6 +361,28 @@ export function useFishingSession({ onResults } = {}) {
     [phase, dispatch, setBalanceBoth]
   )
 
+  const abandonSession = useCallback(
+    ({ keepalive = false } = {}) => {
+      const sessionId = sessionIdRef.current
+      if (!sessionId) return Promise.resolve(null)
+      if (flushTimerRef.current) window.clearInterval(flushTimerRef.current)
+      bufferRef.current = []
+      fishBySeqRef.current.clear()
+      shotLogRef.current = []
+      caughtCountRef.current = 0
+      inFlightRef.current = false
+      topUpLockRef.current = false
+      sessionIdRef.current = null
+      setSession(null)
+      setSettleResult(null)
+      setStats({ totalShots: 0, totalPayout: 0, caughtCount: 0 })
+      setBalanceBoth(0)
+      setError(null)
+      setPhase('idle')
+      return fishingApi.abandon({ sessionId, keepalive })
+    },
+    [setBalanceBoth]
+  )
   const endSession = useCallback(async () => {
     const sessionId = sessionIdRef.current
     if (!sessionId || phase !== 'playing') return
@@ -425,6 +447,7 @@ export function useFishingSession({ onResults } = {}) {
     changeCannonLevel,
     topUp,
     endSession,
+    abandonSession,
     resetToIdle,
   }
 }

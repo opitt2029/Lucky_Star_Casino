@@ -3426,3 +3426,14 @@
   background: linear-gradient(180deg, rgba(126, 13, 37, 0.96), rgba(8, 30, 48, 0.98));
   box-shadow: 0 -14px 34px rgba(0, 0, 0, 0.46);
 }
+
+.fishing-redgold-shell {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.fishing-redgold-shell > :not(.game-interactive-backdrop) {
+  position: relative;
+  z-index: 1;
+}

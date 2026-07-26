@@ -31,6 +31,9 @@ async function login(page) {
       'lucky-star-checkin-auto-open-v1',
       JSON.stringify({ 'test-player': `${values.year}-${values.month}-${values.day}` }),
     )
+    ;['slot', 'baccarat', 'fishing'].forEach((game) => {
+      localStorage.setItem(`lucky-star-game-rule-dismissed:${game}`, '1')
+    })
   })
   await page.goto('/member?mode=login')
   await page.locator('form button[type="submit"]').click()
@@ -124,6 +127,7 @@ for (const viewport of VIEWPORTS) {
       await page.locator('.slot-spin-button').click()
       // 轉輪演出約 2.6s（含 near-miss 的 +0.9s），等按鈕自己解除 disabled 才算一局結束。
       await expect(page.locator('.slot-spin-button')).toBeEnabled({ timeout: 20_000 })
+      await waitForLayoutSettled(page, '.slot-cabinet')
 
       expect(await boxOf(page, '.slot-cabinet')).toEqual(before)
 

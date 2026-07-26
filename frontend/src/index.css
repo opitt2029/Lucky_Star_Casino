@@ -1613,13 +1613,23 @@ body.slot-fullscreen-active .page-transition-stage {
 
 /* registry 華人意象符號（SVG）：撐滿格位 + 微金光 */
 .slot-symbol-art--rich {
-  height: min(86%, calc(var(--slot-symbol-height, 100px) - 22px));
-  padding: 0 4px;
+  width: min(88%, calc(var(--slot-symbol-height, 100px) - 20px));
+  max-width: 100%;
+  height: min(82%, calc(var(--slot-symbol-height, 100px) - 28px));
+  aspect-ratio: 1;
+  box-sizing: border-box;
+  margin: 0 auto;
+  padding: 0;
+  overflow: visible;
 }
 
-.slot-symbol-art--rich svg {
+.slot-symbol-art--rich svg,
+.slot-symbol-art--rich img {
+  display: block;
   width: 100%;
   height: 100%;
+  object-fit: contain;
+  overflow: visible;
   filter: drop-shadow(0 0 10px rgba(248, 213, 106, 0.35));
 }
 
@@ -1796,6 +1806,12 @@ body.slot-fullscreen-active .page-transition-stage {
   height: 100%;
   padding: 0 4px;
   font-size: 1.8rem;
+}
+
+.slot-symbol-tile--compact .slot-symbol-art--rich {
+  width: min(90%, calc(var(--slot-symbol-height, 52px) - 8px));
+  height: min(90%, calc(var(--slot-symbol-height, 52px) - 8px));
+  padding: 0;
 }
 
 .slot-symbol-tile--compact .slot-symbol-caption {

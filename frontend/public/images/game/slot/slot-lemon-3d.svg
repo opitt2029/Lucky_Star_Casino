@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="title desc">
+  <title id="title">3D lemon slot symbol</title>
+  <desc id="desc">A bright dimensional lemon with glossy rind and carved citrus facets.</desc>
+  <defs>
+    <filter id="cast" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="5" stdDeviation="3" flood-color="#6f4d00" flood-opacity="0.28"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="7" flood-color="#fff6ac" flood-opacity="0.42"/>
+    </filter>
+    <radialGradient id="lemon" cx="33%" cy="24%" r="80%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="15%" stop-color="#fff891"/>
+      <stop offset="58%" stop-color="#ffd431"/>
+      <stop offset="100%" stop-color="#c57900"/>
+    </radialGradient>
+    <linearGradient id="rind" x1="18" y1="21" x2="82" y2="79" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffdb"/>
+      <stop offset="52%" stop-color="#f8d323"/>
+      <stop offset="100%" stop-color="#a85b00"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="50" cy="83" rx="33" ry="8" fill="#3b2600" opacity="0.16"/>
+  <g filter="url(#cast)">
+    <path d="M17 55 C17 35 34 19 55 20 C74 21 87 35 85 51 C83 69 66 82 45 80 C27 78 17 69 17 55Z" fill="url(#lemon)" stroke="#fff2a4" stroke-width="3"/>
+    <path d="M27 35 C41 27 63 27 76 41" fill="none" stroke="#fffbd6" stroke-width="4" stroke-linecap="round" opacity="0.62"/>
+    <path d="M33 72 C46 78 66 74 76 62" fill="none" stroke="#a95e00" stroke-opacity="0.38" stroke-width="5" stroke-linecap="round"/>
+    <path d="M34 41 L70 42" stroke="#e3a500" stroke-width="2" opacity="0.42"/>
+    <path d="M29 51 L77 52" stroke="#e3a500" stroke-width="2" opacity="0.36"/>
+    <path d="M34 62 L69 61" stroke="#e3a500" stroke-width="2" opacity="0.30"/>
+    <path d="M43 29 C35 41 34 62 44 75" fill="none" stroke="url(#rind)" stroke-width="2" opacity="0.48"/>
+    <path d="M64 29 C72 43 70 63 59 76" fill="none" stroke="#b96d00" stroke-width="2" opacity="0.34"/>
+    <ellipse cx="37" cy="38" rx="9" ry="5" fill="#fffef0" opacity="0.84" transform="rotate(-22 37 38)"/>
+  </g>
+</svg>

@@ -9,6 +9,7 @@ import FishingSettlementPanel from '../components/FishingSettlementPanel'
 import FishingFullscreenButton from '../components/FishingFullscreenButton'
 import FishingFishInfoPanel from '../components/FishingFishInfoPanel'
 import WinningTicker from '../components/WinningTicker'
+import InteractiveGameBackdrop from '../components/InteractiveGameBackdrop'
 import { fetchWallet } from '../store/slices/walletSlice'
 import { useFishingSession, BUYIN_TIERS, BUYIN_MIN, BUYIN_MAX } from '../hooks/useFishingSession'
 import { useSound } from '../casino-fx/sound/useSound'
@@ -267,6 +268,17 @@ export default function Fishing() {
     }))
   }, [])
 
+  const resetFishingRoundView = useCallback(() => {
+    setCaughtFishStats({})
+    setSpecialEffectTimers({})
+    setSessionBuyIn(null)
+    setBossActive(false)
+  }, [])
+
+  const abandonFishingRound = () => {
+    resetFishingRoundView()
+    return session.abandonSession({ keepalive: true })
+  }
   const handleCatch = useCallback(
     ({ payout, effMult, code, name }) => {
       triggerSpecialEffectTimer({ code, payout, effMult })
@@ -310,7 +322,7 @@ export default function Fishing() {
   const handleStart = () => {
     if (!canStart) return
     play('click')
-    setCaughtFishStats({})
+    resetFishingRoundView()
     setSessionBuyIn(selectedBuyIn)
     session.startSession({
       buyIn: selectedBuyIn,
@@ -360,9 +372,9 @@ export default function Fishing() {
     !session.topUpLoading
   useGameLeaveGuard(
     phase === 'playing',
-    '本局尚未收網結算，離開頁面可能會中斷目前捕魚流程。請先按「收網結算」將餘額回到錢包。'
+    '本局捕魚尚未結算，離開會放棄局內餘額與本局派彩。',
+    { onLeave: abandonFishingRound },
   )
-
   useEffect(() => {
     if (phase === 'playing' && session.session?.buyIn && sessionBuyIn === null) {
       setSessionBuyIn(session.session.buyIn)
@@ -372,6 +384,10 @@ export default function Fishing() {
     }
   }, [betPerShot, isTopUpModalOpen, phase, session.session?.buyIn, sessionBalance, sessionBuyIn])
 
+  const handleNewFishingRound = () => {
+    resetFishingRoundView()
+    session.resetToIdle()
+  }
   const roundProfit =
     (phase === 'playing' || phase === 'settling') && sessionBuyIn !== null
       ? sessionBalance - sessionBuyIn
@@ -380,6 +396,7 @@ export default function Fishing() {
   return (
     <AppShell>
       <main className="fishing-redgold-shell" data-style="red-gold-deep-sea">
+        <InteractiveGameBackdrop theme="fishing" active={phase === 'playing' || phase === 'settling' || bossActive} />
         <div className="fishing-hero-shell">
           <div className="fishing-hero-copy">
             <p className="fishing-hero-kicker">Lucky Fishing</p>
@@ -642,7 +659,7 @@ export default function Fishing() {
                   <FishingSettlementPanel
                     settleResult={settleResult}
                     sessionBuyIn={sessionBuyIn}
-                    onNewRound={session.resetToIdle}
+                    onNewRound={handleNewFishingRound}
                   />
                 ) : (
                   <div className="fishing-buyin-panel grid w-full max-w-md gap-5">
@@ -762,6 +779,7 @@ export default function Fishing() {
               tone="light"
             />
             <GameRuleCard
+              gameKey="fishing"
               title="捕魚機規則"
               subtitle="了解進場金額、子彈面額、炮台傷害與收網結算。"
               rules={fishingRules}

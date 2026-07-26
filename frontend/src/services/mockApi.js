@@ -900,6 +900,84 @@ export const mockApi = {
     }
   },
 
+  async prepareSlotRound({ bet }) {
+    await wait(320)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const wallet = db.wallets[playerId]
+    if (!wallet || wallet.balance < bet) throw new Error('星幣餘額不足')
+
+    const roundId = `SLOT-${Date.now()}`
+    const balanceBefore = wallet.balance
+    const betAt = new Date().toISOString()
+    applyWalletChange(db, playerId, -bet, 'bet', '老虎機下注')
+
+    const grid = randomSlotGrid()
+    const { multiplier, winningCells } = evaluateSlotLine(grid)
+    const payout = bet * multiplier
+
+    db.slotRounds = db.slotRounds || {}
+    db.slotRounds[playerId] = db.slotRounds[playerId] || {}
+    db.slotRounds[playerId][roundId] = {
+      roundId,
+      bet,
+      balanceBefore,
+      betAt,
+      grid,
+      multiplier,
+      payout,
+      winningCells,
+    }
+    saveDb(db)
+
+    return {
+      roundId,
+      game: 'slot',
+      grid,
+      bet,
+      multiplier,
+      payout,
+      winningCells,
+      wallet: db.wallets[playerId],
+    }
+  },
+
+  async settleSlotRound({ roundId }) {
+    await wait(220)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const pending = db.slotRounds?.[playerId]?.[roundId]
+    if (!pending) throw new Error('本局已不存在或已被放棄')
+
+    if (pending.payout) applyWalletChange(db, playerId, pending.payout, 'payout', '老虎機派彩')
+    recordGameRound(db, playerId, {
+      roundId,
+      gameType: 'SLOT',
+      nonce: 0,
+      betAmount: pending.bet,
+      winAmount: pending.payout,
+      profit: pending.payout - pending.bet,
+      balanceBefore: pending.balanceBefore,
+      balanceAfter: db.wallets[playerId].balance,
+      betAt: pending.betAt,
+      settledAt: new Date().toISOString(),
+      status: 'SETTLED',
+      resultData: JSON.stringify({ grid: pending.grid, multiplier: pending.multiplier, payout: pending.payout, winningCells: pending.winningCells }),
+    })
+    delete db.slotRounds[playerId][roundId]
+    saveDb(db)
+
+    return {
+      roundId,
+      game: 'slot',
+      grid: pending.grid,
+      bet: pending.bet,
+      multiplier: pending.multiplier,
+      payout: pending.payout,
+      winningCells: pending.winningCells,
+      wallet: db.wallets[playerId],
+    }
+  },
   async spinSlot({ bet }) {
     await wait(900)
     const db = getDb()
@@ -945,6 +1023,92 @@ export const mockApi = {
     }
   },
 
+  async baccaratPlaceBet({ area, amount }) {
+    await wait(360)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const wallet = db.wallets[playerId]
+    if (!wallet || wallet.balance < amount) throw new Error('星幣餘額不足')
+
+    const roundId = `BAC-${Date.now()}`
+    db.baccaratRounds = db.baccaratRounds || {}
+    db.baccaratRounds[playerId] = db.baccaratRounds[playerId] || {}
+    db.baccaratRounds[playerId][roundId] = {
+      roundId,
+      area,
+      amount,
+      balanceBefore: wallet.balance,
+      betAt: new Date().toISOString(),
+    }
+    applyWalletChange(db, playerId, -amount, 'bet', `百家樂下注 ${area}`)
+    saveDb(db)
+
+    return {
+      roundId,
+      game: 'baccarat',
+      area,
+      amount,
+      bets: { player: area === 'player' ? amount : 0, banker: area === 'banker' ? amount : 0, tie: area === 'tie' ? amount : 0 },
+      totalBet: amount,
+      serverSeedHash: `mock-hash-${roundId}`,
+      clientSeed: 'mock-client-seed',
+    }
+  },
+
+  async baccaratSettle({ roundId, area, amount }) {
+    await wait(520)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const pending = db.baccaratRounds?.[playerId]?.[roundId]
+    if (!pending) throw new Error('本局已不存在或已被放棄')
+    const betArea = area || pending.area
+    const betAmount = amount || pending.amount
+
+    const {
+      player: playerCards,
+      banker: bankerCards,
+      playerScore: playerPoints,
+      bankerScore: bankerPoints,
+      winner,
+    } = dealBaccarat()
+    const payout = baccaratPayout(betArea, winner, betAmount)
+    if (payout) applyWalletChange(db, playerId, payout, 'payout', '百家樂派彩')
+    const rebate = Math.max(1, Math.floor(betAmount * 0.005))
+    applyWalletChange(db, playerId, rebate, 'payout', '百家樂返水')
+
+    const winAmount = payout + rebate
+    recordGameRound(db, playerId, {
+      roundId,
+      gameType: 'BACCARAT',
+      nonce: 0,
+      betAmount,
+      winAmount,
+      profit: winAmount - betAmount,
+      balanceBefore: pending.balanceBefore,
+      balanceAfter: db.wallets[playerId].balance,
+      betAt: pending.betAt,
+      settledAt: new Date().toISOString(),
+      status: 'SETTLED',
+      resultData: JSON.stringify({ area: betArea, winner, payout, rebate, playerPoints, bankerPoints }),
+    })
+    delete db.baccaratRounds[playerId][roundId]
+    saveDb(db)
+
+    return {
+      roundId,
+      game: 'baccarat',
+      area: betArea,
+      amount: betAmount,
+      winner,
+      payout,
+      rebate,
+      playerCards,
+      bankerCards,
+      playerPoints,
+      bankerPoints,
+      wallet: db.wallets[playerId],
+    }
+  },
   async baccaratBet({ area, amount }) {
     await wait(880)
     const db = getDb()
@@ -1002,6 +1166,38 @@ export const mockApi = {
     }
   },
 
+  slotAbandon({ roundId }) {
+    const db = getDb()
+    const playerId = currentPlayerId()
+    if (db.slotRounds?.[playerId]?.[roundId]) {
+      delete db.slotRounds[playerId][roundId]
+      saveDb(db)
+      return { roundId, abandoned: true }
+    }
+    return { roundId, abandoned: false }
+  },
+
+  baccaratAbandon({ roundId }) {
+    const db = getDb()
+    const playerId = currentPlayerId()
+    if (db.baccaratRounds?.[playerId]?.[roundId]) {
+      delete db.baccaratRounds[playerId][roundId]
+      saveDb(db)
+      return { roundId, abandoned: true }
+    }
+    return { roundId, abandoned: false }
+  },
+
+  fishingAbandon({ sessionId }) {
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const session = (db.fishingSessions || {})[playerId]
+    if (session && (!sessionId || session.sessionId === sessionId)) {
+      delete db.fishingSessions[playerId]
+      saveDb(db)
+    }
+    return { sessionId, abandoned: true }
+  },
   async getRank() {
     await wait(260)
     const db = getDb()
@@ -1270,27 +1466,8 @@ export const mockApi = {
 
     const existing = db.fishingSessions[playerId]
     if (existing) {
-      // 已有進行中場次：續玩、不重複扣款（比照後端 resumed）。
-      // 同 fishingActive()：引擎 remount 後 idSeq 從 0 重置，舊 fishDamage 的 key
-      // 會碰撞到新魚 id，導致新魚繼承舊傷害（初擊即死），故一併歸零。
-      existing.fishDamage = {}
+      delete db.fishingSessions[playerId]
       saveDb(db)
-      return {
-        sessionId: existing.sessionId,
-        roomId: `solo-${existing.sessionId}`,
-        seatIndex: 0,
-        cannonLevel: existing.cannonLevel,
-        betPerShot: existing.betPerShot,
-        buyIn: existing.buyIn,
-        sessionBalance: existing.sessionBalance,
-        totalShots: existing.totalShots,
-        lastShotSeq: existing.lastShotSeq,
-        serverSeedHash: existing.serverSeedHash,
-        clientSeed: existing.clientSeed,
-        resumed: true,
-        wallet: db.wallets[playerId],
-        fishTable: fishTableView(),
-      }
     }
 
     const startBuyIn = Number(buyIn)

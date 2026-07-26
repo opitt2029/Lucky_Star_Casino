@@ -99,11 +99,25 @@ public class SlotService {
         String serverSeedHash = rng.commit(serverSeed);
         String clientSeed = resolveClientSeed(requestedClientSeed);
 
+        WalletDebitResponse debit = walletClient.debit(
+                playerId, bet, "slot-bet-" + roundId, roundId);
+
+        boolean riskIntercept = riskControlService.shouldIntercept(playerId, GAME_TYPE);
+        SlotOutcome outcome;
+        try {
+            outcome = outcomeFor(serverSeed, clientSeed, bet, riskIntercept);
+        } finally {
+            riskControlService.releaseRiskSlot(playerId);
+        }
+
         GameSession session = GameSession.builder()
                 .roundId(roundId)
                 .playerId(playerId)
                 .gameType(GAME_TYPE)
                 .betAmount(bet)
+                .balanceBefore(debit.balanceBefore())
+                .balanceAfterBet(debit.balanceAfter())
+                .riskIntercept(riskIntercept)
                 .serverSeed(serverSeed)
                 .serverSeedHash(serverSeedHash)
                 .clientSeed(clientSeed)
@@ -111,7 +125,8 @@ public class SlotService {
                 .build();
         sessionService.start(session);
 
-        log.info("slot round prepared roundId={} playerId={} bet={}", roundId, playerId, bet);
+        log.info("slot round prepared roundId={} playerId={} bet={} payoutPreview={}",
+                roundId, playerId, bet, outcome.payout());
 
         return PrepareRoundResponse.builder()
                 .roundId(roundId)
@@ -119,9 +134,16 @@ public class SlotService {
                 .bet(bet)
                 .serverSeedHash(serverSeedHash)
                 .clientSeed(clientSeed)
+                .grid(outcome.grid())
+                .multiplier(outcome.multiplier())
+                .payout(outcome.payout())
+                .winningCells(outcome.winningCells())
+                .wallet(WalletView.builder()
+                        .balance(debit.balanceAfter())
+                        .frozenAmount(0L)
+                        .build())
                 .build();
     }
-
     /**
      * commit-ahead 第二階段「結算」：以開局暫存的 Session 種子扣款、轉動、派彩、寫對局，
      * 並把 Session 轉為 SETTLED、揭露 serverSeed。下注額以開局綁定者為準（玩家無法在看到雜湊後改注）。
@@ -134,44 +156,64 @@ public class SlotService {
     public SpinResponse settle(long playerId, String roundId) {
         GameSession session = sessionService.find(playerId, roundId)
                 .orElseThrow(() -> new RoundNotFoundException(
-                        "對局不存在或已逾時（roundId=" + roundId + "）"));
+                        "找不到尚未結算的遊戲局，roundId=" + roundId));
 
-        SpinResponse response = settleInternal(
-                roundId, playerId, session.getBetAmount(),
-                session.getServerSeed(), session.getServerSeedHash(), session.getClientSeed());
+        long bet = session.getBetAmount();
+        Long balanceBefore = session.getBalanceBefore();
+        long balanceAfterBet = session.getBalanceAfterBet() == null ? 0L : session.getBalanceAfterBet();
 
-        // 揭露 serverSeed 並標記結算（保留 30 分鐘驗證視窗）。
+        if (session.getBalanceAfterBet() == null) {
+            WalletDebitResponse debit = walletClient.debit(
+                    playerId, bet, "slot-bet-" + roundId, roundId);
+            balanceBefore = debit.balanceBefore();
+            balanceAfterBet = debit.balanceAfter();
+        }
+
+        SlotOutcome outcome = outcomeFor(
+                session.getServerSeed(), session.getClientSeed(), bet,
+                Boolean.TRUE.equals(session.getRiskIntercept()));
+
+        SpinResponse response = finishSettlement(
+                roundId, playerId, bet, session.getServerSeed(), session.getServerSeedHash(),
+                session.getClientSeed(), outcome, balanceBefore, balanceAfterBet, LocalDateTime.now());
+
         sessionService.markSettled(playerId, roundId, session.getServerSeed(), NONCE);
         return response;
     }
-
     /**
      * 共用結算流程：扣款 → RNG → 命中派彩 → 寫對局（以 roundId 去重）→ 發布 game.result。
      * 供單次模式與 commit-ahead 結算共用；不觸碰 Session（由呼叫端決定是否標記）。
      */
     private SpinResponse settleInternal(String roundId, long playerId, long bet,
                                         String serverSeed, String serverSeedHash, String clientSeed) {
-        // 下注時間（毫秒精度）：單次模式下注與結算同一瞬間，於扣款前取時間戳供注單稽核。
         LocalDateTime betAt = LocalDateTime.now();
-
-        // 1) 扣下注（冪等）。餘額不足會丟 InsufficientBalanceException，於此中止、不產生對局。
         WalletDebitResponse debit = walletClient.debit(
                 playerId, bet, "slot-bet-" + roundId, roundId);
-        Long balanceBefore = debit.balanceBefore();
 
-        // 2) 風控檢查：shouldIntercept 會佔用並發閘；無論是否攔截，finally 均須呼叫 releaseRiskSlot。
         boolean riskIntercept = riskControlService.shouldIntercept(playerId, GAME_TYPE);
         try {
+            SlotOutcome outcome = outcomeFor(serverSeed, clientSeed, bet, riskIntercept);
+            return finishSettlement(roundId, playerId, bet, serverSeed, serverSeedHash, clientSeed,
+                    outcome, debit.balanceBefore(), debit.balanceAfter(), betAt);
+        } finally {
+            riskControlService.releaseRiskSlot(playerId);
+        }
+    }
+
+    private SlotOutcome outcomeFor(String serverSeed, String clientSeed, long bet, boolean riskIntercept) {
         RandomStream stream = rng.stream(serverSeed, clientSeed, NONCE);
         SlotOutcome outcome = slotMachine.spin(stream, bet);
-
-        // 一般轉動若命中但被風控攔截，打破中線顯示確保盤面與派彩視覺一致（不出現中獎符號配零派彩）。
         if (riskIntercept && outcome.win()) {
-            outcome = SlotOutcome.noWin(breakPayline(outcome.grid()));
+            return SlotOutcome.noWin(breakPayline(outcome.grid()));
         }
+        return outcome;
+    }
 
-        // 3) 命中則派彩（冪等）。
-        long balanceAfter = debit.balanceAfter();
+    private SpinResponse finishSettlement(String roundId, long playerId, long bet,
+                                          String serverSeed, String serverSeedHash, String clientSeed,
+                                          SlotOutcome outcome, Long balanceBefore,
+                                          long balanceAfterBet, LocalDateTime betAt) {
+        long balanceAfter = balanceAfterBet;
         long frozenAfter = 0L;
         if (outcome.payout() > 0) {
             WalletCreditResponse credit;
@@ -179,9 +221,6 @@ public class SlotService {
                 credit = walletClient.credit(
                         playerId, outcome.payout(), "slot-win-" + roundId, roundId);
             } catch (RuntimeException ex) {
-                // 玩家已贏但派彩送不進 wallet（ADR-009）：落補償單（同一冪等鍵）後把原例外拋回。
-                // 請求以 5xx 失敗、玩家可重試結算（結果由 seed 確定性重算，帳務冪等）；
-                // 即使玩家不重試，排程 30 秒內會補入帳——「贏的錢不會消失」。
                 compensationService.recordPending(GAME_TYPE, roundId, playerId, outcome.payout(),
                         "WIN", "slot-win-" + roundId, ex);
                 throw ex;
@@ -190,19 +229,15 @@ public class SlotService {
             frozenAfter = credit.frozenAfter() == null ? 0L : credit.frozenAfter();
         }
 
-        // 4) 寫對局紀錄（已結算）；以 roundId 去重，重試不重複插入（unique 約束保護）。
         if (roundRepository.findByRoundId(roundId).isEmpty()) {
             try {
                 GameRound round = buildRound(roundId, playerId, bet, serverSeed, serverSeedHash, clientSeed,
                         outcome, balanceBefore, balanceAfter, betAt);
                 roundRepository.save(round);
-                // 風控日水位計數器累加（Phase A2，best-effort）：僅在首次落地時累加，與 DB 口徑一致。
                 riskControlService.recordRoundSettled(
                         playerId, GAME_TYPE, round.getBetAmount(), round.getWinAmount());
-                // 5) 發布 game.result（best-effort）。僅在首次落地時發布，避免重試重複事件。
                 eventPublisher.publishSlotResult(round, outcome);
             } catch (DataIntegrityViolationException e) {
-                // 並發結算同時通過去重檢查，unique 約束擋下第二筆 → 視同已結算，不讓重試者收到 500
                 log.info("slot round concurrently settled by another request, skip roundId={}", roundId);
             }
         } else {
@@ -226,11 +261,7 @@ public class SlotService {
                 .clientSeed(clientSeed)
                 .nonce(NONCE)
                 .build();
-        } finally {
-            riskControlService.releaseRiskSlot(playerId);
-        }
     }
-
     /**
      * 深複製盤面並將中線中格換成與兩側不同的符號，打破視覺三連，供風控攔截時使用。
      */
@@ -247,6 +278,13 @@ public class SlotService {
         return masked;
     }
 
+    public boolean abandon(long playerId, String roundId) {
+        boolean deleted = sessionService.delete(playerId, roundId);
+        if (deleted) {
+            log.info("slot round abandoned roundId={} playerId={}", roundId, playerId);
+        }
+        return deleted;
+    }
     private String resolveClientSeed(String requestedClientSeed) {
         return StringUtils.hasText(requestedClientSeed) ? requestedClientSeed : rng.generateClientSeed();
     }

@@ -11,6 +11,7 @@ import com.luckystar.game.dto.FishingTopUpRequest;
 import com.luckystar.game.dto.FishingTopUpResponse;
 import com.luckystar.game.service.FishingService;
 import jakarta.validation.Valid;
+import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -114,6 +115,20 @@ public class FishingController {
     }
 
     /** 結算後逐發公平性驗證（唯讀，不需登入者本人也可驗）。 */
+    /** 放棄捕魚 session：保留已扣的 buy-in/top-up/子彈成本，不結算剩餘局內餘額或本局派彩。 */
+    @PostMapping("/{sessionId}/abandon")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> abandon(
+            @RequestHeader(value = "X-User-Id", required = false) String playerIdStr,
+            @PathVariable String sessionId) {
+
+        Long playerId = parsePlayerId(playerIdStr);
+        if (playerId == null) {
+            return badPlayerId(playerIdStr);
+        }
+        boolean abandoned = fishingService.abandon(playerId, sessionId);
+        return ResponseEntity.ok(ApiResponse.ok(Map.of("sessionId", sessionId, "abandoned", abandoned)));
+    }
+
     @GetMapping("/{sessionId}/verify-shot")
     public ResponseEntity<ApiResponse<FishingShotVerifyResponse>> verifyShot(
             @PathVariable String sessionId,

@@ -2195,3 +2195,18 @@ body.baccarat-fullscreen-active {
   max-height: none;
   overflow-y: auto;
 }
+
+.baccarat-page {
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.baccarat-page > :not(.game-interactive-backdrop) {
+  position: relative;
+  z-index: 1;
+}
+
+.baccarat-table > :not(.game-interactive-backdrop) {
+  position: relative;
+  z-index: 1;
+}
