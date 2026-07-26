@@ -1,3 +1,52 @@
+## [docs] — 2026-07-26 — AGENTS.md 依實際檔案狀態全面校正，補 3 條新雷區
+
+### Changed
+- `AGENTS.md` 雷區 2：**「本機跑後端前要先把 `.env` 載入 shell」已過時**——後端 7 服務自
+  2026-07-07 全面容器化，`docker-compose.yml` **沒有 `env_file:`**、靠 compose 對專案根 `.env`
+  的 `${VAR}` 變數替換，不必 export 進 shell；只有容器外原生 `mvn spring-boot:run` 才需要。
+- `AGENTS.md` 雷區 10（服務完成度）：補上 **T-108~T-114 全完成**（含 T-110 已由容器化取代並移除，
+  `tasks.json` 用 `override` 標記）、**第三方登入已整合進 member-service**（ADR-011）、觀測性為選配 profile。
+- `AGENTS.md` 雷區 12（T-090 壓測）：原文寫「實測前置」「沒有實測資料」，**現況是已跑過多輪真實
+  容量階梯**。改寫為：跑壓測的正確流程（`provision-players.mjs` → `refresh-player-tokens.mjs` →
+  `run-capacity-ladder.ps1` → `summarize-jtl.mjs` → 對帳）、以及「引用數字要標清楚哪一輪哪種拓撲、
+  co-located 的 knee 被施壓機 CPU 污染不可對外引用」。
+- `AGENTS.md` §1 必讀文件：任務範圍 T-000~T-107 → **T-000~T-114**；ADR 標注現有 000~011 共 12 篇；
+  新增第 9 列 `docs/幸運星幣城_功能架構與事件圖.md`。
+- `AGENTS.md` §3 Port：補上 **Prometheus 9090 / Grafana 3000 是選配 profile**
+  （`docker compose --profile observability up -d` 才會起）。
+- `AGENTS.md` §4 驗證指令：補前端品質關卡四步（lint / vitest / build / e2e）；更正 CI 敘述為
+  **三個 job**（原文只說兩者，漏了 Frontend quality gate 與 wallet `-Pcontainers-test` 步驟）；
+  點明 **repo 有兩份 playwright 設定**（`frontend/` 那份是前端 UI e2e、免後端；根目錄那份是打
+  gateway 8080 的 API e2e、需完整拓撲），跑錯目錄會抓到另一份。
+
+### Added
+- `AGENTS.md` 雷區 29：**改 code/設定後 `docker compose up -d` 不加 `--build` 等於沒改**，且會讓人
+  對著錯的 runtime 下結論——實例為 2026-07-24 那輪 `maximum-pool-size: 40` 宣告 vs runtime 量到
+  10/15/10。要求壓測或效能歸因前先用 `/actuator/prometheus` 對一次關鍵設定值。
+- `AGENTS.md` 雷區 30：**`mem_limit: 1280m` 與 `-Xmx1g` 必須成對**——只設前者堆只剩 320m 會 OOM，
+  只設後者 JVM 會看主機 RAM 25% 導致 7 個 JVM 超賣主機。新增服務兩行都要照抄。
+- `AGENTS.md` 雷區 31：**Gateway 兩套獨立限流 + 熔斷的判讀與調參順序**——`rate-limit.player`
+  （每玩家 token bucket）vs `concurrency-limit`（AIMD 在途上限卸載，`max-in-flight` 是初始值會自動
+  伸縮，故同腳本兩次 429 數不同屬正常非 flaky）vs Resilience4j CB（刻意調成永遠比 AIMD 晚介入，
+  勿改回 `COUNT_BASED` size=10）。
+
+### Why
+- AGENTS.md 是「AI/新組員開工前必讀」，它一旦落後就會反向製造地雷：雷區 2 會讓人以為要 export
+  環境變數、雷區 12 會讓人以為壓測還沒開始做。**文件漂移的成本比沒有文件更高**，因為讀者會信它。
+- 三條新雷都是本輪盤點時從程式碼與壓測報告裡撈出來、但從未寫進任何必讀文件的：容器 image 陳舊
+  （雷區 29）已經實際造成過一次錯誤歸因；`mem_limit`／`-Xmx` 的成對關係只寫在 `docker-compose.yml`
+  的行內註解；gateway 的 AIMD 卸載只寫在 `application.yml` 註解，壓測看到 429 很容易誤判成 bug。
+- 依 AGENTS.md §5「踩到新雷順手更新本檔」與 §3 CHANGELOG 規則辦理。
+
+### 如何驗證
+- `node --test tests/infra/*.test.js` → 155 pass / 0 fail（純文件變更，確認未波及既有斷言）。
+- 每條改寫都對照過來源檔：`docker-compose.yml`（env_file 為 0 處、`mem_limit`／`JAVA_TOOL_OPTIONS`
+  七服務齊備、observability profile）、`DEPLOY.md` §1/§3、`.github/workflows/ci.yml`（三 job）、
+  `tools/audit/tasks.json`（T-108~T-114）、`backend/gateway-service/.../application.yml`
+  （`concurrency-limit`／`rate-limit`／`resilience4j`）、`docs/performance/T-090-new-env-ladder-20260724.md` §5.1。
+
+---
+
 ## [fix] — 2026-07-25 — 還原 Apple 私鑰忽略規則，補齊第三方登入的文件與雷區
 
 ### Fixed
@@ -30,6 +79,41 @@
 - `node --test tests/infra/*.test.js` → 155 pass / 0 fail（原 152，新增 3 項）。
 - `git ls-files '*.p8' 'apple-client-secret*.txt'` → 空輸出（確認歷史上沒有誤 commit 過）。
 - `git check-ignore -v test.p8` → 命中 `.gitignore:*.p8`。
+
+---
+
+## [docs] — 2026-07-26 — 新增功能架構圖 / Kafka 事件圖 / 雙資料庫歸屬圖（分工表用）
+
+### Added
+- `docs/幸運星幣城_功能架構與事件圖.md`：6 張 Mermaid 圖 + 1 張功能架構表——
+  ① 分層功能架構（前端／Gateway／7 服務／PG・MySQL・Redis・Kafka）
+  ② 功能模組 mindmap（對到 T-000~T-114 的分工顆粒度）
+  ③ Kafka 事件圖（8 業務 topic + 5 DLT，標出「指令 vs 事件」與 DLT→`dead_letter_messages`）
+  ④ 雙資料庫歸屬圖（PG 16 表 / MySQL 13 表，含 CQRS 讀視圖同步鏈）
+  ⑤ 一筆下注貫穿全系統 sequence（Gateway filter → debit → RNG → outbox → rank/推播）
+  ⑥ 0→1 建置階段 timeline（S0~S7）
+  另附服務 × 功能 × 端點數 × 事件 × DB × 任務編號對照表。
+
+### Changed
+- `docs/architecture.md`：§4 PostgreSQL 表清單**補上漏列的 `wallet_outbox`**（Transactional
+  Outbox，雷區 23），PG 表數由 15 → 16；§9 ADR 表把 **ADR-008 從「🅿️ 尚未動工」更正為
+  「✅ 已接受」**（`docs/adr/ADR-008.md` 已存在、`FishingSessionStore.saveCas` 已落地），
+  並補上漏列的 **ADR-010／ADR-011**（ADR 列表 10 → 12 筆）；檔頭「最後校對」改 2026-07-26。
+- `docs/幸運星幣城_工作分配表.xlsx`：`xl/sharedStrings.xml` 的「林瑋彧」× 3 全部更正為
+  **「林暐彧」**（本人最終用字），檔內 5 人姓名用字統一；`uniqueCount` 與 17 個 entry 不變。
+
+### Why
+- 撰寫分工表需要「0→1 全貌」的視覺附件；既有 `docs/architecture.md` 是文字表格、
+  `docs/database-er-diagrams.md` 是欄位級 ER 圖，缺一份「功能／事件／DB 三合一」的
+  服務層級圖可直接貼進報告與分工表。
+- 內容一律以程式碼盤點為準（`kafka/kafka-init.sh`、兩份 `init.sql`、`tools/audit/tasks.json`），
+  盤點時發現的三處文件漂移直接在來源文件修掉，避免下一個人再從 `architecture.md`
+  讀到錯的表清單與 ADR 狀態（AGENTS.md §5）。
+
+### Verified
+- 6 個 mermaid 區塊全部通過 `mermaid@11` 的 `mermaid.parse()`（jsdom 環境）：`ALL 6 OK`。
+- xlsx 改後 `zipfile.testzip()` 為 `None`、17 個 entry 與 `uniqueCount="468"` 不變。
+- 檔案為 UTF-8 + LF，符合 `.gitattributes` 的 `*.md text eol=lf`。
 
 ---
 
