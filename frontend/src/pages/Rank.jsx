@@ -42,12 +42,12 @@ export default function Rank() {
     playerLoading,
     lastUpdatedAt,
     error,
+    myRanksError,
     playerError,
   } = useSelector((state) => state.rank)
   const player = useSelector((state) => state.auth.player)
   const activeKey = rankKey(activeScope, activeCategory)
   const rows = useMemo(() => rankings[activeKey] || [], [rankings, activeKey])
-  const cachedRowCount = rows.length
   const rankLimit = showFullRank ? 100 : 20
 
   const filteredRows = useMemo(() => {
@@ -66,13 +66,14 @@ export default function Rank() {
   const myRank = myRanks[activeKey]
 
   useEffect(() => {
-    dispatch(fetchLeaderboard({ scope: activeScope, category: activeCategory, refresh: cachedRowCount > 0 }))
+    dispatch(fetchLeaderboard({ scope: activeScope, category: activeCategory }))
     dispatch(fetchMyRanks())
     setShowFullRank(false)
-  }, [activeScope, activeCategory, cachedRowCount, dispatch])
+  }, [activeScope, activeCategory, dispatch])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
       dispatch(refreshActiveLeaderboard())
       dispatch(fetchMyRanks())
     }, REFRESH_INTERVAL_MS)
@@ -165,6 +166,7 @@ export default function Rank() {
               <input
                 className="min-h-11 rounded border border-yellow-200/15 bg-red-950/70 px-4 text-sm font-bold text-white outline-none focus:border-yellow-200"
                 placeholder="搜尋暱稱或玩家 ID"
+                aria-label="搜尋排行榜玩家"
                 value={searchQuery}
                 onChange={(event) => dispatch(setRankSearchQuery(event.target.value))}
               />
@@ -178,8 +180,8 @@ export default function Rank() {
           </section>
 
           <div key={`rank-podium-${activeKey}`} className="rank-transition-shell rank-transition-enter">
-          </div>
             <RankPodium rows={filteredRows} onSelect={handleSelectPlayer} />
+          </div>
           <div key={`rank-board-${activeKey}`} className="rank-transition-shell rank-transition-enter">
             <LeaderboardPanel
               rows={visibleRows}
@@ -204,6 +206,7 @@ export default function Rank() {
           <MetricCard label="我的名次" value={myRank?.rank ? `#${myRank.rank}` : '-'} caption={myRank ? `${Number(myRank.score || 0).toLocaleString()} ${myRank.scoreUnit || ''}` : player?.nickname || '目前玩家'} />
           <MetricCard label="榜單筆數" value={filteredRows.length.toLocaleString()} caption={searchQuery ? '搜尋結果' : '目前分類'} />
           {refreshing && <p className="rounded border border-yellow-200/15 bg-red-950/70 p-3 text-sm font-bold text-yellow-100/64" aria-live="polite">排行榜資料更新中...</p>}
+          {myRanksError && <p className="rounded border border-yellow-200/20 bg-yellow-200/10 p-3 text-sm font-bold text-yellow-100/72">{myRanksError}</p>}
         </aside>
       </section>
 
