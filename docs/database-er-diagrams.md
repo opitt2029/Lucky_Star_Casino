@@ -31,6 +31,37 @@
 python docs/assets/er/generate-er-executive.py
 ```
 
+### 簡報用：架構總覽版（節點連線式，2 頁）
+
+上面的董事長版是**卡片清單**，適合坐著逐張讀；投影片上要的是**一眼看見全貌**，
+所以另外做了一組「架構總覽版」：一張表一個方塊，用線連起來，
+線的兩端用 ER 圖標準的 crow's foot（雞爪）符號標一對一 / 一對多。
+
+| 架構總覽版 | 黑底版 | 內容 |
+|---|---|---|
+| [第 1 頁：帳務與遊戲核心](assets/er/er-架構總覽-1-帳務與遊戲.svg) | [深色](assets/er/er-架構總覽-1-帳務與遊戲-深色.svg) | PostgreSQL 寫庫 16 張表 |
+| [第 2 頁：會員與營運活動](assets/er/er-架構總覽-2-會員與營運.svg) | [深色](assets/er/er-架構總覽-2-會員與營運-深色.svg) | MySQL 讀庫 13 張表 |
+
+畫布固定 **1280×720**，正好是 16:9 投影片（13.33in × 7.5in）的等比座標，
+可直接整頁滿版貼進簡報。版面刻意讓 ER 圖當主角：節點名（21）比頁面標題（20）還大，
+圖形區還會自動縮放置中撐滿版面，所以表數較少的第 2 頁字會更大。
+
+```bash
+# ① 產生 4 張 SVG（淺色 / 深色 × 2 頁）
+python docs/assets/er/generate-er-graph.py
+
+# ② 轉成高解析 PNG（3 倍 → 3840×2160，投影片上約 288 DPI）
+node tools/screenshot/svg-to-png.mjs \
+  "docs/assets/er/er-架構總覽-1-帳務與遊戲-深色.svg" out/er-1.png 1280 720 3
+
+# ③ 整頁滿版插進簡報的第 3、4 頁（不改原檔，另存新檔）
+python tools/pptx/insert_full_bleed_slides.py \
+  --pptx 來源.pptx --out 輸出.pptx --at 3 --images out/er-1.png out/er-2.png
+```
+
+> 為什麼要轉 PNG？PowerPoint 對 SVG 的支援看版本臉色，插 PNG 最保險；
+> 點陣圖怕糊，所以用 3 倍解析度輸出。
+
 ---
 
 ## 1. PostgreSQL — 帳務寫入主庫（Port 5433）
@@ -401,11 +432,15 @@ erDiagram
 
 </details>
 
-### 表格清單（12 張）
+### 表格清單（13 張）
+
+> ⚠️ `member_social_accounts` 是後來加的，上方 Mermaid 原始碼與 `er-mysql.svg`
+> 尚未補畫（需用 mermaid-cli 重產）。架構總覽版已含這張表。
 
 | 資料表 | 所屬服務 | 用途 |
 |---|---|---|
 | `members` | member | 玩家主檔；`id` 即全系統 `player_id` |
+| `member_social_accounts` | member | 第三方登入綁定（line/google/apple）；本庫唯一的實體外鍵 → `members.id` |
 | `friendships` | member | 好友申請/接受；UNIQUE(requester, receiver) 防重複 |
 | `daily_checkins` | member | 每日簽到；UNIQUE(player, date) 防同日重複 |
 | `monthly_reward_claims` | member | 月度累計簽到里程碑獎勵（10/20/28 天，ADR-005） |
