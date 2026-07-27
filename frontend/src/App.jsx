@@ -5,9 +5,11 @@ import { fetchProfile } from './store/slices/authSlice'
 
 import Home from './pages/Home'
 import Member from './pages/Member'
+import ErrorBoundary from './components/ErrorBoundary'
 import PageTransition from './components/PageTransition'
 import QuickToolbar from './components/QuickToolbar'
 import FriendFloatingPanel from './components/FriendFloatingPanel'
+import MobileBottomNav from './components/MobileBottomNav'
 import SupportModal from './components/SupportModal'
 import GlobalAnnouncementHost from './casino-fx/announce/GlobalAnnouncementHost'
 
@@ -45,17 +47,22 @@ function RouteFallback() {
 }
 
 function LazyPage({ children }) {
-  return <Suspense fallback={<RouteFallback />}>{children}</Suspense>
+  const location = useLocation()
+  return (
+    <ErrorBoundary key={location.pathname}>
+      <Suspense fallback={<RouteFallback />}>{children}</Suspense>
+    </ErrorBoundary>
+  )
 }
 
 function PrivateRoute({ children }) {
-  const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
+  const authStatus = useSelector((state) => state.auth.authStatus)
   const location = useLocation()
-  return isAuthenticated ? (
-    children
-  ) : (
-    <Navigate to="/member?mode=login" replace state={{ from: location }} />
-  )
+
+  if (authStatus === 'checking') return <RouteFallback />
+  if (authStatus === 'authenticated') return children
+
+  return <Navigate to="/member?mode=login" replace state={{ from: location }} />
 }
 
 function ProtectedPage({ children }) {
@@ -69,14 +76,28 @@ function ProtectedPage({ children }) {
 function SiteChrome() {
   const location = useLocation()
   const isStandaloneTool = enableDevTools && location.pathname.startsWith('/dev/integration')
+  const isGamePage = location.pathname.startsWith('/game/')
+  const isPublicAuthPage =
+    location.pathname === '/' ||
+    location.pathname.startsWith('/member') ||
+    location.pathname.startsWith('/auth/callback')
 
   if (isStandaloneTool) return null
 
   return (
     <>
       <GlobalAnnouncementHost />
-      <QuickToolbar />
-      <FriendFloatingPanel />
+      {!isGamePage && (
+        <>
+          <div className="hidden md:block">
+            <QuickToolbar />
+          </div>
+          <div className="hidden md:block">
+            <FriendFloatingPanel />
+          </div>
+          {!isPublicAuthPage && <MobileBottomNav />}
+        </>
+      )}
       <SupportModal />
     </>
   )
@@ -84,13 +105,13 @@ function SiteChrome() {
 
 export default function App() {
   const dispatch = useDispatch()
-  const { isAuthenticated, player } = useSelector((state) => state.auth)
+  const { authStatus, accessToken, player, profileLoading } = useSelector((state) => state.auth)
 
   useEffect(() => {
-    if (isAuthenticated && !player) {
+    if (authStatus === 'checking' && accessToken && !player && !profileLoading) {
       dispatch(fetchProfile())
     }
-  }, [dispatch, isAuthenticated, player])
+  }, [accessToken, authStatus, dispatch, player, profileLoading])
 
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
