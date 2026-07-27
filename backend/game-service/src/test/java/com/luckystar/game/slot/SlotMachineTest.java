@@ -35,8 +35,8 @@ class SlotMachineTest {
         SlotOutcome o = machine.evaluate(b, 500);
 
         assertTrue(o.win());
-        assertEquals(50, o.multiplier(), "STAR 三連為 50x");
-        assertEquals(25000L, o.payout(), "500 x 50");
+        assertEquals(40, o.multiplier(), "STAR 三連為 40x");
+        assertEquals(20000L, o.payout(), "500 x 40");
         assertArrayEquals(new int[][] {{1, 0}, {1, 1}, {1, 2}}, o.winningCells());
         // 顯示盤面中線應全為 STAR 的 emoji
         assertEquals(SlotSymbol.STAR.display(), o.grid()[1][0]);
@@ -181,7 +181,7 @@ class SlotMachineTest {
         }
         double rtp = (double) totalPayout / totalBet;
         double hitRate = (double) wins / spins;
-        // 理論 RTP ≈ 0.938、命中率 ≈ 0.307（三連 ≈11.2% + 左二同 ≈19.5%）；給寬鬆區間以容納抽樣誤差。
+        // 理論 RTP ≈ 0.935、命中率 ≈ 0.307（三連 ≈11.2% + 左二同 ≈19.5%）；給寬鬆區間以容納抽樣誤差。
         assertTrue(rtp > 0.88 && rtp < 0.99, "RTP 超出預期範圍: " + rtp);
         assertTrue(hitRate > 0.27 && hitRate < 0.34, "命中率超出預期範圍: " + hitRate);
     }

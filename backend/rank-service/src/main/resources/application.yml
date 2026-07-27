@@ -1,5 +1,10 @@
-server:
+﻿server:
   port: 8084
+  tomcat:
+    mbeanregistry:
+      # 開啟 Tomcat MBean 才會暴露 tomcat_threads_busy/current 指標（否則 /actuator/prometheus
+      # 只有 tomcat_sessions_*，看不到執行緒池飽和）。壓測診斷前提，執行期開銷可忽略。（T-090 觀測補齊）
+      enabled: true
 
 spring:
   config:
@@ -67,3 +72,9 @@ logging:
   level:
     com.luckystar.rank: ${LOG_LEVEL_APP:INFO}
     org.hibernate.SQL: ${LOG_LEVEL_SQL:OFF}
+
+app:
+  dev-seed:
+    enabled: ${RANK_DEV_SEED_ENABLED:false}
+    player-count: ${RANK_DEV_SEED_PLAYER_COUNT:100}
+    random-seed: ${RANK_DEV_SEED_RANDOM_SEED:20260727}

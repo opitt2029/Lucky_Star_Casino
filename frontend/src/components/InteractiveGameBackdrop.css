@@ -1,0 +1,236 @@
+.game-interactive-backdrop {
+  --pointer-x: 50%;
+  --pointer-y: 36%;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  contain: layout paint style;
+}
+
+.game-interactive-backdrop::before,
+.game-interactive-backdrop::after,
+.game-interactive-backdrop__glow,
+.game-interactive-backdrop__tracks,
+.game-interactive-backdrop__particles,
+.game-interactive-backdrop__ripple {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.game-interactive-backdrop::before,
+.game-interactive-backdrop::after,
+.game-interactive-backdrop__glow,
+.game-interactive-backdrop__ripple {
+  content: '';
+}
+
+.game-interactive-backdrop::before {
+  background:
+    radial-gradient(circle at var(--pointer-x) var(--pointer-y), rgba(255, 245, 180, 0.32), transparent 0 16rem),
+    radial-gradient(circle at calc(100% - var(--pointer-x)) calc(var(--pointer-y) + 10%), rgba(64, 228, 255, 0.13), transparent 0 18rem);
+  opacity: 0.78;
+  transition: opacity 180ms ease;
+}
+
+.game-interactive-backdrop::after {
+  mix-blend-mode: screen;
+  opacity: 0.28;
+  animation: gameBackdropSweep 14s linear infinite;
+}
+
+.game-interactive-backdrop__glow {
+  background: radial-gradient(circle at var(--pointer-x) var(--pointer-y), rgba(255, 255, 255, 0.14), transparent 0 18rem);
+  filter: blur(8px);
+  transform: scale(1.02);
+}
+
+.game-interactive-backdrop__tracks span,
+.game-interactive-backdrop__particles span {
+  position: absolute;
+  display: block;
+  will-change: transform, opacity;
+}
+
+.game-interactive-backdrop__tracks span {
+  left: -12%;
+  width: 34%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 238, 172, 0.56), transparent);
+  opacity: 0.34;
+  transform: rotate(-10deg);
+  animation: gameBackdropTrack 9s linear infinite;
+}
+
+.game-interactive-backdrop__tracks span:nth-child(1) { top: 16%; animation-delay: -1s; }
+.game-interactive-backdrop__tracks span:nth-child(2) { top: 29%; animation-delay: -5s; animation-duration: 12s; }
+.game-interactive-backdrop__tracks span:nth-child(3) { top: 42%; animation-delay: -8s; animation-duration: 10s; }
+.game-interactive-backdrop__tracks span:nth-child(4) { top: 57%; animation-delay: -3s; animation-duration: 13s; }
+.game-interactive-backdrop__tracks span:nth-child(5) { top: 70%; animation-delay: -7s; animation-duration: 11s; }
+.game-interactive-backdrop__tracks span:nth-child(6) { top: 83%; animation-delay: -2s; animation-duration: 15s; }
+.game-interactive-backdrop__tracks span:nth-child(7) { top: 91%; animation-delay: -10s; animation-duration: 14s; }
+
+.game-interactive-backdrop__particles span {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 235, 155, 0.78);
+  box-shadow: 0 0 18px rgba(255, 219, 102, 0.5);
+  opacity: 0.42;
+  animation: gameBackdropParticle 8s ease-in-out infinite;
+}
+
+.game-interactive-backdrop__particles span:nth-child(1) { left: 7%; top: 18%; animation-delay: -1s; }
+.game-interactive-backdrop__particles span:nth-child(2) { left: 15%; top: 76%; animation-delay: -5s; animation-duration: 10s; }
+.game-interactive-backdrop__particles span:nth-child(3) { left: 23%; top: 38%; animation-delay: -2s; animation-duration: 9s; }
+.game-interactive-backdrop__particles span:nth-child(4) { left: 31%; top: 88%; animation-delay: -7s; animation-duration: 12s; }
+.game-interactive-backdrop__particles span:nth-child(5) { left: 39%; top: 24%; animation-delay: -4s; }
+.game-interactive-backdrop__particles span:nth-child(6) { left: 48%; top: 68%; animation-delay: -9s; animation-duration: 11s; }
+.game-interactive-backdrop__particles span:nth-child(7) { left: 56%; top: 14%; animation-delay: -3s; animation-duration: 10s; }
+.game-interactive-backdrop__particles span:nth-child(8) { left: 64%; top: 82%; animation-delay: -6s; }
+.game-interactive-backdrop__particles span:nth-child(9) { left: 72%; top: 32%; animation-delay: -8s; animation-duration: 12s; }
+.game-interactive-backdrop__particles span:nth-child(10) { left: 82%; top: 62%; animation-delay: -1.5s; }
+.game-interactive-backdrop__particles span:nth-child(11) { left: 91%; top: 22%; animation-delay: -6.5s; animation-duration: 11s; }
+.game-interactive-backdrop__particles span:nth-child(12) { left: 4%; top: 54%; animation-delay: -4.5s; }
+.game-interactive-backdrop__particles span:nth-child(13) { left: 18%; top: 9%; animation-delay: -8.5s; animation-duration: 13s; }
+.game-interactive-backdrop__particles span:nth-child(14) { left: 43%; top: 6%; animation-delay: -2.5s; }
+.game-interactive-backdrop__particles span:nth-child(15) { left: 68%; top: 6%; animation-delay: -7.5s; animation-duration: 9s; }
+.game-interactive-backdrop__particles span:nth-child(16) { left: 88%; top: 92%; animation-delay: -3.5s; }
+.game-interactive-backdrop__particles span:nth-child(17) { left: 52%; top: 92%; animation-delay: -5.5s; animation-duration: 10s; }
+.game-interactive-backdrop__particles span:nth-child(18) { left: 34%; top: 56%; animation-delay: -9.5s; }
+
+.game-interactive-backdrop__ripple {
+  opacity: 0;
+  background: radial-gradient(circle at var(--pointer-x) var(--pointer-y), transparent 0 2rem, rgba(255, 237, 170, 0.22) 2.15rem, transparent 7rem);
+  transform: scale(0.9);
+  transition: opacity 160ms ease, transform 220ms ease;
+}
+
+.game-interactive-backdrop.is-pressed .game-interactive-backdrop__ripple {
+  opacity: 0.86;
+  transform: scale(1.16);
+}
+
+.game-interactive-backdrop.is-active::before {
+  opacity: 1;
+}
+
+.game-interactive-backdrop.is-active .game-interactive-backdrop__tracks span {
+  opacity: 0.48;
+  animation-duration: 6s;
+}
+
+.game-interactive-backdrop--slot {
+  background:
+    radial-gradient(circle at 14% 22%, rgba(225, 47, 64, 0.2), transparent 0 18rem),
+    radial-gradient(circle at 84% 18%, rgba(255, 218, 92, 0.17), transparent 0 16rem),
+    linear-gradient(180deg, rgba(50, 5, 10, 0.42), rgba(12, 3, 6, 0.6));
+}
+
+.game-interactive-backdrop--slot::after {
+  background:
+    repeating-linear-gradient(90deg, transparent 0 54px, rgba(255, 219, 92, 0.13) 54px 56px, transparent 56px 110px),
+    repeating-linear-gradient(0deg, transparent 0 70px, rgba(255, 64, 92, 0.09) 70px 72px, transparent 72px 140px);
+}
+
+.game-interactive-backdrop--slot .game-interactive-backdrop__particles span:nth-child(3n) {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 244, 171, 0.8);
+  background: radial-gradient(circle, rgba(255, 221, 91, 0.94), rgba(195, 34, 44, 0.22));
+}
+
+.game-interactive-backdrop--slot .game-interactive-backdrop__particles span:nth-child(3n + 1) {
+  border-radius: 3px;
+  background: rgba(255, 68, 82, 0.68);
+  box-shadow: 0 0 18px rgba(255, 66, 86, 0.48);
+}
+
+.game-interactive-backdrop--baccarat {
+  background:
+    radial-gradient(circle at 12% 38%, rgba(54, 136, 220, 0.18), transparent 0 16rem),
+    radial-gradient(circle at 88% 38%, rgba(211, 75, 75, 0.18), transparent 0 16rem),
+    radial-gradient(ellipse at 50% 54%, rgba(25, 135, 91, 0.28), transparent 0 32rem);
+}
+
+.game-interactive-backdrop--baccarat::after {
+  background:
+    linear-gradient(116deg, transparent 0 22%, rgba(243, 215, 141, 0.14) 28%, transparent 36% 100%),
+    repeating-radial-gradient(ellipse at center, rgba(243, 215, 141, 0.08) 0 2px, transparent 2px 34px);
+}
+
+.game-interactive-backdrop--baccarat .game-interactive-backdrop__particles span {
+  width: 16px;
+  height: 22px;
+  border: 1px solid rgba(243, 215, 141, 0.58);
+  border-radius: 3px;
+  background: linear-gradient(145deg, rgba(255, 247, 222, 0.78), rgba(125, 18, 26, 0.26));
+  transform: rotate(12deg);
+}
+
+.game-interactive-backdrop--baccarat .game-interactive-backdrop__particles span:nth-child(2n) {
+  background: linear-gradient(145deg, rgba(248, 252, 255, 0.78), rgba(32, 110, 190, 0.25));
+  transform: rotate(-14deg);
+}
+
+.game-interactive-backdrop--fishing {
+  background:
+    radial-gradient(circle at 18% 24%, rgba(255, 207, 93, 0.13), transparent 0 15rem),
+    radial-gradient(circle at 72% 28%, rgba(76, 229, 255, 0.2), transparent 0 18rem),
+    linear-gradient(180deg, rgba(7, 59, 88, 0.45), rgba(4, 14, 34, 0.54));
+}
+
+.game-interactive-backdrop--fishing::after {
+  background:
+    repeating-linear-gradient(112deg, transparent 0 48px, rgba(143, 236, 255, 0.12) 48px 50px, transparent 50px 98px),
+    radial-gradient(ellipse at 50% 120%, rgba(255, 215, 98, 0.15), transparent 0 40%);
+  animation-duration: 20s;
+}
+
+.game-interactive-backdrop--fishing .game-interactive-backdrop__particles span {
+  width: 11px;
+  height: 11px;
+  border: 1px solid rgba(169, 245, 255, 0.54);
+  background: rgba(93, 221, 255, 0.12);
+  box-shadow: inset 0 0 8px rgba(255, 255, 255, 0.45), 0 0 18px rgba(83, 223, 255, 0.25);
+  animation-name: gameBackdropBubble;
+}
+
+.game-interactive-backdrop--fishing .game-interactive-backdrop__tracks span {
+  background: linear-gradient(90deg, transparent, rgba(116, 231, 255, 0.5), transparent);
+  transform: rotate(-16deg);
+}
+
+@keyframes gameBackdropSweep {
+  from { transform: translate3d(-4%, 0, 0); }
+  to { transform: translate3d(4%, 0, 0); }
+}
+
+@keyframes gameBackdropTrack {
+  from { transform: translate3d(-10%, 0, 0) rotate(-10deg); }
+  to { transform: translate3d(360%, 0, 0) rotate(-10deg); }
+}
+
+@keyframes gameBackdropParticle {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(0.82); opacity: 0.18; }
+  45% { transform: translate3d(16px, -34px, 0) scale(1.16); opacity: 0.62; }
+  70% { transform: translate3d(-10px, -58px, 0) scale(0.94); opacity: 0.36; }
+}
+
+@keyframes gameBackdropBubble {
+  0% { transform: translate3d(0, 18px, 0) scale(0.72); opacity: 0; }
+  35% { opacity: 0.5; }
+  100% { transform: translate3d(12px, -86px, 0) scale(1.2); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-interactive-backdrop::after,
+  .game-interactive-backdrop__tracks span,
+  .game-interactive-backdrop__particles span {
+    animation-duration: 0.001ms;
+    animation-iteration-count: 1;
+  }
+}

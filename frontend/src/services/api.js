@@ -46,7 +46,9 @@ async function refreshAccessToken() {
 api.interceptors.request.use(
   (config) => {
     const token = store.getState().auth.accessToken
-    if (token) {
+    const explicitAuthorization =
+      config.headers?.Authorization || config.headers?.get?.('Authorization')
+    if (token && !explicitAuthorization) {
       config.headers.Authorization = `Bearer ${token}`
     }
     return config

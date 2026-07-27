@@ -1,0 +1,7 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="trophy">
+  <path fill="#7c1514" d="M44 111h40l6 12H38z"/>
+  <path fill="#d79b25" d="M54 78h20v35H54z"/>
+  <path fill="#f8c84c" d="M32 16h64v34c0 21-14 39-32 39S32 71 32 50z"/>
+  <path fill="none" stroke="#f8c84c" stroke-width="10" d="M34 26H12c2 28 16 43 33 45M94 26h22c-2 28-16 43-33 45"/>
+  <path fill="#fff0a8" d="M45 25h38v14H45z" opacity=".55"/>
+</svg>

@@ -6,6 +6,7 @@ import com.luckystar.game.dto.BaccaratBetResponse;
 import com.luckystar.game.dto.BaccaratResultResponse;
 import com.luckystar.game.service.BaccaratService;
 import jakarta.validation.Valid;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -61,6 +62,20 @@ public class BaccaratController {
         }
         BaccaratResultResponse result = baccaratService.settle(playerId, roundId);
         return ResponseEntity.ok(ApiResponse.ok(result));
+    }
+
+    /** 放棄已扣款、尚未結算派彩的百家樂局。 */
+    @PostMapping("/{roundId}/abandon")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> abandon(
+            @RequestHeader(value = "X-User-Id", required = false) String playerIdStr,
+            @PathVariable String roundId) {
+
+        Long playerId = parsePlayerId(playerIdStr);
+        if (playerId == null) {
+            return badPlayerId(playerIdStr);
+        }
+        boolean abandoned = baccaratService.abandon(playerId, roundId);
+        return ResponseEntity.ok(ApiResponse.ok(Map.of("roundId", roundId, "abandoned", abandoned)));
     }
 
     private static Long parsePlayerId(String playerIdStr) {

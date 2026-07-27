@@ -11,7 +11,7 @@
 //   deg 度數（'all'=整組和弦，給 pad）｜oct 八度偏移｜dur 時值（拍）｜vol 音量｜
 //   prob 觸發機率（0~1，氣泡這類「偶發」點綴用）｜pitch 無音高打擊樂的音高係數
 import {
-  PENTATONIC_MAJOR, PENTATONIC_MINOR, AEOLIAN,
+  PENTATONIC_MINOR, AEOLIAN,
   MAJ, MIN, MAJ7, MIN7, MIN9, DOM7, POWER, chord,
 } from './musicTheory'
 
@@ -19,81 +19,92 @@ export const BGM_THEMES = {
   // 老虎機：C 宮調五聲、96bpm 喜慶律動。C–Am–F–G 進行（華語流行最耐聽的循環），
   // 旋律限定五聲音階所以永遠「中式且不刺耳」；intensity 2（轉輪中）疊高音琶音層。
   slot: {
-    bpm: 96,
-    swing: 0.06,
+    bpm: 128,
+    swing: 0.02,
     bars: 8,
-    root: 60, // C4：旋律音域中心
-    scale: PENTATONIC_MAJOR,
+    root: 57, // A3
+    scale: PENTATONIC_MINOR,
     progression: [
-      chord(48, MAJ), chord(45, MIN), chord(41, MAJ), chord(43, MAJ),
-      chord(48, MAJ), chord(45, MIN), chord(41, MAJ), chord(43, DOM7),
+      chord(45, POWER), chord(48, POWER), chord(43, POWER), chord(52, MIN),
+      chord(45, POWER), chord(48, POWER), chord(41, POWER), chord(43, DOM7),
     ],
     ambience: [
-      { filterType: 'lowpass', freq: 420, gain: 0.03, lfoRate: 0.07, lfoDepth: 0.5 }, // 賭場室內底噪
-      { filterType: 'bandpass', freq: 1250, q: 0.8, gain: 0.012, lfoRate: 0.13, lfoDepth: 0.7 }, // 遠處人聲低鳴
+      { filterType: 'lowpass', freq: 300, gain: 0.038, lfoRate: 0.16, lfoDepth: 0.7 },
+      { filterType: 'bandpass', freq: 1850, q: 1.1, gain: 0.014, lfoRate: 0.28, lfoDepth: 0.8 },
     ],
     tracks: {
       percussion: {
         inst: 'kick',
         mode: 'perc',
         every: {
-          0: [{ vol: 0.5 }],
-          4: [{ inst: 'shaker', vol: 0.3 }],
-          8: [{ vol: 0.35 }],
-          10: [{ inst: 'shaker', vol: 0.16, prob: 0.7 }],
-          12: [{ inst: 'shaker', vol: 0.3 }],
+          0: [{ vol: 0.6 }],
+          2: [{ inst: 'shaker', vol: 0.22 }],
+          4: [{ vol: 0.42, pitch: 1.2 }],
+          6: [{ inst: 'shaker', vol: 0.24 }],
+          8: [{ vol: 0.6 }],
+          10: [{ inst: 'shaker', vol: 0.24 }],
+          12: [{ vol: 0.48, pitch: 1.16 }],
+          14: [{ inst: 'ride', vol: 0.16, prob: 0.78 }],
         },
       },
       bass: {
         inst: 'bassPluck',
         mode: 'chord',
         every: {
-          0: [{ deg: 0, oct: -1, dur: 1.5, vol: 0.5 }],
-          6: [{ deg: 2, oct: -1, dur: 0.5, vol: 0.3 }],
-          8: [{ deg: 0, oct: -1, dur: 1, vol: 0.4 }],
-          12: [{ deg: 1, oct: -1, dur: 1, vol: 0.35 }],
+          0: [{ deg: 0, oct: -1, dur: 0.75, vol: 0.58 }],
+          3: [{ deg: 0, oct: -1, dur: 0.35, vol: 0.34 }],
+          6: [{ deg: 1, oct: -1, dur: 0.45, vol: 0.42 }],
+          8: [{ deg: 0, oct: -1, dur: 0.7, vol: 0.54 }],
+          11: [{ deg: 2, oct: -1, dur: 0.35, vol: 0.34 }],
+          14: [{ deg: 1, oct: -1, dur: 0.45, vol: 0.42 }],
         },
       },
       pad: {
         inst: 'pad',
         mode: 'chord',
-        every: { 0: [{ deg: 'all', dur: 4, vol: 0.55 }] },
+        every: { 0: [{ deg: 'all', dur: 4, vol: 0.38, attack: 0.45, release: 0.8, cutoff: 820 }] },
       },
       melody: {
         inst: 'pluckLead',
         mode: 'scale',
         minIntensity: 1,
         bars: [
-          { 0: [{ deg: 2, dur: 1, vol: 0.3 }], 4: [{ deg: 3, vol: 0.28 }], 6: [{ deg: 4, vol: 0.28 }], 8: [{ deg: 3, dur: 1, vol: 0.3 }], 12: [{ deg: 2, dur: 1, vol: 0.28 }] },
+          { 0: [{ deg: 7, dur: 0.5, vol: 0.34 }], 3: [{ deg: 6, vol: 0.24 }], 6: [{ deg: 4, vol: 0.3 }], 10: [{ deg: 7, oct: 1, vol: 0.32 }], 14: [{ deg: 6, vol: 0.28 }] },
+          { 0: [{ deg: 4, dur: 0.5, vol: 0.28 }], 4: [{ deg: 5, vol: 0.26 }], 8: [{ deg: 7, dur: 0.75, vol: 0.32 }], 13: [{ deg: 9, oct: 1, vol: 0.26 }] },
           null,
-          { 0: [{ deg: 4, dur: 1, vol: 0.3 }], 4: [{ deg: 5, vol: 0.3 }], 8: [{ deg: 4, vol: 0.28 }], 10: [{ deg: 3, vol: 0.26 }], 12: [{ deg: 2, dur: 1.5, vol: 0.3 }] },
+          { 2: [{ deg: 6, vol: 0.26 }], 5: [{ deg: 7, vol: 0.3 }], 8: [{ deg: 9, oct: 1, dur: 1, vol: 0.34 }], 12: [{ deg: 7, vol: 0.28 }] },
+          { 0: [{ deg: 7, dur: 0.5, vol: 0.34 }], 3: [{ deg: 6, vol: 0.24 }], 6: [{ deg: 4, vol: 0.3 }], 10: [{ deg: 7, oct: 1, vol: 0.32 }], 14: [{ deg: 6, vol: 0.28 }] },
           null,
-          { 0: [{ deg: 2, dur: 1, vol: 0.3 }], 4: [{ deg: 3, vol: 0.28 }], 6: [{ deg: 4, vol: 0.28 }], 8: [{ deg: 3, dur: 1, vol: 0.3 }], 12: [{ deg: 2, dur: 1, vol: 0.28 }] },
-          null,
-          { 0: [{ deg: 2, vol: 0.28 }], 2: [{ deg: 3, vol: 0.28 }], 4: [{ deg: 4, dur: 1, vol: 0.3 }], 8: [{ deg: 5, dur: 2, vol: 0.32 }] },
-          { 0: [{ deg: 4, vol: 0.28 }], 4: [{ deg: 3, vol: 0.26 }], 8: [{ deg: 1, dur: 2, vol: 0.3 }] },
+          { 0: [{ deg: 9, oct: 1, dur: 0.75, vol: 0.36 }], 4: [{ deg: 8, oct: 1, vol: 0.28 }], 8: [{ deg: 7, dur: 0.75, vol: 0.34 }], 12: [{ deg: 6, vol: 0.28 }] },
+          { 0: [{ deg: 4, vol: 0.28 }], 4: [{ deg: 5, vol: 0.26 }], 8: [{ deg: 7, dur: 1.2, vol: 0.34 }], 14: [{ deg: 9, oct: 1, vol: 0.28 }] },
         ],
+      },
+      tension: {
+        inst: 'horn',
+        mode: 'scale',
+        minIntensity: 2,
+        every: {
+          4: [{ deg: 4, oct: 1, dur: 0.45, vol: 0.22, prob: 0.72 }],
+          12: [{ deg: 7, oct: 1, dur: 0.55, vol: 0.24, prob: 0.82 }],
+        },
       },
       sparkle: {
         inst: 'pluckLead',
         mode: 'scale',
         minIntensity: 2,
         every: {
-          0: [{ deg: 5, oct: 1, vol: 0.14 }],
-          2: [{ deg: 6, oct: 1, vol: 0.12 }],
-          4: [{ deg: 7, oct: 1, vol: 0.14 }],
-          6: [{ deg: 8, oct: 1, vol: 0.12 }],
-          8: [{ deg: 9, oct: 1, vol: 0.14 }],
-          10: [{ deg: 8, oct: 1, vol: 0.12 }],
-          12: [{ deg: 7, oct: 1, vol: 0.14 }],
-          14: [{ deg: 6, oct: 1, vol: 0.12 }],
+          1: [{ deg: 7, oct: 1, vol: 0.16 }],
+          3: [{ deg: 8, oct: 1, vol: 0.14 }],
+          5: [{ deg: 9, oct: 1, vol: 0.16 }],
+          7: [{ deg: 11, oct: 1, vol: 0.12 }],
+          9: [{ deg: 10, oct: 1, vol: 0.16 }],
+          11: [{ deg: 9, oct: 1, vol: 0.14 }],
+          13: [{ deg: 8, oct: 1, vol: 0.16 }],
+          15: [{ deg: 7, oct: 1, vol: 0.14 }],
         },
       },
     },
   },
-
-  // 百家樂：A 小調 lounge、72bpm、重 swing。Am9–Dm7–Fmaj7–E7 慢和聲、刷鼓氣聲、
-  // 顫音琴偶發動機——「貴氣不吵」；發牌/咪牌時（intensity 2）加輕柔 ride 推進。
   baccarat: {
     bpm: 72,
     swing: 0.12,

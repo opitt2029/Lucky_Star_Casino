@@ -19,19 +19,22 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * {@link GiftTransferService} 單元測試（T-026）：驗證 PostgreSQL 一筆交易內的雙向分錄。
+ * {@link GiftTransferService} 單元測試（T-026）：驗證 PostgreSQL 一筆交易內的雙向分錄
+ * 與（藍圖 04 P2）同交易內寫入的兩筆 outbox 事件。
  */
 @ExtendWith(MockitoExtension.class)
 class GiftTransferServiceTest {
 
     @Mock WalletRepository walletRepository;
     @Mock WalletTransactionRepository walletTransactionRepository;
+    @Mock WalletOutboxService walletOutboxService;
     @InjectMocks GiftTransferService giftTransferService;
 
     private Wallet wallet(Long id, long balance) {
@@ -81,6 +84,10 @@ class GiftTransferServiceTest {
 
         assertThat(result.debit()).isSameAs(debit);
         assertThat(result.credit()).isSameAs(credit);
+
+        // 藍圖 04 P2：同交易內各寫一筆 outbox 事件
+        verify(walletOutboxService).save(eq("wallet.debit"), eq("1"), any());
+        verify(walletOutboxService).save(eq("wallet.credit"), eq("2"), any());
     }
 
     @Test

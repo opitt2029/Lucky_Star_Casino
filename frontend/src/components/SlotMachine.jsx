@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { soundEngine } from '../casino-fx/sound/SoundEngine'
 import CountUp from '../casino-fx/fx/CountUp'
 import Reel, {
@@ -14,7 +14,7 @@ import Reel, {
 import './slotMachine.css'
 
 const defaultSymbols = ['🍒', '🍋', '🔔', '⭐', '7️⃣']
-const reelDurations = [1800, 2200, 2600]
+const reelDurations = [4800, 5200, 5600]
 const reelLoops = [5, 6, 7]
 // near-miss（前兩輪中線同符號）時第三輪額外慢停時間：anticipation 演出的核心。
 const anticipationExtraMs = 900
@@ -57,6 +57,11 @@ export default function SlotMachine({
   onSpinComplete,
   symbols = defaultSymbols,
   symbolHeight: symbolHeightProp,
+  fullscreen = false,
+  fitToContainer = false,
+  jackpotHit = false,
+  outcomeKind = 'idle',
+  readyLabel = 'SPIN',
 }) {
   const [responsiveSymbolHeight, setResponsiveSymbolHeight] = useState(() =>
     getResponsiveSymbolHeight(compact)
@@ -70,6 +75,7 @@ export default function SlotMachine({
   // Jackpot 氛圍數字：緩慢滾動營造「獎池一直在長大」的期待感（純展示）。
   const [jackpot, setJackpot] = useState(777000)
   const trackRefs = useRef([])
+  const cabinetRef = useRef(null)
   const abortRef = useRef(null)
   const handledGridRef = useRef(grid || fallbackGrid)
 
@@ -77,6 +83,22 @@ export default function SlotMachine({
   const winningCellSet = useMemo(() => new Set(winningCells.map(([row, col]) => `${row}-${col}`)), [winningCells])
   const visualBusy = phase !== 'idle' || externalSpinning
   const hasWin = winningCells.length > 0
+  const shouldFitCabinet = fullscreen || fitToContainer
+  const outcomeClass = !visualBusy && outcomeKind && outcomeKind !== 'idle' ? 'slot-machine--' + outcomeKind : ''
+  const cabinetOutcomeClass = outcomeClass ? 'slot-cabinet--' + outcomeKind : ''
+  const outcomeLabel = visualBusy
+    ? 'RUN'
+    : outcomeKind === 'jackpot'
+      ? '70X'
+      : outcomeKind === 'line'
+        ? '3 OF KIND'
+        : outcomeKind === 'pair'
+          ? 'PAIR'
+          : outcomeKind === 'near-miss'
+            ? 'NEAR'
+            : outcomeKind === 'miss'
+              ? 'MISS'
+              : 'READY'
 
   useEffect(() => {
     return () => abortRef.current?.abort()
@@ -86,14 +108,25 @@ export default function SlotMachine({
   useEffect(() => {
     if (phase !== 'spinning') return undefined
     let elapsed = 0
+    let pulseStep = 0
+    const spinAudioWindow = Math.max(...reelDurations) + anticipationExtraMs
     const timer = window.setInterval(() => {
       elapsed += 90
-      const slowdown = Math.min(elapsed / 2600, 1)
+      const slowdown = Math.min(elapsed / spinAudioWindow, 1)
       if (Math.random() > slowdown * 0.7) {
-        soundEngine.play('reelTick', { volume: 0.5 - slowdown * 0.3, pitch: 1 - slowdown * 0.2 })
+        soundEngine.play('reelTick', { volume: 0.5 - slowdown * 0.3, pitch: 1 - slowdown * 0.18 })
       }
     }, 90)
-    return () => window.clearInterval(timer)
+    const pulseTimer = window.setInterval(() => {
+      const slowdown = Math.min(elapsed / spinAudioWindow, 1)
+      const pitch = [0.88, 0.98, 1.08, 1.2][pulseStep % 4]
+      pulseStep += 1
+      soundEngine.play('slotSpinPulse', { volume: 0.28 - slowdown * 0.1, pitch })
+    }, 420)
+    return () => {
+      window.clearInterval(timer)
+      window.clearInterval(pulseTimer)
+    }
   }, [phase])
 
   // anticipation：第三輪慢停時的心跳鼓點。
@@ -112,17 +145,65 @@ export default function SlotMachine({
     return () => window.clearInterval(timer)
   }, [])
 
+  // 一般頁面：格高只看視窗寬度就夠，機台高度由內容自然撐開。
+  // 全螢幕：機台高度被視窗鎖死，轉輪窗（.slot-cabinet）能分到多少高度由 grid 決定，
+  //   格高必須跟著它算，否則三行會超出轉輪窗、被 overflow: hidden 裁掉。
+  //   實測 1536x672 的全螢幕：轉輪窗只有 207px，但格高寫死 170px（三行 510px），
+  //   第二行只露 14px、第三行整個不見——螢幕越矮越明顯，高螢幕則看不出問題。
+  //   這裡量的是轉輪窗，全螢幕下它是 height: 100% 由外層 grid 決定，
+  //   不會反過來被格高撐開，所以不會有「縮了又量、量了又縮」的循環。
   useEffect(() => {
     if (symbolHeightProp) return undefined
 
-    const handleResize = () => {
-      setResponsiveSymbolHeight(getResponsiveSymbolHeight(compact))
+    const widthBased = () => getResponsiveSymbolHeight(compact)
+
+    if (!shouldFitCabinet) {
+      const handleResize = () => setResponsiveSymbolHeight(widthBased())
+      handleResize()
+      window.addEventListener('resize', handleResize)
+      return () => window.removeEventListener('resize', handleResize)
     }
 
-    handleResize()
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [compact, symbolHeightProp])
+    const cabinet = cabinetRef.current
+    const fitToCabinet = () => {
+      if (!cabinet) {
+        setResponsiveSymbolHeight(widthBased())
+        return
+      }
+      // clientHeight 含 padding，轉輪只能用扣掉 padding 之後的部分（實測上下各 22px）。
+      const style = window.getComputedStyle(cabinet)
+      const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0)
+      const available = cabinet.clientHeight - padding
+      if (available <= 0) {
+        setResponsiveSymbolHeight(widthBased())
+        return
+      }
+      // 下限 48px：再矮就看不清符號了，寧可讓它溢出也不要糊成一片。
+      const minimumSymbolHeight = shouldFitCabinet ? 30 : 48
+      setResponsiveSymbolHeight(Math.max(minimumSymbolHeight, Math.min(widthBased(), Math.floor(available / visibleRows))))
+    }
+
+    fitToCabinet()
+
+    const refitTimers = [window.setTimeout(fitToCabinet, 0), window.setTimeout(fitToCabinet, 140)]
+
+    // 走 window.ResizeObserver 而非裸的 ResizeObserver：專案 ESLint 的 env 沒宣告這個全域，
+    // 裸用會被 no-undef 擋下；順帶讓「瀏覽器不支援就退回 resize 事件」的判斷更直白。
+    if (!cabinet || typeof window.ResizeObserver === 'undefined') {
+      window.addEventListener('resize', fitToCabinet)
+      return () => {
+        refitTimers.forEach((timer) => window.clearTimeout(timer))
+        window.removeEventListener('resize', fitToCabinet)
+      }
+    }
+
+    const observer = new window.ResizeObserver(fitToCabinet)
+    observer.observe(cabinet)
+    return () => {
+      refitTimers.forEach((timer) => window.clearTimeout(timer))
+      observer.disconnect()
+    }
+  }, [compact, symbolHeightProp, shouldFitCabinet, fullscreen])
 
   useEffect(() => {
     if (phase !== 'idle' || !grid || sameGrid(grid, handledGridRef.current)) return
@@ -131,6 +212,15 @@ export default function SlotMachine({
     setDisplayGrid(grid)
     setReelTracks(getColumns(grid).map(buildStaticTrack))
   }, [grid, phase])
+
+  useLayoutEffect(() => {
+    if (phase !== 'idle') return
+
+    setReelTracks(getColumns(displayGrid).map(buildStaticTrack))
+    trackRefs.current.forEach((node) => {
+      if (node) node.style.transform = 'translate3d(0, 0, 0)'
+    })
+  }, [displayGrid, phase, symbolHeight])
 
   const runReels = useCallback(
     async (targetGrid) => {
@@ -227,7 +317,7 @@ export default function SlotMachine({
 
       await runReels(targetGrid)
       // 轉輪演出全部結束後才通知外層結算（慶祝特效在輪停的瞬間爆發才有衝擊力）。
-      onSettled?.(spinResult)
+      await onSettled?.(spinResult)
     } catch {
       setAnticipating(false)
       setPhase('idle')
@@ -242,7 +332,9 @@ export default function SlotMachine({
       className={[
         'slot-machine luxury-panel rounded p-4 sm:p-5',
         compact ? 'slot-machine--compact' : '',
+        shouldFitCabinet ? 'slot-machine--fit' : '',
         visualBusy ? 'slot-machine--live' : '',
+        outcomeClass,
       ].join(' ')}
       style={{ '--slot-symbol-height': `${symbolHeight}px` }}
     >
@@ -252,20 +344,20 @@ export default function SlotMachine({
         ))}
       </div>
 
-      <div className="slot-machine__topper">
+      <div className={['slot-machine__topper', jackpotHit && !visualBusy ? 'slot-machine__topper--jackpot-hit' : ''].join(' ')}>
         <div>
           <p className="slot-machine__eyebrow">Lucky Star Deluxe</p>
-          <h2 className="slot-machine__title">星幣老虎機</h2>
+          <h2 className="slot-machine__title">Lucky 777</h2>
         </div>
-        <div className="slot-machine__jackpot" aria-label="Jackpot">
-          <span>GRAND</span>
-          <strong>
-            <CountUp value={jackpot} duration={2000} />
-          </strong>
+        <div className={['slot-machine__jackpot', jackpotHit && !visualBusy ? 'slot-machine__jackpot--hit' : ''].join(' ')} aria-label="Jackpot">
+          <span>{jackpotHit && !visualBusy ? 'GRAND HIT' : 'TOP AWARD'}</span>
+          <strong>{jackpotHit && !visualBusy ? '70x' : <CountUp value={jackpot} duration={2000} />}</strong>
+          <em>{jackpotHit && !visualBusy ? '紅 7 三連' : '紅 7 三連 70x'}</em>
         </div>
       </div>
 
       <div
+        ref={cabinetRef}
         className={[
           'slot-cabinet mt-5',
           compact ? 'slot-cabinet--compact' : '',
@@ -273,9 +365,9 @@ export default function SlotMachine({
           phase === 'spinning' ? 'slot-cabinet--settling' : '',
           anticipating ? 'slot-cabinet--anticipation' : '',
           hasWin && !visualBusy ? 'slot-cabinet--win' : '',
+          cabinetOutcomeClass,
         ].join(' ')}
       >
-        <div className="slot-payline" aria-hidden="true" />
         <div className="slot-reels" aria-live="polite">
           {displayColumns.map((column, colIndex) => (
             <Reel
@@ -307,7 +399,7 @@ export default function SlotMachine({
           </div>
           <div>
             <span>WIN</span>
-            <strong>{hasWin && !visualBusy ? 'PAID' : 'READY'}</strong>
+            <strong>{outcomeLabel}</strong>
           </div>
         </div>
         <button
@@ -316,7 +408,7 @@ export default function SlotMachine({
           disabled={visualBusy || !canSpin}
           className="slot-spin-button gold-button rounded text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {visualBusy ? 'SPINNING' : !canSpin ? '星幣不足' : 'SPIN'}
+          {visualBusy ? 'SPINNING' : !canSpin ? '星幣不足' : readyLabel}
         </button>
         <div className={['slot-lever', visualBusy ? 'slot-lever--active' : ''].join(' ')} aria-hidden="true">
           <span />

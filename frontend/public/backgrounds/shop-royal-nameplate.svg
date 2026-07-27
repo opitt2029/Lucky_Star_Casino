@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">Royal nameplate</title><desc id="desc">A royal red nameplate with golden trim.</desc>
+  <defs><radialGradient id="bg" cx="50%" cy="38%" r="72%"><stop stop-color="#4c0519"/><stop offset="1" stop-color="#100106"/></radialGradient><linearGradient id="gold" x1="0" x2="1"><stop stop-color="#fff7c2"/><stop offset=".45" stop-color="#facc15"/><stop offset="1" stop-color="#92400e"/></linearGradient></defs>
+  <rect width="640" height="420" fill="url(#bg)"/>
+  <path d="M150 172c40-48 300-48 340 0v110c-54 48-286 48-340 0V172Z" fill="#7f1d1d" stroke="url(#gold)" stroke-width="10"/>
+  <path d="M214 148l28-56 48 42 30-64 30 64 48-42 28 56" fill="none" stroke="url(#gold)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="214" y="202" width="212" height="54" rx="27" fill="#1f0209" stroke="#fde68a" stroke-width="4"/>
+  <text x="320" y="238" text-anchor="middle" font-family="Georgia,serif" font-size="28" font-weight="700" fill="#fde68a">PLAYER</text>
+  <g fill="#facc15"><circle cx="174" cy="226" r="7"/><circle cx="466" cy="226" r="7"/><circle cx="320" cy="88" r="8"/></g>
+</svg>

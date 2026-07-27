@@ -1,0 +1,41 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title id="title">Lucky Star game lobby showcase</title>
+  <desc id="desc">A casino game lobby showcase with slot reels, baccarat cards, fishing arcade cannon, star coins, and a provably fair verification panel.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#2b0206"/><stop offset="0.45" stop-color="#8d0814"/><stop offset="1" stop-color="#070102"/></linearGradient>
+    <linearGradient id="gold" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#fff7c9"/><stop offset="0.5" stop-color="#f8d56a"/><stop offset="1" stop-color="#9b5805"/></linearGradient>
+    <linearGradient id="felt" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#0b7a4f"/><stop offset="1" stop-color="#03261d"/></linearGradient>
+    <linearGradient id="sea" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#0874a5"/><stop offset="1" stop-color="#052235"/></linearGradient>
+    <filter id="glow" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur stdDeviation="9" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="1200" height="800" fill="url(#bg)"/>
+  <path d="M0 640c150-86 304-82 462-6s334 82 534-34c84-49 154-56 204-26v226H0Z" fill="#100104" opacity="0.72"/>
+  <g opacity="0.22" stroke="#ffeaa0" stroke-width="3" fill="none"><path d="M70 150c210 66 360 48 534-22s336-50 530 32"/><path d="M74 690c176-76 348-58 526 22s354 56 528-48"/></g>
+  <g transform="translate(92 154)">
+    <rect width="290" height="420" rx="34" fill="#260205" stroke="url(#gold)" stroke-width="10"/>
+    <text x="145" y="58" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" font-weight="900" fill="#fff4b8">SLOT</text>
+    <g transform="translate(36 92)"><rect width="66" height="156" rx="12" fill="#fff1bc"/><rect x="78" width="66" height="156" rx="12" fill="#fff1bc"/><rect x="156" width="66" height="156" rx="12" fill="#fff1bc"/><text x="33" y="95" text-anchor="middle" font-family="Arial" font-size="54" font-weight="900" fill="#c90d18">7</text><circle cx="111" cy="82" r="24" fill="#c90d18"/><path d="M180 52l13 27 30 4-22 20 6 30-27-14-27 14 6-30-22-20 30-4Z" fill="#f8d56a"/></g>
+    <rect x="52" y="292" width="186" height="54" rx="27" fill="url(#gold)" filter="url(#glow)"/>
+  </g>
+  <g transform="translate(438 130)">
+    <path d="M70 36h354c46 0 82 36 82 82v166c0 78-64 142-142 142H130C52 426-12 362-12 284V118c0-46 36-82 82-82Z" fill="#190706" stroke="url(#gold)" stroke-width="12"/>
+    <path d="M88 70h318c34 0 62 28 62 62v132c0 56-46 102-102 102H128C72 366 26 320 26 264V132c0-34 28-62 62-62Z" fill="url(#felt)"/>
+    <text x="248" y="206" text-anchor="middle" font-family="Arial" font-size="44" font-weight="900" fill="#ffeaa0">BACCARAT</text>
+    <g transform="translate(94 96) rotate(-8)"><rect width="70" height="104" rx="10" fill="#fff7dc"/><text x="15" y="34" font-family="Arial" font-size="28" font-weight="900" fill="#c90d18">A</text><path d="M35 45c22 20 22 42 0 62-22-20-22-42 0-62Z" fill="#c90d18"/></g>
+    <g transform="translate(306 98) rotate(8)"><rect width="70" height="104" rx="10" fill="#fff7dc"/><text x="15" y="34" font-family="Arial" font-size="28" font-weight="900" fill="#111827">K</text><path d="M35 47l23 23-23 23-23-23Z" fill="#111827"/></g>
+  </g>
+  <g transform="translate(778 248)">
+    <rect width="320" height="286" rx="34" fill="url(#sea)" stroke="url(#gold)" stroke-width="10"/>
+    <path d="M0 104c64-30 126-30 186 0s98 30 134 4v178H0Z" fill="#021522" opacity="0.58"/>
+    <path d="M62 82c42-26 96-20 132 16 28 28 70 34 104 12-14 48-58 80-110 80-54 0-98-36-136-64l-30 16 18-34Z" fill="#f8d56a" stroke="#fff4b8" stroke-width="5"/>
+    <circle cx="108" cy="116" r="7" fill="#180103"/>
+    <path d="M156 252 236 132" stroke="#ffeaa0" stroke-width="12" stroke-linecap="round" filter="url(#glow)"/>
+    <path d="M98 246h104c24 0 44 20 44 44H54c0-24 20-44 44-44Z" fill="#190508" stroke="url(#gold)" stroke-width="8"/>
+  </g>
+  <g transform="translate(440 540)">
+    <rect width="340" height="116" rx="22" fill="#061d18" stroke="#7bffb0" stroke-opacity="0.62" stroke-width="5"/>
+    <text x="170" y="47" text-anchor="middle" font-family="Arial" font-size="28" font-weight="900" fill="#ffeaa0">PROVABLY FAIR</text>
+    <text x="170" y="80" text-anchor="middle" font-family="Arial" font-size="19" font-weight="900" fill="#b7f7cf">commit → reveal → verify</text>
+  </g>
+  <g fill="url(#gold)" stroke="#fff4b8" stroke-width="5"><circle cx="104" cy="676" r="42"/><circle cx="194" cy="706" r="32"/><circle cx="1060" cy="146" r="38"/><circle cx="1124" cy="196" r="28"/></g>
+</svg>

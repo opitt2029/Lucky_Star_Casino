@@ -19,3 +19,9 @@ spring:
 # 滿足 application.yml 中 ${INTERNAL_SECRET:?...} 的必填要求
 internal:
   secret: test-secret
+
+# 測試時把 outbox 排程間隔拉到極長，避免背景 WalletOutboxPoller 與整合/容器測試
+# 爭搶 wallet_outbox（測試改為直接呼叫 poller.publishPendingEvents() 驗證行為）。
+wallet:
+  outbox:
+    poll-interval-ms: 3600000

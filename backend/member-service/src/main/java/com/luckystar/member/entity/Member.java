@@ -27,7 +27,7 @@ public class Member {
     @Column(nullable = false, unique = true, length = 100)
     private String email;
 
-    // 雙層防禦：Jackson 序列化排除 + Lombok toString 排除
+    // ?惜?脩戌嚗ackson 摨?????+ Lombok toString ?
     @JsonIgnore
     @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;

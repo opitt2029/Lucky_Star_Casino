@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title id="title">Provably fair verification</title>
+  <desc id="desc">A cryptographic casino fairness illustration showing commit, reveal, verify, hash blocks, and a locked game result.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#052d24"/><stop offset="0.48" stop-color="#084a36"/><stop offset="1" stop-color="#090104"/></linearGradient>
+    <linearGradient id="gold" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#fff6c8"/><stop offset="0.5" stop-color="#f8d56a"/><stop offset="1" stop-color="#9b5805"/></linearGradient>
+    <linearGradient id="panel" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#123f36"/><stop offset="1" stop-color="#170205"/></linearGradient>
+    <filter id="glow" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="1200" height="800" fill="url(#bg)"/>
+  <circle cx="220" cy="138" r="210" fill="#7bffb0" opacity="0.08"/><circle cx="1010" cy="626" r="260" fill="#f8d56a" opacity="0.1"/>
+  <g stroke="#7bffb0" stroke-width="3" opacity="0.22" fill="none"><path d="M96 194h1008"/><path d="M96 324h1008"/><path d="M96 454h1008"/><path d="M96 584h1008"/><path d="M240 94v612"/><path d="M520 94v612"/><path d="M800 94v612"/></g>
+  <g transform="translate(158 144)">
+    <rect width="884" height="512" rx="42" fill="url(#panel)" stroke="url(#gold)" stroke-width="12"/>
+    <g transform="translate(72 82)" font-family="Arial, sans-serif" font-weight="900">
+      <rect x="0" y="0" width="210" height="116" rx="18" fill="#061d18" stroke="#7bffb0" stroke-opacity="0.58" stroke-width="4"/><text x="105" y="50" text-anchor="middle" font-size="30" fill="#ffeaa0">COMMIT</text><text x="105" y="82" text-anchor="middle" font-size="18" fill="#b7f7cf">server seed hash</text>
+      <rect x="300" y="0" width="210" height="116" rx="18" fill="#061d18" stroke="#7bffb0" stroke-opacity="0.58" stroke-width="4"/><text x="405" y="50" text-anchor="middle" font-size="30" fill="#ffeaa0">REVEAL</text><text x="405" y="82" text-anchor="middle" font-size="18" fill="#b7f7cf">seed + nonce</text>
+      <rect x="600" y="0" width="210" height="116" rx="18" fill="#061d18" stroke="#7bffb0" stroke-opacity="0.58" stroke-width="4"/><text x="705" y="50" text-anchor="middle" font-size="30" fill="#ffeaa0">VERIFY</text><text x="705" y="82" text-anchor="middle" font-size="18" fill="#b7f7cf">same result</text>
+      <path d="M218 58h74M518 58h74" stroke="url(#gold)" stroke-width="8" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(170 270)" filter="url(#glow)">
+      <path d="M196 0h216c28 0 50 22 50 50v148c0 28-22 50-50 50H196c-28 0-50-22-50-50V50c0-28 22-50 50-50Z" fill="#0b1917" stroke="url(#gold)" stroke-width="10"/>
+      <path d="M236 0v-48c0-76 62-138 138-138s138 62 138 138v48h-72v-48c0-36-30-66-66-66s-66 30-66 66v48Z" fill="none" stroke="url(#gold)" stroke-width="24" stroke-linecap="round"/>
+      <circle cx="304" cy="120" r="34" fill="#ffeaa0"/><path d="M304 146v44" stroke="#3a0307" stroke-width="16" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(650 300)" font-family="Arial, sans-serif" font-weight="900" fill="#ffeaa0">
+      <text x="0" y="0" font-size="25">SHA-256</text><text x="0" y="46" font-size="22" fill="#b7f7cf">9f2a c81d 47b0</text><text x="0" y="86" font-size="22" fill="#b7f7cf">nonce 00042</text><text x="0" y="126" font-size="22" fill="#b7f7cf">result locked</text>
+    </g>
+  </g>
+  <g fill="url(#gold)" stroke="#fff4b8" stroke-width="5"><circle cx="116" cy="650" r="38"/><circle cx="188" cy="690" r="31"/><circle cx="1056" cy="164" r="42"/></g>
+</svg>

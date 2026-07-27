@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="title desc">
+  <title id="title">3D seven slot symbol</title>
+  <desc id="desc">A glossy beveled red number seven with gold trim and dramatic lighting.</desc>
+  <defs>
+    <filter id="cast" x="-28%" y="-28%" width="156%" height="156%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="6" stdDeviation="3" flood-color="#4b0007" flood-opacity="0.42"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#ffdc72" flood-opacity="0.36"/>
+    </filter>
+    <linearGradient id="red" x1="27" y1="13" x2="76" y2="83" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fff1e8"/>
+      <stop offset="17%" stop-color="#ff5965"/>
+      <stop offset="52%" stop-color="#d4091b"/>
+      <stop offset="100%" stop-color="#72000b"/>
+    </linearGradient>
+    <linearGradient id="trim" x1="19" y1="12" x2="77" y2="83" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fff8c8"/>
+      <stop offset="52%" stop-color="#d49a19"/>
+      <stop offset="100%" stop-color="#774100"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="50" cy="86" rx="32" ry="8" fill="#2e0005" opacity="0.18"/>
+  <g filter="url(#cast)">
+    <path d="M22 17 H79 L78 32 C63 46 54 62 49 84 H29 C34 62 45 43 59 33 H22Z" fill="url(#trim)" stroke="#fff0a4" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M29 25 H69 L68 30 C53 45 45 62 42 77 H34 C38 56 49 41 63 31 H29Z" fill="url(#red)"/>
+    <path d="M31 26 H65" stroke="#fff7d8" stroke-width="5" stroke-linecap="round" opacity="0.68"/>
+    <path d="M58 37 C48 50 42 66 39 78" stroke="#4e0007" stroke-width="5" stroke-linecap="round" opacity="0.28"/>
+    <path d="M73 21 L70 31" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity="0.55"/>
+  </g>
+</svg>

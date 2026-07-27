@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { soundEngine } from '../sound/SoundEngine'
 import { subscribeAnnouncements, announcePlayerWin } from './announceBus'
 import { CoinRainPro } from '../fx/FallRain'
@@ -62,10 +62,14 @@ export default function AnnouncementTicker() {
 
   return (
     <>
-      {preferences.backgroundEffectsEnabled && <CoinRainPro trigger={coinTrigger} density="light" />}
+      {preferences.backgroundEffectsEnabled && (
+        <CoinRainPro trigger={coinTrigger} density="light" className="fx-layer--announcement" />
+      )}
       {current && (
         <div className={['fx-ticker', current.big ? 'fx-ticker--big' : ''].join(' ')} role="status">
-          <span className="fx-ticker__icon" aria-hidden="true">★</span>
+          <span className="fx-ticker__icon" aria-hidden="true">
+            ★
+          </span>
           <div className="fx-ticker__viewport">
             <span className="fx-ticker__text">全網公告：{current.text}</span>
           </div>

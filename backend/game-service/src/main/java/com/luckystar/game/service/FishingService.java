@@ -14,6 +14,7 @@ import com.luckystar.game.dto.FishingTopUpResponse;
 import com.luckystar.game.dto.WalletView;
 import com.luckystar.game.entity.GameRound;
 import com.luckystar.game.exception.RoundNotFoundException;
+import com.luckystar.game.exception.SessionConflictException;
 import com.luckystar.game.fishing.FishSpecies;
 import com.luckystar.game.fishing.FishingCombat;
 import com.luckystar.game.fishing.FishingSession;
@@ -28,6 +29,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -96,6 +98,13 @@ public class FishingService {
     /** 致命一擊紀錄保留上限（供 verifyShot 重放近期捕獲；超出時淘汰最舊，避免 result_data 無限膨脹）。 */
     static final int KILL_LOG_CAP = 300;
 
+    /**
+     * Session 樂觀鎖 CAS 衝突重試上限（ADR-008）：shots/top-up 是「讀→改→整包 save」，
+     * 併發窗口極窄（同玩家正常不會真併發，僅雙分頁/重連瞬間可能撞上），3 次已足夠吸收；
+     * 用盡仍衝突視為異常（回 409 讓前端提示重試），不可無限重試卡住請求執行緒。
+     */
+    static final int SESSION_CAS_MAX_RETRIES = 3;
+
     private final ProvablyFairRng rng;
     private final WalletClient walletClient;
     private final FishingSessionStore sessionStore;
@@ -113,10 +122,10 @@ public class FishingService {
                                     String requestedClientSeed) {
         Optional<FishingSession> existing = sessionStore.find(playerId);
         if (existing.isPresent() && existing.get().isActive()) {
-            log.info("fishing session resumed playerId={} sessionId={}", playerId, existing.get().getSessionId());
-            return toView(existing.get(), true, null);
+            sessionStore.delete(playerId);
+            log.info("fishing active session abandoned before new start playerId={} sessionId={}",
+                    playerId, existing.get().getSessionId());
         }
-
         // 面額/入場金額守門（玩家自選；DTO 已驗，這裡為直接呼叫與防禦性二保險）
         if (betPerShot < MIN_BET || betPerShot > MAX_BET) {
             throw new IllegalArgumentException("子彈面額需介於 " + MIN_BET + "~" + MAX_BET + " 星幣");
@@ -195,6 +204,21 @@ public class FishingService {
                 .map(session -> toView(session, true, null));
     }
 
+    public boolean abandon(long playerId, String sessionId) {
+        Optional<FishingSession> existing = sessionStore.find(playerId);
+        if (existing.isEmpty() || !existing.get().isActive()) {
+            return false;
+        }
+        FishingSession session = existing.get();
+        if (!session.getSessionId().equals(sessionId)) {
+            return false;
+        }
+        boolean deleted = sessionStore.delete(playerId);
+        if (deleted) {
+            log.info("fishing session abandoned playerId={} sessionId={}", playerId, sessionId);
+        }
+        return deleted;
+    }
     /**
      * 批次射擊：逐發判定並更新局內餘額。
      *
@@ -203,15 +227,36 @@ public class FishingService {
      */
     public FishingShotsResponse shots(long playerId, String sessionId,
                                       List<FishingShotsRequest.Shot> shots) {
-        FishingSession session = requireActiveSession(playerId, sessionId);
+        // 讀→改→整包 save 的樂觀鎖重試（ADR-008）：CAS 失敗代表期間有其他請求（另一分頁/
+        // 閒置排程結算）動過同一 session，須重讀最新狀態後重新計算整批，不可沿用舊快照續算。
+        for (int attempt = 1; attempt <= SESSION_CAS_MAX_RETRIES; attempt++) {
+            FishingSession session = requireActiveSession(playerId, sessionId);
+            validateBatch(session, shots);
+            long expectedVersion = session.getVersion() == null ? 0L : session.getVersion();
 
-        validateBatch(session, shots);
+            // 風控攔截：整批子彈共用同一攔截結果，避免逐發查詢 DB。
+            // shouldIntercept 佔用並發閘；本次嘗試的 finally 必須釋放（CAS 失敗重試會重新佔用）。
+            boolean intercepted = riskControlService.shouldIntercept(session.getPlayerId(), GAME_TYPE);
+            FishingShotsResponse response;
+            try {
+                response = applyShots(session, sessionId, shots, intercepted);
+            } finally {
+                riskControlService.releaseRiskSlot(session.getPlayerId());
+            }
 
-        // 風控攔截：整批子彈共用同一攔截結果，避免逐發查詢 DB。
-        // shouldIntercept 佔用並發閘；shots() 最後的 finally 必須釋放。
-        boolean intercepted = riskControlService.shouldIntercept(session.getPlayerId(), GAME_TYPE);
-        try {
+            if (sessionStore.saveCas(session, expectedVersion)) {
+                return response;
+            }
+            log.warn("fishing shots CAS 衝突，重試 playerId={} sessionId={} attempt={}",
+                    playerId, sessionId, attempt);
+        }
+        throw new SessionConflictException(
+                "捕魚場次更新頻繁衝突，請重試 (sessionId=" + sessionId + ")");
+    }
 
+    /** 對單批子彈套用血量/傷害模型並更新局內餘額；不落地（呼叫端負責 CAS 寫回）。 */
+    private FishingShotsResponse applyShots(FishingSession session, String sessionId,
+                                            List<FishingShotsRequest.Shot> shots, boolean intercepted) {
         long balance = session.getSessionBalance();
         long totalBet = session.getTotalBet();
         long totalPayout = session.getTotalPayout();
@@ -222,11 +267,6 @@ public class FishingService {
         if (fishDamage == null) {
             fishDamage = new LinkedHashMap<>();
             session.setFishDamage(fishDamage);
-        }
-        Map<String, Long> fishRecovery = session.getFishRecovery();
-        if (fishRecovery == null) {
-            fishRecovery = new LinkedHashMap<>();
-            session.setFishRecovery(fishRecovery);
         }
         List<FishingSession.KillRecord> kills = session.getKills();
         if (kills == null) {
@@ -311,14 +351,11 @@ public class FishingService {
                     kills.remove(0);
                 }
                 fishDamage.remove(instanceId);
-                fishRecovery.remove(instanceId);
             } else {
                 // 未死：累積傷害（並控管並存 instance 數，淘汰最舊者）。
+                // 殘血回收不在這裡算——逐發 floor 會侵蝕低注額（見 computeResidualRecovery）。
                 fishDamage.put(instanceId, outcome.damageTakenAfter());
-                long recovery = fishRecovery.getOrDefault(instanceId, 0L)
-                        + FishingCombat.recoveryPayout(shot.getBetPerShot(), cannonLevel, outcome.damage());
-                fishRecovery.put(instanceId, recovery);
-                pruneFishDamage(fishDamage);
+                pruneFishDamage(session, fishDamage);
             }
 
             if (payout > 0) {
@@ -349,7 +386,6 @@ public class FishingService {
         session.setTotalShots(totalShots);
         session.setLastShotSeq(lastShotSeq);
         session.setLastActivityAt(Instant.now());
-        sessionStore.save(session);
 
         return FishingShotsResponse.builder()
                 .sessionId(sessionId)
@@ -358,9 +394,6 @@ public class FishingService {
                 .totalShots(totalShots)
                 .lastShotSeq(lastShotSeq)
                 .build();
-        } finally {
-            riskControlService.releaseRiskSlot(session.getPlayerId());
-        }
     }
 
     /**
@@ -382,7 +415,6 @@ public class FishingService {
      * add the same wallet debit into the table twice.
      */
     public FishingTopUpResponse topUp(long playerId, String sessionId, long amount, String clientRequestId) {
-        FishingSession session = requireActiveSession(playerId, sessionId);
         if (amount < MIN_BUYIN || amount > MAX_BUYIN) {
             throw new IllegalArgumentException("top-up amount must be between " + MIN_BUYIN + " and " + MAX_BUYIN);
         }
@@ -390,34 +422,63 @@ public class FishingService {
             throw new IllegalArgumentException("clientRequestId is required");
         }
         String requestId = clientRequestId.trim();
-        List<String> processed = session.getTopUpRequestIds();
-        if (processed == null) {
-            processed = new ArrayList<>();
-            session.setTopUpRequestIds(processed);
-        }
-        if (processed.contains(requestId)) {
-            return FishingTopUpResponse.builder()
-                    .sessionId(sessionId)
-                    .amount(0L)
-                    .buyIn(session.getBuyIn() == null ? 0L : session.getBuyIn())
-                    .sessionBalance(session.getSessionBalance() == null ? 0L : session.getSessionBalance())
-                    .wallet(null)
-                    .build();
+
+        FishingSession probe = requireActiveSession(playerId, sessionId);
+        if (isTopUpProcessed(probe, requestId)) {
+            return alreadyProcessedTopUpResponse(sessionId, probe);
         }
 
+        // debit 只呼叫這一次（冪等鍵固定）；之後把加值反映進 session 的部分改用 CAS 重試，
+        // 不重打 wallet——重試的是「儲存」，不是整筆 top-up 流程。
         String idempotencyKey = "fishing-topup-" + sessionId + "-" + requestId;
         WalletDebitResponse debit = walletClient.debit(playerId, amount, idempotencyKey, sessionId);
 
-        long buyIn = session.getBuyIn() == null ? 0L : session.getBuyIn();
-        long tableBalance = session.getSessionBalance() == null ? 0L : session.getSessionBalance();
-        session.setBuyIn(buyIn + amount);
-        session.setSessionBalance(tableBalance + amount);
-        processed.add(requestId);
-        session.setLastActivityAt(Instant.now());
         try {
-            sessionStore.save(session);
+            // 讀→改→整包 save 的樂觀鎖重試（ADR-008）：CAS 失敗代表期間有其他請求（另一分頁的
+            // shots/top-up）動過同一 session，須重讀最新狀態後重新套用本次加值再試。
+            for (int attempt = 1; attempt <= SESSION_CAS_MAX_RETRIES; attempt++) {
+                FishingSession session = requireActiveSession(playerId, sessionId);
+                List<String> processed = session.getTopUpRequestIds();
+                if (processed == null) {
+                    processed = new ArrayList<>();
+                    session.setTopUpRequestIds(processed);
+                }
+                if (processed.contains(requestId)) {
+                    // 上一輪嘗試的 CAS 其實已成功、只是回應途中失聯而重入：直接回目前狀態，不重複加值。
+                    return alreadyProcessedTopUpResponse(sessionId, session);
+                }
+                long expectedVersion = session.getVersion() == null ? 0L : session.getVersion();
+
+                long buyIn = session.getBuyIn() == null ? 0L : session.getBuyIn();
+                long tableBalance = session.getSessionBalance() == null ? 0L : session.getSessionBalance();
+                session.setBuyIn(buyIn + amount);
+                session.setSessionBalance(tableBalance + amount);
+                processed.add(requestId);
+                session.setLastActivityAt(Instant.now());
+
+                if (sessionStore.saveCas(session, expectedVersion)) {
+                    WalletView wallet = WalletView.builder()
+                            .balance(debit.balanceAfter())
+                            .frozenAmount(0L)
+                            .build();
+                    log.info("fishing session topped up playerId={} sessionId={} amount={} buyIn={} sessionBalance={}",
+                            playerId, sessionId, amount, session.getBuyIn(), session.getSessionBalance());
+                    return FishingTopUpResponse.builder()
+                            .sessionId(sessionId)
+                            .amount(amount)
+                            .buyIn(session.getBuyIn())
+                            .sessionBalance(session.getSessionBalance())
+                            .wallet(wallet)
+                            .build();
+                }
+                log.warn("fishing top-up CAS 衝突，重試 playerId={} sessionId={} attempt={}",
+                        playerId, sessionId, attempt);
+            }
+            throw new SessionConflictException(
+                    "捕魚場次加值更新頻繁衝突，請重試 (sessionId=" + sessionId + ")");
         } catch (RuntimeException ex) {
-            log.error("fishing top-up session save failed, refunding playerId={} sessionId={} amount={}",
+            // 涵蓋 CAS 重試用盡、Redis 例外、session 中途被結算等：wallet 已扣款但加值沒能套用，退款。
+            log.error("fishing top-up session update failed, refunding playerId={} sessionId={} amount={}",
                     playerId, sessionId, amount, ex);
             try {
                 walletClient.credit(playerId, amount, "REFUND", "fishing-topup-refund-" + sessionId + "-" + requestId, sessionId);
@@ -429,19 +490,19 @@ public class FishingService {
             }
             throw ex;
         }
+    }
 
-        WalletView wallet = WalletView.builder()
-                .balance(debit.balanceAfter())
-                .frozenAmount(0L)
-                .build();
-        log.info("fishing session topped up playerId={} sessionId={} amount={} buyIn={} sessionBalance={}",
-                playerId, sessionId, amount, session.getBuyIn(), session.getSessionBalance());
+    private boolean isTopUpProcessed(FishingSession session, String requestId) {
+        return session.getTopUpRequestIds() != null && session.getTopUpRequestIds().contains(requestId);
+    }
+
+    private FishingTopUpResponse alreadyProcessedTopUpResponse(String sessionId, FishingSession session) {
         return FishingTopUpResponse.builder()
                 .sessionId(sessionId)
-                .amount(amount)
-                .buyIn(session.getBuyIn())
-                .sessionBalance(session.getSessionBalance())
-                .wallet(wallet)
+                .amount(0L)
+                .buyIn(session.getBuyIn() == null ? 0L : session.getBuyIn())
+                .sessionBalance(session.getSessionBalance() == null ? 0L : session.getSessionBalance())
+                .wallet(null)
                 .build();
     }
 
@@ -621,42 +682,52 @@ public class FishingService {
     }
 
     /**
-     * 殘血部分回收總額（ADR-004）：對結算時仍受傷未死的每條魚（fishDamage 的每個 entry），
-     * 累加 {@link FishingCombat#recoveryPayout}。只需 session 級的 cannonLevel/betPerShot ＋ 累傷值，
-     * 不需查 species/HP（致命一擊後該魚已從 fishDamage 移除，故這裡掃到的都是未死殘血魚）。
+     * 殘血部分回收總額（ADR-004）：把「結算時仍受傷未死的魚」身上累積的傷害全部加總
+     * （{@code fishDamage} 的現存 entry ＋ 期間被淘汰的 {@code prunedFishDamage}），
+     * 再<b>整場只呼叫一次</b> {@link FishingCombat#recoveryPayout}。
+     *
+     * <p><b>為什麼要先加總再算、而不是逐條/逐發算</b>：{@code recoveryPayout} 內含 {@code floor}，
+     * 每呼叫一次就丟掉不到 1 星幣的小數。舊版是「每發子彈算一次」，單發 10 星幣時每發丟掉
+     * 約 0.8 星幣，有效回收率被壓到 <b>0.62</b>、而非設計值 {@code RECOVERY_RATE}=0.70；
+     * 注額越小侵蝕越重（bet=100 以上才回到 0.696）。改成整場加總後只 floor 一次，
+     * 誤差上限固定是「整場 &lt; 1 星幣」，跟注額大小無關。
+     *
+     * <p>只需 session 級的 cannonLevel/betPerShot（兩者進場後固定，ADR-004）＋ 累傷值，
+     * 不需查 species/HP：致命一擊後該魚已從 {@code fishDamage} 移除，故掃到的都是未死殘血魚。
      */
     private long computeResidualRecovery(FishingSession session) {
-        Map<String, Long> fishRecovery = session.getFishRecovery();
-        if (fishRecovery != null && !fishRecovery.isEmpty()) {
-            long total = 0L;
-            for (Long recovery : fishRecovery.values()) {
-                if (recovery != null) total += recovery;
-            }
-            return total;
-        }
-        Map<String, Long> fishDamage = session.getFishDamage();
-        if (fishDamage == null || fishDamage.isEmpty()) {
-            return 0L;
-        }
+        long legacy = session.getLegacyFishRecovery() != null ? session.getLegacyFishRecovery() : 0L;
         Integer cannonLevel = session.getCannonLevel();
         Long betPerShot = session.getBetPerShot();
         if (cannonLevel == null || betPerShot == null) {
-            return 0L;
+            return legacy;
         }
-        long total = 0L;
-        for (Long dmg : fishDamage.values()) {
-            if (dmg != null) {
-                total += FishingCombat.recoveryPayout(betPerShot, cannonLevel, dmg);
+        long totalDamage = session.getPrunedFishDamage() != null ? session.getPrunedFishDamage() : 0L;
+        Map<String, Long> fishDamage = session.getFishDamage();
+        if (fishDamage != null) {
+            for (Long dmg : fishDamage.values()) {
+                if (dmg != null) {
+                    totalDamage += dmg;
+                }
             }
         }
-        return total;
+        return legacy + FishingCombat.recoveryPayout(betPerShot, cannonLevel, totalDamage);
     }
 
-    /** 控管同時追蹤傷害的魚 instance 數：超出上限時淘汰最舊（LinkedHashMap 插入序）者。 */
-    private void pruneFishDamage(Map<String, Long> fishDamage) {
+    /**
+     * 控管同時追蹤傷害的魚 instance 數：超出上限時淘汰最舊（LinkedHashMap 插入序）者。
+     *
+     * <p>淘汰前把該魚的累傷併進 {@code prunedFishDamage}，否則打在牠身上的子彈會變成完全沉沒
+     * ——場次越長（魚 instance 越多）被吃掉越多，殘血回收的地板就守不住。
+     */
+    private void pruneFishDamage(FishingSession session, Map<String, Long> fishDamage) {
         while (fishDamage.size() > MAX_LIVE_FISH) {
-            String eldest = fishDamage.keySet().iterator().next();
-            fishDamage.remove(eldest);
+            Iterator<Map.Entry<String, Long>> it = fishDamage.entrySet().iterator();
+            Map.Entry<String, Long> eldest = it.next();
+            it.remove();
+            long dmg = eldest.getValue() != null ? eldest.getValue() : 0L;
+            long pruned = session.getPrunedFishDamage() != null ? session.getPrunedFishDamage() : 0L;
+            session.setPrunedFishDamage(pruned + dmg);
         }
     }
 

@@ -20,6 +20,17 @@ export const loginMember = createAsyncThunk('auth/loginMember', async (payload, 
   }
 })
 
+export const socialLoginMember = createAsyncThunk(
+  'auth/socialLoginMember',
+  async (ticket, { rejectWithValue }) => {
+    try {
+      return await memberApi.exchangeSocialLogin(ticket)
+    } catch (error) {
+      return rejectWithValue(extractError(error))
+    }
+  },
+)
+
 export const registerMember = createAsyncThunk('auth/registerMember', async (payload, { rejectWithValue }) => {
   try {
     return await memberApi.register(payload)
@@ -116,6 +127,17 @@ const authSlice = createSlice({
       .addCase(loginMember.rejected, (state, action) => {
         state.loading = false
         state.error = action.payload || '登入失敗'
+      })
+      .addCase(socialLoginMember.pending, (state) => {
+        state.loading = true
+        state.error = null
+      })
+      .addCase(socialLoginMember.fulfilled, (state, action) => {
+        applySession(state, action.payload)
+      })
+      .addCase(socialLoginMember.rejected, (state, action) => {
+        state.loading = false
+        state.error = action.payload || '第三方登入失敗'
       })
       .addCase(registerMember.pending, (state) => {
         state.loading = true

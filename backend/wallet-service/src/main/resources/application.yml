@@ -1,5 +1,10 @@
 server:
   port: 8082
+  tomcat:
+    mbeanregistry:
+      # 開啟 Tomcat MBean 才會暴露 tomcat_threads_busy/current 指標（否則 /actuator/prometheus
+      # 只有 tomcat_sessions_*，看不到執行緒池飽和）。壓測診斷前提，執行期開銷可忽略。（T-090 觀測補齊）
+      enabled: true
 
 spring:
   config:
@@ -21,8 +26,11 @@ spring:
     username: ${POSTGRES_USER:lucky_user}
     password: ${POSTGRES_PASSWORD:lucky_password}
     driver-class-name: org.postgresql.Driver
-    maximum-pool-size: 15
-    minimum-idle: 3
+    # T-090 壓測（2026-07-21）：帳務寫庫熱路徑，每 spin 兩筆寫入（debit+credit），
+    # 尖峰滿載、排隊 18、取連線最長 1.12s。首輪 15→32；2026-07-22 依 CPU 僅 ~40%（硬體有餘裕）
+    # 再上調 32→40，與 game 對齊。Postgres 預算：game 40 + wallet 40 + rank 10 + admin 5 = 95 < 200。
+    maximum-pool-size: 40
+    minimum-idle: 10
     connection-timeout: 30000
 
   # 注意：spring.jpa.* 在此服務無效 —— EntityManagerFactory 由 DataSourceConfig.java
@@ -76,6 +84,17 @@ management:
 
 internal:
   secret: ${INTERNAL_SECRET:?INTERNAL_SECRET environment variable is required}
+
+# Transactional Outbox（藍圖 04 P2）：WalletOutboxPoller 背景投遞器參數。
+# poll-interval-ms：輪詢間隔（毫秒），比 member 的 5000ms 短——排行榜/通知體感延遲要求較高。
+#   T-090 遠端壓測（2026-07-23）後由 1000ms 下修為 200ms：搭配下方可調批次與平行 ack，
+#   把投遞上限從舊版 ~100 events/s 拉高到 ~batch/interval（500/0.2s ≈ 2,500 events/s）。
+# batch-size：單輪最多撈幾筆待送事件（舊版寫死 100，是壓測下的吞吐瓶頸）。拉大增吞吐但單輪
+#   交易變大、持列較久，需與 DB 負載權衡。
+wallet:
+  outbox:
+    poll-interval-ms: ${WALLET_OUTBOX_POLL_INTERVAL_MS:200}
+    batch-size: ${WALLET_OUTBOX_BATCH_SIZE:500}
 
 # 鑽石測試帳號：列入清單者視為「無限鑽石」，鑽石換星幣不檢查餘額也不實際扣款（僅供測試/展示）
 # 1172=tadge003、1175=weiyu10366。可由 DIAMOND_UNLIMITED_PLAYER_IDS 逗號分隔覆寫

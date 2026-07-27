@@ -3,6 +3,7 @@ package com.luckystar.member.controller;
 import com.luckystar.member.dto.ApiResponse;
 import com.luckystar.member.dto.FriendListResponse;
 import com.luckystar.member.dto.FriendRequestDto;
+import com.luckystar.member.dto.FriendRequestView;
 import com.luckystar.member.dto.FriendshipResponse;
 import com.luckystar.member.service.FriendshipService;
 import jakarta.validation.Valid;
@@ -53,6 +54,12 @@ public class FriendshipController {
         return ResponseEntity.ok(ApiResponse.success(friends, "Friends retrieved"));
     }
 
+    @GetMapping("/requests")
+    public ResponseEntity<ApiResponse<List<FriendRequestView>>> listPendingRequests() {
+        Long currentPlayerId = getCurrentPlayerId();
+        List<FriendRequestView> requests = friendshipService.listPendingRequests(currentPlayerId);
+        return ResponseEntity.ok(ApiResponse.success(requests, "Friend requests retrieved"));
+    }
     @DeleteMapping("/{friendshipId}")
     public ResponseEntity<ApiResponse<Void>> deleteFriend(@PathVariable Long friendshipId) {
         Long currentPlayerId = getCurrentPlayerId();

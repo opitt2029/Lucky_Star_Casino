@@ -1,7 +1,5 @@
 package com.luckystar.wallet.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.luckystar.wallet.dto.CreditRequest;
 import com.luckystar.wallet.dto.CreditResponse;
 import com.luckystar.wallet.dto.DebitRequest;
@@ -19,11 +17,8 @@ import com.luckystar.wallet.postgres.repository.WalletTransactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Slf4j
 @Service
@@ -33,8 +28,7 @@ public class WalletService {
     private final WalletRepository walletRepository;
     private final WalletTransactionRepository walletTransactionRepository;
     private final WalletDebitDao walletDebitDao;
-    private final KafkaTemplate<String, String> kafkaTemplate;
-    private final ObjectMapper objectMapper;
+    private final WalletOutboxService walletOutboxService;
 
     @Transactional(readOnly = true, transactionManager = "postgresTransactionManager")
     public WalletBalanceResponse getBalance(Long playerId) {
@@ -106,43 +100,20 @@ public class WalletService {
                             "Idempotency conflict detected but winner transaction not found, key=" + key));
         }
 
-        // 發 Kafka wallet.debit 事件 — best-effort。B2 後改在 commit 後發送：往返 1 起本交易
-        // 就持有 wallets 行鎖，若同步發送，broker 阻塞（producer max.block.ms 預設 60s）會拖住
-        // 該玩家行鎖、後續扣款全排隊；afterCommit 也順帶消除「外層交易回滾但事件已發出」的幽靈事件。
-        try {
-            WalletDebitEvent event = new WalletDebitEvent(
-                    txId.get(),
-                    request.getPlayerId(),
-                    amount,
-                    balanceBefore,
-                    balanceAfter,
-                    subType,
-                    key,
-                    request.getReferenceId());
-            String payload = objectMapper.writeValueAsString(event);
-            long transactionId = txId.get();
-            String kafkaKey = String.valueOf(request.getPlayerId());
-            Runnable publish = () -> {
-                try {
-                    kafkaTemplate.send("wallet.debit", kafkaKey, payload);
-                } catch (Exception e) {
-                    log.warn("Failed to publish wallet.debit event for transactionId={}", transactionId, e);
-                }
-            };
-            if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        publish.run();
-                    }
-                });
-            } else {
-                // 無交易同步時（如純 Mockito 單元測試直呼）直接送，行為與舊版相同
-                publish.run();
-            }
-        } catch (JsonProcessingException e) {
-            log.warn("Failed to serialize WalletDebitEvent for transactionId={}", txId.get(), e);
-        }
+        // 藍圖 04 P2：改走 Transactional Outbox。把 wallet.debit 事件寫進 wallet_outbox（同一交易、
+        // 原子），由 WalletOutboxPoller 之後同步送達 broker——杜絕事件無聲丟失。
+        // 注意 B2 的行鎖顧慮已消解：往返 1 起持有 wallets 行鎖，但 outbox 只是一筆同庫 INSERT，
+        // 不觸發 broker I/O，不會拖住行鎖；且交易回滾時 outbox 列一起回滾，天然無「幽靈事件」。
+        WalletDebitEvent event = new WalletDebitEvent(
+                txId.get(),
+                request.getPlayerId(),
+                amount,
+                balanceBefore,
+                balanceAfter,
+                subType,
+                key,
+                request.getReferenceId());
+        walletOutboxService.save("wallet.debit", String.valueOf(request.getPlayerId()), event);
 
         return DebitResponse.builder()
                 .transactionId(txId.get())
@@ -261,24 +232,20 @@ public class WalletService {
                     .orElseThrow(() -> e); // 理論上不會發生：約束觸發卻查不到紀錄
         }
 
-        // Step 6: 發 Kafka wallet.credit 事件（best-effort，入帳已 commit）
-        try {
-            WalletCreditEvent event = new WalletCreditEvent(
-                    tx.getId(),
-                    tx.getPlayerId(),
-                    tx.getAmount(),
-                    tx.getBalanceBefore(),
-                    tx.getBalanceAfter(),
-                    tx.getSubType(),
-                    tx.getIdempotencyKey(),
-                    tx.getReferenceId());
-            String payload = objectMapper.writeValueAsString(event);
-            kafkaTemplate.send("wallet.credit", String.valueOf(request.getPlayerId()), payload);
-        } catch (JsonProcessingException e) {
-            log.warn("Failed to serialize WalletCreditEvent for transactionId={}", tx.getId(), e);
-        } catch (Exception e) {
-            log.warn("Failed to publish wallet.credit event for transactionId={}", tx.getId(), e);
-        }
+        // Step 6: 藍圖 04 P2：改走 Transactional Outbox。把 wallet.credit 事件寫進 wallet_outbox
+        // （與 Step 4/5 的錢包更新、流水寫入落在同一交易、原子），由 WalletOutboxPoller 之後送達
+        // broker。序列化失敗（幾乎不可能，事件是簡單 record）由 WalletOutboxService 拋 → 交易回滾，
+        // 寧可讓入帳失敗也不留無聲缺口。
+        WalletCreditEvent event = new WalletCreditEvent(
+                tx.getId(),
+                tx.getPlayerId(),
+                tx.getAmount(),
+                tx.getBalanceBefore(),
+                tx.getBalanceAfter(),
+                tx.getSubType(),
+                tx.getIdempotencyKey(),
+                tx.getReferenceId());
+        walletOutboxService.save("wallet.credit", String.valueOf(request.getPlayerId()), event);
 
         // Step 7: 回傳結果
         return CreditResponse.builder()

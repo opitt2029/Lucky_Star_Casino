@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="title desc">
+  <title id="title">3D star slot symbol</title>
+  <desc id="desc">A beveled gold star with a raised center and glowing rim.</desc>
+  <defs>
+    <filter id="cast" x="-28%" y="-28%" width="156%" height="156%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="5" stdDeviation="3" flood-color="#563000" flood-opacity="0.34"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#fff0a0" flood-opacity="0.5"/>
+    </filter>
+    <linearGradient id="gold" x1="24" y1="13" x2="75" y2="86" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fffbe1"/>
+      <stop offset="28%" stop-color="#ffd95d"/>
+      <stop offset="56%" stop-color="#d69018"/>
+      <stop offset="100%" stop-color="#784100"/>
+    </linearGradient>
+    <radialGradient id="center" cx="40%" cy="30%" r="65%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="38%" stop-color="#fff09a"/>
+      <stop offset="100%" stop-color="#e09b1b"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="50" cy="84" rx="33" ry="8" fill="#2f1b00" opacity="0.17"/>
+  <g filter="url(#cast)">
+    <path d="M50 9 L61 35 L89 37 L68 55 L75 83 L50 68 L25 83 L32 55 L11 37 L39 35Z" fill="url(#gold)" stroke="#fff3a8" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M50 20 L58 41 L80 43 L63 57 L69 77 L50 64 L31 77 L37 57 L20 43 L42 41Z" fill="url(#center)" opacity="0.62"/>
+    <path d="M35 39 C43 31 54 27 63 34" fill="none" stroke="#fffbe1" stroke-width="4" stroke-linecap="round" opacity="0.72"/>
+    <path d="M26 76 L50 61 L72 76" fill="none" stroke="#744000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity="0.22"/>
+  </g>
+</svg>

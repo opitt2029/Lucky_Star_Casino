@@ -94,6 +94,36 @@
         }
       ],
       "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1 }, "overrides": [] }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Kafka consumer lag（最大未消費筆數，by service/client）",
+      "description": "kafka.consumer.fetch.manager.records.lag.max（Spring Boot KafkaMetricsAutoConfiguration 自動綁定）。持續上升＝消費端跟不上或掛住。",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "-- Grafana --", "default": true },
+      "targets": [
+        {
+          "expr": "max by (service, client_id) (kafka_consumer_fetch_manager_records_lag_max)",
+          "legendFormat": "{{service}} {{client_id}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "wallet Outbox 積壓（PENDING 事件筆數）",
+      "description": "wallet_outbox_pending（藍圖 04 P5 自訂 gauge）。P2 讓事件不再丟失，但 poller 卡住時事件會默默堆積——此線持續攀升＝投遞鏈路壞了。",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 27 },
+      "datasource": { "type": "prometheus", "uid": "-- Grafana --", "default": true },
+      "targets": [
+        {
+          "expr": "wallet_outbox_pending_events",
+          "legendFormat": "wallet outbox PENDING"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
     }
   ]
 }

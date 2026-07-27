@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title id="title">Lucky Star slot machine</title>
+  <desc id="desc">A red and gold slot machine with glowing reels, jackpot marquee, lever, and star coins.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#3b0308"/><stop offset="0.48" stop-color="#900817"/><stop offset="1" stop-color="#100104"/></linearGradient>
+    <linearGradient id="gold" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#fff6c8"/><stop offset="0.5" stop-color="#f8d56a"/><stop offset="1" stop-color="#9b5805"/></linearGradient>
+    <linearGradient id="cabinet" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#db1424"/><stop offset="0.56" stop-color="#65040c"/><stop offset="1" stop-color="#220105"/></linearGradient>
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="1200" height="800" fill="url(#bg)"/>
+  <path d="M0 640c170-96 322-92 456-18s312 87 488-30c116-77 196-69 256-24v232H0Z" fill="#160103" opacity="0.7"/>
+  <g stroke="#ffeaa0" stroke-width="3" opacity="0.22" fill="none"><path d="M84 124c206 64 352 48 514-18s320-52 512 26"/><path d="M80 684c166-66 334-56 502 30s348 60 526-42"/></g>
+  <g transform="translate(250 74)">
+    <path d="M96 64h500c60 0 108 48 108 108v410c0 50-40 90-90 90H78c-50 0-90-40-90-90V172C-12 112 36 64 96 64Z" fill="url(#cabinet)" stroke="url(#gold)" stroke-width="14"/>
+    <path d="M116 18h460c32 0 58 26 58 58v52H58V76c0-32 26-58 58-58Z" fill="#190204" stroke="url(#gold)" stroke-width="10"/>
+    <text x="346" y="88" text-anchor="middle" font-family="Arial, sans-serif" font-size="44" font-weight="900" fill="#fff4b8">JACKPOT</text>
+    <rect x="62" y="174" width="570" height="296" rx="34" fill="#100104" stroke="#ffeaa0" stroke-opacity="0.45" stroke-width="6"/>
+    <g transform="translate(92 202)">
+      <rect width="144" height="238" rx="22" fill="#fff1bc"/><rect x="184" width="144" height="238" rx="22" fill="#fff1bc"/><rect x="368" width="144" height="238" rx="22" fill="#fff1bc"/>
+      <g font-family="Arial, sans-serif" font-weight="900" text-anchor="middle">
+        <text x="72" y="92" font-size="76" fill="#c90d18">7</text><text x="72" y="174" font-size="48" fill="#064e3b">BAR</text>
+        <circle cx="238" cy="96" r="29" fill="#c90d18"/><circle cx="278" cy="102" r="29" fill="#e21b2b"/><path d="M258 72c20-38 55-48 92-28" stroke="#0f7a4f" stroke-width="12" stroke-linecap="round" fill="none"/>
+        <path d="M440 58l20 42 46 6-33 31 8 46-41-22-41 22 8-46-33-31 46-6Z" fill="#f8d56a" stroke="#a56408" stroke-width="5"/>
+      </g>
+    </g>
+    <rect x="142" y="510" width="404" height="72" rx="36" fill="url(#gold)" filter="url(#softGlow)"/>
+    <text x="344" y="558" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" font-weight="900" fill="#3a0307">LUCKY STAR</text>
+    <path d="M720 210h70c30 0 54 24 54 54v108" fill="none" stroke="url(#gold)" stroke-width="18" stroke-linecap="round"/>
+    <circle cx="850" cy="430" r="54" fill="#c90d18" stroke="url(#gold)" stroke-width="12"/>
+  </g>
+  <g fill="url(#gold)" stroke="#fff4b8" stroke-width="5"><circle cx="138" cy="650" r="46"/><circle cx="226" cy="688" r="36"/><circle cx="1014" cy="168" r="42"/><circle cx="1082" cy="220" r="32"/></g>
+</svg>

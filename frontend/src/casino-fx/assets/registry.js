@@ -25,11 +25,21 @@ import {
   PufferFish,
   RedEnvelope,
   SimpleCoin,
+  SlotBell,
+  SlotCherry,
+  SlotLemon,
+  SlotSeven,
+  SlotStar,
   StarCoin,
 } from './svgArt'
 
 // AI 圖替換表：assetId → public 路徑。預設空，逐步填入。
 const ART_OVERRIDES = {
+  'slot-cherry': '/images/game/slot/slot-cherry-3d.svg?v=20260726-generated',
+  'slot-lemon': '/images/game/slot/slot-lemon-3d.svg?v=20260726-generated',
+  'slot-bell': '/images/game/slot/slot-bell-3d.svg?v=20260726-generated',
+  'slot-star': '/images/game/slot/slot-star-3d.svg?v=20260726-generated',
+  'slot-seven': '/images/game/slot/slot-seven-3d.svg?v=20260726-generated',
   'fishing-stage-background': '/images/fishing/fishing-stage-background-reference.png?v=20260707-reference',
   'cannon-copper': '/images/fishing/cannon-small-reference.png?v=20260707-reference-transparent',
   'cannon-silver': '/images/fishing/cannon-medium-reference.png?v=20260707-reference-transparent',
@@ -56,7 +66,12 @@ const ART_OVERRIDES = {
   'fish-evil-blocker-turtle': '/images/fishing/blocker-turtle-reference.png?v=20260707-paeth-fix',
 }
 const SVG_COMPONENTS = {
-  // 老虎機符號（華人財富意象）
+  // 老虎機符號（市面常見拉霸意象）
+  'slot-cherry': SlotCherry,
+  'slot-lemon': SlotLemon,
+  'slot-bell': SlotBell,
+  'slot-star': SlotStar,
+  'slot-seven': SlotSeven,
   'slot-ingot': GoldIngot,
   'slot-copper-coin': CopperCoin,
   'slot-red-envelope': RedEnvelope,
@@ -83,13 +98,13 @@ const SVG_COMPONENTS = {
 }
 
 // 老虎機後端契約：grid 內容是 emoji 字串（SlotSymbol.java 的 display），
-// 必須逐位元組一致才能對上（7️⃣ 是三個 code point）。這裡把 emoji 映射到華人意象素材。
+// 必須逐位元組一致才能對上（7️⃣ 是三個 code point）。這裡只換視覺圖案，不改遊戲契約。
 export const SLOT_SYMBOL_ASSET = {
-  '\u{1F352}': 'slot-ingot', // 🍒 → 金元寶（2x）
-  '\u{1F34B}': 'slot-copper-coin', // 🍋 → 銅錢（3x）
-  '\u{1F514}': 'slot-red-envelope', // 🔔 → 紅包（5x）
-  '⭐': 'slot-fu', // ⭐ → 福字（8x）
-  '7️⃣': 'slot-dragon', // 7️⃣ → 金龍（8x）
+  '\u{1F352}': 'slot-cherry', // 🍒 → 櫻桃（2x）
+  '\u{1F34B}': 'slot-lemon', // 🍋 → 檸檬（3x）
+  '\u{1F514}': 'slot-bell', // 🔔 → 金鈴（5x）
+  '⭐': 'slot-star', // ⭐ → 星星（8x）
+  '7️⃣': 'slot-seven', // 7️⃣ → 紅 7（8x）
 }
 
 /**

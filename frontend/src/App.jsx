@@ -9,6 +9,7 @@ import PageTransition from './components/PageTransition'
 import QuickToolbar from './components/QuickToolbar'
 import FriendFloatingPanel from './components/FriendFloatingPanel'
 import SupportModal from './components/SupportModal'
+import GlobalAnnouncementHost from './casino-fx/announce/GlobalAnnouncementHost'
 
 const Lobby = lazy(() => import('./pages/Lobby'))
 const SlotGame = lazy(() => import('./pages/SlotGame'))
@@ -16,15 +17,23 @@ const Baccarat = lazy(() => import('./pages/Baccarat'))
 const Fishing = lazy(() => import('./pages/Fishing'))
 const Rank = lazy(() => import('./pages/Rank'))
 const Profile = lazy(() => import('./pages/Profile'))
+const SocialBinding = lazy(() => import('./pages/SocialBinding'))
+const OAuthCallback = lazy(() => import('./pages/OAuthCallback'))
 const Records = lazy(() => import('./pages/Records'))
 const CasinoShop = lazy(() => import('./pages/CasinoShop'))
 const Inventory = lazy(() => import('./pages/Inventory'))
 const CheckIn = lazy(() => import('./pages/CheckIn'))
 const Diamond = lazy(() => import('./pages/Diamond'))
 const Topup = lazy(() => import('./pages/Topup'))
+const TopupPayment = lazy(() => import('./pages/TopupPayment'))
+const ProvablyFair = lazy(() => import('./pages/ProvablyFair'))
+const NotFound = lazy(() => import('./pages/NotFound'))
 
 const enableDevTools = import.meta.env.VITE_ENABLE_DEV_TOOLS === 'true'
-const IntegrationTestPage = enableDevTools ? lazy(() => import('./pages/IntegrationTestPage')) : null
+const Fairness = enableDevTools ? lazy(() => import('./pages/Fairness')) : null
+const IntegrationTestPage = enableDevTools
+  ? lazy(() => import('./pages/IntegrationTestPage'))
+  : null
 
 function RouteFallback() {
   return (
@@ -42,7 +51,11 @@ function LazyPage({ children }) {
 function PrivateRoute({ children }) {
   const isAuthenticated = useSelector((state) => state.auth.isAuthenticated)
   const location = useLocation()
-  return isAuthenticated ? children : <Navigate to="/member?mode=login" replace state={{ from: location }} />
+  return isAuthenticated ? (
+    children
+  ) : (
+    <Navigate to="/member?mode=login" replace state={{ from: location }} />
+  )
 }
 
 function ProtectedPage({ children }) {
@@ -61,10 +74,10 @@ function SiteChrome() {
 
   return (
     <>
+      <GlobalAnnouncementHost />
       <QuickToolbar />
       <FriendFloatingPanel />
       <SupportModal />
-
     </>
   )
 }
@@ -88,6 +101,14 @@ export default function App() {
           <Route path="/member" element={<Member />} />
           <Route path="/login" element={<Navigate to="/member?mode=login" replace />} />
           <Route path="/register" element={<Navigate to="/member?mode=register" replace />} />
+          <Route
+            path="/auth/callback"
+            element={
+              <LazyPage>
+                <OAuthCallback />
+              </LazyPage>
+            }
+          />
           <Route
             path="/shop"
             element={
@@ -127,6 +148,14 @@ export default function App() {
             element={
               <ProtectedPage>
                 <Topup />
+              </ProtectedPage>
+            }
+          />
+          <Route
+            path="/topup/pay/:orderId"
+            element={
+              <ProtectedPage>
+                <TopupPayment />
               </ProtectedPage>
             }
           />
@@ -171,6 +200,14 @@ export default function App() {
             }
           />
           <Route
+            path="/profile/social-bindings/:provider"
+            element={
+              <ProtectedPage>
+                <SocialBinding />
+              </ProtectedPage>
+            }
+          />
+          <Route
             path="/inventory"
             element={
               <ProtectedPage>
@@ -186,7 +223,25 @@ export default function App() {
               </ProtectedPage>
             }
           />
+          <Route
+            path="/provably-fair"
+            element={
+              <ProtectedPage>
+                <ProvablyFair />
+              </ProtectedPage>
+            }
+          />
 
+          {enableDevTools && Fairness && (
+            <Route
+              path="/dev/fairness"
+              element={
+                <ProtectedPage>
+                  <Fairness />
+                </ProtectedPage>
+              }
+            />
+          )}
           {enableDevTools && IntegrationTestPage && (
             <Route
               path="/dev/integration"
@@ -198,7 +253,14 @@ export default function App() {
             />
           )}
           {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route
+            path="*"
+            element={
+              <LazyPage>
+                <NotFound />
+              </LazyPage>
+            }
+          />
         </Routes>
       </PageTransition>
       <SiteChrome />

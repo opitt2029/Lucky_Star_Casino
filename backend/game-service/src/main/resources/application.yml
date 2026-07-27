@@ -1,5 +1,10 @@
 server:
   port: 8083
+  tomcat:
+    mbeanregistry:
+      # 開啟 Tomcat MBean 才會暴露 tomcat_threads_busy/current 指標（否則 /actuator/prometheus
+      # 只有 tomcat_sessions_*，看不到執行緒池飽和）。壓測診斷前提，執行期開銷可忽略。（T-090 觀測補齊）
+      enabled: true
 
 spring:
   config:
@@ -14,8 +19,13 @@ spring:
     password: ${POSTGRES_PASSWORD:lucky_password}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
+      # T-090 壓測（2026-07-21）發現此池尖峰滿載、排隊等待達 49 條執行緒、取連線最長 1.19s，
+      # 是老虎機 P99 延遲主因。首輪保守調 10→24；2026-07-22 依壓測 CPU 僅到 ~40%（硬體有餘裕、
+      # 非 context-switch thrash 風險區）再上調 24→40，直接吃掉排隊 49。minimum-idle 一併提高，
+      # 避免每階起跑時冷池爬升拖慢前幾秒。Postgres 連線預算：
+      # game 40 + wallet 40 + rank 10 + admin 5 = 95 < max_connections（200）。
+      maximum-pool-size: 40
+      minimum-idle: 10
       connection-timeout: 30000
       # DB 慢開機韌性：開機時若連不到 PostgreSQL，HikariCP 會重試取得首條連線最多 60s，
       # 而非立即崩潰退出（避免 docker 剛起、Postgres 尚未 healthy 就啟動 → 整個服務掛掉）。
@@ -64,6 +74,9 @@ management:
       percentiles-histogram:
         # P99 直方圖（T-090 觀測性）：供 Prometheus histogram_quantile 計算延遲分位數
         "[http.server.requests]": true
+        # game→wallet outbound 呼叫的 P99（T-090 §5.2 分層歸因）：
+        # 有這條才不用靠「game P99 減 wallet P99」相減推論延遲主體在哪一層。
+        "[http.client.requests]": true
   endpoints:
     web:
       exposure:
@@ -82,7 +95,7 @@ risk:
   # 未列出的遊戲用 default。
   global-rtp-limit:
     default: 1.05
-    # 老虎機：結構性 RTP ≈ 0.938，但含 70x/50x 三連重尾 → 單局倍率標準差 ≈ 2.4，
+    # 老虎機：結構性 RTP ≈ 0.935，但含 70x/40x 三連重尾 → 單局倍率標準差 ≈ 2.33，
     # 500 局窗口 RTP 的標準差 ≈ 0.107。蒙地卡羅實測（500 萬局）：門檻 0.97 時約 36% 的
     # 檢查會「超限」、閉環下約 5.9% 贏局被強制改判 noWin（實得 RTP 被壓到 0.88）；
     # 0.99 幾乎沒改善（5.2%）。1.30 時誤觸降至 0.06% 贏局，仍足以攔截真異常

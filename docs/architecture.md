@@ -1,7 +1,7 @@
 # 幸運星幣城 — 系統架構文件
 
-> 版本：v1.1  
-> 建立日期：2026-05-26｜最後校對：2026-07-13（依實際程式碼盤點修訂）  
+> 版本：v1.1
+> 建立日期：2026-05-26｜最後校對：2026-07-26（補 `wallet_outbox`、更正 ADR-008 狀態）
 > 負責人：組長 A
 >
 > 本檔描述**已實作**的架構。與程式碼衝突時以程式碼為準，並請順手回頭修本檔（AGENTS.md §5）。
@@ -93,12 +93,12 @@
 
 | 項目 | 說明 |
 |------|------|
-| **職責** | 會員註冊/登入/登出、JWT 簽發與輪替、個人資料 CRUD、好友系統、每日簽到、月度累計簽到獎勵（ADR-005） |
-| **資料庫** | MySQL（`members`、`friendships`、`daily_checkins`、`task_definitions`、`player_tasks`、`monthly_reward_claims`、`outbox_events`） |
-| **Redis** | Refresh Token（`refresh:{memberId}`，一人一把）、JWT 黑名單（`jwt:blacklist:{jti}`）、停用旗標（`disabled:player:{id}`） |
+| **職責** | 會員註冊/登入/登出、Google／LINE／Apple OAuth 登入與綁定（ADR-011）、JWT 簽發與輪替、個人資料 CRUD、好友系統、每日簽到、月度累計簽到獎勵（ADR-005） |
+| **資料庫** | MySQL（`members`、`member_social_accounts`、`friendships`、`daily_checkins`、`task_definitions`、`player_tasks`、`monthly_reward_claims`、`outbox_events`） |
+| **Redis** | Refresh Token（`refresh:{memberId}`，一人一把）、JWT 黑名單（`jwt:blacklist:{jti}`）、停用旗標（`disabled:player:{id}`）、OAuth 綁定／登入一次性 ticket |
 | **Kafka 發布** | `member.registered`、`friend.relationship.updated`（**完整好友清單**，非增量，雷區 11）、`wallet.credit.request`（簽到/月度獎勵的入帳**指令**） |
 | **Kafka 消費** | `member.registered`（新手禮包） |
-| **對外 API 前綴** | `/api/v1/auth/**`、`/api/v1/player/**`、`/api/v1/friends/**`、`/api/v1/wallet/daily-checkin`＋`/api/v1/wallet/checkin/**`（**路徑在 wallet 前綴下但服務在 member**，故 gateway 需獨立路由，雷區 19） |
+| **對外 API 前綴** | `/api/v1/auth/**`（含 `/social/**` OAuth）、`/api/v1/player/**`、`/api/v1/friends/**`、`/api/v1/wallet/daily-checkin`＋`/api/v1/wallet/checkin/**`（**路徑在 wallet 前綴下但服務在 member**，故 gateway 需獨立路由，雷區 19） |
 | **對內 API** | `PATCH /internal/members/{id}/status`（admin 停用玩家時持久化 `members.status`，T-051） |
 
 ### 2.3 Wallet Service
@@ -225,6 +225,7 @@ Rank Service   ──publish rank.update     ──► Notification Service（�
 | `diamond_wallets` | Wallet | 鑽石錢包（T-101） |
 | `shop_redemptions` | Wallet | 商城兌換紀錄（ADR-006，與 `debit(SHOP_PURCHASE)` 同一交易內原子完成） |
 | `topup_orders` | Wallet | 自助加值訂單（模擬支付；orderNo 當冪等鍵） |
+| `wallet_outbox` | Wallet | Transactional Outbox（`wallet.credit`／`wallet.debit` 事件與 `wallet_transactions` 同交易寫入，由 `WalletOutboxPoller` 確認送達才標 SENT；勿改回裸發 Kafka，雷區 23） |
 | `game_rounds` | Game | 遊戲對局紀錄（`win_amount` 為**含本金**派彩，影響 RTP 口徑，雷區 17） |
 | `game_rtp_stats` | Game | RTP 統計（排程預算，熱路徑只讀 Redis 快取——T-090 Phase A） |
 | `cashback_records` | Game | 每日/每週回饋紀錄 |
@@ -243,6 +244,7 @@ Rank Service   ──publish rank.update     ──► Notification Service（�
 | Table | 所屬 Service | 說明 |
 |-------|-------------|------|
 | `members` | Member | 玩家帳號資料（`status` 停權欄位由 admin 經內部 API 更新） |
+| `member_social_accounts` | Member | Google／LINE／Apple 綁定；以 `(provider, provider_subject)` 唯一識別（ADR-011） |
 | `friendships` | Member | 好友關係 |
 | `daily_checkins` | Member | 每日簽到紀錄 |
 | `monthly_reward_claims` | Member | 月度累計簽到獎勵領取紀錄（ADR-005） |
@@ -265,6 +267,8 @@ Rank Service   ──publish rank.update     ──► Notification Service（�
 | `refresh:{memberId}` | String | Refresh Token（一人一把 → 新登入踢掉舊裝置）；`refreshToken()` 每次換發時 rotate + 重設 TTL，**非固定倒數** | `jwt.refresh-token-expiry-ms`（現行 7 天） | Member Service |
 | `jwt:blacklist:{jti}` | String | JWT 黑名單（已登出 access token）；key prefix 須與 gateway `JwtAuthenticationGlobalFilter` 一致 | Token 剩餘有效期 | Member Service（gateway 查詢） |
 | `disabled:player:{id}` | String | 玩家停用即時封鎖旗標 | 停用期間 | Member / Admin |
+| `oauth:binding-ticket:{ticket}` | String | 已登入玩家啟動社群綁定的一次性票據 | 5 分鐘 | Member Service |
+| `oauth:login-ticket:{ticket}` | String | OAuth 成功後交換 Lucky Star JWT 的一次性票據 | 2 分鐘 | Member Service |
 | `token:min-iat:{playerId}` | String | 簽發時間下限；`iat` 早於此值的 token 一律 401（撤銷舊 token） | — | Gateway 驗、Member 寫 |
 | `game:session:{playerId}:{roundId}` | Hash | 遊戲 Session（serverSeed、下注額、狀態） | 30 分鐘 | Game Service |
 | **`game:fishing:session:{sessionId}`** | Hash | **捕魚 Session：跨批累傷 `fishDamage`、`kills`、`betPerShot`、`cannonLevel`、`topUpRequestIds`**——漏存欄位＝大魚永遠打不死（雷區 16） | 場次期間 | Game Service |
@@ -353,6 +357,21 @@ Notification 為 best-effort 推播，**刻意不設 DLT**。
  │◄────200 + JWT Token──────────────────────│                  │
 ```
 
+第三方登入（ADR-011）：
+
+```
+前端        Gateway       Member        Google/LINE/Apple       Redis
+ │─start────►│────────────►│                    │                 │
+ │◄──authorizationUrl──────│                    │                 │
+ │────────────導向供應商───────────────────────►│                 │
+ │◄────────────callback authorization code─────│                 │
+ │            │────────────►│─交換 code/驗證 sub►│                 │
+ │            │             │─暫存 JWT ticket────────────────────►│
+ │◄──/auth/callback?ticket──│                    │                 │
+ │─POST exchange───────────►│─GETDEL ticket───────────────────────►│
+ │◄────────JWT──────────────│                    │                 │
+```
+
 ### 8.2 老虎機下注完整流程
 
 ```
@@ -406,7 +425,9 @@ Wallet Service  Kafka          Rank Service    Notification   前端 WS
 | [ADR-005](adr/ADR-005.md) | 月度累計簽到獎勵 + 簽到狀態改後端權威 | ✅ 已接受 |
 | [ADR-006](adr/ADR-006.md) | 禮品商城後端化（併入 wallet/admin、`SHOP_PURCHASE` 子型） | ✅ 已接受 |
 | [ADR-007](adr/ADR-007.md) | 以 Testcontainers 補真實資料庫整合測試（只新增、不取代 H2） | ✅ 已接受 |
-| ADR-008 | 捕魚 Redis session 原子化（Lua CAS） | 🅿️ 編號保留，**尚未動工**（見 `plans/01` Phase 3） |
+| [ADR-008](adr/ADR-008.md) | 捕魚 Redis session 原子化（Lua CAS + `FishingSession.version` 樂觀鎖） | ✅ 已接受（2026-07-21 落地，`FishingSessionStore.saveCas`） |
 | [ADR-009](adr/ADR-009.md) | game→wallet 最小 Saga 補償（`pending_wallet_credits` + 冪等重試） | ✅ 已接受 |
+| [ADR-010](adr/ADR-010.md) | 明知規模不需要，仍保留 Kafka 與 Redis | ✅ 已接受 |
+| [ADR-011](adr/ADR-011.md) | 第三方登入採 OIDC subject 綁定與一次性票據交換 | ✅ 已接受 |
 
 > 原 v1.0 此表把 ADR-002~005 標成「RNG 演算法／樂觀鎖／Kafka 邊界／JWT 雙 Token」，**與實際產出的 ADR 主題完全不同**，已於 2026-07-13 依 `docs/adr/` 實際檔案更正。

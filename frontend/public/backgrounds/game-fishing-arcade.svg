@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title id="title">Lucky Star fishing arcade</title>
+  <desc id="desc">An arcade fishing scene with an underwater cannon, luminous shots, fish targets, bubbles, and treasure coins.</desc>
+  <defs>
+    <linearGradient id="sea" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#064d72"/><stop offset="0.46" stop-color="#06334d"/><stop offset="1" stop-color="#061018"/></linearGradient>
+    <linearGradient id="beam" x1="0" x2="1" y1="1" y2="0"><stop offset="0" stop-color="#ffeaa0" stop-opacity="0.95"/><stop offset="1" stop-color="#78dcff" stop-opacity="0.1"/></linearGradient>
+    <linearGradient id="gold" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#fff6c8"/><stop offset="0.5" stop-color="#f8d56a"/><stop offset="1" stop-color="#9b5805"/></linearGradient>
+    <filter id="glow" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="1200" height="800" fill="url(#sea)"/>
+  <path d="M0 168c150-62 286-62 408 0s254 62 396 0 264-58 396 4v628H0Z" fill="#78dcff" opacity="0.08"/>
+  <path d="M0 292c154 58 304 58 450 0s302-58 468 0 244 54 282 20v488H0Z" fill="#021522" opacity="0.58"/>
+  <g fill="#dff9ff" opacity="0.38"><circle cx="146" cy="468" r="9"/><circle cx="208" cy="396" r="6"/><circle cx="294" cy="548" r="8"/><circle cx="930" cy="322" r="10"/><circle cx="1008" cy="244" r="6"/><circle cx="1044" cy="460" r="8"/></g>
+  <g transform="translate(132 188)"><path d="M64 44c72-48 168-38 230 22 52 50 128 62 190 22-22 82-94 138-184 138-92 0-168-60-230-108L18 146l32-58Z" fill="#f8d56a" stroke="#fff4b8" stroke-width="7"/><circle cx="132" cy="102" r="11" fill="#180103"/><path d="M366 94l98-62-22 68 44 58-106-24Z" fill="#c90d18"/></g>
+  <g transform="translate(704 106) scale(0.84)"><path d="M64 44c72-48 168-38 230 22 52 50 128 62 190 22-22 82-94 138-184 138-92 0-168-60-230-108L18 146l32-58Z" fill="#78dcff" stroke="#dff9ff" stroke-width="7"/><circle cx="132" cy="102" r="11" fill="#180103"/><path d="M366 94l98-62-22 68 44 58-106-24Z" fill="#0f6b4a"/></g>
+  <g transform="translate(746 406) scale(1.08)"><path d="M64 44c72-48 168-38 230 22 52 50 128 62 190 22-22 82-94 138-184 138-92 0-168-60-230-108L18 146l32-58Z" fill="#c90d18" stroke="#ffeaa0" stroke-width="7"/><circle cx="132" cy="102" r="11" fill="#180103"/><path d="M366 94l98-62-22 68 44 58-106-24Z" fill="#f8d56a"/></g>
+  <g filter="url(#glow)"><path d="M560 682 772 306" stroke="url(#beam)" stroke-width="18" stroke-linecap="round"/><path d="M558 682 360 354" stroke="url(#beam)" stroke-width="13" stroke-linecap="round" opacity="0.72"/><circle cx="772" cy="306" r="21" fill="#ffeaa0"/><circle cx="360" cy="354" r="16" fill="#ffeaa0" opacity="0.8"/></g>
+  <g transform="translate(410 574)"><path d="M84 88h180c36 0 66 30 66 66v42H24v-42c0-36 30-66 60-66Z" fill="#190508" stroke="url(#gold)" stroke-width="12"/><path d="M158 88 238 0l70 54-104 86Z" fill="#c90d18" stroke="url(#gold)" stroke-width="12"/><circle cx="170" cy="154" r="52" fill="#052a40" stroke="#ffeaa0" stroke-width="9"/><circle cx="170" cy="154" r="21" fill="#78dcff"/></g>
+  <g fill="url(#gold)" stroke="#fff4b8" stroke-width="5"><circle cx="92" cy="682" r="38"/><circle cx="154" cy="712" r="30"/><circle cx="1012" cy="684" r="42"/><circle cx="1082" cy="716" r="32"/></g>
+</svg>
