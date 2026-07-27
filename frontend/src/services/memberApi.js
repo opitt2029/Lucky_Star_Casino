@@ -41,6 +41,9 @@ const friendlyErrorMap = {
   'Network Error': '連線失敗，請稍後再試',
   'Invalid username or password': '帳號或密碼不正確',
   'Account is disabled': '此帳號已被停用',
+  'Member must be at least 18 years old': '註冊者必須年滿 18 歲',
+  'Adult confirmation is required': '請確認已年滿 18 歲',
+  'Birth date is required': '請填寫出生日期',
 }
 
 // 從 axios 錯誤中取出後端回傳的錯誤訊息，並轉成使用者看得懂的說法
@@ -80,12 +83,14 @@ export const memberApi = {
   },
 
   // POST /api/v1/auth/register → 成功後自動登入取得 token
-  async register({ username, email, password, nickname }) {
+  async register({ username, email, password, nickname, birthDate, adultConfirmed }) {
+    const registration = { username, email, password, nickname, birthDate, adultConfirmed }
+
     if (useMockApi) {
-      return mockApi.register({ username, email, password, nickname })
+      return mockApi.register(registration)
     }
 
-    await api.post('/api/v1/auth/register', { username, email, password, nickname })
+    await api.post('/api/v1/auth/register', registration)
     return memberApi.login({ username, password })
   },
 
