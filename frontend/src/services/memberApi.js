@@ -133,12 +133,21 @@ export const memberApi = {
     }
   },
 
-  async register({ username, email, password, nickname }) {
-    if (useMockApi) {
-      return mockApi.register({ username, email, password, nickname })
+  async register({ username, email, password, nickname, birthDate, adultConfirmed }) {
+    const payload = {
+      username,
+      email,
+      password,
+      nickname,
+      birthDate,
+      adultConfirmed: Boolean(adultConfirmed),
     }
 
-    await api.post('/api/v1/auth/register', { username, email, password, nickname })
+    if (useMockApi) {
+      return mockApi.register(payload)
+    }
+
+    await api.post('/api/v1/auth/register', payload)
     return memberApi.login({ username, password })
   },
 
