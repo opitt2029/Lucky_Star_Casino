@@ -2,17 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useDispatch } from 'react-redux'
 import { socialLoginMember } from '../store/slices/authSlice'
-import { fetchRanks } from '../store/slices/rankSlice'
-import { fetchDiamondBalance } from '../store/slices/diamondSlice'
-import { fetchWallet } from '../store/slices/walletSlice'
+import usePostAuthSync from '../hooks/usePostAuthSync'
+import { consumeOAuthReturnTo } from '../utils/authNavigation'
 import { getBackgroundStyle } from '../theme/backgroundTheme'
 
 export default function OAuthCallback() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const syncAfterAuth = usePostAuthSync()
   const [searchParams] = useSearchParams()
   const started = useRef(false)
-  const [error, setError] = useState(searchParams.get('error') || '')
+  const providerError = searchParams.get('error_description') || searchParams.get('error') || ''
+  const [error, setError] = useState(providerError)
 
   useEffect(() => {
     if (started.current || error) return
@@ -22,18 +23,17 @@ export default function OAuthCallback() {
       setError('第三方登入回傳資料不完整，請重新登入。')
       return
     }
+
     window.history.replaceState({}, '', '/auth/callback')
 
     dispatch(socialLoginMember(ticket))
       .unwrap()
       .then(() => {
-        dispatch(fetchWallet())
-        dispatch(fetchDiamondBalance())
-        dispatch(fetchRanks())
-        navigate('/games', { replace: true })
+        syncAfterAuth()
+        navigate(consumeOAuthReturnTo('/games'), { replace: true })
       })
       .catch((message) => setError(message || '第三方登入失敗'))
-  }, [dispatch, error, navigate, searchParams])
+  }, [dispatch, error, navigate, searchParams, syncAfterAuth])
 
   return (
     <main
