@@ -1,4 +1,4 @@
-﻿import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
+import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import { rankApi, RANK_CATEGORIES, RANK_SCOPES } from '../../services/rankApi'
 
 export const rankKey = (scope, category) => `${scope}:${category}`
@@ -6,6 +6,14 @@ export const rankKey = (scope, category) => `${scope}:${category}`
 const emptyRankings = Object.fromEntries(
   RANK_SCOPES.flatMap((scope) => RANK_CATEGORIES.map((category) => [rankKey(scope, category), []])),
 )
+
+function normalizeRankRows(rows = []) {
+  return rows.map((row, index) => ({
+    ...row,
+    rank: Number(row.rank) > 0 ? Number(row.rank) : index + 1,
+    provisionalRank: false,
+  }))
+}
 
 const initialState = {
   activeScope: 'GLOBAL',
@@ -20,6 +28,7 @@ const initialState = {
   playerLoading: false,
   lastUpdatedAt: null,
   error: null,
+  myRanksError: null,
   playerError: null,
   requests: {},
 }
@@ -85,9 +94,13 @@ const rankSlice = createSlice({
   reducers: {
     setRankScope(state, action) {
       state.activeScope = action.payload
+      state.error = null
+      state.playerError = null
     },
     setRankCategory(state, action) {
       state.activeCategory = action.payload
+      state.error = null
+      state.playerError = null
     },
     setRankSearchQuery(state, action) {
       state.searchQuery = action.payload
@@ -109,6 +122,7 @@ const rankSlice = createSlice({
         state.activeScope = 'GLOBAL'
         state.activeCategory = 'COINS'
       }
+      state.error = null
     },
     upsertRankRows(state, action) {
       const scope = action.payload?.scope || 'GLOBAL'
@@ -123,7 +137,7 @@ const rankSlice = createSlice({
       state.rankings[key] = uniqueRows
         .sort((a, b) => Number(b.score || 0) - Number(a.score || 0) || Number(a.playerId ?? a.id) - Number(b.playerId ?? b.id))
         .slice(0, 100)
-        .map((row, index) => ({ ...row, rank: row.rank || index + 1 }))
+        .map((row, index) => ({ ...row, rank: index + 1, provisionalRank: true }))
       state.lastUpdatedAt = action.payload?.updatedAt || new Date().toISOString()
     },
   },
@@ -140,10 +154,11 @@ const rankSlice = createSlice({
       .addCase(fetchLeaderboard.fulfilled, (state, action) => {
         const key = rankKey(action.payload.scope, action.payload.category)
         if (state.requests[key] !== action.meta.requestId) return
-        state.rankings[key] = action.payload.rows
+        state.rankings[key] = normalizeRankRows(action.payload.rows)
         state.lastUpdatedAt = action.payload.fetchedAt
         state.loading = false
         state.refreshing = false
+        state.error = null
         delete state.requests[key]
       })
       .addCase(fetchLeaderboard.rejected, (state, action) => {
@@ -155,8 +170,15 @@ const rankSlice = createSlice({
         state.error = action.payload || '排行榜讀取失敗'
         delete state.requests[key]
       })
+      .addCase(fetchMyRanks.pending, (state) => {
+        state.myRanksError = null
+      })
       .addCase(fetchMyRanks.fulfilled, (state, action) => {
         state.myRanks = action.payload || {}
+        state.myRanksError = null
+      })
+      .addCase(fetchMyRanks.rejected, (state, action) => {
+        state.myRanksError = action.payload || '我的名次讀取失敗'
       })
       .addCase(fetchRankPlayer.pending, (state, action) => {
         state.selectedPlayerId = action.meta.arg.playerId
