@@ -12,11 +12,14 @@ Mermaid ER 圖（有 PK/FK/型別）。本腳本產生對應的**經營層版本
 ----
     python docs/assets/er/generate-er-executive.py
 
-輸出（覆寫）
-------------
-    docs/assets/er/er-postgres-董事長版.svg
+輸出（覆寫，淺色 / 深色各一組共 6 張）
+--------------------------------------
+    docs/assets/er/er-postgres-董事長版.svg        （白底，適合列印 / 淺色文件）
     docs/assets/er/er-mysql-董事長版.svg
     docs/assets/er/er-cross-db-cqrs-董事長版.svg
+    docs/assets/er/er-postgres-董事長版-深色.svg   （黑底，適合深色簡報 / 螢幕）
+    docs/assets/er/er-mysql-董事長版-深色.svg
+    docs/assets/er/er-cross-db-cqrs-董事長版-深色.svg
 
 資料來源：同資料夾的 `注解-*.md`（schema 有變動時，先更新注解再改本檔的資料區）。
 """
@@ -32,23 +35,81 @@ FONT = ("'Microsoft JhengHei','Microsoft YaHei','PingFang TC','Noto Sans TC',"
         "'Heiti TC','Segoe UI Emoji',-apple-system,sans-serif")
 MONO = "'Consolas','Menlo','Courier New',monospace"
 
-INK = "#0F172A"        # 主要文字（近黑）
-INK_SUB = "#475569"    # 次要文字（灰）
-INK_MUTE = "#94A3B8"   # 技術表名（淺灰）
-CANVAS = "#FFFFFF"
-PAPER = "#F8FAFC"      # 卡片以外的底色
-
-# 業務分區配色：(強調色, 淡底色)
-THEME = {
-    "gold":   ("#B45309", "#FEF3C7"),
-    "violet": ("#6D28D9", "#EDE9FE"),
-    "emerald": ("#047857", "#D1FAE5"),
-    "sky":    ("#0369A1", "#E0F2FE"),
-    "rose":   ("#BE123C", "#FFE4E6"),
-    "indigo": ("#4338CA", "#E0E7FF"),
-    "teal":   ("#0F766E", "#CCFBF1"),
-    "slate":  ("#475569", "#E2E8F0"),
+# 兩套配色。深色版不是把淺色反相就好——暗底上的深色（如 #B45309）幾乎看不見，
+# 所以強調色整組換成明度更高的版本，分區底色則換成「帶色調的暗面」。
+PALETTES = {
+    "light": {
+        "INK": "#0F172A",        # 主要文字（近黑）
+        "INK_SUB": "#475569",    # 次要文字（灰）
+        "INK_MUTE": "#94A3B8",   # 技術表名（淺灰）
+        "CANVAS": "#FFFFFF",     # 整張圖的底
+        "PAPER": "#F8FAFC",      # 關聯總覽帶的底
+        "CARD_BG": "#FFFFFF",    # 資料卡的底
+        "CARD_BORDER": "#E2E8F0",
+        "CALLOUT_BG": "#0F172A",  # 頁首「一句話」框
+        "CALLOUT_FG": "#F1F5F9",
+        "ARROW": "#334155",      # 實線箭頭
+        "ARROW_DIM": "#94A3B8",  # 虛線箭頭
+        "SHADOW": ("#0F172A", "0.10"),
+        # 業務分區配色：(強調色, 分區底色)
+        "THEME": {
+            "gold":    ("#B45309", "#FEF3C7"),
+            "violet":  ("#6D28D9", "#EDE9FE"),
+            "emerald": ("#047857", "#D1FAE5"),
+            "sky":     ("#0369A1", "#E0F2FE"),
+            "rose":    ("#BE123C", "#FFE4E6"),
+            "indigo":  ("#4338CA", "#E0E7FF"),
+            "teal":    ("#0F766E", "#CCFBF1"),
+            "slate":   ("#475569", "#E2E8F0"),
+        },
+    },
+    "dark": {
+        "INK": "#F1F5F9",
+        "INK_SUB": "#A9B6C8",
+        # 比淺色版的 #94A3B8 再亮一點：暗底上的小字（11px 的技術表名）
+        # 若照抄淺色的灰度，投影時幾乎看不見
+        "INK_MUTE": "#8496AE",
+        "CANVAS": "#0B1120",
+        "PAPER": "#131C2C",
+        "CARD_BG": "#1B2436",
+        "CARD_BORDER": "#2E3A50",
+        "CALLOUT_BG": "#1B2436",
+        "CALLOUT_FG": "#F1F5F9",
+        "ARROW": "#CBD5E1",
+        "ARROW_DIM": "#7C8BA1",
+        "SHADOW": ("#000000", "0.45"),
+        "THEME": {
+            "gold":    ("#FBBF24", "#2A2008"),
+            "violet":  ("#A78BFA", "#1E1638"),
+            "emerald": ("#34D399", "#08281E"),
+            "sky":     ("#38BDF8", "#082436"),
+            "rose":    ("#FB7185", "#2C0F1B"),
+            "indigo":  ("#8B95FA", "#181B3C"),
+            "teal":    ("#2DD4BF", "#072B27"),
+            "slate":   ("#94A3B8", "#18202E"),
+        },
+    },
 }
+
+
+def use_theme(mode):
+    """切換配色：把該套色票攤平成模組層變數。
+
+    這樣下面每個繪圖函式都不必多接一個 palette 參數。本檔是單執行緒、
+    一次性執行的腳本，用全域變數安全且讀起來最短。
+    """
+    global INK, INK_SUB, INK_MUTE, CANVAS, PAPER, CARD_BG, CARD_BORDER
+    global CALLOUT_BG, CALLOUT_FG, ARROW, ARROW_DIM, SHADOW, THEME
+    p = PALETTES[mode]
+    INK, INK_SUB, INK_MUTE = p["INK"], p["INK_SUB"], p["INK_MUTE"]
+    CANVAS, PAPER = p["CANVAS"], p["PAPER"]
+    CARD_BG, CARD_BORDER = p["CARD_BG"], p["CARD_BORDER"]
+    CALLOUT_BG, CALLOUT_FG = p["CALLOUT_BG"], p["CALLOUT_FG"]
+    ARROW, ARROW_DIM = p["ARROW"], p["ARROW_DIM"]
+    SHADOW, THEME = p["SHADOW"], p["THEME"]
+
+
+use_theme("light")
 
 # 版面尺寸
 W = 1680           # 畫布寬
@@ -88,8 +149,11 @@ def rect(x, y, w, h, fill, rx=12, stroke=None, sw=1, extra=""):
             f'fill="{fill}"{st}{extra}/>')
 
 
-def txt(x, y, s, size=14, fill=INK, weight="normal", anchor="start",
+def txt(x, y, s, size=14, fill=None, weight="normal", anchor="start",
         family=None, opacity=None):
+    # 預設色必須在呼叫當下才取 INK，不能寫成參數預設值——
+    # 參數預設值在函式定義時就固定了，use_theme() 之後換不掉。
+    fill = fill or INK
     fam = family or FONT
     op = f' opacity="{opacity}"' if opacity is not None else ""
     return (f'<text x="{x}" y="{y}" font-family="{fam}" font-size="{size}" '
@@ -107,17 +171,18 @@ def line(x1, y1, x2, y2, stroke, sw=2, dash=None, marker=None):
 def defs():
     """箭頭符號 + 卡片陰影。實線箭頭＝實際資料流，虛線箭頭＝邏輯對應。"""
     heads = []
-    for name, color in [("arrowSolid", "#334155"), ("arrowDash", "#94A3B8"),
-                        ("arrowGold", "#B45309")]:
+    for name, color in [("arrowSolid", ARROW), ("arrowDash", ARROW_DIM),
+                        ("arrowGold", THEME["gold"][0])]:
         heads.append(
             f'<marker id="{name}" viewBox="0 0 10 10" refX="9" refY="5" '
             f'markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
             f'<path d="M 0 0 L 10 5 L 0 10 z" fill="{color}"/></marker>')
+    sh_color, sh_op = SHADOW
     return ("<defs>"
             + "".join(heads)
             + '<filter id="sh" x="-25%" y="-25%" width="150%" height="150%">'
-              '<feDropShadow dx="0" dy="1.5" stdDeviation="2.5" '
-              'flood-color="#0F172A" flood-opacity="0.10"/></filter>'
+              f'<feDropShadow dx="0" dy="1.5" stdDeviation="2.5" '
+              f'flood-color="{sh_color}" flood-opacity="{sh_op}"/></filter>'
             + "</defs>")
 
 
@@ -131,7 +196,7 @@ def card(x, y, w, item, accent):
     item = (中文名, 白話用途, 為什麼重要, 技術表名)
     """
     name, use, why, table = item
-    p = [rect(x, y, w, CARD_H, "#FFFFFF", rx=10, stroke="#E2E8F0",
+    p = [rect(x, y, w, CARD_H, CARD_BG, rx=10, stroke=CARD_BORDER,
               extra=' filter="url(#sh)"'),
          # 左側色條：一眼分辨屬於哪個業務分區
          f'<path d="M{x} {y+10} a10,10 0 0 1 10,-10 h4 v{CARD_H} h-4 '
@@ -164,11 +229,11 @@ def group(x, y, w, g):
 
 def header(title, subtitle, callout, accent):
     """頁首：大標 + 副標 + 一句話重點框。董事長只讀這三行也能懂七成。"""
-    p = [rect(MARGIN, 96, W - MARGIN * 2, 74, "#0F172A", rx=14),
+    p = [rect(MARGIN, 96, W - MARGIN * 2, 74, CALLOUT_BG, rx=14),
          txt(MARGIN + 4, 56, title, size=34, weight="700", fill=INK),
          txt(MARGIN + 4, 84, subtitle, size=15.5, fill=INK_SUB),
          txt(MARGIN + 26, 132, "一句話", size=13, weight="700", fill=accent),
-         txt(MARGIN + 96, 133, callout, size=17, weight="600", fill="#F1F5F9"),
+         txt(MARGIN + 96, 133, callout, size=17, weight="600", fill=CALLOUT_FG),
          f'<line x1="{MARGIN+82}" y1="112" x2="{MARGIN+82}" y2="154" '
          f'stroke="{accent}" stroke-width="2.5" stroke-linecap="round"/>']
     return "".join(p)
@@ -180,7 +245,7 @@ def relation_band(x, y, w, rows, accent):
     每個 row 是 [膠囊, 連接詞, 膠囊, 連接詞, 膠囊 ...] 交錯排列。
     """
     h = 60 + len(rows) * 46 + 16
-    p = [rect(x, y, w, h, PAPER, rx=16, stroke="#E2E8F0"),
+    p = [rect(x, y, w, h, PAPER, rx=16, stroke=CARD_BORDER),
          txt(x + 24, y + 36, "看圖重點：資料之間怎麼串起來", size=18,
              weight="700", fill=INK)]
     ry = y + 62
@@ -189,7 +254,7 @@ def relation_band(x, y, w, rows, accent):
         for i, seg in enumerate(row):
             if i % 2 == 0:                       # 偶數位＝資料膠囊
                 pw = est_width(seg, 14) + 30
-                p.append(rect(cx, ry, pw, 32, "#FFFFFF", rx=16,
+                p.append(rect(cx, ry, pw, 32, CARD_BG, rx=16,
                               stroke=accent, sw=1.4))
                 p.append(txt(cx + pw / 2, ry + 21, seg, size=14,
                              weight="600", fill=accent, anchor="middle"))
@@ -199,7 +264,7 @@ def relation_band(x, y, w, rows, accent):
                 p.append(txt(cx + lw / 2, ry + 13, seg, size=12.5,
                              fill=INK_SUB, anchor="middle"))
                 p.append(line(cx + 2, ry + 22, cx + lw - 4, ry + 22,
-                              "#94A3B8", sw=1.6, marker="arrowDash"))
+                              ARROW_DIM, sw=1.6, marker="arrowDash"))
                 cx += lw + 8
         ry += 46
     return "".join(p), h
@@ -210,9 +275,9 @@ def legend(x, y, w):
     h = 54
     items = [("方塊 ＝ 一份資料（一張資料表）", INK),
              ("右上灰字 ＝ 系統內部名稱，跟工程師溝通用", INK_MUTE),
-             ("▸ 彩色字 ＝ 這份資料為什麼對經營重要", "#B45309"),
+             ("▸ 彩色字 ＝ 這份資料為什麼對經營重要", THEME["gold"][0]),
              ("底色 ＝ 業務分區", INK_SUB)]
-    p = [rect(x, y, w, h, "#FFFFFF", rx=12, stroke="#E2E8F0")]
+    p = [rect(x, y, w, h, CARD_BG, rx=12, stroke=CARD_BORDER)]
     cx = x + 24
     for s, c in items:
         p.append(f'<circle cx="{cx}" cy="{y+27}" r="4.5" fill="{c}"/>')
@@ -419,7 +484,7 @@ FLOW_META = {
 
 def chip(x, y, w, title, sub, accent, h=104, table=""):
     """資料流圖用的方塊，比卡片版型再簡化一層。"""
-    p = [rect(x, y, w, h, "#FFFFFF", rx=12, stroke=accent, sw=1.6,
+    p = [rect(x, y, w, h, CARD_BG, rx=12, stroke=accent, sw=1.6,
               extra=' filter="url(#sh)"'),
          txt(x + w / 2, y + 34, title, size=18, weight="700", fill=INK,
              anchor="middle"),
@@ -495,7 +560,7 @@ def build_flow_diagram():
 
     # ② 待發通知箱 → 廣播中心（往上）
     b.append(line(center[1], chip_bot_top - 6, center[1], kafka_y + kafka_h + 10,
-                  "#334155", sw=2.5, marker="arrowSolid"))
+                  ARROW, sw=2.5, marker="arrowSolid"))
     b.append(txt(center[1] + 16, chip_bot_top - 62, "② 郵差程式定時送出",
                  size=12.5, weight="600", fill=INK))
     b.append(txt(center[1] + 16, chip_bot_top - 42, "確認送達才銷單",
@@ -503,7 +568,7 @@ def build_flow_diagram():
 
     # ③ 廣播中心 → 帳務明細複本（往上）
     b.append(line(center[1], kafka_y - 6, center[1], chip_top_bottom + 10,
-                  "#334155", sw=2.5, marker="arrowSolid"))
+                  ARROW, sw=2.5, marker="arrowSolid"))
     b.append(txt(center[1] + 16, kafka_y - 52, "③ 查詢庫更新複本",
                  size=12.5, weight="600", fill=INK))
     b.append(txt(center[1] + 16, kafka_y - 32, "重複收到也只算一次",
@@ -514,7 +579,7 @@ def build_flow_diagram():
                         (2, ("⑥ 序號兌換", "→ 鑽石入帳")),
                         (3, ("⑤ 先驗價", "→ 再到金庫扣款"))]:
         b.append(line(center[i], chip_top_bottom + 6, center[i],
-                      chip_bot_top - 10, "#94A3B8", sw=2, dash="7 6",
+                      chip_bot_top - 10, ARROW_DIM, sw=2, dash="7 6",
                       marker="arrowDash"))
         b.append(txt(center[i] + 14, 500, l1, size=12.5, weight="600",
                      fill=INK_SUB))
@@ -545,13 +610,13 @@ def build_flow_diagram():
     gy += 150 + 20
 
     # 圖例
-    b.append(rect(MARGIN - 8, gy, W - (MARGIN - 8) * 2, 54, "#FFFFFF", rx=12,
-                  stroke="#E2E8F0"))
-    b.append(line(MARGIN + 16, gy + 27, MARGIN + 64, gy + 27, "#334155",
+    b.append(rect(MARGIN - 8, gy, W - (MARGIN - 8) * 2, 54, CARD_BG, rx=12,
+                  stroke=CARD_BORDER))
+    b.append(line(MARGIN + 16, gy + 27, MARGIN + 64, gy + 27, ARROW,
                   sw=2.5, marker="arrowSolid"))
     b.append(txt(MARGIN + 78, gy + 32, "實線 ＝ 資料真的搬過去", size=13,
                  fill=INK_SUB))
-    b.append(line(MARGIN + 300, gy + 27, MARGIN + 348, gy + 27, "#94A3B8",
+    b.append(line(MARGIN + 300, gy + 27, MARGIN + 348, gy + 27, ARROW_DIM,
                   sw=2, dash="7 6", marker="arrowDash"))
     b.append(txt(MARGIN + 362, gy + 32,
                  "虛線 ＝ 兩邊靠共同編號對應（資料庫不強制，靠程式與對帳維持）",
@@ -569,17 +634,21 @@ def build_flow_diagram():
 
 def main():
     out_dir = Path(__file__).resolve().parent
-    files = {
-        "er-postgres-董事長版.svg": build_card_diagram(
-            PG_META, PG_LEFT, PG_RIGHT, PG_RELATIONS, THEME["gold"][0]),
-        "er-mysql-董事長版.svg": build_card_diagram(
-            MY_META, MY_LEFT, MY_RIGHT, MY_RELATIONS, THEME["indigo"][0]),
-        "er-cross-db-cqrs-董事長版.svg": build_flow_diagram(),
-    }
-    for name, content in files.items():
-        path = out_dir / name
-        path.write_text(content, encoding="utf-8")
-        print(f"[ok] {path}  ({len(content):,} bytes)")
+    # 兩種配色各輸出一組。淺色沿用原檔名（文件與簡報已經引用，不要改動）；
+    # 深色加 `-深色` 後綴，給深底簡報 / 螢幕觀看用。
+    for mode, suffix in (("light", ""), ("dark", "-深色")):
+        use_theme(mode)
+        files = {
+            f"er-postgres-董事長版{suffix}.svg": build_card_diagram(
+                PG_META, PG_LEFT, PG_RIGHT, PG_RELATIONS, THEME["gold"][0]),
+            f"er-mysql-董事長版{suffix}.svg": build_card_diagram(
+                MY_META, MY_LEFT, MY_RIGHT, MY_RELATIONS, THEME["indigo"][0]),
+            f"er-cross-db-cqrs-董事長版{suffix}.svg": build_flow_diagram(),
+        }
+        for name, content in files.items():
+            path = out_dir / name
+            path.write_text(content, encoding="utf-8")
+            print(f"[ok] {mode:<5} {path.name}  ({len(content):,} bytes)")
 
 
 if __name__ == "__main__":

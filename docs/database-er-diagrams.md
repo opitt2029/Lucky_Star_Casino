@@ -14,14 +14,18 @@
 下方 1～3 節的圖是給工程師看的（含 PK/FK、欄位型別）。若讀者是主管、董事長或業務端，
 請改看同一份資料的**經營層版本**：拿掉技術欄位，每個方塊只留「這份資料是什麼、為什麼對經營重要」。
 
-| 經營層版（建議先看） | 對應的工程師版 | 這張圖回答什麼 |
-|---|---|---|
-| [帳務與遊戲核心資料圖](assets/er/er-postgres-董事長版.svg) | `er-postgres.svg` | 錢在哪裡算？出事了怎麼追？ |
-| [會員與營運活動資料圖](assets/er/er-mysql-董事長版.svg) | `er-mysql.svg` | 玩家是誰？被什麼留住？ |
-| [一筆錢的旅程（兩庫如何協作）](assets/er/er-cross-db-cqrs-董事長版.svg) | `er-cross-db-cqrs.svg` | 為什麼要兩個資料庫？會不會對不上帳？ |
+| 經營層版（建議先看） | 黑底版 | 對應的工程師版 | 這張圖回答什麼 |
+|---|---|---|---|
+| [帳務與遊戲核心資料圖](assets/er/er-postgres-董事長版.svg) | [深色](assets/er/er-postgres-董事長版-深色.svg) | `er-postgres.svg` | 錢在哪裡算？出事了怎麼追？ |
+| [會員與營運活動資料圖](assets/er/er-mysql-董事長版.svg) | [深色](assets/er/er-mysql-董事長版-深色.svg) | `er-mysql.svg` | 玩家是誰？被什麼留住？ |
+| [一筆錢的旅程（兩庫如何協作）](assets/er/er-cross-db-cqrs-董事長版.svg) | [深色](assets/er/er-cross-db-cqrs-董事長版-深色.svg) | `er-cross-db-cqrs.svg` | 為什麼要兩個資料庫？會不會對不上帳？ |
 
-三張圖由 `docs/assets/er/generate-er-executive.py` 產生（純 Python，無外部套件）。
-文案來自同資料夾的 `注解-*.md`；**schema 變動時，先更新注解，再改該腳本的資料區並重跑**：
+**淺色 vs 深色**：內容完全相同，只差配色。白底版適合列印與淺色文件；
+`-深色` 版是黑底（`#0B1120`），適合深色簡報投影與螢幕觀看。
+
+六張圖都由 `docs/assets/er/generate-er-executive.py` 產生（純 Python，無外部套件），
+一次執行同時輸出兩種配色。文案來自同資料夾的 `注解-*.md`；
+**schema 變動時，先更新注解，再改該腳本的資料區並重跑**：
 
 ```bash
 python docs/assets/er/generate-er-executive.py
