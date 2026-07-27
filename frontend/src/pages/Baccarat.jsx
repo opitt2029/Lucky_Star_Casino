@@ -10,8 +10,10 @@ import BaccaratSettlementPanel from '../components/baccarat/BaccaratSettlementPa
 import BaccaratSideBets from '../components/baccarat/BaccaratSideBets'
 import BaccaratStatusBar from '../components/baccarat/BaccaratStatusBar'
 import BaccaratTableHeader from '../components/baccarat/BaccaratTableHeader'
+import WinningTicker from '../components/WinningTicker'
+import InteractiveGameBackdrop from '../components/InteractiveGameBackdrop'
 import { fetchWallet, setBalance } from '../store/slices/walletSlice'
-import { betBaccarat } from '../store/slices/gameSlice'
+import { clearGameResult } from '../store/slices/gameSlice'
 import { BET_LABELS } from '../utils/baccaratGame'
 import { soundEngine } from '../casino-fx/sound/SoundEngine'
 import { useBgm } from '../casino-fx/sound/useBgm'
@@ -20,6 +22,7 @@ import { CoinRainPro, RedEnvelopeRain } from '../casino-fx/fx/FallRain'
 import BrushBanner from '../casino-fx/fx/BrushBanner'
 import { announcePlayerWin } from '../casino-fx/announce/announceBus'
 import { useGameLeaveGuard } from '../hooks/useGameLeaveGuard'
+import { gameApi } from '../services/gameApi'
 import '../styles/games/baccarat.css'
 
 const SUIT_BY_SYMBOL = { '♠': 'spade', '♥': 'heart', '♦': 'diamond', '♣': 'club' }
@@ -90,18 +93,6 @@ function buildHiddenCards(count) {
   return Array.from({ length: count }, () => null)
 }
 
-function buildDealSteps(playerCards, bankerCards) {
-  const steps = [
-    { side: 'player', count: 1, message: '閒家第一張入桌' },
-    { side: 'banker', count: 1, message: '莊家第一張入桌' },
-    { side: 'player', count: 2, message: '閒家第二張入桌' },
-    { side: 'banker', count: 2, message: '莊家第二張入桌' },
-    { side: 'player', count: 3, message: '閒家補牌' },
-    { side: 'banker', count: 3, message: '莊家補牌' },
-  ]
-
-  return steps.filter((step) => (step.side === 'player' ? playerCards.length : bankerCards.length) >= step.count)
-}
 export default function Baccarat() {
   const dispatch = useDispatch()
   const balance = useSelector((state) => state.wallet.balance)
@@ -131,6 +122,7 @@ export default function Baccarat() {
   const [chipFlight, setChipFlight] = useState({ betType: '', nonce: 0 })
   const [selectedSideBets, setSelectedSideBets] = useState([])
   const pendingRef = useRef(null)
+  const activeRoundRef = useRef(null)
   const stageRef = useRef(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [burstTrigger, setBurstTrigger] = useState(0)
@@ -140,9 +132,21 @@ export default function Baccarat() {
   const [banner, setBanner] = useState({ trigger: 0, text: '', level: 1 })
 
   // 發牌/咪牌時 BGM 升到高潮層（疊入輕柔 ride 推進），結算後回一般層。
+  const abandonActiveRound = () => {
+    const active = activeRoundRef.current
+    if (!active) return null
+    activeRoundRef.current = null
+    pendingRef.current = null
+        return gameApi.abandonBaccaratRound({ roundId: active.roundId, keepalive: true })
+  }
   useBgm('baccarat', true, { intensity: phase === 'dealing' || phase === 'squeezing' ? 2 : 1 })
-  useGameLeaveGuard(phase === 'dealing' || phase === 'squeezing', '本局尚未完成，確定要離開嗎？')
+  useGameLeaveGuard(phase === 'dealing' || phase === 'squeezing', '本局尚未完成，確定要離開嗎？', { onLeave: abandonActiveRound })
 
+  useEffect(() => {
+    dispatch(clearGameResult())
+    activeRoundRef.current = null
+    pendingRef.current = null
+      }, [dispatch])
   useEffect(() => {
     setSqueezeModeState(getSqueezeMode(player?.id))
   }, [player?.id])
@@ -208,6 +212,7 @@ export default function Baccarat() {
     setPhase('settled')
     setDealingStep('')
     pendingRef.current = null
+    activeRoundRef.current = null
 
     if (profit > 0) {
       setBurstTrigger((n) => n + 1)
@@ -312,52 +317,59 @@ export default function Baccarat() {
 
   const handleDeal = async () => {
     if (!selectedBet) {
-      setResultMessage('請先選擇下注項目。')
+      setResultMessage('請先選擇下注區。')
       setRoundProfit(null)
       return
     }
     if (!amountInRange) {
-      setResultMessage(`下注金額需介於 ${MIN_BET.toLocaleString()} ~ ${MAX_BET.toLocaleString()} 星幣。`)
+      setResultMessage(`下注金額必須介於 ${MIN_BET.toLocaleString()} ~ ${MAX_BET.toLocaleString()} 星幣。`)
       setRoundProfit(null)
       return
     }
     if (balance < numericBetAmount) {
-      setResultMessage('星幣不足，無法開始發牌。')
+      setResultMessage('星幣不足，請先補充餘額。')
       setRoundProfit(null)
       return
     }
     if (locked) return
 
+    const betArea = selectedBet
+    const apiArea = betArea.toLowerCase()
+    const amount = numericBetAmount
+
     setPhase('dealing')
-    setResultMessage('停止下注，發牌中...')
+    setResultMessage('下注已送出，正在發牌...')
     setWinner('')
     setRoundId('')
     setRoundProfit(null)
     setRoundPayout(null)
-    setRoundBet({ selectedBet, amount: numericBetAmount, rebate: null, payout: null })
+    setRoundBet({ selectedBet: betArea, amount, rebate: null, payout: null })
     setPlayerCards([])
     setBankerCards([])
     setPlayerScore(null)
     setBankerScore(null)
     setConcealed(false)
     setRevealedCount(0)
-    setDealingStep('荷官洗牌，準備發牌')
+    setDealingStep('確認下注中...')
     setDealAnimationSeed(Math.floor(Math.random() * 1000000) + 1)
     pendingRef.current = null
+    activeRoundRef.current = null
     soundEngine.play('chip')
 
     try {
-      const result = await dispatch(
-        betBaccarat({ area: selectedBet.toLowerCase(), amount: numericBetAmount }),
-      ).unwrap()
-      const nextWinner = capitalizeWinner(result.winner)
-      const profit = (result.payout ?? 0) - numericBetAmount
-      const payload = { result, nextWinner, profit, betArea: selectedBet, amount: numericBetAmount }
-      const parsedPlayerCards = (result.playerCards || []).map(parseCard)
-      const parsedBankerCards = (result.bankerCards || []).map(parseCard)
+      const clientSeed = `bc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+      const bet = await gameApi.baccaratPlaceBet({ area: apiArea, amount, clientSeed })
+      activeRoundRef.current = { roundId: bet.roundId, area: apiArea, amount, betArea }
+      setRoundId(bet.roundId || '')
+      dispatch(setBalance({ balance: balance - amount }))
 
-      const dealSteps = buildDealSteps(parsedPlayerCards, parsedBankerCards)
-      for (const step of dealSteps) {
+      const openingSteps = [
+        { side: 'player', count: 1, message: '閒家發第一張牌' },
+        { side: 'banker', count: 1, message: '莊家發第一張牌' },
+        { side: 'player', count: 2, message: '閒家發第二張牌' },
+        { side: 'banker', count: 2, message: '莊家發第二張牌' },
+      ]
+      for (const step of openingSteps) {
         setDealingStep(step.message)
         soundEngine.play('cardDeal')
         if (step.side === 'player') {
@@ -368,28 +380,31 @@ export default function Baccarat() {
         await waitForDealStep()
       }
 
-      setPlayerCards(parsedPlayerCards)
-      setBankerCards(parsedBankerCards)
-
       if (squeezeMode) {
-        pendingRef.current = payload
-        setRevealedCount(0)
         setConcealed(true)
         setPhase('squeezing')
         setDealingStep('')
-        setResultMessage('長按牌面慢慢搓開，或點「直接開牌」。')
-      } else {
-        applyResult(payload)
+        setResultMessage('本局尚未揭曉，離開將放棄本局派彩。')
+        return
       }
+
+      const result = await gameApi.baccaratSettle({ roundId: bet.roundId, area: apiArea, amount })
+      const nextWinner = capitalizeWinner(result.winner)
+      const profit = (result.payout ?? 0) - amount
+      const payload = { result, nextWinner, profit, betArea, amount }
+      setPlayerCards((result.playerCards || []).map(parseCard))
+      setBankerCards((result.bankerCards || []).map(parseCard))
+      applyResult(payload)
     } catch (error) {
-      setResultMessage(typeof error === 'string' ? error : '本局結算失敗，請稍後再試。')
+      setResultMessage(typeof error === 'string' ? error : '本局處理失敗，請稍後再試。')
       setRoundProfit(null)
       setRoundPayout(null)
       setDealingStep('')
+      setConcealed(false)
       setPhase(selectedBet ? 'betting' : 'idle')
+      activeRoundRef.current = null
     }
   }
-
 
 
   const handleToggleSideBet = (sideBetId) => {
@@ -419,13 +434,35 @@ export default function Baccarat() {
       setResultMessage('目前瀏覽器無法切換全螢幕。')
     }
   }
-  const handleRevealAll = () => {
+  const handleRevealAll = async () => {
     if (pendingRef.current) {
       soundEngine.play('cardFlip')
       applyResult(pendingRef.current)
+      return
+    }
+    const active = activeRoundRef.current
+    if (!active) return
+    try {
+      setPhase('dealing')
+      setConcealed(false)
+      setResultMessage('正在揭曉本局...')
+      soundEngine.play('cardFlip')
+      const result = await gameApi.baccaratSettle({
+        roundId: active.roundId,
+        area: active.area,
+        amount: active.amount,
+      })
+      const nextWinner = capitalizeWinner(result.winner)
+      const profit = (result.payout ?? 0) - active.amount
+      setPlayerCards((result.playerCards || []).map(parseCard))
+      setBankerCards((result.bankerCards || []).map(parseCard))
+      applyResult({ result, nextWinner, profit, betArea: active.betArea, amount: active.amount })
+    } catch (error) {
+      setResultMessage(typeof error === 'string' ? error : '本局揭曉失敗，請稍後再試。')
+      setPhase('betting')
+      activeRoundRef.current = null
     }
   }
-
   const toggleSqueezeMode = () => {
     setSqueezeModeState((prev) => {
       const next = !prev
@@ -441,9 +478,9 @@ export default function Baccarat() {
       <CoinRainPro trigger={coinTrigger} density={coinDensity} />
       <RedEnvelopeRain trigger={envelopeTrigger} density="heavy" />
       <BrushBanner trigger={banner.trigger} text={banner.text} level={banner.level} />
-
       <section className="baccarat-page">
-        <GameRuleCard title="百家樂規則" subtitle="查看點數計算、補牌、賠率與返水。" rules={baccaratRules} payouts={baccaratPayouts} />
+        <InteractiveGameBackdrop theme="baccarat" active={locked || phase === 'settled'} />
+        <GameRuleCard gameKey="baccarat" title="百家樂規則" subtitle="查看點數計算、補牌、賠率與返水。" rules={baccaratRules} payouts={baccaratPayouts} />
         <div className="baccarat-main-grid">
           <div
             ref={stageRef}
@@ -454,6 +491,7 @@ export default function Baccarat() {
               isFullscreen ? 'baccarat-table--fullscreen' : '',
             ].join(' ')}
           >
+            <WinningTicker game="baccarat" />
             <BaccaratTableHeader
               phase={phase}
               balance={balance}

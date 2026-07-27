@@ -1,6 +1,5 @@
 package com.luckystar.wallet.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.luckystar.wallet.dto.DebitRequest;
 import com.luckystar.wallet.dto.DebitResponse;
 import com.luckystar.wallet.exception.InsufficientBalanceException;
@@ -15,7 +14,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.kafka.core.KafkaTemplate;
 
 import java.util.Optional;
 
@@ -48,10 +46,7 @@ class WalletServiceDebitTest {
     WalletDebitDao walletDebitDao;
 
     @Mock
-    KafkaTemplate<String, String> kafkaTemplate;
-
-    @Mock
-    ObjectMapper objectMapper;
+    WalletOutboxService walletOutboxService;
 
     @InjectMocks
     WalletService walletService;
@@ -80,7 +75,7 @@ class WalletServiceDebitTest {
     }
 
     @Test
-    void debit_newIdempotencyKey_sufficientBalance_insertsLedgerAndPublishesKafka() throws Exception {
+    void debit_newIdempotencyKey_sufficientBalance_insertsLedgerAndWritesOutbox() throws Exception {
         DebitRequest request = buildRequest(1L, 300L, "key-001");
 
         // 往返 1 成功：扣款後餘額 700
@@ -89,11 +84,10 @@ class WalletServiceDebitTest {
         // 往返 2 成功：流水 id = 1
         when(walletDebitDao.insertDebitTransaction(1L, "BET", 300L, 1000L, 700L, "key-001", null))
                 .thenReturn(Optional.of(1L));
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
 
         DebitResponse response = walletService.debit(request);
 
-        verify(kafkaTemplate, times(1)).send(eq("wallet.debit"), eq("1"), anyString());
+        verify(walletOutboxService, times(1)).save(eq("wallet.debit"), eq("1"), any());
         assertThat(response.getTransactionId()).isEqualTo(1L);
         assertThat(response.getBalanceBefore()).isEqualTo(1000L);
         assertThat(response.getBalanceAfter()).isEqualTo(700L);
@@ -136,7 +130,7 @@ class WalletServiceDebitTest {
         verify(walletDebitDao, never()).insertDebitTransaction(anyLong(), anyString(), anyLong(),
                 anyLong(), anyLong(), anyString(), any());
         verify(walletDebitDao, never()).restoreBalance(anyLong(), anyLong());
-        verify(kafkaTemplate, never()).send(anyString(), anyString(), anyString());
+        verify(walletOutboxService, never()).save(anyString(), anyString(), any());
 
         assertThat(response.getTransactionId()).isEqualTo(99L);
         assertThat(response.getBalanceBefore()).isEqualTo(1000L);
@@ -175,7 +169,7 @@ class WalletServiceDebitTest {
                 .isInstanceOf(WalletNotFoundException.class)
                 .hasMessageContaining("99");
 
-        verify(kafkaTemplate, never()).send(anyString(), anyString(), anyString());
+        verify(walletOutboxService, never()).save(anyString(), anyString(), any());
     }
 
     @Test
@@ -198,7 +192,7 @@ class WalletServiceDebitTest {
         verify(walletDebitDao, times(1)).restoreBalance(1L, 300L);
         assertThat(response.getTransactionId()).isEqualTo(77L);
         assertThat(response.isIdempotent()).isTrue();
-        verify(kafkaTemplate, never()).send(anyString(), anyString(), anyString());
+        verify(walletOutboxService, never()).save(anyString(), anyString(), any());
     }
 
     // ---------------------------------------------------------------
@@ -248,6 +242,6 @@ class WalletServiceDebitTest {
                 .hasMessageContaining("key-ghost");
 
         verify(walletDebitDao, times(1)).restoreBalance(1L, 300L);
-        verify(kafkaTemplate, never()).send(anyString(), anyString(), anyString());
+        verify(walletOutboxService, never()).save(anyString(), anyString(), any());
     }
 }

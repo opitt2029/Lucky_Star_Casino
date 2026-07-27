@@ -34,6 +34,13 @@ public class GlobalExceptionHandler {
         return ApiResponse.error(ex.getMessage());
     }
 
+    /** Session 樂觀鎖 CAS 重試用盡（ADR-008）→ 409，前端可提示重試。 */
+    @ExceptionHandler(SessionConflictException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ApiResponse<Void> handleSessionConflict(SessionConflictException ex) {
+        return ApiResponse.error(ex.getMessage());
+    }
+
     /** Bean Validation 失敗 → 400，回傳第一個欄位錯誤訊息。 */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)

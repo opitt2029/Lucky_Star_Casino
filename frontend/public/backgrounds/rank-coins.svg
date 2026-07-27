@@ -1,0 +1,10 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="coins">
+  <g fill="#f8c84c" stroke="#8d4c10" stroke-width="4">
+    <ellipse cx="44" cy="34" rx="28" ry="14"/>
+    <path d="M16 34v18c0 8 13 14 28 14s28-6 28-14V34"/>
+    <ellipse cx="84" cy="58" rx="28" ry="14"/>
+    <path d="M56 58v22c0 8 13 14 28 14s28-6 28-14V58"/>
+    <ellipse cx="50" cy="82" rx="30" ry="15"/>
+    <path d="M20 82v20c0 8 13 15 30 15s30-7 30-15V82"/>
+  </g>
+</svg>

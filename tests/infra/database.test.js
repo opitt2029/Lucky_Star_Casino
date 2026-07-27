@@ -79,6 +79,35 @@ describe('MySQL init.sql — members 資料表', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MySQL — member_social_accounts 第三方登入綁定
+// ─────────────────────────────────────────────────────────────────────────────
+describe('MySQL init.sql — member_social_accounts 資料表', () => {
+
+  test('應建立第三方帳戶綁定表與必要欄位', () => {
+    assert.ok(hasTable(mysqlSql, 'member_social_accounts'), '找不到 member_social_accounts 資料表');
+    for (const col of ['member_id', 'provider', 'provider_subject', 'email', 'display_name']) {
+      assert.ok(mysqlSql.includes(col), `member_social_accounts 缺少 ${col} 欄位`);
+    }
+  });
+
+  test('供應商 subject 與玩家 provider 組合都必須唯一', () => {
+    assert.ok(
+      mysqlSql.includes('uq_social_provider_subject')
+        && mysqlSql.includes('uq_social_member_provider'),
+      '第三方帳戶綁定缺少唯一約束'
+    );
+  });
+
+  test('刪除會員時應連帶刪除第三方綁定', () => {
+    assert.ok(
+      mysqlSql.includes('fk_social_member') && mysqlSql.includes('on delete cascade'),
+      'member_social_accounts 缺少 member 外鍵或 ON DELETE CASCADE'
+    );
+  });
+
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MySQL — friendships 好友關係表
 // ─────────────────────────────────────────────────────────────────────────────
 describe('MySQL init.sql — friendships 資料表', () => {

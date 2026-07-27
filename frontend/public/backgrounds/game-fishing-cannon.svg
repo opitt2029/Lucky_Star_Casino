@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 720" role="img" aria-labelledby="title desc">
+  <title id="title">Fishing cannon game art</title>
+  <desc id="desc">A dedicated fishing game illustration with an undersea cannon, glowing shots, fish silhouettes, and treasure coins.</desc>
+  <defs>
+    <linearGradient id="sea" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#063d5b"/>
+      <stop offset="0.45" stop-color="#052a40"/>
+      <stop offset="1" stop-color="#07020b"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="0" x2="1" y1="1" y2="0">
+      <stop offset="0" stop-color="#ffeaa0" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#78dcff" stop-opacity="0.08"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#fff4b8"/>
+      <stop offset="0.5" stop-color="#f8d56a"/>
+      <stop offset="1" stop-color="#a56408"/>
+    </linearGradient>
+    <filter id="glow" x="-35%" y="-35%" width="170%" height="170%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="960" height="720" fill="url(#sea)"/>
+  <path d="M0 150c120-58 232-58 336 0s216 58 336 0 204-58 288 0v570H0Z" fill="#78dcff" opacity="0.08"/>
+  <path d="M0 250c122 50 246 50 372 0s252-50 378 0 184 48 210 20v450H0Z" fill="#021522" opacity="0.54"/>
+  <g fill="none" stroke="#78dcff" stroke-opacity="0.24" stroke-width="4">
+    <path d="M72 116c66 24 132 24 198 0s132-24 198 0 132 24 198 0 132-24 198 0"/>
+    <path d="M112 214c76 22 152 22 228 0s152-22 228 0 152 22 228 0"/>
+  </g>
+  <g opacity="0.34" fill="#dff9ff">
+    <circle cx="132" cy="438" r="8"/><circle cx="170" cy="376" r="5"/><circle cx="238" cy="482" r="7"/>
+    <circle cx="756" cy="322" r="9"/><circle cx="808" cy="248" r="5"/><circle cx="846" cy="408" r="7"/>
+  </g>
+  <g transform="translate(122 188)">
+    <path d="M56 42c58-42 140-36 192 18 44 45 108 56 158 24-18 70-78 116-152 116-78 0-142-52-194-92L14 132l28-48Z" fill="#f8d56a" stroke="#fff4b8" stroke-width="6"/>
+    <circle cx="116" cy="90" r="10" fill="#180103"/>
+    <path d="M306 84l82-52-18 58 36 50-88-20Z" fill="#c90d18"/>
+  </g>
+  <g transform="translate(570 96) scale(0.82)">
+    <path d="M56 42c58-42 140-36 192 18 44 45 108 56 158 24-18 70-78 116-152 116-78 0-142-52-194-92L14 132l28-48Z" fill="#78dcff" stroke="#dff9ff" stroke-width="6"/>
+    <circle cx="116" cy="90" r="10" fill="#180103"/>
+    <path d="M306 84l82-52-18 58 36 50-88-20Z" fill="#0f6b4a"/>
+  </g>
+  <g transform="translate(612 382) scale(1.08)">
+    <path d="M56 42c58-42 140-36 192 18 44 45 108 56 158 24-18 70-78 116-152 116-78 0-142-52-194-92L14 132l28-48Z" fill="#c90d18" stroke="#ffeaa0" stroke-width="6"/>
+    <circle cx="116" cy="90" r="10" fill="#180103"/>
+    <path d="M306 84l82-52-18 58 36 50-88-20Z" fill="#f8d56a"/>
+  </g>
+  <g filter="url(#glow)">
+    <path d="M448 612 622 276" stroke="url(#beam)" stroke-width="16" stroke-linecap="round"/>
+    <path d="M444 616 292 326" stroke="url(#beam)" stroke-width="12" stroke-linecap="round" opacity="0.72"/>
+    <circle cx="622" cy="276" r="18" fill="#ffeaa0"/>
+    <circle cx="292" cy="326" r="14" fill="#ffeaa0" opacity="0.78"/>
+  </g>
+  <g transform="translate(346 520)">
+    <path d="M74 78h146c30 0 54 24 54 54v34H20v-34c0-30 24-54 54-54Z" fill="#190508" stroke="url(#gold)" stroke-width="10"/>
+    <path d="M136 78 198 0l62 46-86 72Z" fill="#c90d18" stroke="url(#gold)" stroke-width="10"/>
+    <circle cx="146" cy="134" r="44" fill="#052a40" stroke="#ffeaa0" stroke-width="8"/>
+    <circle cx="146" cy="134" r="18" fill="#78dcff"/>
+  </g>
+  <g fill="url(#gold)" stroke="#fff4b8" stroke-width="4">
+    <circle cx="88" cy="624" r="34"/><circle cx="142" cy="646" r="27"/><circle cx="814" cy="626" r="38"/><circle cx="870" cy="648" r="28"/>
+  </g>
+</svg>

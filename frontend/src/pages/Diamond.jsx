@@ -16,6 +16,7 @@ import {
 import { fetchWallet, setBalance } from '../store/slices/walletSlice'
 
 const EXCHANGE_RATE = 20
+const QUICK_AMOUNTS = [10, 50, 100, 500]
 
 export default function Diamond() {
   const dispatch = useDispatch()
@@ -35,11 +36,15 @@ export default function Diamond() {
     ? numericExchangeAmount * resolvedExchangeRate
     : 0
   const anySubmitting = loading || redeemLoading || exchangeLoading
+  const availableQuickAmounts = useMemo(
+    () => QUICK_AMOUNTS.map((amount) => ({ amount, disabled: amount > diamondBalance })),
+    [diamondBalance],
+  )
 
   const exchangeError = useMemo(() => {
     if (!exchangeAmount) return ''
     if (!Number.isInteger(numericExchangeAmount) || numericExchangeAmount <= 0) {
-      return '兌換數量必須為正整數'
+      return '兌換數量必須是正整數'
     }
     if (numericExchangeAmount > diamondBalance) {
       return '兌換數量不可超過目前鑽石餘額'
@@ -65,7 +70,7 @@ export default function Diamond() {
     setRedeemValidation('')
 
     if (!trimmedCode) {
-      setRedeemValidation('請輸入序號')
+      setRedeemValidation('請輸入鑽石卡序號')
       return
     }
 
@@ -99,7 +104,7 @@ export default function Diamond() {
     setExchangeValidation('')
 
     if (!Number.isInteger(numericExchangeAmount) || numericExchangeAmount <= 0) {
-      setExchangeValidation('兌換數量必須為正整數')
+      setExchangeValidation('兌換數量必須是正整數')
       return
     }
 
@@ -135,70 +140,60 @@ export default function Diamond() {
 
   return (
     <AppShell>
-      <section className="grid gap-5 lg:grid-cols-[1fr_0.38fr]">
-        <div className="luxury-panel rounded p-6 sm:p-8">
-          <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Diamond Wallet</p>
-          <h2 className="brand-title mt-3 text-4xl font-black tracking-tight sm:text-5xl">
-            鑽石錢包
-          </h2>
-          <p className="mt-4 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
-            輸入序號可取得鑽石，鑽石能依固定比例兌換成星幣，供遊戲下注與禮品兌換使用。
-          </p>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            <MetricCard
-              label="目前鑽石"
-              value={loading ? '同步中...' : diamondBalance.toLocaleString()}
-              caption="可兌換成星幣"
-              tone="light"
-            />
-            <MetricCard
-              label="兌換比例"
-              value={`1 : ${resolvedExchangeRate}`}
-              caption="1 鑽石 = 20 星幣"
-            />
-            <MetricCard
-              label="目前星幣"
-              value={wallet.balance.toLocaleString()}
-              caption="可用於下注與兌換"
-            />
+      <section className="diamond-hero luxury-panel rounded p-6 sm:p-8">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">
+          <div>
+            <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Diamond Wallet</p>
+            <h2 className="brand-title mt-3 text-4xl font-black sm:text-5xl">鑽石錢包</h2>
+            <p className="mt-4 max-w-2xl text-base font-bold leading-8 text-yellow-100/72">
+              兌換鑽石卡、管理鑽石餘額，並依固定匯率換成可遊玩的星幣。
+            </p>
           </div>
-
-          {(successMessage || lastRedeemAmount > 0) && (
-            <p className="mt-5 rounded border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-200">
-              {successMessage || `兌換成功，本次獲得 ${lastRedeemAmount.toLocaleString()} 鑽石`}
-            </p>
-          )}
-          {error && (
-            <p className="mt-5 rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">
-              {error}
-            </p>
-          )}
+          <div className="diamond-hero-gem" aria-hidden="true">
+            <span className="diamond-hero-gem__facet diamond-hero-gem__facet--top" />
+            <span className="diamond-hero-gem__facet diamond-hero-gem__facet--left" />
+            <span className="diamond-hero-gem__facet diamond-hero-gem__facet--right" />
+          </div>
         </div>
 
-        <aside className="grid content-start gap-4">
-          <div className="luxury-panel-soft rounded p-5">
-            <p className="gold-muted text-xs font-black uppercase tracking-[0.28em]">Balance</p>
-            <p className="brand-title mt-2 text-4xl font-black">{diamondBalance.toLocaleString()}</p>
-            <p className="mt-2 text-sm font-bold text-yellow-100/62">可用鑽石</p>
-            <button
-              type="button"
-              onClick={() => dispatch(fetchDiamondBalance())}
-              disabled={loading}
-              className="red-gold-button mt-4 w-full rounded px-4 py-3 text-sm font-black disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading ? '同步中...' : '重新同步'}
-            </button>
-          </div>
-        </aside>
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <MetricCard
+            label="目前鑽石"
+            value={loading ? '同步中...' : diamondBalance.toLocaleString()}
+            caption="可兌換為星幣"
+            tone="light"
+          />
+          <MetricCard
+            label="兌換匯率"
+            value={`1 : ${resolvedExchangeRate}`}
+            caption={`1 鑽石 = ${resolvedExchangeRate.toLocaleString()} 星幣`}
+          />
+          <MetricCard
+            label="目前星幣"
+            value={Number(wallet.balance || 0).toLocaleString()}
+            caption="錢包即時餘額"
+          />
+        </div>
+
+        {(successMessage || lastRedeemAmount > 0) && (
+          <p className="mt-5 rounded border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-200">
+            {successMessage || `兌換成功，本次獲得 ${lastRedeemAmount.toLocaleString()} 鑽石`}
+          </p>
+        )}
+        {error && (
+          <p className="mt-5 rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">
+            {error}
+          </p>
+        )}
       </section>
 
-      <section className="mt-6 grid gap-5 lg:grid-cols-2">
-        <form onSubmit={handleRedeem} className="luxury-panel-soft rounded p-5 sm:p-6">
+      <section className="mt-6 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+        <form onSubmit={handleRedeem} className="diamond-action-panel luxury-panel-soft rounded p-5 sm:p-6">
+          <div className="diamond-action-panel__mark" aria-hidden="true">卡</div>
           <p className="gold-muted text-xs font-black uppercase tracking-[0.28em]">Redeem Card</p>
           <h3 className="brand-title mt-2 text-2xl font-black">序號兌換鑽石</h3>
           <label className="mt-5 grid gap-2 text-sm font-bold text-yellow-100/78">
-              序號
+            鑽石卡序號
             <input
               name="card_code"
               value={cardCode}
@@ -226,12 +221,40 @@ export default function Diamond() {
           </button>
         </form>
 
-        <form onSubmit={handleExchange} className="luxury-panel-soft rounded p-5 sm:p-6">
+        <form onSubmit={handleExchange} className="diamond-action-panel luxury-panel-soft rounded p-5 sm:p-6">
+          <div className="diamond-action-panel__mark" aria-hidden="true">換</div>
           <p className="gold-muted text-xs font-black uppercase tracking-[0.28em]">Exchange</p>
           <h3 className="brand-title mt-2 text-2xl font-black">鑽石兌換星幣</h3>
-          <p className="mt-3 rounded border border-yellow-200/15 bg-red-950/70 px-4 py-3 text-sm font-black text-yellow-100">
-            1 鑽石 = {resolvedExchangeRate.toLocaleString()} 星幣
-          </p>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr]">
+            <div className="rounded border border-yellow-200/15 bg-red-950/70 px-4 py-3">
+              <p className="gold-muted text-xs font-bold">可用鑽石</p>
+              <p className="mt-1 text-2xl font-black text-yellow-100">{diamondBalance.toLocaleString()}</p>
+            </div>
+            <div className="rounded border border-yellow-200/15 bg-red-950/70 px-4 py-3">
+              <p className="gold-muted text-xs font-bold">預計獲得</p>
+              <p className="mt-1 text-2xl font-black text-yellow-100">{exchangePreview.toLocaleString()} 星幣</p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {availableQuickAmounts.map(({ amount, disabled }) => (
+              <button
+                key={amount}
+                type="button"
+                onClick={() => {
+                  setExchangeAmount(String(amount))
+                  setExchangeValidation('')
+                  dispatch(clearDiamondMessage())
+                }}
+                disabled={disabled || anySubmitting}
+                className="diamond-quick-chip rounded-full px-3 py-2 text-xs font-black transition disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {amount.toLocaleString()} 鑽石
+              </button>
+            ))}
+          </div>
+
           <label className="mt-5 grid gap-2 text-sm font-bold text-yellow-100/78">
             兌換鑽石數量
             <input
@@ -248,12 +271,6 @@ export default function Diamond() {
               placeholder="10"
             />
           </label>
-          <div className="mt-3 rounded border border-yellow-200/15 bg-red-950/70 px-4 py-3">
-            <p className="gold-muted text-xs font-bold">預覽可獲得</p>
-            <p className="mt-1 text-2xl font-black text-yellow-100">
-              {exchangePreview.toLocaleString()} 星幣
-            </p>
-          </div>
           {(exchangeValidation || exchangeError) && (
             <p className="mt-3 rounded border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm font-bold text-red-200">
               {exchangeValidation || exchangeError}

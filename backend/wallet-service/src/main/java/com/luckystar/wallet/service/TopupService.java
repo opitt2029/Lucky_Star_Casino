@@ -42,8 +42,11 @@ public class TopupService {
     private static final Map<String, TopupPackageResponse> PACKAGES = new LinkedHashMap<>();
     static {
         PACKAGES.put("P100", new TopupPackageResponse("P100", "NT$100", 100_000L));
+        PACKAGES.put("P300", new TopupPackageResponse("P300", "NT$300", 330_000L));
         PACKAGES.put("P500", new TopupPackageResponse("P500", "NT$500", 600_000L));
         PACKAGES.put("P1000", new TopupPackageResponse("P1000", "NT$1000", 1_300_000L));
+        PACKAGES.put("P2000", new TopupPackageResponse("P2000", "NT$2000", 2_800_000L));
+        PACKAGES.put("P5000", new TopupPackageResponse("P5000", "NT$5000", 8_000_000L));
     }
 
     private final TopupOrderRepository topupOrderRepository;

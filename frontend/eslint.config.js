@@ -21,6 +21,8 @@ export default [
         navigator: 'readonly',
         console: 'readonly',
         fetch: 'readonly',
+        crypto: 'readonly',
+        TextEncoder: 'readonly',
         localStorage: 'readonly',
         sessionStorage: 'readonly',
         setTimeout: 'readonly',

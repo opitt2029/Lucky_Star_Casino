@@ -167,6 +167,25 @@ CREATE TABLE IF NOT EXISTS pending_wallet_credits (
 CREATE INDEX IF NOT EXISTS idx_pwc_status_retry ON pending_wallet_credits (status, next_retry_at);
 CREATE INDEX IF NOT EXISTS idx_pwc_player_id    ON pending_wallet_credits (player_id);
 
+-- -------------------------------------------------------
+-- wallet_outbox：Transactional Outbox 待發 Kafka 事件（藍圖 04 P2，對應 migration V17）
+-- WalletService credit/debit 把 wallet.credit/wallet.debit 事件與帳務異動寫入同一交易，
+-- 背景 WalletOutboxPoller 撈 PENDING 同步送達 broker 才標 SENT，杜絕事件無聲丟失。
+-- -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS wallet_outbox (
+    id          BIGSERIAL    NOT NULL,
+    topic       VARCHAR(100) NOT NULL,                     -- wallet.credit / wallet.debit
+    kafka_key   VARCHAR(100),                              -- Kafka message key（playerId，可為 NULL）
+    payload     TEXT         NOT NULL,                     -- JSON 事件內容
+    status      VARCHAR(20)  NOT NULL DEFAULT 'PENDING',   -- PENDING / SENT
+    retry_count INT          NOT NULL DEFAULT 0,           -- 投遞失敗累加，供觀測/告警
+    created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    sent_at     TIMESTAMP,
+    CONSTRAINT pk_wallet_outbox         PRIMARY KEY (id),
+    CONSTRAINT chk_wallet_outbox_status CHECK (status IN ('PENDING', 'SENT'))
+);
+CREATE INDEX IF NOT EXISTS idx_wallet_outbox_status_created ON wallet_outbox (status, created_at);
+
 -- cashback_records：每日/每週虧損返利記錄（去重 + 稽核，防排程重複發放）
 -- 對應 database/postgres/migration/V9__add_cashback_records.sql
 -- -------------------------------------------------------

@@ -98,9 +98,25 @@ public class FishingSession {
     @Builder.Default
     private Map<String, Long> fishDamage = new LinkedHashMap<>();
 
-    /** Residual recovery accrued per fish instance when ammo/cannon can change during a round. */
+    /**
+     * 被 {@code FishingService.pruneFishDamage} 淘汰掉的魚 instance，其累積傷害的總和。
+     *
+     * <p>結算的殘血回收（ADR-004）要看「這場總共把多少傷害打在最後沒打死的魚身上」，但
+     * {@code fishDamage} 有並存上限、超量時會淘汰最舊的 entry。若不在淘汰時把傷害搬到這裡，
+     * 那些子彈就變成完全沉沒——玩家打得越久（魚 instance 越多）被吃掉越多。
+     */
     @Builder.Default
-    private Map<String, Long> fishRecovery = new LinkedHashMap<>();
+    private Long prunedFishDamage = 0L;
+
+    /**
+     * 相容欄位：舊版 {@code fishRecovery}（逐發 floor 後的回收星幣）在部署當下仍存活的 session。
+     *
+     * <p>舊版每發都 floor 一次，低注額會被侵蝕（單發 10 星幣時有效回收率只有 0.62、非設計值 0.70）；
+     * 新版改為累積傷害、結算時整場只 floor 一次。這個欄位只是讓「跨版本存活的舊 session」結算時
+     * 照舊拿回已累積的金額，**不再新增**。舊 session 全部結清後（TTL / 閒置回收）即可移除。
+     */
+    @Builder.Default
+    private Long legacyFishRecovery = 0L;
 
     /**
      * 致命一擊紀錄（供結算後 verifyShot 精確重放）：記錄每次「血量歸零」那一發的
@@ -112,6 +128,15 @@ public class FishingSession {
     /** Idempotency keys for in-session top-up requests. */
     @Builder.Default
     private List<String> topUpRequestIds = new ArrayList<>();
+
+    /**
+     * 樂觀鎖版本號（Redis Lua CAS，ADR-008）：每次成功的 {@code FishingSessionStore.saveCas}
+     * 遞增一。「讀→改→整包 save」的併發寫入（shots/top-up）靠比對此欄位偵測衝突並重試，
+     * 取代原本純靠前端 {@code topUpLockRef} 迴避覆寫。舊 session（升級前建立）讀回 null 時
+     * 視同 0。
+     */
+    @Builder.Default
+    private Long version = 0L;
 
     public boolean isActive() {
         return "ACTIVE".equals(state);

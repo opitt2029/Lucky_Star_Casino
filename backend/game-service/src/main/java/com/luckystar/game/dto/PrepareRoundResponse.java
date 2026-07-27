@@ -28,4 +28,18 @@ public class PrepareRoundResponse {
 
     /** 本局使用的 client seed（玩家提供或伺服器產生）。 */
     private String clientSeed;
+    /** Prepared visual result. Payout is not credited until settle is called. */
+    private String[][] grid;
+
+    /** Prepared multiplier, used by the frontend animation preview. */
+    private long multiplier;
+
+    /** Prepared payout amount; not credited until settle is called. */
+    private long payout;
+
+    /** Winning cells for the prepared result. */
+    private int[][] winningCells;
+
+    /** Wallet after the stake debit. */
+    private WalletView wallet;
 }

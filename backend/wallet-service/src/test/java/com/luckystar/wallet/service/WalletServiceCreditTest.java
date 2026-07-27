@@ -1,6 +1,5 @@
 package com.luckystar.wallet.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.luckystar.wallet.dto.CreditRequest;
 import com.luckystar.wallet.dto.CreditResponse;
 import com.luckystar.wallet.exception.WalletNotFoundException;
@@ -15,7 +14,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 import java.util.Optional;
@@ -32,7 +30,8 @@ import static org.mockito.Mockito.when;
 
 /**
  * T-023 派彩 / 入帳單元測試。與 {@link WalletServiceDebitTest} 對稱，
- * 全程用 Mockito mock 掉 repository / Kafka，不需要任何資料庫或 broker。
+ * 全程用 Mockito mock 掉 repository 與 outbox 寫入，不需要任何資料庫或 broker。
+ * 藍圖 04 P2：事件改寫 wallet_outbox（交易內），故驗證 {@link WalletOutboxService} 而非 Kafka。
  */
 @ExtendWith(MockitoExtension.class)
 class WalletServiceCreditTest {
@@ -44,10 +43,7 @@ class WalletServiceCreditTest {
     WalletTransactionRepository walletTransactionRepository;
 
     @Mock
-    KafkaTemplate<String, String> kafkaTemplate;
-
-    @Mock
-    ObjectMapper objectMapper;
+    WalletOutboxService walletOutboxService;
 
     @InjectMocks
     WalletService walletService;
@@ -96,7 +92,7 @@ class WalletServiceCreditTest {
     }
 
     @Test
-    void credit_newIdempotencyKey_addsBalanceSavesTransactionAndPublishesKafka() throws Exception {
+    void credit_newIdempotencyKey_addsBalanceSavesTransactionAndWritesOutbox() throws Exception {
         CreditRequest request = buildRequest(1L, 500L, "key-c001");
         Wallet wallet = buildWallet(1L, 1000L, 0L, 0L);
         WalletTransaction savedTx = buildTransaction(1L, 1L, 500L, 1000L, 1500L, "key-c001");
@@ -105,13 +101,12 @@ class WalletServiceCreditTest {
         when(walletRepository.findById(1L)).thenReturn(Optional.of(wallet));
         when(walletRepository.save(any(Wallet.class))).thenReturn(wallet);
         when(walletTransactionRepository.save(any(WalletTransaction.class))).thenReturn(savedTx);
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
 
         CreditResponse response = walletService.credit(request);
 
         verify(walletRepository, times(1)).save(any(Wallet.class));
         verify(walletTransactionRepository, times(1)).save(any(WalletTransaction.class));
-        verify(kafkaTemplate, times(1)).send(eq("wallet.credit"), eq("1"), anyString());
+        verify(walletOutboxService, times(1)).save(eq("wallet.credit"), eq("1"), any());
 
         assertThat(response.getTransactionId()).isEqualTo(1L);
         assertThat(response.getBalanceBefore()).isEqualTo(1000L);
@@ -136,7 +131,6 @@ class WalletServiceCreditTest {
         when(walletRepository.findById(1L)).thenReturn(Optional.of(wallet));
         when(walletRepository.save(any(Wallet.class))).thenReturn(wallet);
         when(walletTransactionRepository.save(any(WalletTransaction.class))).thenReturn(savedTx);
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
 
         CreditResponse response = walletService.credit(request);
 
@@ -159,7 +153,6 @@ class WalletServiceCreditTest {
         when(walletRepository.findById(1L)).thenReturn(Optional.of(wallet));
         when(walletRepository.save(any(Wallet.class))).thenReturn(wallet);
         when(walletTransactionRepository.save(any(WalletTransaction.class))).thenReturn(savedTx);
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
 
         walletService.credit(request);
 
@@ -180,7 +173,7 @@ class WalletServiceCreditTest {
         verify(walletRepository, never()).findById(any());
         verify(walletRepository, never()).save(any());
         verify(walletTransactionRepository, never()).save(any());
-        verify(kafkaTemplate, never()).send(anyString(), anyString(), anyString());
+        verify(walletOutboxService, never()).save(anyString(), anyString(), any());
 
         assertThat(response.getTransactionId()).isEqualTo(99L);
         assertThat(response.getBalanceAfter()).isEqualTo(1500L);
@@ -199,7 +192,7 @@ class WalletServiceCreditTest {
                 .hasMessageContaining("99");
 
         verify(walletTransactionRepository, never()).save(any());
-        verify(kafkaTemplate, never()).send(anyString(), anyString(), anyString());
+        verify(walletOutboxService, never()).save(anyString(), anyString(), any());
     }
 
     @Test
@@ -220,7 +213,7 @@ class WalletServiceCreditTest {
 
         assertThat(response.getTransactionId()).isEqualTo(77L);
         assertThat(response.isIdempotent()).isTrue();
-        verify(kafkaTemplate, never()).send(anyString(), anyString(), anyString());
+        verify(walletOutboxService, never()).save(anyString(), anyString(), any());
     }
 
     @Test
@@ -237,6 +230,6 @@ class WalletServiceCreditTest {
                 .isInstanceOf(ObjectOptimisticLockingFailureException.class);
 
         verify(walletTransactionRepository, never()).save(any());
-        verify(kafkaTemplate, never()).send(anyString(), anyString(), anyString());
+        verify(walletOutboxService, never()).save(anyString(), anyString(), any());
     }
 }

@@ -1,4 +1,4 @@
-﻿// 玩法契約單一來源（Phase 5）：表格數值一律 import repo 根 contracts/*.json，與後端 enum/常數的
+// 玩法契約單一來源（Phase 5）：表格數值一律 import repo 根 contracts/*.json，與後端 enum/常數的
 // 相等性由 game-service 的 ContractParityTest 守門（漂移＝CI 紅燈）。演算「邏輯」（補牌流程、
 // pCapture 反推、兩階賠付評估）仍鏡像後端程式碼（AGENTS 雷區 14）。
 import slotPaytableContract from '../../../contracts/slot-paytable.json'
@@ -13,7 +13,7 @@ const SESSION_KEY = 'lucky-star-session-v1'
 // 老虎機賠付表（contracts/slot-paytable.json ↔ 後端 SlotSymbol：權重 + 兩階倍率，權重總和 103）。
 // 中線由左到右兩階賠付：三連（三格同符號）派 tripleMultiplier 大獎；
 // 左二同（左二格同、第三格不同）派 pairMultiplier 小獎；右二格相同不賠。
-// 理論 RTP ≈ 93.8%、命中率 ≈ 30.7%（pᵢ = 權重ᵢ / 103）。
+// 理論 RTP ≈ 93.5%、命中率 ≈ 30.7%（pᵢ = 權重ᵢ / 103）。
 const SLOT_PAYTABLE = slotPaytableContract.symbols.map(
   ({ display, weight, pairMultiplier, tripleMultiplier }) => ({
     symbol: display,
@@ -120,6 +120,7 @@ const transactionLabels = {
   checkin: '簽到',
   task: '任務',
   gift: '贈送',
+  topup: '自助加值',
   shop: '商城兌換',
 }
 const DAILY_CHECKIN_REWARD = 100
@@ -249,12 +250,33 @@ function createInitialDb() {
       ],
       [TEST_ACCOUNT.player.id]: [],
     },
+    friendRequests: {
+      [player.id]: [
+        {
+          friendshipId: 'mock-request-1',
+          requesterId: 'friend-3',
+          requesterUsername: 'Mika',
+          requesterNickname: 'Mika',
+          requesterAvatarUrl: '',
+          requestedAt: new Date().toISOString(),
+        },
+      ],
+      [TEST_ACCOUNT.player.id]: [],
+    },
     // 後端權威簽到日期（每元素 'yyyy-MM-dd'，台北時區）與月度累計獎勵領取紀錄
     checkinDates: {
       [player.id]: [],
       [TEST_ACCOUNT.player.id]: [],
     },
     monthlyRewardClaims: {
+      [player.id]: [],
+      [TEST_ACCOUNT.player.id]: [],
+    },
+    socialBindings: {
+      [player.id]: {},
+      [TEST_ACCOUNT.player.id]: {},
+    },
+    topupOrders: {
       [player.id]: [],
       [TEST_ACCOUNT.player.id]: [],
     },
@@ -277,9 +299,12 @@ function ensureTestAccount(db) {
   db.wallets = db.wallets || {}
   db.transactions = db.transactions || {}
   db.friends = db.friends || {}
+  db.friendRequests = db.friendRequests || {}
   db.ranks = db.ranks || []
   db.checkinDates = db.checkinDates || {}
   db.monthlyRewardClaims = db.monthlyRewardClaims || {}
+  db.socialBindings = db.socialBindings || {}
+  db.topupOrders = db.topupOrders || {}
 
   let user = db.users.find((item) => item.player?.username === TEST_ACCOUNT.player.username)
   if (!user) {
@@ -316,6 +341,21 @@ function ensureTestAccount(db) {
 
   if (!db.friends[TEST_ACCOUNT.player.id]) {
     db.friends[TEST_ACCOUNT.player.id] = []
+    changed = true
+  }
+
+  if (!db.friendRequests[TEST_ACCOUNT.player.id]) {
+    db.friendRequests[TEST_ACCOUNT.player.id] = []
+    changed = true
+  }
+
+  if (!db.socialBindings[TEST_ACCOUNT.player.id]) {
+    db.socialBindings[TEST_ACCOUNT.player.id] = {}
+    changed = true
+  }
+
+  if (!db.topupOrders[TEST_ACCOUNT.player.id]) {
+    db.topupOrders[TEST_ACCOUNT.player.id] = []
     changed = true
   }
 
@@ -523,6 +563,173 @@ function getTaipeiDateKey(date = new Date()) {
   return new Date(date.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
 
+
+const RANK_SCOPE_VALUES = ['GLOBAL', 'FRIENDS']
+const RANK_CATEGORY_VALUES = ['COINS', 'DAILY_WINNINGS', 'SLOT', 'BACCARAT', 'FISHING']
+const RANK_GAME_VALUES = ['SLOT', 'BACCARAT', 'FISHING']
+
+function rankKey(scope, category) {
+  return `${scope}:${category}`
+}
+
+function rankUnit(category) {
+  return RANK_GAME_VALUES.includes(category) ? '淨贏分' : '星幣'
+}
+
+const RANK_NAME_PREFIXES = [
+  'Velvet',
+  'Lucky',
+  'Crimson',
+  'Neon',
+  'Golden',
+  'Jade',
+  'Moonlit',
+  'Royal',
+  'Midnight',
+  'Starlit',
+  'Ruby',
+  'Sapphire',
+  'Solar',
+  'Ivory',
+  'Mirage',
+  'Aurora',
+]
+const RANK_NAME_ALIASES = [
+  'Ace',
+  'Nova',
+  'Vesper',
+  'Comet',
+  'Crown',
+  'Orbit',
+  'Roulette',
+  'Joker',
+  'Maven',
+  'Cipher',
+  'Echo',
+  'Blitz',
+  'Ember',
+  'Quest',
+  'Dealer',
+  'Rider',
+  'Jackpot',
+  'Muse',
+]
+const RANK_NAME_TITLES = [
+  '',
+  'Prime',
+  'Rush',
+  'Bloom',
+  'Spark',
+  'Pulse',
+  'Charm',
+  'Glide',
+  'Flare',
+  'Drift',
+  'Vault',
+  'Wave',
+]
+
+function rankNickname(index) {
+  const prefix = RANK_NAME_PREFIXES[(index * 7 + 3) % RANK_NAME_PREFIXES.length]
+  const alias = RANK_NAME_ALIASES[(index * 11 + 5) % RANK_NAME_ALIASES.length]
+  const title = RANK_NAME_TITLES[(index * 13 + 2) % RANK_NAME_TITLES.length]
+  return title ? `${prefix} ${alias} ${title}` : `${prefix} ${alias}`
+}
+function makeRankProfile(id, index, nickname = rankNickname(index)) {
+  return {
+    playerId: id,
+    id,
+    username: `mock-rank-${index + 1}`,
+    nickname,
+    avatarUrl: '',
+    joinedAt: new Date(Date.UTC(2026, 0, 1 + (index % 180), 10, 0, 0)).toISOString(),
+  }
+}
+
+function rankScoreFor(category, index, current = false) {
+  if (current) return category === 'COINS' ? 50000 : category === 'DAILY_WINNINGS' ? 4200 : 3600
+  const base = {
+    COINS: 220000,
+    DAILY_WINNINGS: 96000,
+    SLOT: 88000,
+    BACCARAT: 82000,
+    FISHING: 94000,
+  }[category]
+  return Math.max(0, base - index * 775 + ((index * 97) % 1600))
+}
+
+function makeRankRow(profile, category, index, current = false) {
+  const score = rankScoreFor(category, index, current)
+  const roundCount = RANK_GAME_VALUES.includes(category) ? 36 + ((index * 7) % 240) : null
+  const totalBet = RANK_GAME_VALUES.includes(category) ? 15000 + index * 2100 : null
+  const totalPayout = RANK_GAME_VALUES.includes(category) ? totalBet + score : null
+  const winRate = RANK_GAME_VALUES.includes(category) ? Math.round((38 + ((index * 11) % 45)) * 10) / 10 : null
+  return {
+    ...profile,
+    rank: 0,
+    score,
+    scoreUnit: rankUnit(category),
+    roundCount,
+    totalBet,
+    totalPayout,
+    winRate,
+    gameType: RANK_GAME_VALUES.includes(category) ? category : null,
+    trend: index % 3 === 0 ? '+12%' : index % 3 === 1 ? '+5%' : '-2%',
+  }
+}
+
+function sortAndRank(rows) {
+  return [...rows]
+    .sort((a, b) => Number(b.score || 0) - Number(a.score || 0) || String(a.playerId).localeCompare(String(b.playerId)))
+    .map((row, index) => ({ ...row, rank: index + 1 }))
+}
+
+function ensureRankFixtures(db) {
+  db.rankProfiles = db.rankProfiles || {}
+  db.rankingsV2 = db.rankingsV2 || {}
+  const currentId = currentPlayerId()
+  const currentUser = db.users.find((item) => item.player?.id === currentId)?.player
+  const currentProfile = {
+    playerId: currentId,
+    id: currentId,
+    username: currentUser?.username || 'demo-player',
+    nickname: currentUser?.nickname || '前端負責人',
+    avatarUrl: currentUser?.avatarUrl || '',
+    joinedAt: new Date(Date.UTC(2026, 0, 15, 10, 0, 0)).toISOString(),
+  }
+  db.rankProfiles[currentId] = { ...(db.rankProfiles[currentId] || {}), ...currentProfile }
+
+  const profiles = [currentProfile]
+  for (let index = 0; index < 120; index += 1) {
+    const profile = makeRankProfile(`rank-${index + 1}`, index)
+    db.rankProfiles[profile.playerId] = { ...(db.rankProfiles[profile.playerId] || {}), ...profile }
+    profiles.push(profile)
+  }
+  for (const friend of db.friends[currentId] || []) {
+    const profile = {
+      playerId: friend.id,
+      id: friend.id,
+      username: friend.username || friend.nickname,
+      nickname: friend.nickname || friend.username,
+      avatarUrl: friend.avatarUrl || '',
+      joinedAt: new Date(Date.UTC(2026, 1, 5, 10, 0, 0)).toISOString(),
+    }
+    db.rankProfiles[profile.playerId] = { ...(db.rankProfiles[profile.playerId] || {}), ...profile }
+    profiles.push(profile)
+  }
+
+  for (const category of RANK_CATEGORY_VALUES) {
+    const rows = profiles.map((profile, index) => makeRankRow(profile, category, index, profile.playerId === currentId))
+    db.rankingsV2[rankKey('GLOBAL', category)] = sortAndRank(rows).slice(0, 100)
+    const friendIds = new Set([currentId, ...(db.friends[currentId] || []).map((friend) => friend.id)])
+    db.rankingsV2[rankKey('FRIENDS', category)] = sortAndRank(rows.filter((row) => friendIds.has(row.playerId))).slice(0, 100)
+  }
+}
+
+function findMockRankRow(db, playerId, scope, category) {
+  ensureRankFixtures(db)
+  return (db.rankingsV2[rankKey(scope, category)] || []).find((row) => String(row.playerId) === String(playerId))
+}
 export function readStoredSession() {
   return readJson(SESSION_KEY, null)
 }
@@ -534,6 +741,35 @@ export const mockApi = {
     const user = db.users.find((item) => item.player.username === username)
     if (!user || user.password !== password) {
       throw new Error('帳號或密碼不正確')
+    }
+    return createSession(user.player)
+  },
+
+  async startSocialLogin(provider) {
+    await wait(220)
+    const id = String(provider).toLowerCase()
+    if (!['line', 'google', 'apple'].includes(id)) throw new Error('Unsupported social provider')
+    const db = getDb()
+    const binding = Object.entries(db.socialBindings || {}).find(([, providers]) => providers?.[id])
+    if (!binding) {
+      throw new Error(`${id === 'line' ? 'LINE' : id === 'google' ? 'Google' : 'Apple'} 帳戶尚未綁定`)
+    }
+    const [playerId] = binding
+    return {
+      provider: id,
+      authorizationUrl: `/auth/callback?ticket=mock-social-${id}-${encodeURIComponent(playerId)}`,
+    }
+  },
+
+  async exchangeSocialLogin(ticket) {
+    await wait(260)
+    const match = /^mock-social-(line|google|apple)-(.+)$/.exec(String(ticket))
+    if (!match) throw new Error('第三方登入票據無效或已過期')
+    const playerId = decodeURIComponent(match[2])
+    const db = getDb()
+    const user = db.users.find((item) => item.player.id === playerId)
+    if (!user || !db.socialBindings?.[playerId]?.[match[1]]) {
+      throw new Error('第三方帳戶尚未綁定')
     }
     return createSession(user.player)
   },
@@ -559,6 +795,9 @@ export const mockApi = {
     db.wallets[player.id] = { balance: MOCK_TEST_STAR_COIN_BALANCE, frozenAmount: 0 }
     db.transactions[player.id] = [makeTransaction('task', 30000, '新手啟動金')]
     db.friends[player.id] = []
+    db.socialBindings = db.socialBindings || {}
+  db.topupOrders = db.topupOrders || {}
+    db.socialBindings[player.id] = {}
     db.ranks.push({ id: player.id, name: nickname, nickname, score: 30000, trend: '+0%' })
     saveDb(db)
     return createSession(player)
@@ -590,13 +829,66 @@ export const mockApi = {
     return user.player
   },
 
+
+  async getSocialBindings() {
+    await wait(180)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const bindings = db.socialBindings?.[playerId] || {}
+    return ['line', 'google', 'apple'].map((provider) => {
+      const accountId = bindings[provider]
+      return {
+        provider,
+        label: provider === 'line' ? 'LINE' : provider === 'google' ? 'Google' : 'Apple',
+        bound: Boolean(accountId),
+        status: accountId ? 'BOUND' : 'UNBOUND',
+        connectUrl: `/profile/social-bindings/${provider}`,
+        maskedAccountId: accountId ? `****${String(accountId).slice(-4)}` : null,
+      }
+    })
+  },
+
+  async startSocialBinding(provider) {
+    await wait(220)
+    const id = String(provider).toLowerCase()
+    const label = id === 'line' ? 'LINE' : id === 'google' ? 'Google' : 'Apple'
+    if (!['line', 'google', 'apple'].includes(id)) throw new Error('Unsupported social provider')
+    const db = getDb()
+    const playerId = currentPlayerId()
+    db.socialBindings = db.socialBindings || {}
+  db.topupOrders = db.topupOrders || {}
+    db.socialBindings[playerId] = {
+      ...(db.socialBindings[playerId] || {}),
+      [id]: `${id.toUpperCase()}-${playerId}`,
+    }
+    saveDb(db)
+    return {
+      provider: id,
+      label,
+      status: 'READY',
+      authorizationUrl: `/profile/social-bindings/${id}?status=success`,
+    }
+  },
+
+  async removeSocialBinding(provider) {
+    await wait(220)
+    const id = String(provider).toLowerCase()
+    const db = getDb()
+    const playerId = currentPlayerId()
+    db.socialBindings = db.socialBindings || {}
+  db.topupOrders = db.topupOrders || {}
+    db.socialBindings[playerId] = { ...(db.socialBindings[playerId] || {}), [id]: null }
+    saveDb(db)
+    return (await this.getSocialBindings()).find((item) => item.provider === id)
+  },
   async getWallet() {
     await wait(240)
     const db = getDb()
     const playerId = currentPlayerId()
-    db.wallets[playerId] = {
-      ...(db.wallets[playerId] || { frozenAmount: 0 }),
-      balance: MOCK_TEST_STAR_COIN_BALANCE,
+    if (!db.wallets[playerId]) {
+      db.wallets[playerId] = { balance: MOCK_TEST_STAR_COIN_BALANCE, frozenAmount: 0 }
+    } else if (typeof db.wallets[playerId].frozenAmount !== 'number') {
+      db.wallets[playerId].frozenAmount = 0
     }
     saveDb(db)
     return db.wallets[playerId]
@@ -775,6 +1067,84 @@ export const mockApi = {
     }
   },
 
+  async prepareSlotRound({ bet }) {
+    await wait(320)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const wallet = db.wallets[playerId]
+    if (!wallet || wallet.balance < bet) throw new Error('星幣餘額不足')
+
+    const roundId = `SLOT-${Date.now()}`
+    const balanceBefore = wallet.balance
+    const betAt = new Date().toISOString()
+    applyWalletChange(db, playerId, -bet, 'bet', '老虎機下注')
+
+    const grid = randomSlotGrid()
+    const { multiplier, winningCells } = evaluateSlotLine(grid)
+    const payout = bet * multiplier
+
+    db.slotRounds = db.slotRounds || {}
+    db.slotRounds[playerId] = db.slotRounds[playerId] || {}
+    db.slotRounds[playerId][roundId] = {
+      roundId,
+      bet,
+      balanceBefore,
+      betAt,
+      grid,
+      multiplier,
+      payout,
+      winningCells,
+    }
+    saveDb(db)
+
+    return {
+      roundId,
+      game: 'slot',
+      grid,
+      bet,
+      multiplier,
+      payout,
+      winningCells,
+      wallet: db.wallets[playerId],
+    }
+  },
+
+  async settleSlotRound({ roundId }) {
+    await wait(220)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const pending = db.slotRounds?.[playerId]?.[roundId]
+    if (!pending) throw new Error('本局已不存在或已被放棄')
+
+    if (pending.payout) applyWalletChange(db, playerId, pending.payout, 'payout', '老虎機派彩')
+    recordGameRound(db, playerId, {
+      roundId,
+      gameType: 'SLOT',
+      nonce: 0,
+      betAmount: pending.bet,
+      winAmount: pending.payout,
+      profit: pending.payout - pending.bet,
+      balanceBefore: pending.balanceBefore,
+      balanceAfter: db.wallets[playerId].balance,
+      betAt: pending.betAt,
+      settledAt: new Date().toISOString(),
+      status: 'SETTLED',
+      resultData: JSON.stringify({ grid: pending.grid, multiplier: pending.multiplier, payout: pending.payout, winningCells: pending.winningCells }),
+    })
+    delete db.slotRounds[playerId][roundId]
+    saveDb(db)
+
+    return {
+      roundId,
+      game: 'slot',
+      grid: pending.grid,
+      bet: pending.bet,
+      multiplier: pending.multiplier,
+      payout: pending.payout,
+      winningCells: pending.winningCells,
+      wallet: db.wallets[playerId],
+    }
+  },
   async spinSlot({ bet }) {
     await wait(900)
     const db = getDb()
@@ -820,6 +1190,92 @@ export const mockApi = {
     }
   },
 
+  async baccaratPlaceBet({ area, amount }) {
+    await wait(360)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const wallet = db.wallets[playerId]
+    if (!wallet || wallet.balance < amount) throw new Error('星幣餘額不足')
+
+    const roundId = `BAC-${Date.now()}`
+    db.baccaratRounds = db.baccaratRounds || {}
+    db.baccaratRounds[playerId] = db.baccaratRounds[playerId] || {}
+    db.baccaratRounds[playerId][roundId] = {
+      roundId,
+      area,
+      amount,
+      balanceBefore: wallet.balance,
+      betAt: new Date().toISOString(),
+    }
+    applyWalletChange(db, playerId, -amount, 'bet', `百家樂下注 ${area}`)
+    saveDb(db)
+
+    return {
+      roundId,
+      game: 'baccarat',
+      area,
+      amount,
+      bets: { player: area === 'player' ? amount : 0, banker: area === 'banker' ? amount : 0, tie: area === 'tie' ? amount : 0 },
+      totalBet: amount,
+      serverSeedHash: `mock-hash-${roundId}`,
+      clientSeed: 'mock-client-seed',
+    }
+  },
+
+  async baccaratSettle({ roundId, area, amount }) {
+    await wait(520)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const pending = db.baccaratRounds?.[playerId]?.[roundId]
+    if (!pending) throw new Error('本局已不存在或已被放棄')
+    const betArea = area || pending.area
+    const betAmount = amount || pending.amount
+
+    const {
+      player: playerCards,
+      banker: bankerCards,
+      playerScore: playerPoints,
+      bankerScore: bankerPoints,
+      winner,
+    } = dealBaccarat()
+    const payout = baccaratPayout(betArea, winner, betAmount)
+    if (payout) applyWalletChange(db, playerId, payout, 'payout', '百家樂派彩')
+    const rebate = Math.max(1, Math.floor(betAmount * 0.005))
+    applyWalletChange(db, playerId, rebate, 'payout', '百家樂返水')
+
+    const winAmount = payout + rebate
+    recordGameRound(db, playerId, {
+      roundId,
+      gameType: 'BACCARAT',
+      nonce: 0,
+      betAmount,
+      winAmount,
+      profit: winAmount - betAmount,
+      balanceBefore: pending.balanceBefore,
+      balanceAfter: db.wallets[playerId].balance,
+      betAt: pending.betAt,
+      settledAt: new Date().toISOString(),
+      status: 'SETTLED',
+      resultData: JSON.stringify({ area: betArea, winner, payout, rebate, playerPoints, bankerPoints }),
+    })
+    delete db.baccaratRounds[playerId][roundId]
+    saveDb(db)
+
+    return {
+      roundId,
+      game: 'baccarat',
+      area: betArea,
+      amount: betAmount,
+      winner,
+      payout,
+      rebate,
+      playerCards,
+      bankerCards,
+      playerPoints,
+      bankerPoints,
+      wallet: db.wallets[playerId],
+    }
+  },
   async baccaratBet({ area, amount }) {
     await wait(880)
     const db = getDb()
@@ -877,25 +1333,125 @@ export const mockApi = {
     }
   },
 
-  async getRank() {
-    await wait(260)
+  slotAbandon({ roundId }) {
     const db = getDb()
     const playerId = currentPlayerId()
-    const player = db.users.find((item) => item.player.id === playerId)?.player
-    const rows = [...db.ranks].sort((a, b) => b.score - a.score).slice(0, 100)
-    const myIndex = rows.findIndex((row) => row.id === playerId)
-    const friendNames = new Set((db.friends[playerId] || []).map((friend) => friend.nickname))
+    if (db.slotRounds?.[playerId]?.[roundId]) {
+      delete db.slotRounds[playerId][roundId]
+      saveDb(db)
+      return { roundId, abandoned: true }
+    }
+    return { roundId, abandoned: false }
+  },
+
+  baccaratAbandon({ roundId }) {
+    const db = getDb()
+    const playerId = currentPlayerId()
+    if (db.baccaratRounds?.[playerId]?.[roundId]) {
+      delete db.baccaratRounds[playerId][roundId]
+      saveDb(db)
+      return { roundId, abandoned: true }
+    }
+    return { roundId, abandoned: false }
+  },
+
+  fishingAbandon({ sessionId }) {
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const session = (db.fishingSessions || {})[playerId]
+    if (session && (!sessionId || session.sessionId === sessionId)) {
+      delete db.fishingSessions[playerId]
+      saveDb(db)
+    }
+    return { sessionId, abandoned: true }
+  },
+  async getLeaderboard({ scope = 'GLOBAL', category = 'COINS', limit = 100 } = {}) {
+    await wait(260)
+    const db = getDb()
+    const normalizedScope = RANK_SCOPE_VALUES.includes(scope) ? scope : 'GLOBAL'
+    const normalizedCategory = RANK_CATEGORY_VALUES.includes(category) ? category : 'COINS'
+    ensureRankFixtures(db)
+    saveDb(db)
+    return (db.rankingsV2[rankKey(normalizedScope, normalizedCategory)] || []).slice(0, limit)
+  },
+
+  async getMyRanks() {
+    await wait(180)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    ensureRankFixtures(db)
+    const result = {}
+    for (const scope of RANK_SCOPE_VALUES) {
+      for (const category of RANK_CATEGORY_VALUES) {
+        const row = findMockRankRow(db, playerId, scope, category)
+        if (row) result[rankKey(scope, category)] = row
+      }
+    }
+    saveDb(db)
+    return result
+  },
+
+  async getRankPlayer(playerId, { scope = 'GLOBAL', category = 'COINS' } = {}) {
+    await wait(220)
+    const db = getDb()
+    ensureRankFixtures(db)
+    const profile = db.rankProfiles?.[playerId]
+    if (!profile) throw new Error('找不到這位玩家')
+    const currentId = currentPlayerId()
+    const friendIds = new Set((db.friends[currentId] || []).map((friend) => String(friend.id)))
+    const gameRanks = Object.fromEntries(
+      RANK_GAME_VALUES.map((game) => [
+        game,
+        findMockRankRow(db, playerId, 'GLOBAL', game)?.rank ?? null,
+      ]),
+    )
+    const gameRows = RANK_GAME_VALUES
+      .map((game) => findMockRankRow(db, playerId, 'GLOBAL', game))
+      .filter(Boolean)
+    const totalRounds = gameRows.reduce((sum, row) => sum + Number(row.roundCount || 0), 0)
+    const weightedWins = gameRows.reduce(
+      (sum, row) => sum + (Number(row.roundCount || 0) * Number(row.winRate || 0)) / 100,
+      0,
+    )
+    const favorite = [...gameRows].sort((a, b) => Number(b.roundCount || 0) - Number(a.roundCount || 0))[0]
+    saveDb(db)
     return {
-      globalRank: rows,
-      friendRank: rows.filter((row) => friendNames.has(row.nickname)).slice(0, 20),
-      myGlobalRank: {
-        rank: myIndex >= 0 ? myIndex + 1 : rows.length,
-        nickname: player?.nickname || 'Player',
-        score: db.wallets[playerId]?.balance || 0,
+      playerId: profile.playerId,
+      username: profile.username,
+      nickname: profile.nickname,
+      avatarUrl: profile.avatarUrl,
+      joinedAt: profile.joinedAt,
+      friendStatus:
+        String(playerId) === String(currentId) ? 'SELF' : friendIds.has(String(playerId)) ? 'FRIEND' : 'NONE',
+      selectedRank: findMockRankRow(db, playerId, scope, category)?.rank ?? null,
+      globalRank: findMockRankRow(db, playerId, 'GLOBAL', 'COINS')?.rank ?? null,
+      dailyRank: findMockRankRow(db, playerId, 'GLOBAL', 'DAILY_WINNINGS')?.rank ?? null,
+      gameRanks,
+      stats: {
+        roundCount: totalRounds,
+        winRate: totalRounds ? Math.round((weightedWins / totalRounds) * 1000) / 10 : null,
+        favoriteGame: favorite?.gameType || null,
       },
     }
   },
 
+  async getRank() {
+    const playerId = currentPlayerId()
+    const [globalRank, friendRank, dailyWinnings, myRanks] = await Promise.all([
+      this.getLeaderboard({ scope: 'GLOBAL', category: 'COINS' }),
+      this.getLeaderboard({ scope: 'FRIENDS', category: 'COINS' }),
+      this.getLeaderboard({ scope: 'GLOBAL', category: 'DAILY_WINNINGS' }),
+      this.getMyRanks(),
+    ])
+    return {
+      globalRank,
+      friendRank,
+      dailyWinnings,
+      myGlobalRank: myRanks['GLOBAL:COINS'] || null,
+      myDailyWinnings: myRanks['GLOBAL:DAILY_WINNINGS'] || null,
+      playerId,
+    }
+  },
   async getFriends() {
     await wait(240)
     const db = getDb()
@@ -921,6 +1477,80 @@ export const mockApi = {
     return db.friends[playerId]
   },
 
+  async getFriendRequests() {
+    await wait(240)
+    const db = getDb()
+    return db.friendRequests?.[currentPlayerId()] || []
+  },
+
+  async sendFriendRequest(receiverId) {
+    await wait(260)
+    const db = getDb()
+    const requesterId = currentPlayerId()
+    const normalizedReceiverId = String(receiverId || '').trim()
+    if (!normalizedReceiverId) throw new Error('請輸入玩家 ID')
+    if (normalizedReceiverId === String(requesterId)) throw new Error('不能邀請自己')
+
+    const existingFriend = (db.friends[requesterId] || []).some(
+      (friend) => String(friend.id ?? friend.friendId) === normalizedReceiverId,
+    )
+    if (existingFriend) throw new Error('已經是好友')
+
+    db.friendRequests = db.friendRequests || {}
+    const receiverRequests = db.friendRequests[normalizedReceiverId] || []
+    const duplicate = receiverRequests.some((request) => String(request.requesterId) === String(requesterId))
+    if (duplicate) throw new Error('好友邀請已送出')
+
+    const requester = db.users.find((item) => String(item.player?.id) === String(requesterId))?.player
+    const request = {
+      friendshipId: `mock-request-${Date.now()}`,
+      requesterId,
+      requesterUsername: requester?.username || String(requesterId),
+      requesterNickname: requester?.nickname || String(requesterId),
+      requesterAvatarUrl: requester?.avatarUrl || '',
+      requestedAt: new Date().toISOString(),
+    }
+    db.friendRequests[normalizedReceiverId] = [request, ...receiverRequests]
+    saveDb(db)
+    return { id: request.friendshipId, requesterId, receiverId: normalizedReceiverId, status: 'PENDING' }
+  },
+
+  async acceptFriendRequest(friendshipId) {
+    await wait(260)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const requests = db.friendRequests?.[playerId] || []
+    const request = requests.find((item) => String(item.friendshipId ?? item.id) === String(friendshipId))
+    if (!request) throw new Error('找不到好友邀請')
+
+    const friend = {
+      id: request.requesterId,
+      username: request.requesterUsername,
+      nickname: request.requesterNickname || request.requesterUsername,
+      avatarUrl: request.requesterAvatarUrl || '',
+      friendSince: new Date().toISOString(),
+    }
+    db.friends[playerId] = [friend, ...(db.friends[playerId] || [])]
+    db.friendRequests[playerId] = requests.filter(
+      (item) => String(item.friendshipId ?? item.id) !== String(friendshipId),
+    )
+    saveDb(db)
+    return { id: friendshipId, requesterId: request.requesterId, receiverId: playerId, status: 'ACCEPTED' }
+  },
+
+  async rejectFriendRequest(friendshipId) {
+    await wait(240)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const requests = db.friendRequests?.[playerId] || []
+    const request = requests.find((item) => String(item.friendshipId ?? item.id) === String(friendshipId))
+    if (!request) throw new Error('找不到好友邀請')
+    db.friendRequests[playerId] = requests.filter(
+      (item) => String(item.friendshipId ?? item.id) !== String(friendshipId),
+    )
+    saveDb(db)
+    return { id: friendshipId, requesterId: request.requesterId, receiverId: playerId, status: 'REJECTED' }
+  },
   async removeFriend(friendId) {
     await wait(260)
     const db = getDb()
@@ -942,6 +1572,60 @@ export const mockApi = {
     return { wallet: db.wallets[playerId], friends: db.friends[playerId] || [] }
   },
 
+  async getTopupOrders() {
+    await wait(180)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    db.topupOrders = db.topupOrders || {}
+    return [...(db.topupOrders[playerId] || [])].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    )
+  },
+
+  async createTopupOrder(packageId, packages = []) {
+    await wait(260)
+    const pkg = packages.find((item) => item.packageId === packageId)
+    if (!pkg) throw new Error('未知的加值方案')
+
+    const db = getDb()
+    const playerId = currentPlayerId()
+    db.topupOrders = db.topupOrders || {}
+    const order = {
+      id: Date.now(),
+      orderNo: `MOCK-TOP-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+      packageId: pkg.packageId,
+      amount: pkg.amount,
+      priceLabel: pkg.priceLabel,
+      status: 'CREATED',
+      creditTxId: null,
+      balanceAfter: null,
+      createdAt: new Date().toISOString(),
+      paidAt: null,
+    }
+    db.topupOrders[playerId] = [order, ...(db.topupOrders[playerId] || [])]
+    saveDb(db)
+    return order
+  },
+
+  async payTopupOrder(orderId) {
+    await wait(420)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    db.topupOrders = db.topupOrders || {}
+    const orders = db.topupOrders[playerId] || []
+    const order = orders.find((item) => String(item.id) === String(orderId))
+    if (!order) throw new Error('找不到加值訂單')
+    if (order.status !== 'CREATED') throw new Error('此訂單已完成或不可付款')
+
+    order.status = 'PAID'
+    order.paidAt = new Date().toISOString()
+    const wallet = applyWalletChange(db, playerId, order.amount, 'topup', `自助加值 ${order.priceLabel}`)
+    order.status = 'CREDITED'
+    order.creditTxId = `MOCK-TX-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+    order.balanceAfter = wallet.balance
+    saveDb(db)
+    return { ...order }
+  },
   // ---- 禮品商城（鏡像後端 wallet-service shop 模組，ADR-006）----
 
   // 目錄：上架商品（鏡像後端 GET /api/v1/wallet/shop/catalog）。
@@ -990,7 +1674,6 @@ export const mockApi = {
     // 引擎 remount 後 idSeq 從 0 重置，舊 fishDamage 的 key 會碰撞到新魚 id，
     // 導致新魚繼承舊傷害（初次命中 hpRemaining 異常偏低或直接一擊即死）。
     session.fishDamage = {}
-    session.fishRecovery = {}
     saveDb(db)
     return {
       sessionId: session.sessionId,
@@ -1018,28 +1701,8 @@ export const mockApi = {
 
     const existing = db.fishingSessions[playerId]
     if (existing) {
-      // 已有進行中場次：續玩、不重複扣款（比照後端 resumed）。
-      // 同 fishingActive()：引擎 remount 後 idSeq 從 0 重置，舊 fishDamage 的 key
-      // 會碰撞到新魚 id，導致新魚繼承舊傷害（初擊即死），故一併歸零。
-      existing.fishDamage = {}
-      existing.fishRecovery = {}
+      delete db.fishingSessions[playerId]
       saveDb(db)
-      return {
-        sessionId: existing.sessionId,
-        roomId: `solo-${existing.sessionId}`,
-        seatIndex: 0,
-        cannonLevel: existing.cannonLevel,
-        betPerShot: existing.betPerShot,
-        buyIn: existing.buyIn,
-        sessionBalance: existing.sessionBalance,
-        totalShots: existing.totalShots,
-        lastShotSeq: existing.lastShotSeq,
-        serverSeedHash: existing.serverSeedHash,
-        clientSeed: existing.clientSeed,
-        resumed: true,
-        wallet: db.wallets[playerId],
-        fishTable: fishTableView(),
-      }
     }
 
     const startBuyIn = Number(buyIn)
@@ -1124,7 +1787,6 @@ export const mockApi = {
       previousSeq = Number(shot.shotSeq)
     }
     session.fishDamage = session.fishDamage || {}
-    session.fishRecovery = session.fishRecovery || {}
     const results = []
     for (const shot of shots) {
       const requestedFishType = String(shot.fishType || '').trim().toUpperCase()
@@ -1227,8 +1889,8 @@ export const mockApi = {
       if (!killed) {
         hpRemaining = hp - after
         session.fishDamage[instanceId] = after
-        session.fishRecovery[instanceId] =
-          (session.fishRecovery[instanceId] || 0) + fishingRecoveryPayout(bet, cannonLevel, damage)
+        // 殘血回收不在這裡逐發算：fishingRecoveryPayout 含 floor，逐發呼叫會侵蝕低注額
+        // （單發 10 星幣時有效回收率只剩 0.62、非設計值 0.70）。改在結算時整場算一次。
       } else {
         captured = Math.random() < fishingCapture(fish, cannonLevel)
         if (captured) {
@@ -1241,7 +1903,6 @@ export const mockApi = {
           session.totalPayout += payout
         }
         delete session.fishDamage[instanceId]
-        delete session.fishRecovery[instanceId]
       }
       // 記錄逐發結果供結算後 verify-shot 重放（mock 無真正 RNG 種子，改以對局存檔回放）。
       session.shotResults = session.shotResults || {}
@@ -1325,22 +1986,20 @@ export const mockApi = {
 
     // 殘血部分回收（ADR-004）：fishDamage 只剩「受傷但未打死」的魚（致命一擊後已 delete），
     // 退還 RECOVERY_RATE 比例的子彈成本，折入局內餘額與 totalPayout（鏡像後端 settleInternal）。
-    let residualRecovery = 0
-    const recoveryValues = Object.values(session.fishRecovery || {})
-    if (recoveryValues.length > 0) {
-      for (const recovery of recoveryValues) residualRecovery += Number(recovery) || 0
-    } else {
-      const cannonLevel = session.cannonLevel || 1
-      const betPerShot = session.betPerShot || 0
-      for (const dmg of Object.values(session.fishDamage || {})) {
-        residualRecovery += fishingRecoveryPayout(betPerShot, cannonLevel, Number(dmg) || 0)
-      }
+    // 先把整場累傷加總、再算一次回收（含 floor）——逐條/逐發各 floor 一次會侵蝕低注額。
+    let totalResidualDamage = 0
+    for (const dmg of Object.values(session.fishDamage || {})) {
+      totalResidualDamage += Number(dmg) || 0
     }
+    const residualRecovery = fishingRecoveryPayout(
+      session.betPerShot || 0,
+      session.cannonLevel || 1,
+      totalResidualDamage
+    )
     if (residualRecovery > 0) {
       session.sessionBalance += residualRecovery
       session.totalPayout += residualRecovery
       session.fishDamage = {}
-      session.fishRecovery = {}
     }
 
     const credited = session.sessionBalance

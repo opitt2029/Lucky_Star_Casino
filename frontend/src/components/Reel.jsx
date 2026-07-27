@@ -5,13 +5,13 @@ export const visibleRows = 3
 export const paylineRow = 1
 
 // 後端契約仍是 emoji 字串（SlotSymbol.display），視覺上由 SLOT_SYMBOL_ASSET
-// 映射成華人財富意象（元寶/銅錢/紅包/福/金龍）；caption 同步改中文彩頭名。
+// 映射成市面拉霸常見符號（櫻桃、檸檬、鈴鐺、星星、紅 7），不改賠付邏輯。
 const symbolMeta = {
-  '🍒': { label: '🍒', caption: '金元寶', tone: 'slot-symbol-seven' },
-  '🍋': { label: '🍋', caption: '銅錢', tone: 'slot-symbol-card' },
-  '🔔': { label: '🔔', caption: '紅包', tone: 'slot-symbol-bar' },
-  '⭐': { label: '⭐', caption: '福字', tone: 'slot-symbol-star' },
-  '7️⃣': { label: '7️⃣', caption: '金龍', tone: 'slot-symbol-seven' },
+  '🍒': { label: '🍒', caption: 'CHERRY', tone: 'slot-symbol-cherry' },
+  '🍋': { label: '🍋', caption: 'LEMON', tone: 'slot-symbol-lemon' },
+  '🔔': { label: '🔔', caption: 'BELL', tone: 'slot-symbol-bell' },
+  '⭐': { label: '⭐', caption: 'STAR', tone: 'slot-symbol-star' },
+  '7️⃣': { label: '7️⃣', caption: 'RED 7', tone: 'slot-symbol-seven' },
   '7': { label: '7', caption: 'Lucky', tone: 'slot-symbol-seven' },
   BAR: { label: 'BAR', caption: 'Triple', tone: 'slot-symbol-bar' },
   STAR: { label: 'STAR', caption: 'Bonus', tone: 'slot-symbol-star' },
@@ -96,8 +96,24 @@ export function preloadSymbolImages(symbols) {
   )
 }
 
-export function nextFrame() {
-  return new Promise((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)))
+// 視窗被別的視窗完全遮蔽、或分頁切到背景時，Chrome 會停掉 requestAnimationFrame，
+// 但 setTimeout 仍會（被節流地）觸發。單靠 rAF 的 Promise 在那段期間永遠不 resolve，
+// 上游 SlotMachine.runReels 就會一直停在 phase='spinning' —— 這正是 PR #255 回報的
+// 「SPIN 永久卡在 SPINNING、狀態停在減速中、餘額不更新、卻沒有 console 錯誤」。
+// 這裡讓 rAF 與逾時互相賽跑，保證這個 Promise 一定會結束（AGENTS.md 雷區 13：
+// 視覺鎖必須綁在真實流程上，不能被一個可能永遠不來的影格綁死）。
+export function nextFrame(timeoutMs = 250) {
+  return new Promise((resolve) => {
+    let settled = false
+    const settle = () => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timer)
+      resolve()
+    }
+    const timer = window.setTimeout(settle, timeoutMs)
+    window.requestAnimationFrame(() => window.requestAnimationFrame(settle))
+  })
 }
 
 export function animateReel({
@@ -123,10 +139,14 @@ export function animateReel({
     }
 
     let frameId = 0
-    let startedAt = 0
+    // 用 null 而非 0 當「尚未起算」：rAF 的 timestamp 可能就是 0，用 !startedAt 判斷
+    // 會把那一幀當成沒起算過而丟掉一幀（動畫實際上會少跑一格）。
+    let startedAt = null
+    let watchdogId = 0
 
     const finish = (completed) => {
       window.cancelAnimationFrame(frameId)
+      window.clearTimeout(watchdogId)
       signal?.removeEventListener('abort', abort)
 
       if (completed) {
@@ -151,7 +171,7 @@ export function animateReel({
         return
       }
 
-      if (!startedAt) startedAt = timestamp
+      if (startedAt === null) startedAt = timestamp
       const elapsed = timestamp - startedAt
       const progress = Math.min(elapsed / duration, 1)
       const eased = easing(progress)
@@ -170,6 +190,10 @@ export function animateReel({
 
     signal?.addEventListener('abort', abort, { once: true })
     trackElement.style.transform = `translate3d(0, ${fromY}px, 0)`
+    // 看門狗：rAF 停擺（視窗被遮蔽/背景分頁）時仍讓轉輪落定並結束這個 Promise。
+    // 寬限 1.2s 遠大於正常演出的影格抖動，正常路徑一定是 step() 先跑完，行為不變；
+    // 只有動畫真的停住時才會由它收尾——寧可少看一段演出，也不能把玩家鎖在轉動中。
+    watchdogId = window.setTimeout(() => finish(true), duration + 1200)
     frameId = window.requestAnimationFrame(step)
   })
 }

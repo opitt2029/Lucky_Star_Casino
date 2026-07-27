@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">Lucky gift box</title><desc id="desc">A red and gold lucky reward box with glowing coins.</desc>
+  <defs><radialGradient id="bg" cx="48%" cy="35%" r="70%"><stop stop-color="#7f1d1d"/><stop offset="1" stop-color="#160106"/></radialGradient><linearGradient id="box" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#ef4444"/><stop offset="1" stop-color="#7f1d1d"/></linearGradient><linearGradient id="gold" x1="0" x2="1"><stop stop-color="#fff3b0"/><stop offset="1" stop-color="#d97706"/></linearGradient></defs>
+  <rect width="640" height="420" fill="url(#bg)"/>
+  <ellipse cx="320" cy="334" rx="180" ry="34" fill="#000" opacity=".25"/>
+  <rect x="180" y="178" width="280" height="142" rx="18" fill="url(#box)" stroke="#facc15" stroke-width="5"/>
+  <rect x="166" y="140" width="308" height="62" rx="16" fill="#991b1b" stroke="#fde68a" stroke-width="5"/>
+  <rect x="294" y="140" width="52" height="180" fill="url(#gold)"/>
+  <rect x="166" y="168" width="308" height="24" fill="url(#gold)"/>
+  <path d="M298 138c-46-24-54-66-24-78 34-14 56 34 46 78m22 0c46-24 54-66 24-78-34-14-56 34-46 78" fill="none" stroke="#fde68a" stroke-width="12" stroke-linecap="round"/>
+  <g fill="#facc15" opacity=".9"><circle cx="118" cy="116" r="18"/><circle cx="520" cy="112" r="14"/><circle cx="548" cy="246" r="20"/><circle cx="100" cy="266" r="12"/></g>
+</svg>

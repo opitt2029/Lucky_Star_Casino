@@ -55,6 +55,28 @@ describe('FishingControlDock', () => {
     expect(container.textContent).toContain('收網')
   })
 
+  test('目前彈藥按鈕會同步 aria-pressed 與 is-active class', () => {
+    renderDock()
+
+    const ammoButtons = Array.from(container.querySelectorAll('.fishing-dock-ammo'))
+    const activeButtons = ammoButtons.filter((button) => button.classList.contains('is-active'))
+
+    expect(activeButtons).toHaveLength(1)
+    expect(activeButtons[0].getAttribute('aria-pressed')).toBe('true')
+    expect(activeButtons[0].textContent).toContain('普通彈藥')
+  })
+
+  test('activeAmmo 優先於 cannonLevel，避免錯亮多個彈藥按鈕', () => {
+    renderDock({ activeAmmo: FISHING_AMMO_OPTIONS[2], cannonLevel: 1 })
+
+    const ammoButtons = Array.from(container.querySelectorAll('.fishing-dock-ammo'))
+    const activeButtons = ammoButtons.filter((button) => button.classList.contains('is-active'))
+
+    expect(activeButtons).toHaveLength(1)
+    expect(activeButtons[0].getAttribute('aria-pressed')).toBe('true')
+    expect(activeButtons[0].textContent).toContain('重型彈藥')
+  })
+
   test('場次開始後彈藥按鈕鎖定，不呼叫彈藥切換 callback', () => {
     const onAmmoSelect = vi.fn()
     renderDock({ onAmmoSelect })

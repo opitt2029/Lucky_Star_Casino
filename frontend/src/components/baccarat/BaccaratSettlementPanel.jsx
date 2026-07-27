@@ -1,4 +1,5 @@
 import { BET_LABELS } from '../../utils/baccaratGame'
+import InfoHint from '../InfoHint'
 
 function resultCopy(winner) {
   if (winner === 'Player') return { status: '閒家勝', title: '閒家勝出' }
@@ -7,10 +8,13 @@ function resultCopy(winner) {
   return { status: '等待結果', title: '等待下注' }
 }
 
-function ResultItem({ label, value, wide = false }) {
+function ResultItem({ label, value, wide = false, hint = null }) {
   return (
     <div className={['baccarat-result-item', wide ? 'baccarat-result-item--wide' : ''].join(' ')}>
-      <span>{label}</span>
+      <span>
+        {label}
+        {hint}
+      </span>
       <strong>{value}</strong>
     </div>
   )
@@ -71,8 +75,26 @@ export default function BaccaratSettlementPanel({
                   : `${roundProfit >= 0 ? '+' : '-'}${Math.abs(roundProfit).toLocaleString()}`
               }
             />
-            <ResultItem label="返水" value={rebate === null || rebate === undefined ? '-' : `+${Number(rebate).toLocaleString()}`} />
-            <ResultItem label="roundId" value={roundId || '-'} />
+            <ResultItem
+              label="返水"
+              value={rebate === null || rebate === undefined ? '-' : `+${Number(rebate).toLocaleString()}`}
+              hint={(
+                <InfoHint title="返水" align="right">
+                  不論輸贏，每局都依下注金額退還 0.5% 星幣的回饋（賭場常說的「洗碼」）。
+                  金額已直接進錢包，和本局輸贏分開計算。
+                </InfoHint>
+              )}
+            />
+            <ResultItem
+              label="roundId"
+              value={roundId || '-'}
+              hint={(
+                <InfoHint title="roundId" align="right">
+                  這一局的唯一編號。伺服器用它記錄發牌結果，你可以到「交易/遊戲紀錄」用這組編號
+                  核對本局的牌面與派彩，確認結果沒有被更動。
+                </InfoHint>
+              )}
+            />
             <ResultItem label="驗證提示" value={roundId ? '可至遊戲紀錄核對本局結果。' : '結算後顯示 roundId。'} wide />
           </>
         )}

@@ -4,14 +4,25 @@ import { walletApi } from '../services/walletApi'
 import { gameApi } from '../services/gameApi'
 
 const PAGE_SIZE = 10
-// 從兩個來源各抓最近這麼多筆再合併排序：避免把整段歷史全載入前端（bounded fetch）。
-// 兩個服務各自分頁，無法用「各取第 N 頁再合併」正確地跨頁排序，故改抓一段夠用的視窗。
 const FETCH_CAP = 200
 
 const sourceOptions = [
-  ['all', '全部'],
-  ['transaction', '交易'],
-  ['game', '遊戲'],
+  ['all', '全部紀錄'],
+  ['transaction', '錢包交易'],
+  ['game', '遊戲紀錄'],
+]
+
+const transactionTypeOptions = [
+  ['all', '全部交易'],
+  ['credit', '入帳'],
+  ['debit', '扣款'],
+]
+
+const gameTypeOptions = [
+  ['all', '全部遊戲'],
+  ['SLOT', '老虎機'],
+  ['BACCARAT', '百家樂'],
+  ['FISHING', '捕魚機'],
 ]
 
 const gameTypeLabels = {
@@ -20,8 +31,6 @@ const gameTypeLabels = {
   FISHING: '捕魚機',
 }
 
-// 遊戲相關的交易子型：這些已由「遊戲」那一列涵蓋，合併時濾掉，避免同一經濟事件重複出現。
-// mock 用小寫 bet/payout；真實後端 subType 用大寫 BET/WIN（見 walletApi.toTransactionRow）。
 const GAME_TX_TYPES = new Set(['bet', 'payout', 'win'])
 
 function isGameTx(row) {
@@ -44,16 +53,27 @@ function formatBalance(value) {
   return value === null || value === undefined ? '-' : Number(value).toLocaleString()
 }
 
-// 把交易列、遊戲列正規化成同一種「合併列」形狀（時間 / 來源 / 類型 / 金額 / 餘額）。
+function rowInDateRange(row, startDate, endDate) {
+  if (!startDate && !endDate) return true
+  if (!row.time) return false
+
+  const time = new Date(row.time).getTime()
+  if (Number.isNaN(time)) return false
+
+  if (startDate && time < new Date(`${startDate}T00:00:00`).getTime()) return false
+  if (endDate && time > new Date(`${endDate}T23:59:59.999`).getTime()) return false
+  return true
+}
+
 function txToRow(tx) {
   return {
     key: `tx-${tx.id}`,
     time: tx.createdAt,
     source: 'transaction',
-    sourceLabel: '交易',
+    sourceLabel: '錢包',
     typeLabel: tx.typeLabel,
-    amount: tx.amount, // 已是帶正負號（DEBIT 為負）
-    balanceAfter: null, // 帳務流水不含當下餘額，故合併表交易列的餘額顯示為 '-'
+    amount: tx.amount,
+    balanceAfter: null,
   }
 }
 
@@ -64,13 +84,17 @@ function gameToRow(g) {
     source: 'game',
     sourceLabel: '遊戲',
     typeLabel: gameTypeLabels[g.gameType] || g.gameType,
-    amount: g.profit, // 損益（派彩 − 投注）
+    amount: g.profit,
     balanceAfter: g.balanceAfter,
   }
 }
 
 export default function Records() {
   const [source, setSource] = useState('all')
+  const [transactionType, setTransactionType] = useState('all')
+  const [gameType, setGameType] = useState('all')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [page, setPage] = useState(1)
   const [merged, setMerged] = useState([])
   const [loading, setLoading] = useState(false)
@@ -80,16 +104,42 @@ export default function Records() {
     setLoading(true)
     setError(null)
     try {
-      // 兩個服務併發抓取，彼此獨立、無先後依賴。
-      const [txRes, gameRes] = await Promise.all([
-        walletApi.getTransactions({ type: 'all', page: 1, pageSize: FETCH_CAP }),
-        gameApi.gameHistory({ gameType: 'all', page: 1, pageSize: FETCH_CAP }),
-      ])
-      const txRows = (txRes.items || []).filter((row) => !isGameTx(row)).map(txToRow)
-      const gameRows = (gameRes.items || []).map(gameToRow)
-      const all = [...txRows, ...gameRows].sort(
-        (a, b) => new Date(b.time).getTime() - new Date(a.time).getTime(),
-      )
+      const requests = []
+
+      if (source !== 'game') {
+        requests.push(
+          walletApi
+            .getTransactions({
+              type: transactionType,
+              startDate,
+              endDate,
+              page: 1,
+              pageSize: FETCH_CAP,
+            })
+            .then((res) => ({ kind: 'transaction', res })),
+        )
+      }
+
+      if (source !== 'transaction') {
+        requests.push(
+          gameApi
+            .gameHistory({ gameType, page: 1, pageSize: FETCH_CAP })
+            .then((res) => ({ kind: 'game', res })),
+        )
+      }
+
+      const results = await Promise.all(requests)
+      const rows = results.flatMap(({ kind, res }) => {
+        if (kind === 'transaction') {
+          return (res.items || []).filter((row) => !isGameTx(row)).map(txToRow)
+        }
+        return (res.items || []).map(gameToRow)
+      })
+
+      const all = rows
+        .filter((row) => rowInDateRange(row, startDate, endDate))
+        .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+
       setMerged(all)
       setPage(1)
     } catch (err) {
@@ -98,23 +148,21 @@ export default function Records() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [endDate, gameType, source, startDate, transactionType])
 
   useEffect(() => {
     load()
   }, [load])
 
-  // 來源篩選在前端做（資料已合併在記憶體，不必再打後端）。
-  const filtered = useMemo(
-    () => (source === 'all' ? merged : merged.filter((row) => row.source === source)),
-    [merged, source],
-  )
-  const total = filtered.length
+  const total = merged.length
   const totalPages = Math.max(Math.ceil(total / PAGE_SIZE), 1)
-  const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const pageRows = useMemo(
+    () => merged.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [merged, page],
+  )
 
-  const handleSourceChange = (value) => {
-    setSource(value)
+  const updateFilter = (setter) => (value) => {
+    setter(value)
     setPage(1)
   }
 
@@ -124,9 +172,9 @@ export default function Records() {
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
           <div>
             <p className="gold-muted text-xs font-black uppercase tracking-[0.3em]">Records</p>
-            <h2 className="brand-title mt-1 text-2xl font-black">交易/遊戲紀錄</h2>
+            <h2 className="brand-title mt-1 text-2xl font-black">交易 / 遊戲紀錄</h2>
             <p className="mt-1 text-sm font-bold text-yellow-100/60">
-              交易與遊戲統整為同一條時間軸；每次遊戲以損益列出一筆，下注/派彩流水不重複顯示。
+              可依來源、交易方向、遊戲類型與日期範圍查詢；錢包篩選會送到後端，遊戲日期先在前端整理。
             </p>
           </div>
           <button
@@ -134,26 +182,86 @@ export default function Records() {
             onClick={load}
             className="gold-button rounded px-4 py-2 text-sm font-black transition"
           >
-            {loading ? '更新中...' : '更新紀錄'}
+            {loading ? '整理中...' : '重新整理'}
           </button>
         </div>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-[220px]">
-          <select
-            className="min-h-11 rounded border border-yellow-200/15 bg-red-950/70 px-4 text-sm font-bold text-white outline-none focus:border-yellow-200"
-            value={source}
-            onChange={(event) => handleSourceChange(event.target.value)}
-          >
-            {sourceOptions.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
-        {error && <p className="mt-3 rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">{error}</p>}
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <label className="grid gap-1 text-xs font-black uppercase tracking-[0.18em] text-yellow-100/56">
+            來源
+            <select
+              className="min-h-11 rounded border border-yellow-200/15 bg-red-950/70 px-4 text-sm font-bold normal-case tracking-normal text-white outline-none focus:border-yellow-200"
+              value={source}
+              onChange={(event) => updateFilter(setSource)(event.target.value)}
+            >
+              {sourceOptions.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
 
-        {/* 手機版：卡片列表 */}
+          <label className="grid gap-1 text-xs font-black uppercase tracking-[0.18em] text-yellow-100/56">
+            交易方向
+            <select
+              className="min-h-11 rounded border border-yellow-200/15 bg-red-950/70 px-4 text-sm font-bold normal-case tracking-normal text-white outline-none focus:border-yellow-200 disabled:opacity-45"
+              value={transactionType}
+              disabled={source === 'game'}
+              onChange={(event) => updateFilter(setTransactionType)(event.target.value)}
+            >
+              {transactionTypeOptions.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="grid gap-1 text-xs font-black uppercase tracking-[0.18em] text-yellow-100/56">
+            遊戲類型
+            <select
+              className="min-h-11 rounded border border-yellow-200/15 bg-red-950/70 px-4 text-sm font-bold normal-case tracking-normal text-white outline-none focus:border-yellow-200 disabled:opacity-45"
+              value={gameType}
+              disabled={source === 'transaction'}
+              onChange={(event) => updateFilter(setGameType)(event.target.value)}
+            >
+              {gameTypeOptions.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="grid gap-1 text-xs font-black uppercase tracking-[0.18em] text-yellow-100/56">
+            開始日期
+            <input
+              type="date"
+              className="min-h-11 rounded border border-yellow-200/15 bg-red-950/70 px-4 text-sm font-bold normal-case tracking-normal text-white outline-none focus:border-yellow-200"
+              value={startDate}
+              max={endDate || undefined}
+              onChange={(event) => updateFilter(setStartDate)(event.target.value)}
+            />
+          </label>
+
+          <label className="grid gap-1 text-xs font-black uppercase tracking-[0.18em] text-yellow-100/56">
+            結束日期
+            <input
+              type="date"
+              className="min-h-11 rounded border border-yellow-200/15 bg-red-950/70 px-4 text-sm font-bold normal-case tracking-normal text-white outline-none focus:border-yellow-200"
+              value={endDate}
+              min={startDate || undefined}
+              onChange={(event) => updateFilter(setEndDate)(event.target.value)}
+            />
+          </label>
+        </div>
+        {error && (
+          <p className="mt-3 rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">
+            {error}
+          </p>
+        )}
+
         <div className="mt-5 grid gap-3 lg:hidden">
           {pageRows.map((row) => (
             <article key={row.key} className="rounded border border-yellow-200/15 bg-red-950/70 p-4 text-sm">
@@ -191,7 +299,6 @@ export default function Records() {
           )}
         </div>
 
-        {/* 桌機版：表格 */}
         <div className="mt-5 hidden overflow-x-auto lg:block">
           <table className="w-full border-separate border-spacing-y-2 text-left text-sm">
             <thead className="gold-muted text-xs uppercase tracking-[0.2em]">

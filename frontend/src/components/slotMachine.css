@@ -1,3 +1,1285 @@
 /* SlotMachine imports this file so /game/slot is explicitly wired to the new
    reel implementation. The concrete visual rules live in index.css today to
    preserve the existing app theme and avoid duplicating the full machine skin. */
+
+/* Game fullscreen split layout: normal page keeps the info rail, fullscreen becomes a single-screen cockpit. */
+.slot-game-surface {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.slot-game-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(243, 215, 141, 0.2);
+  border-radius: 8px;
+  background: rgba(70, 8, 14, 0.78);
+  padding: 12px 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.slot-game-topbar__eyebrow {
+  margin: 0;
+  color: rgba(247, 215, 128, 0.78);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.slot-game-topbar__title {
+  margin: 3px 0 0;
+  color: #fff7d6;
+  font-size: clamp(1.25rem, 2vw, 1.8rem);
+  font-weight: 950;
+  line-height: 1;
+}
+
+.slot-fullscreen-button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgba(243, 215, 141, 0.5);
+  border-radius: 7px;
+  background: rgba(12, 5, 7, 0.72);
+  color: #fff3c4;
+  padding: 0 12px;
+  font-size: 0.82rem;
+  font-weight: 950;
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+
+.slot-fullscreen-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(243, 215, 141, 0.9);
+  background: rgba(115, 16, 22, 0.86);
+}
+
+.slot-fullscreen-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.slot-fullscreen-message {
+  margin: 0;
+  border: 1px solid rgba(248, 113, 113, 0.34);
+  border-radius: 7px;
+  background: rgba(127, 29, 29, 0.24);
+  color: #fecaca;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.slot-game-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  min-width: 0;
+  align-items: start;
+}
+
+.slot-game-machine,
+.slot-game-control-panel {
+  min-width: 0;
+}
+
+.slot-game-control-panel {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+@media (min-width: 1024px) {
+  .slot-game-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 300px);
+  }
+}
+
+.slot-game-surface--fullscreen-entering,
+.slot-game-surface:fullscreen {
+  /* position: fixed 是必要的：全螢幕 class 生效到瀏覽器真的進入全螢幕之間有一個
+     影格的落差，這時元素還在原本的文件流位置（頁面已捲動時 x/y 都不是 0），
+     100vw/100vh 就會從那個偏移量開始算而整塊溢出視窗右下角——右側資訊欄與
+     「離開全螢幕」按鈕會被切掉。百家樂的 .baccarat-table--fullscreen 早有這段，
+     老虎機漏了。 */
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(249, 198, 91, 0.16), transparent 28%),
+    linear-gradient(180deg, #180307 0%, #070203 100%);
+  padding: clamp(8px, 1.4vw, 16px);
+}
+
+body.slot-fullscreen-active {
+  overflow: hidden;
+}
+
+.slot-game-surface--fullscreen-entering .slot-game-layout,
+.slot-game-surface:fullscreen .slot-game-layout {
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(236px, 280px);
+  align-items: stretch;
+}
+
+.slot-game-surface--fullscreen-entering .slot-game-topbar,
+.slot-game-surface:fullscreen .slot-game-topbar {
+  padding: 8px 10px;
+}
+
+.slot-game-surface--fullscreen-entering .slot-game-machine,
+.slot-game-surface:fullscreen .slot-game-machine,
+.slot-game-surface--fullscreen-entering .slot-machine,
+.slot-game-surface:fullscreen .slot-machine {
+  min-height: 0;
+  height: 100%;
+}
+
+/* 改用 flex（原本是 grid + grid-template-rows: auto minmax(0,1fr) auto auto）。
+   機台實際有 5 個子元素（跑馬燈 / topper / 轉輪窗 / 控制列 / 狀態列），那份四列宣告
+   讓 1fr 落在高度 0 的裝飾層上，真正該吃剩餘空間的轉輪窗反而只拿到 auto。
+   flex 不依賴子元素的數量與順序，轉輪窗永遠拿得到剩下的空間。 */
+.slot-game-surface--fullscreen-entering .slot-machine,
+.slot-game-surface:fullscreen .slot-machine {
+  display: flex;
+  flex-direction: column;
+  padding: clamp(8px, 1.1vw, 14px);
+}
+
+.slot-game-surface--fullscreen-entering .slot-cabinet,
+.slot-game-surface:fullscreen .slot-cabinet {
+  /* index.css 的 @media (min-width: 1024px) 把 --slot-reel-height 寫死成 32rem（512px），
+     讓轉輪視窗高度跟 --slot-symbol-height 脫鉤。格高縮小後視窗仍是 512px，
+     多出來的高度會露出第四格再被外框切斷（看起來像轉輪下面卡了半排符號）。
+     全螢幕綁回「三格」的原始定義，視窗高度就會跟著格高一起縮。 */
+  --slot-reel-height: calc(var(--slot-symbol-height, 100px) * 3);
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  margin-top: 10px;
+}
+
+.slot-game-surface--fullscreen-entering .slot-machine > *:not(.slot-cabinet),
+.slot-game-surface:fullscreen .slot-machine > *:not(.slot-cabinet) {
+  flex: 0 0 auto;
+}
+
+/* 轉輪是全螢幕的主角，裝飾件讓出高度給它——省下來的每一 px 都會變成更大的符號格
+   （格高＝轉輪窗可用高度 ÷ 3，見 SlotMachine.jsx 的 fitToCabinet）。 */
+.slot-game-surface--fullscreen-entering .slot-machine__marquee,
+.slot-game-surface:fullscreen .slot-machine__marquee {
+  margin-bottom: 8px;
+  padding: 4px 8px;
+}
+
+.slot-game-surface--fullscreen-entering .slot-machine__bulb,
+.slot-game-surface:fullscreen .slot-machine__bulb {
+  height: 14px;
+}
+
+.slot-game-surface--fullscreen-entering .slot-machine__topper,
+.slot-game-surface:fullscreen .slot-machine__topper {
+  padding: 8px 12px;
+}
+
+/* 機台內的「Lucky Star Deluxe / 星幣老虎機」在全螢幕是重複資訊——
+   全螢幕頂列（.slot-game-topbar）已經有一模一樣的標題。收掉它把高度讓給轉輪，
+   只留右邊的 GRAND 獎池。第一個 div 是標題組、第二個是獎池，見 SlotMachine.jsx 的 topper。 */
+.slot-game-surface--fullscreen-entering .slot-machine__topper > div:first-child,
+.slot-game-surface:fullscreen .slot-machine__topper > div:first-child {
+  display: none;
+}
+
+/* 獎池是氛圍展示，不需要 34px 的大數字佔掉 74px 高——縮成一行留住老虎機的味道就好。 */
+.slot-game-surface--fullscreen-entering .slot-machine__jackpot,
+.slot-game-surface:fullscreen .slot-machine__jackpot {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  /* 一般頁面的 min-height: 74px 是為了撐出獎池的存在感，全螢幕要把高度讓給轉輪。 */
+  min-height: 0;
+}
+
+.slot-game-surface--fullscreen-entering .slot-machine__jackpot strong,
+.slot-game-surface:fullscreen .slot-machine__jackpot strong {
+  font-size: 1.35rem;
+}
+
+.slot-game-surface--fullscreen-entering .slot-lever,
+.slot-game-surface:fullscreen .slot-lever {
+  height: 88px;
+}
+
+.slot-game-surface--fullscreen-entering .slot-game-control-panel,
+.slot-game-surface:fullscreen .slot-game-control-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  overflow: auto;
+  gap: 10px;
+  padding-right: 2px;
+  scrollbar-width: thin;
+}
+
+/* 全螢幕下右欄放不下所有卡片，會出現捲軸。預設順序會把「下注面額」推到最底，
+   玩家得先捲動才能改注額——把下注與本局狀態提到最前面，讓核心操作永遠免捲動可及，
+   純資訊的 MetricCard（餘額、派彩、損益）留在後面捲。 */
+.slot-game-surface--fullscreen-entering .slot-bet-panel,
+.slot-game-surface:fullscreen .slot-bet-panel {
+  order: -2;
+  flex: 0 0 auto;
+}
+
+.slot-game-surface--fullscreen-entering .slot-status-panel,
+.slot-game-surface:fullscreen .slot-status-panel {
+  order: -1;
+  flex: 0 0 auto;
+}
+
+.slot-game-surface--fullscreen-entering .slot-game-control-panel > button,
+.slot-game-surface:fullscreen .slot-game-control-panel > button {
+  display: none;
+}
+
+.slot-game-surface--fullscreen-entering .slot-game-control-panel .luxury-panel-soft,
+.slot-game-surface:fullscreen .slot-game-control-panel .luxury-panel-soft {
+  padding: 12px;
+}
+
+@media (max-width: 820px) {
+  .slot-game-surface--fullscreen-entering,
+  .slot-game-surface:fullscreen {
+    overflow: auto;
+  }
+
+  .slot-game-surface--fullscreen-entering .slot-game-layout,
+  .slot-game-surface:fullscreen .slot-game-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Single-screen slot cockpit: keep machine and controls visible without page scrolling on desktop/tablet. */
+.slot-game-surface--single-screen {
+  grid-template-rows: auto minmax(0, 1fr);
+  height: clamp(560px, calc(100vh - 208px), 760px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.slot-game-surface--single-screen .slot-game-topbar {
+  min-height: 52px;
+  padding: 9px 12px;
+  background:
+    linear-gradient(90deg, rgba(8, 10, 16, 0.92), rgba(90, 5, 14, 0.86), rgba(8, 10, 16, 0.92));
+}
+
+.slot-game-surface--single-screen .slot-game-layout {
+  height: 100%;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.slot-game-surface--single-screen .slot-game-machine,
+.slot-game-surface--single-screen .slot-machine {
+  height: 100%;
+  min-height: 0;
+}
+
+.slot-game-surface--single-screen .slot-game-control-panel {
+  min-height: 0;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.slot-dashboard-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.slot-mini-metric {
+  display: grid;
+  min-height: 62px;
+  align-content: center;
+  border: 1px solid rgba(226, 232, 240, 0.16);
+  border-radius: 7px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 42%),
+    linear-gradient(135deg, rgba(16, 20, 31, 0.94), rgba(95, 6, 16, 0.82));
+  padding: 8px 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.slot-mini-metric span,
+.slot-mini-metric small {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(255, 239, 184, 0.64);
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slot-mini-metric strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #fff7cf;
+  font-family: var(--font-display);
+  font-size: clamp(1rem, 1.55vw, 1.45rem);
+  font-weight: 950;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slot-mini-metric--light {
+  border-color: rgba(255, 232, 150, 0.34);
+  background:
+    linear-gradient(180deg, rgba(255, 240, 178, 0.28), rgba(255, 198, 65, 0.12)),
+    linear-gradient(135deg, rgba(106, 6, 18, 0.96), rgba(22, 6, 10, 0.94));
+}
+
+.slot-mini-metric--up strong {
+  color: #8ff8c2;
+}
+
+.slot-mini-metric--down strong {
+  color: #ff9da5;
+}
+
+.slot-inline-alert {
+  margin: 0;
+  border: 1px solid rgba(248, 113, 113, 0.36);
+  border-radius: 7px;
+  background: rgba(127, 29, 29, 0.24);
+  color: #fecaca;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.slot-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.slot-panel-heading .brand-title {
+  margin-top: 1px;
+  line-height: 1.05;
+}
+
+.slot-bet-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.slot-bet-chip {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 237, 166, 0.2);
+  border-radius: 7px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 42%),
+    rgba(15, 17, 25, 0.86);
+  color: rgba(255, 242, 181, 0.78);
+  font-size: 0.86rem;
+  font-weight: 950;
+  transition: transform 140ms ease, border-color 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.slot-bet-chip:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(255, 237, 166, 0.72);
+  color: #fff7cf;
+}
+
+.slot-bet-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.slot-bet-chip--active {
+  border-color: rgba(255, 247, 204, 0.84);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.38), transparent 36%),
+    linear-gradient(180deg, #ffeaa0, #d49a19 56%, #8d4b00);
+  color: #270305;
+  box-shadow: 0 8px 20px rgba(212, 154, 25, 0.22);
+}
+
+.slot-status-grid {
+  display: grid;
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.slot-status-grid div {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid rgba(255, 234, 160, 0.14);
+  border-radius: 7px;
+  background: rgba(10, 11, 17, 0.74);
+  padding: 8px 10px;
+}
+
+.slot-status-grid span {
+  color: rgba(255, 242, 181, 0.62);
+  font-size: 0.8rem;
+  font-weight: 850;
+}
+
+.slot-game-control-panel > .luxury-panel.group {
+  padding: 10px;
+}
+
+.slot-game-control-panel > .luxury-panel.group .brand-title {
+  font-size: 1.05rem;
+}
+
+.slot-game-control-panel > .luxury-panel.group .mt-3 {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.slot-machine--fit {
+  display: flex;
+  flex-direction: column;
+  padding: clamp(10px, 1.1vw, 14px);
+}
+
+.slot-machine--fit .slot-machine__marquee {
+  flex: 0 0 auto;
+  margin-bottom: 8px;
+  padding: 5px 7px;
+}
+
+.slot-machine--fit .slot-machine__bulb {
+  min-height: 8px;
+}
+
+.slot-machine--fit .slot-machine__topper {
+  flex: 0 0 auto;
+  grid-template-columns: minmax(0, 1fr) minmax(118px, 0.42fr);
+  gap: 9px;
+  padding: 10px 12px;
+}
+
+.slot-machine--fit .slot-machine__title {
+  font-size: clamp(1.65rem, 2.8vw, 2.5rem);
+}
+
+.slot-machine--fit .slot-machine__jackpot {
+  min-height: 54px;
+}
+
+.slot-machine--fit .slot-machine__jackpot strong {
+  font-size: clamp(1.2rem, 2vw, 1.7rem);
+}
+
+.slot-machine--fit .slot-cabinet {
+  --slot-reel-height: calc(var(--slot-symbol-height, 100px) * 3);
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  margin-top: 9px;
+  padding: clamp(10px, 1.5vw, 18px);
+}
+
+.slot-machine--fit .slot-console {
+  flex: 0 0 auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 9px;
+  margin-top: 9px;
+  padding: 10px;
+}
+
+.slot-machine--fit .slot-console__meters div {
+  min-height: 48px;
+}
+
+.slot-machine--fit .slot-spin-button {
+  min-width: 112px;
+  min-height: 52px;
+}
+
+.slot-machine--fit .slot-status {
+  flex: 0 0 auto;
+  margin-top: 8px;
+  padding: 9px 10px;
+}
+
+/* Classic market slot-machine skin layered on top of the app casino theme. */
+.slot-machine {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 12%),
+    linear-gradient(90deg, rgba(220, 226, 234, 0.18), transparent 9%, transparent 91%, rgba(220, 226, 234, 0.14)),
+    linear-gradient(180deg, #151925 0%, #710713 42%, #18040a 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+    inset 0 0 0 7px rgba(255, 234, 160, 0.08),
+    0 24px 70px rgba(0, 0, 0, 0.52);
+}
+
+.slot-machine__topper {
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 38, 55, 0.14) 0 2px, transparent 2px 7px),
+    linear-gradient(180deg, #202838, #0a0d15 58%, #3d050b);
+  border-color: rgba(236, 241, 248, 0.24);
+}
+
+.slot-machine__eyebrow {
+  color: rgba(236, 241, 248, 0.68);
+}
+
+.slot-machine__title {
+  color: #ff3145;
+  text-shadow:
+    0 2px 0 #3c0006,
+    0 0 14px rgba(255, 49, 69, 0.48),
+    0 0 30px rgba(255, 234, 160, 0.24);
+}
+
+.slot-machine__jackpot {
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 51, 67, 0.12) 0 2px, transparent 2px 6px),
+    linear-gradient(180deg, #07090f, #141923);
+  border-color: rgba(255, 234, 160, 0.42);
+}
+
+.slot-cabinet {
+  background:
+    linear-gradient(90deg, rgba(236, 241, 248, 0.26), transparent 8%, transparent 92%, rgba(236, 241, 248, 0.2)),
+    linear-gradient(180deg, #252b38, #0b0d13 38%, #54040c 100%);
+  border-color: rgba(236, 241, 248, 0.32);
+  box-shadow:
+    inset 0 0 0 5px rgba(255, 255, 255, 0.08),
+    inset 0 0 0 10px rgba(0, 0, 0, 0.32),
+    inset 0 -22px 44px rgba(0, 0, 0, 0.5),
+    0 22px 60px rgba(0, 0, 0, 0.45);
+}
+
+.slot-reel-window {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), transparent 17%, transparent 82%, rgba(0, 0, 0, 0.14)),
+    linear-gradient(180deg, #fff9df, #f6efe2 48%, #fff2c4);
+  border-color: rgba(255, 255, 255, 0.72);
+}
+
+.slot-symbol-tile {
+  border-color: rgba(25, 24, 30, 0.12);
+  color: #210306;
+  background:
+    radial-gradient(circle at 50% 12%, rgba(255, 255, 255, 0.96), transparent 34%),
+    linear-gradient(180deg, #fffdf2, #f4e7c6);
+}
+
+.slot-symbol-art--rich svg {
+  filter:
+    drop-shadow(0 3px 0 rgba(55, 12, 18, 0.24))
+    drop-shadow(0 0 10px rgba(255, 255, 255, 0.42));
+}
+
+.slot-symbol-caption {
+  color: rgba(38, 10, 14, 0.64);
+  text-shadow: none;
+}
+
+.slot-symbol-cherry {
+  background: linear-gradient(180deg, #fff8f8, #ffe1e5);
+}
+
+.slot-symbol-lemon {
+  background: linear-gradient(180deg, #fffde7, #ffef92);
+}
+
+.slot-symbol-bell {
+  background: linear-gradient(180deg, #fff8dd, #f7d980);
+}
+
+.slot-symbol-star {
+  background:
+    radial-gradient(circle at 50% 38%, rgba(255, 255, 255, 0.94), transparent 34%),
+    linear-gradient(180deg, #fff7ce, #eebf3f);
+}
+
+.slot-symbol-seven {
+  background:
+    radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.96), transparent 30%),
+    linear-gradient(180deg, #ffe3e6, #ff8d98 42%, #d30b19);
+}
+
+@media (max-height: 760px) and (min-width: 1024px) {
+  .slot-game-surface--single-screen {
+    height: calc(100vh - 190px);
+    gap: 8px;
+  }
+
+  .slot-game-surface--single-screen .slot-game-topbar {
+    min-height: 44px;
+    padding: 7px 10px;
+  }
+
+  .slot-machine--fit .slot-machine__marquee {
+    margin-bottom: 6px;
+    padding: 4px 6px;
+  }
+
+  .slot-machine--fit .slot-machine__topper {
+    padding: 8px 10px;
+  }
+
+  .slot-machine--fit .slot-cabinet {
+    margin-top: 7px;
+  }
+
+  .slot-machine--fit .slot-console,
+  .slot-machine--fit .slot-status {
+    margin-top: 7px;
+  }
+
+  .slot-dashboard-strip,
+  .slot-game-surface--single-screen .slot-game-control-panel {
+    gap: 7px;
+  }
+
+  .slot-mini-metric {
+    min-height: 56px;
+    padding: 7px 9px;
+  }
+
+  .slot-bet-chip,
+  .slot-status-grid div {
+    min-height: 38px;
+  }
+}
+
+@media (max-width: 820px) {
+  .slot-game-surface--single-screen {
+    height: auto;
+    min-height: calc(100vh - 168px);
+    overflow: visible;
+  }
+
+  .slot-game-surface--single-screen .slot-game-layout {
+    height: auto;
+  }
+
+  .slot-game-surface--single-screen .slot-game-control-panel {
+    overflow: visible;
+  }
+}
+
+/* Final density pass for the one-screen cockpit. */
+.slot-game-surface--single-screen .slot-dashboard-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.slot-game-surface--single-screen .slot-mini-metric {
+  min-height: 56px;
+  padding: 6px 7px;
+}
+
+.slot-game-surface--single-screen .slot-mini-metric strong {
+  font-size: clamp(0.86rem, 1.1vw, 1.08rem);
+}
+
+.slot-game-surface--single-screen .slot-bet-panel,
+.slot-game-surface--single-screen .slot-status-panel {
+  padding: 8px;
+}
+
+.slot-game-surface--single-screen .slot-panel-heading .brand-title {
+  font-size: 1rem;
+}
+
+.slot-game-surface--single-screen .slot-bet-options {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.slot-game-surface--single-screen .slot-bet-chip {
+  min-height: 34px;
+  padding: 0 4px;
+  font-size: 0.76rem;
+}
+
+.slot-game-surface--single-screen .slot-status-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.slot-game-surface--single-screen .slot-status-grid div {
+  min-height: 34px;
+  padding: 7px 8px;
+}
+
+.slot-game-surface--single-screen .slot-status-grid span,
+.slot-game-surface--single-screen .slot-signal {
+  font-size: 0.72rem;
+}
+
+.slot-game-surface--single-screen .slot-game-control-panel > .luxury-panel.group {
+  min-height: 70px;
+  padding: 8px;
+}
+
+.slot-game-surface--single-screen .slot-game-control-panel > .luxury-panel.group .brand-title {
+  font-size: 0.98rem;
+}
+
+.slot-game-surface--single-screen .slot-game-control-panel > .luxury-panel.group .mt-3 {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
+.slot-machine--fit .slot-lever {
+  display: none;
+}
+
+.slot-machine--fit .slot-console {
+  grid-template-columns: minmax(0, 1fr) minmax(104px, 118px);
+}
+
+@media (max-width: 1180px) and (min-width: 821px) {
+  .slot-game-surface--single-screen .slot-dashboard-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .slot-game-surface--single-screen .slot-bet-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.slot-machine--fit .slot-cabinet {
+  padding: clamp(8px, 1.1vw, 13px);
+}
+/* Slot polish pass: readability, jackpot emphasis, and reel-window recovery after fullscreen. */
+@media (min-width: 1024px) {
+  .slot-game-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 380px);
+  }
+}
+
+.slot-game-surface--single-screen .slot-dashboard-strip {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.slot-game-surface--single-screen .slot-mini-metric {
+  min-height: 78px;
+  padding: 10px 12px;
+}
+
+.slot-game-surface--single-screen .slot-mini-metric span,
+.slot-game-surface--single-screen .slot-mini-metric small {
+  font-size: 0.76rem;
+  white-space: normal;
+}
+
+.slot-game-surface--single-screen .slot-mini-metric strong {
+  font-size: clamp(1.25rem, 1.65vw, 1.58rem);
+  white-space: normal;
+}
+
+.slot-machine--fit .slot-machine__topper {
+  grid-template-columns: minmax(0, 1fr) minmax(168px, 0.48fr);
+}
+
+.slot-machine__topper--jackpot-hit {
+  border-color: rgba(255, 247, 204, 0.84);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 28px rgba(255, 49, 69, 0.32),
+    0 0 46px rgba(255, 214, 92, 0.18);
+}
+
+.slot-machine__jackpot {
+  position: relative;
+  overflow: hidden;
+  min-height: 82px;
+  border-width: 2px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 247, 204, 0.32), transparent 38%),
+    repeating-linear-gradient(90deg, rgba(255, 51, 67, 0.16) 0 4px, transparent 4px 10px),
+    linear-gradient(180deg, #13060a, #010204 58%, #4c030a);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+    inset 0 0 24px rgba(255, 51, 67, 0.2),
+    0 0 22px rgba(255, 214, 92, 0.2);
+}
+
+.slot-machine__jackpot::before {
+  content: '';
+  position: absolute;
+  inset: -60% -20%;
+  pointer-events: none;
+  background: conic-gradient(from 0deg, transparent, rgba(255, 247, 204, 0.38), transparent 28%);
+  animation: slot-jackpot-sweep 3.2s linear infinite;
+}
+
+.slot-machine__jackpot span,
+.slot-machine__jackpot strong,
+.slot-machine__jackpot em {
+  position: relative;
+  z-index: 1;
+}
+
+.slot-machine__jackpot span {
+  color: #fff7cc;
+  font-size: 0.72rem;
+}
+
+.slot-machine__jackpot strong {
+  color: #fff4b8;
+  font-size: clamp(1.7rem, 2.6vw, 2.55rem);
+  text-shadow:
+    0 0 12px rgba(255, 247, 204, 0.72),
+    0 0 26px rgba(255, 49, 69, 0.44);
+}
+
+.slot-machine__jackpot em {
+  color: rgba(255, 239, 184, 0.72);
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 950;
+  letter-spacing: 0;
+}
+
+.slot-machine__jackpot--hit {
+  border-color: rgba(255, 247, 204, 1);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 247, 204, 0.58), transparent 36%),
+    linear-gradient(135deg, #fff1a3, #ff3045 44%, #4d0007 100%);
+  animation: slot-jackpot-hit 0.9s ease-in-out infinite;
+}
+
+.slot-machine__jackpot--hit span,
+.slot-machine__jackpot--hit em {
+  color: #2b0307;
+}
+
+.slot-machine__jackpot--hit strong {
+  color: #fff7cc;
+  font-size: clamp(2rem, 3vw, 3rem);
+}
+
+.slot-payline {
+  display: none;
+}
+
+.slot-reel-window {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.24), transparent 15%, transparent 84%, rgba(0, 0, 0, 0.28)),
+    radial-gradient(circle at 50% 50%, rgba(255, 238, 172, 0.18), transparent 58%),
+    linear-gradient(180deg, #171923, #080910 48%, #2c050a);
+  border-color: rgba(255, 232, 150, 0.42);
+  box-shadow:
+    inset 0 18px 24px rgba(255, 255, 255, 0.05),
+    inset 0 -20px 30px rgba(0, 0, 0, 0.46),
+    0 0 0 3px rgba(10, 0, 2, 0.58);
+}
+
+@keyframes slot-jackpot-sweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes slot-jackpot-hit {
+  0%, 100% { filter: saturate(1) brightness(1); }
+  50% { filter: saturate(1.35) brightness(1.18); }
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .slot-machine__jackpot::before,
+  .slot-machine__jackpot--hit {
+    animation: none;
+  }
+}
+
+/* Jackpot prominence pass after fit/fullscreen density rules. */
+.slot-machine--fit .slot-machine__jackpot {
+  min-height: 76px;
+  padding: 10px 16px;
+}
+
+.slot-machine--fit .slot-machine__jackpot strong {
+  font-size: clamp(1.65rem, 2.7vw, 2.45rem);
+}
+
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-machine__jackpot,
+.slot-game-surface:fullscreen .slot-machine--fit .slot-machine__jackpot {
+  flex-direction: column;
+  align-items: center;
+  min-height: 58px;
+  padding: 7px 14px;
+  gap: 1px;
+}
+
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-machine__jackpot strong,
+.slot-game-surface:fullscreen .slot-machine--fit .slot-machine__jackpot strong {
+  font-size: clamp(1.55rem, 2.2vw, 2.1rem);
+}
+
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-machine__jackpot em,
+.slot-game-surface:fullscreen .slot-machine--fit .slot-machine__jackpot em {
+  display: block;
+}
+
+
+/* Fullscreen fill and jackpot scale pass. */
+.slot-machine__jackpot span {
+  font-size: clamp(0.86rem, 1.05vw, 1.08rem);
+}
+
+.slot-machine__jackpot strong {
+  font-size: clamp(2.15rem, 3.45vw, 3.25rem);
+}
+
+.slot-machine__jackpot em {
+  font-size: clamp(0.76rem, 0.95vw, 0.96rem);
+}
+
+.slot-machine--fit .slot-machine__jackpot {
+  min-height: 92px;
+}
+
+.slot-machine--fit .slot-machine__jackpot strong {
+  font-size: clamp(2rem, 3.2vw, 3rem);
+}
+
+.slot-game-surface--fullscreen-entering .slot-machine--fit,
+.slot-game-surface:fullscreen .slot-machine--fit {
+  gap: 10px;
+}
+
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-machine__topper,
+.slot-game-surface:fullscreen .slot-machine--fit .slot-machine__topper {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 12px 16px;
+}
+
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-machine__jackpot,
+.slot-game-surface:fullscreen .slot-machine--fit .slot-machine__jackpot {
+  width: 100%;
+  min-height: clamp(96px, 14vh, 132px);
+  padding: 12px 18px;
+  gap: 3px;
+}
+
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-machine__jackpot span,
+.slot-game-surface:fullscreen .slot-machine--fit .slot-machine__jackpot span {
+  font-size: clamp(1rem, 1.55vw, 1.35rem);
+}
+
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-machine__jackpot strong,
+.slot-game-surface:fullscreen .slot-machine--fit .slot-machine__jackpot strong {
+  font-size: clamp(2.55rem, 5.2vw, 4.35rem);
+  line-height: 0.9;
+}
+
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-machine__jackpot em,
+.slot-game-surface:fullscreen .slot-machine--fit .slot-machine__jackpot em {
+  font-size: clamp(0.9rem, 1.35vw, 1.12rem);
+}
+
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-cabinet,
+.slot-game-surface:fullscreen .slot-machine--fit .slot-cabinet {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  margin-top: 0;
+  padding: clamp(10px, 1.1vw, 16px);
+}
+
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-reels,
+.slot-game-surface:fullscreen .slot-machine--fit .slot-reels {
+  height: 100%;
+  min-height: 0;
+  align-self: stretch;
+  gap: clamp(10px, 1.25vw, 18px);
+}
+
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-reel-window,
+.slot-game-surface:fullscreen .slot-machine--fit .slot-reel-window {
+  height: 100%;
+  min-height: 0;
+}
+
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-console,
+.slot-game-surface:fullscreen .slot-machine--fit .slot-console,
+.slot-game-surface--fullscreen-entering .slot-machine--fit .slot-status,
+.slot-game-surface:fullscreen .slot-machine--fit .slot-status {
+  margin-top: 0;
+}
+
+
+/* Fit-mode cabinet clamp for fullscreen restore frames. */
+.slot-machine--fit .slot-cabinet {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.slot-machine--fit .slot-reels,
+.slot-machine--fit .slot-reel-window {
+  height: 100%;
+  min-height: 0;
+}
+
+.slot-game-surface {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.slot-game-topbar,
+.slot-fullscreen-message,
+.slot-game-layout {
+  position: relative;
+  z-index: 1;
+}
+/* Backend-driven outcome states: visual flavor only, payout/result still comes from SlotService. */
+.slot-machine--miss .slot-machine__bulb:nth-child(3n),
+.slot-machine--near-miss .slot-machine__bulb:nth-child(2n),
+.slot-machine--pair .slot-machine__bulb:nth-child(4n),
+.slot-machine--line .slot-machine__bulb,
+.slot-machine--jackpot .slot-machine__bulb {
+  filter: saturate(1.25) brightness(1.08);
+}
+
+.slot-cabinet--miss {
+  border-color: rgba(148, 163, 184, 0.34);
+  box-shadow:
+    inset 0 0 0 5px rgba(255, 255, 255, 0.06),
+    inset 0 0 0 10px rgba(0, 0, 0, 0.32),
+    inset 0 -22px 44px rgba(0, 0, 0, 0.52),
+    0 18px 52px rgba(15, 23, 42, 0.36);
+}
+
+.slot-cabinet--near-miss {
+  border-color: rgba(125, 211, 252, 0.48);
+  box-shadow:
+    inset 0 0 0 5px rgba(125, 211, 252, 0.08),
+    inset 0 0 0 10px rgba(0, 0, 0, 0.32),
+    inset 0 -22px 44px rgba(0, 0, 0, 0.48),
+    0 0 34px rgba(14, 165, 233, 0.18),
+    0 22px 60px rgba(0, 0, 0, 0.45);
+}
+
+.slot-cabinet--pair {
+  border-color: rgba(52, 211, 153, 0.56);
+  box-shadow:
+    inset 0 0 0 5px rgba(52, 211, 153, 0.1),
+    inset 0 0 0 10px rgba(0, 0, 0, 0.32),
+    inset 0 -22px 44px rgba(0, 0, 0, 0.46),
+    0 0 40px rgba(16, 185, 129, 0.2),
+    0 22px 60px rgba(0, 0, 0, 0.45);
+}
+
+.slot-cabinet--line,
+.slot-cabinet--jackpot {
+  border-color: rgba(255, 247, 204, 0.86);
+  box-shadow:
+    inset 0 0 0 5px rgba(255, 247, 204, 0.12),
+    inset 0 0 0 10px rgba(0, 0, 0, 0.28),
+    inset 0 -22px 44px rgba(0, 0, 0, 0.44),
+    0 0 42px rgba(255, 214, 92, 0.24),
+    0 22px 60px rgba(0, 0, 0, 0.45);
+}
+
+.slot-cabinet--near-miss .slot-machine__glass,
+.slot-cabinet--pair .slot-machine__glass,
+.slot-cabinet--line .slot-machine__glass,
+.slot-cabinet--jackpot .slot-machine__glass {
+  background:
+    linear-gradient(100deg, transparent 0 24%, rgba(255, 255, 255, 0.14) 34%, transparent 48%),
+    radial-gradient(circle at 50% 50%, rgba(255, 247, 204, 0.1), transparent 62%);
+}
+
+.slot-cabinet--near-miss .slot-payline,
+.slot-cabinet--pair .slot-payline,
+.slot-cabinet--line .slot-payline,
+.slot-cabinet--jackpot .slot-payline {
+  display: block;
+  opacity: 0.78;
+}
+
+.slot-cabinet--near-miss .slot-payline {
+  background: linear-gradient(90deg, transparent, rgba(125, 211, 252, 0.76), transparent);
+}
+
+.slot-cabinet--pair .slot-payline {
+  background: linear-gradient(90deg, transparent, rgba(52, 211, 153, 0.78), transparent);
+}
+
+.slot-cabinet--line .slot-payline,
+.slot-cabinet--jackpot .slot-payline {
+  background: linear-gradient(90deg, transparent, rgba(255, 247, 204, 0.94), transparent);
+  animation: slot-payline-pulse 1.2s ease-in-out infinite;
+}
+
+.slot-cabinet--jackpot .slot-reel-window {
+  box-shadow:
+    inset 0 18px 24px rgba(255, 255, 255, 0.08),
+    inset 0 -20px 30px rgba(0, 0, 0, 0.42),
+    0 0 0 3px rgba(10, 0, 2, 0.58),
+    0 0 24px rgba(255, 214, 92, 0.28);
+}
+
+@keyframes slot-payline-pulse {
+  0%, 100% { opacity: 0.48; transform: scaleX(0.96); }
+  50% { opacity: 0.95; transform: scaleX(1); }
+}
+
+.slot-payline {
+  display: none !important;
+}
+
+.slot-round-result-pop {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(12px, 2.2vh, 22px);
+  z-index: 5;
+  display: grid;
+  min-width: min(92vw, 420px);
+  place-items: center;
+  gap: 2px;
+  border: 1px solid rgba(255, 247, 204, 0.68);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(10, 13, 21, 0.92), rgba(120, 12, 22, 0.9), rgba(10, 13, 21, 0.92));
+  padding: 11px 18px;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 14px 34px rgba(0, 0, 0, 0.42),
+    0 0 30px rgba(255, 214, 92, 0.18);
+  pointer-events: none;
+  text-align: center;
+  transform: translateX(-50%);
+  animation: slot-result-pop 2.8s cubic-bezier(0.16, 0.92, 0.18, 1) both;
+  backdrop-filter: blur(10px);
+}
+
+.slot-round-result-pop span {
+  color: rgba(255, 239, 184, 0.68);
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0;
+}
+
+.slot-round-result-pop strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: #fff7cc;
+  font-family: var(--font-display);
+  font-size: clamp(1.15rem, 2.8vw, 1.85rem);
+  font-weight: 950;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slot-round-result-pop em {
+  color: #8ff8c2;
+  font-size: clamp(0.95rem, 2vw, 1.2rem);
+  font-style: normal;
+  font-weight: 950;
+}
+
+.slot-round-result-pop small {
+  color: rgba(255, 239, 184, 0.72);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.slot-round-result-pop--miss {
+  border-color: rgba(148, 163, 184, 0.42);
+  background:
+    linear-gradient(90deg, rgba(9, 12, 18, 0.92), rgba(40, 47, 61, 0.9), rgba(9, 12, 18, 0.92));
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 14px 30px rgba(0, 0, 0, 0.36);
+}
+
+.slot-round-result-pop--miss em {
+  color: rgba(226, 232, 240, 0.78);
+}
+
+@keyframes slot-result-pop {
+  0% { opacity: 0; transform: translate(-50%, 18px) scale(0.94); }
+  12% { opacity: 1; transform: translate(-50%, 0) scale(1.02); }
+  82% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, 10px) scale(0.98); }
+}
+
+@media (max-width: 820px) {
+  .slot-round-result-pop {
+    bottom: 10px;
+    min-width: min(94vw, 360px);
+    padding: 10px 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slot-round-result-pop {
+    animation: none;
+  }
+}
+.slot-symbol-art--rich svg,
+.slot-symbol-art--rich img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 3px 0 rgba(55, 12, 18, 0.24))
+    drop-shadow(0 0 10px rgba(255, 255, 255, 0.42));
+}
+
+/* Slot SVG image sizing: keep generated symbols inside the reel cell at every responsive height. */
+.slot-symbol-art--rich {
+  width: min(88%, calc(var(--slot-symbol-height, 100px) - 20px));
+  max-width: 100%;
+  height: min(82%, calc(var(--slot-symbol-height, 100px) - 28px));
+  aspect-ratio: 1;
+  box-sizing: border-box;
+  margin: 0 auto;
+  padding: 0;
+  overflow: visible;
+}
+
+.slot-symbol-tile--compact .slot-symbol-art--rich {
+  width: min(90%, calc(var(--slot-symbol-height, 52px) - 8px));
+  height: min(90%, calc(var(--slot-symbol-height, 52px) - 8px));
+}

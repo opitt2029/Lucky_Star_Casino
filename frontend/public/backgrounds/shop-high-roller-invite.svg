@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">High roller invite</title><desc id="desc">Premium black and gold invitation envelope.</desc>
+  <defs><radialGradient id="bg" cx="50%" cy="38%" r="72%"><stop stop-color="#3b0764"/><stop offset="1" stop-color="#100014"/></radialGradient><linearGradient id="gold" x1="0" x2="1"><stop stop-color="#fff7c2"/><stop offset="1" stop-color="#ca8a04"/></linearGradient></defs>
+  <rect width="640" height="420" fill="url(#bg)"/>
+  <rect x="150" y="136" width="340" height="184" rx="22" fill="#111827" stroke="url(#gold)" stroke-width="7"/>
+  <path d="M160 154l160 112 160-112" fill="none" stroke="#facc15" stroke-width="8" stroke-linejoin="round"/>
+  <path d="M160 306l116-88m204 88-116-88" fill="none" stroke="#facc15" stroke-width="5" opacity=".55"/>
+  <circle cx="320" cy="226" r="34" fill="url(#gold)"/>
+  <text x="320" y="236" text-anchor="middle" font-family="Georgia,serif" font-size="28" font-weight="700" fill="#111827">HR</text>
+  <g fill="#fde68a" opacity=".85"><circle cx="118" cy="112" r="5"/><circle cx="540" cy="116" r="4"/><circle cx="516" cy="314" r="6"/><circle cx="126" cy="300" r="4"/></g>
+</svg>

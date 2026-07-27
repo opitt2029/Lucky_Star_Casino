@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">Lucky star charm</title><desc id="desc">Small red lucky charm with a bright star.</desc>
+  <defs><radialGradient id="bg" cx="50%" cy="40%" r="72%"><stop stop-color="#7f1d1d"/><stop offset="1" stop-color="#180205"/></radialGradient><linearGradient id="gold" x1="0" x2="1"><stop stop-color="#fff7c2"/><stop offset="1" stop-color="#f59e0b"/></linearGradient></defs>
+  <rect width="640" height="420" fill="url(#bg)"/>
+  <path d="M320 76c40 44 86 80 86 148 0 66-40 116-86 116s-86-50-86-116c0-68 46-104 86-148Z" fill="#b91c1c" stroke="url(#gold)" stroke-width="8"/>
+  <path d="M320 142l22 44 49 7-36 35 8 49-43-23-43 23 8-49-36-35 49-7 22-44Z" fill="url(#gold)"/>
+  <path d="M284 104h72" stroke="#fde68a" stroke-width="12" stroke-linecap="round"/>
+  <path d="M278 308c34 20 50 20 84 0" fill="none" stroke="#fde68a" stroke-width="7" stroke-linecap="round" opacity=".65"/>
+  <g fill="#facc15" opacity=".55"><circle cx="186" cy="116" r="5"/><circle cx="472" cy="108" r="6"/><circle cx="508" cy="282" r="5"/><circle cx="150" cy="276" r="4"/></g>
+</svg>

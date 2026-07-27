@@ -77,6 +77,9 @@ class SlotServiceTest {
                 .playerId(PLAYER_ID)
                 .gameType("SLOT")
                 .betAmount(BET)
+                .balanceBefore(10000L)
+                .balanceAfterBet(9900L)
+                .riskIntercept(false)
                 .serverSeed("srv")
                 .serverSeedHash("hash")
                 .clientSeed("cli")
@@ -233,36 +236,42 @@ class SlotServiceTest {
     // ------------------------------------------------------------------
 
     @Test
-    @DisplayName("prepareRound：建立 STARTED Session、回傳 serverSeedHash，且不揭露 serverSeed、不扣款")
-    void prepareRound_startsSessionWithoutDebit() {
+    @DisplayName("prepareRound：先扣下注、建立 STARTED Session、回傳 serverSeedHash 與預備結果，但不派彩")
+    void prepareRound_debitsStakeAndPreparesOutcomeWithoutCredit() {
+        when(slotMachine.spin(any(), eq(BET))).thenReturn(winOutcome());
+
         PrepareRoundResponse res = service.prepareRound(PLAYER_ID, BET, "my-seed");
 
         assertEquals("slot", res.getGame());
         assertEquals(BET, res.getBet());
         assertEquals("hash", res.getServerSeedHash());
         assertEquals("my-seed", res.getClientSeed());
+        assertEquals(5, res.getMultiplier());
+        assertEquals(500L, res.getPayout());
+        assertEquals(9900L, res.getWallet().getBalance());
 
         ArgumentCaptor<GameSession> sessionCaptor = ArgumentCaptor.forClass(GameSession.class);
         verify(sessionService).start(sessionCaptor.capture());
         GameSession started = sessionCaptor.getValue();
-        // roundId 為隨機 UUID，僅確認非空，且與回應一致
         assertTrue(started.getRoundId() != null && !started.getRoundId().isBlank());
         assertEquals(res.getRoundId(), started.getRoundId());
         assertEquals(PLAYER_ID, started.getPlayerId());
         assertEquals(BET, started.getBetAmount());
-        assertEquals("srv", started.getServerSeed(), "Session 內保存保密 serverSeed");
+        assertEquals(10000L, started.getBalanceBefore());
+        assertEquals(9900L, started.getBalanceAfterBet());
+        assertEquals(false, started.getRiskIntercept());
+        assertEquals("srv", started.getServerSeed(), "Session stores serverSeed for later reveal");
         assertEquals("hash", started.getServerSeedHash());
         assertEquals("my-seed", started.getClientSeed());
 
-        // 開局不扣款、不轉動、不寫庫
-        verify(walletClient, never()).debit(anyLong(), anyLong(), anyString(), anyString());
-        verify(slotMachine, never()).spin(any(), anyLong());
+        verify(walletClient).debit(eq(PLAYER_ID), eq(BET), eq("slot-bet-" + res.getRoundId()), eq(res.getRoundId()));
+        verify(walletClient, never()).credit(anyLong(), anyLong(), anyString(), anyString());
         verify(roundRepository, never()).save(any());
     }
-
     @Test
     @DisplayName("prepareRound：未提供 clientSeed 時使用伺服器產生值")
     void prepareRound_generatesClientSeedWhenAbsent() {
+        when(slotMachine.spin(any(), eq(BET))).thenReturn(loseOutcome());
         PrepareRoundResponse res = service.prepareRound(PLAYER_ID, BET, null);
         assertEquals("gen-client", res.getClientSeed());
     }
@@ -288,7 +297,7 @@ class SlotServiceTest {
         assertEquals(10400L, res.getWallet().getBalance());
 
         // 帳務用開局綁定的下注額與確定性冪等鍵
-        verify(walletClient).debit(eq(PLAYER_ID), eq(BET), eq("slot-bet-" + ROUND_ID), eq(ROUND_ID));
+        verify(walletClient, never()).debit(anyLong(), anyLong(), anyString(), anyString());
         verify(walletClient).credit(eq(PLAYER_ID), eq(500L), eq("slot-win-" + ROUND_ID), eq(ROUND_ID));
         verify(roundRepository).save(any());
         verify(publisher).publishSlotResult(any(), any());

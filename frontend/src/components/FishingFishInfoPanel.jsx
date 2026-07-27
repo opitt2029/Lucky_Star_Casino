@@ -1,5 +1,6 @@
 import { getAsset } from '../casino-fx/assets/registry'
-import { FISHING_FISH_INFO } from '../data/fishingFishConfig'
+import { FISHING_FISH_INFO, SPECIAL_FISH_CODES, decorateFishingFishTable } from '../data/fishingFishConfig'
+import fishingSpeciesContract from '../../../contracts/fishing-species.json'
 
 const TIER_LABELS = {
   SMALL: '小型魚',
@@ -23,17 +24,45 @@ const GUIDE_COPY = {
     name: '錦鯉',
     description: '最常見的小型魚。血量低、倍率低，適合新手練習開火節奏，也能穩定回收零散獎勵。',
   },
+  GOLDFISH: {
+    name: '金魚',
+    description: '小型魚之一，倍率與血量略高於錦鯉。出現頻率高，適合用來累積命中節奏。',
+  },
+  LANTERN: {
+    name: '燈籠魚',
+    description: '小型魚中價值較高的目標。血量仍低，但獎勵更好，適合優先補槍收下。',
+  },
   PUFFER: {
     name: '河豚',
     description: '中型目標，血量明顯提高。連續命中後才容易收下，獎勵比小魚更有感。',
+  },
+  ANGELFISH: {
+    name: '神仙魚',
+    description: '中型魚中較高倍率的目標。需要穩定追蹤命中，適合在魚群空隙時鎖定。',
   },
   DEVIL_RAY: {
     name: '魔鬼魟',
     description: '高分目標，出現較少且比較耐打。建議鎖定同一隻持續攻擊，避免傷害分散。',
   },
+  GOLD_DRAGON: {
+    name: '金龍',
+    description: '高分魚種，血量厚、倍率高，游過時會有高級魚特效。建議集中火力追打。',
+  },
+  PIXIU: {
+    name: '貔貅',
+    description: '高分魚種，出現機率低但獎勵漂亮。命中後別太快換目標，累積傷害更划算。',
+  },
+  CAISHEN: {
+    name: '財神',
+    description: '高分魚種，具有醒目的高級特效。捕獲成功時可帶來高倍率星幣獎勵。',
+  },
   DRAGON_KING: {
     name: '金星魚王',
     description: 'Boss 級目標，血量與獎勵都最高。打到殘血不代表一定捕獲，最終結果以後端結算為準。',
+  },
+  MONEY_TREE: {
+    name: '搖錢樹',
+    description: '特殊魚種，捕獲後倍率會在指定區間內浮動。出現時會有金色特殊魚特效。',
   },
   'jackpot-fish-king': {
     name: '彩金魚王',
@@ -58,7 +87,17 @@ for (const fish of FISHING_FISH_INFO) {
   if (!STATIC_BY_CODE.has(fish.code)) STATIC_BY_CODE.set(fish.code, fish)
 }
 const STATIC_BY_ID = new Map(FISHING_FISH_INFO.map((fish) => [fish.id, fish]))
-const FALLBACK_FISH_GUIDE = FISHING_FISH_INFO.filter((fish) => fish.tier !== 'blocker').map(normalizeStaticFish)
+const CONTRACT_FISH_TABLE = decorateFishingFishTable(
+  fishingSpeciesContract.species.map(({ code, displayName, assetId, multiplier, tier, spawnWeight }) => ({
+    code,
+    name: displayName,
+    assetId,
+    multiplier,
+    hp: multiplier * fishingSpeciesContract.hpPerMultiplier,
+    tier,
+    spawnWeight,
+  }))
+)
 const FALLBACK_BLOCKER_GUIDE = FISHING_FISH_INFO.filter((fish) => fish.tier === 'blocker').map(normalizeStaticFish)
 
 function assetUrl(assetId, fallback) {
@@ -102,23 +141,32 @@ function normalizeStaticFish(fish) {
 function backendFishToGuide(fish, betPerShot, index) {
   const tier = String(fish.tier || 'SMALL').toUpperCase()
   const multiplier = Number(fish.multiplier || 0)
+  const isMoneyTree = fish.code === 'MONEY_TREE'
+  const hidesFixedReward = SPECIAL_FISH_CODES.has(fish.code)
   const visualStatic = fish.visualKey ? STATIC_BY_ID.get(fish.visualKey) : null
   const staticFish = visualStatic || STATIC_BY_CODE.get(fish.code) || {}
   const copy = displayCopyFor(fish, staticFish)
-  const displayMultiplier = Number(fish.displayMultiplier ?? staticFish.displayMultiplier ?? multiplier)
+  const displayMultiplier = Number(
+    fish.displayMultiplier ??
+      staticFish.displayMultiplier ??
+      (isMoneyTree ? fishingSpeciesContract.moneyTreeMultiplier.max : multiplier)
+  )
   const displayHp = Number(fish.displayHp ?? staticFish.displayHp ?? fish.hp ?? staticFish.hp ?? 0)
   const payout = displayMultiplier * betPerShot
   const isVisualBoss = Boolean(fish.visualKey) && fish.code === 'DRAGON_KING'
+  const multiplierLabel = isMoneyTree
+    ? `${fishingSpeciesContract.moneyTreeMultiplier.min}-${fishingSpeciesContract.moneyTreeMultiplier.max}x`
+    : isVisualBoss && displayMultiplier !== multiplier
+      ? `${displayMultiplier}x 彩金外觀 / ${multiplier}x 合約`
+      : `${displayMultiplier}x`
 
   return {
     id: fish.visualKey || `${String(fish.code || 'fish').toLowerCase()}-${index}`,
     code: fish.code,
     name: copy.name || fish.name || staticFish.name || fish.code,
-    reward: payout,
-    rewardLabel: formatRewardLabel(payout),
-    multiplier: isVisualBoss && displayMultiplier !== multiplier
-      ? `${displayMultiplier}x 彩金外觀 / ${multiplier}x 合約`
-      : `${displayMultiplier}x`,
+    reward: hidesFixedReward ? 0 : payout,
+    rewardLabel: hidesFixedReward ? '特殊獎勵' : formatRewardLabel(payout),
+    multiplier: multiplierLabel,
     rarity: TIER_LABELS[tier] || staticFish.rarity || tier,
     tier: String(fish.visualTier || staticFish.visualTier || staticFish.tier || tier).toLowerCase(),
     spawnRate: fish.spawnWeight ?? staticFish.spawnRate ?? 0,
@@ -155,7 +203,8 @@ function FishCard({ fish }) {
 
 export default function FishingFishInfoPanel({ betPerShot = 10, fishTable = [] }) {
   const seenBackendCodes = new Set()
-  const backendGuide = (fishTable || [])
+  const sourceFishTable = decorateFishingFishTable(fishTable?.length ? fishTable : CONTRACT_FISH_TABLE)
+  const fishGuide = (sourceFishTable || [])
     .filter((fish) => fish?.code && !String(fish.code).startsWith('BLOCKER_'))
     .filter((fish) => {
       const code = String(fish.visualKey || fish.code)
@@ -164,7 +213,6 @@ export default function FishingFishInfoPanel({ betPerShot = 10, fishTable = [] }
       return true
     })
     .map((fish, index) => backendFishToGuide(fish, betPerShot, index))
-  const fishGuide = backendGuide.length ? backendGuide : FALLBACK_FISH_GUIDE
 
   return (
     <div className="fishing-lobby__fish-info" aria-label="捕魚機魚種、獎勵與障礙介紹">

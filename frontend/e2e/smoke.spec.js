@@ -46,6 +46,6 @@ test.describe('player site smoke', () => {
 
     await page.getByRole('link', { name: '交易/遊戲紀錄' }).click()
     await expect(page).toHaveURL(/\/records$/)
-    await expect(page.getByRole('heading', { name: '交易/遊戲紀錄' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /\u4ea4\u6613\s*\/\s*\u904a\u6232\u7d00\u9304/ })).toBeVisible()
   })
 })

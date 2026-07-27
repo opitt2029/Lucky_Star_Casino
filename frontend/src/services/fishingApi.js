@@ -18,5 +18,6 @@ export const fishingApi = {
   shots: (payload) => gameApi.fishingShots(payload),
   topUp: (payload) => gameApi.fishingTopUp(payload),
   end: (payload) => gameApi.fishingEnd(payload),
+  abandon: (payload) => gameApi.abandonFishing(payload),
   verifyShot: (payload) => gameApi.fishingVerifyShot(payload),
 }

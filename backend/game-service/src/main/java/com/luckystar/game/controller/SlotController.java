@@ -9,6 +9,7 @@ import com.luckystar.game.service.SlotService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -94,6 +95,20 @@ public class SlotController {
     /**
      * 解析 gateway 注入的 X-User-Id；缺漏或非數字回 {@code null}（由呼叫端轉 400）。
      */
+    @Operation(summary = "放棄老虎機局", description = "刪除尚未結算的 commit-ahead round；已結算 round 不回滾派彩")
+    @PostMapping("/round/{roundId}/abandon")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> abandon(
+            @RequestHeader(value = "X-User-Id", required = false) String playerIdStr,
+            @PathVariable String roundId) {
+
+        Long playerId = parsePlayerId(playerIdStr);
+        if (playerId == null) {
+            return badPlayerId(playerIdStr);
+        }
+        boolean abandoned = slotService.abandon(playerId, roundId);
+        return ResponseEntity.ok(ApiResponse.ok(Map.of("roundId", roundId, "abandoned", abandoned)));
+    }
+
     private static Long parsePlayerId(String playerIdStr) {
         if (playerIdStr == null || playerIdStr.isBlank()) {
             return null;

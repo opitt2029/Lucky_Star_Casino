@@ -42,12 +42,12 @@ class TopupServiceTest {
     TopupService topupService;
 
     @Test
-    void getPackages_returnsThreeFixedPackages() {
+    void getPackages_returnsFixedPackages() {
         List<TopupPackageResponse> packages = topupService.getPackages();
         assertThat(packages).extracting(TopupPackageResponse::packageId)
-                .containsExactly("P100", "P500", "P1000");
+                .containsExactly("P100", "P300", "P500", "P1000", "P2000", "P5000");
         assertThat(packages).extracting(TopupPackageResponse::amount)
-                .containsExactly(100_000L, 600_000L, 1_300_000L);
+                .containsExactly(100_000L, 330_000L, 600_000L, 1_300_000L, 2_800_000L, 8_000_000L);
     }
 
     @Test

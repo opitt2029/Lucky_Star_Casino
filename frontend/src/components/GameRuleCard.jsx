@@ -1,9 +1,35 @@
-import { useEffect, useId, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import { createPortal } from 'react-dom'
 
-export default function GameRuleCard({ title, subtitle, rules = [], payouts = [] }) {
-  const [open, setOpen] = useState(false)
+const RULE_PROMPT_KEY_PREFIX = 'lucky-star-game-rule-dismissed:'
+
+function hasDismissedRulePrompt(gameKey) {
+  if (!gameKey || typeof localStorage === 'undefined') return false
+  try {
+    return localStorage.getItem(`${RULE_PROMPT_KEY_PREFIX}${gameKey}`) === '1'
+  } catch {
+    return false
+  }
+}
+
+function saveDismissedRulePrompt(gameKey) {
+  if (!gameKey || typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(`${RULE_PROMPT_KEY_PREFIX}${gameKey}`, '1')
+  } catch {
+    // localStorage may be unavailable in private or restricted contexts.
+  }
+}
+
+export default function GameRuleCard({ title, subtitle, rules = [], payouts = [], gameKey }) {
+  const [open, setOpen] = useState(() => Boolean(gameKey) && !hasDismissedRulePrompt(gameKey))
+  const [doNotShowAgain, setDoNotShowAgain] = useState(false)
   const titleId = useId()
+
+  const closeDialog = useCallback(() => {
+    if (doNotShowAgain) saveDismissedRulePrompt(gameKey)
+    setOpen(false)
+  }, [doNotShowAgain, gameKey])
 
   useEffect(() => {
     if (!open) return undefined
@@ -11,7 +37,7 @@ export default function GameRuleCard({ title, subtitle, rules = [], payouts = []
     const previousOverflow = document.body.style.overflow
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
-        setOpen(false)
+        closeDialog()
       }
     }
 
@@ -22,7 +48,7 @@ export default function GameRuleCard({ title, subtitle, rules = [], payouts = []
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [open])
+  }, [open, closeDialog])
 
   const dialog = open && typeof document !== 'undefined'
     ? createPortal(
@@ -31,7 +57,7 @@ export default function GameRuleCard({ title, subtitle, rules = [], payouts = []
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
-          onClick={() => setOpen(false)}
+          onClick={closeDialog}
         >
           <div
             className="luxury-panel max-h-[calc(100vh-3rem)] w-full max-w-md overflow-auto rounded p-5 shadow-2xl"
@@ -46,7 +72,7 @@ export default function GameRuleCard({ title, subtitle, rules = [], payouts = []
               </div>
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={closeDialog}
                 className="red-gold-button rounded px-3 py-2 text-xs font-black"
               >
                 關閉
@@ -80,6 +106,18 @@ export default function GameRuleCard({ title, subtitle, rules = [], payouts = []
                 </div>
               </div>
             )}
+
+            {gameKey && (
+              <label className="mt-4 flex cursor-pointer items-center gap-3 rounded border border-yellow-200/15 bg-red-950/70 px-3 py-2 text-sm font-bold text-yellow-100/78">
+                <input
+                  type="checkbox"
+                  checked={doNotShowAgain}
+                  onChange={(event) => setDoNotShowAgain(event.target.checked)}
+                  className="h-4 w-4 accent-yellow-300"
+                />
+                <span>不要再提示</span>
+              </label>
+            )}
           </div>
         </section>,
         document.body,
@@ -90,7 +128,10 @@ export default function GameRuleCard({ title, subtitle, rules = [], payouts = []
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setDoNotShowAgain(false)
+          setOpen(true)
+        }}
         className="luxury-panel group w-full rounded p-4 text-left transition hover:border-yellow-200/60 hover:brightness-110"
       >
         <span className="flex items-center justify-between gap-3">
