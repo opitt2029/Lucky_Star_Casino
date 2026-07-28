@@ -19,6 +19,7 @@ public class SocialOAuthProperties {
     private String frontendBaseUrl = "http://localhost:5173";
     private Duration bindingTicketTtl = Duration.ofMinutes(5);
     private Duration loginTicketTtl = Duration.ofMinutes(2);
+    private Duration registrationTicketTtl = Duration.ofMinutes(10);
     private Map<String, Provider> providers = new HashMap<>();
 
     public boolean isEnabled(SocialProvider provider) {

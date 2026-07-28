@@ -110,6 +110,17 @@ class AuthServiceLoginTest {
     }
 
     @Test
+    void login_socialOnlyAccountRejectsPasswordLogin() {
+        LoginRequest request = buildLoginRequest();
+        Member member = buildActiveMember();
+        member.setPasswordHash(null);
+        when(memberRepository.findByUsername("testuser")).thenReturn(Optional.of(member));
+
+        assertThrows(InvalidCredentialsException.class, () -> authService.login(request));
+        verify(passwordEncoder, never()).matches(anyString(), anyString());
+    }
+
+    @Test
     void login_accountDisabled() {
         LoginRequest request = buildLoginRequest();
         Member member = buildActiveMember();

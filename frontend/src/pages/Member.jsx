@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { useDispatch, useSelector } from 'react-redux'
 import DecorativeAsset from '../components/DecorativeAsset'
 import CoinRain from '../components/CoinRain'
+import SocialProviderIcon from '../components/SocialProviderIcon'
 import { loginMember, registerMember } from '../store/slices/authSlice'
 import { fetchRanks } from '../store/slices/rankSlice'
 import { fetchDiamondBalance } from '../store/slices/diamondSlice'
@@ -110,7 +111,7 @@ export default function Member() {
     } catch (socialError) {
       setMemberNotice(
         extractError(socialError) ||
-          `${provider.label} 登入目前無法啟動，請確認帳戶已綁定。`,
+          `${provider.label} 登入或註冊目前無法啟動，請稍後再試。`,
       )
       setSocialLoading('')
     }
@@ -130,6 +131,23 @@ export default function Member() {
       // authSlice exposes the message in state.error
     }
   }
+
+  const socialActions = (
+    <div className="grid gap-2 sm:grid-cols-3">
+      {socialProviders.map((provider) => (
+        <button
+          key={provider.id}
+          type="button"
+          onClick={() => handleSocialLogin(provider)}
+          disabled={Boolean(socialLoading)}
+          className={`flex items-center justify-center gap-2 rounded border px-3 py-3 text-sm font-black transition hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-60 ${provider.accentClass}`}
+        >
+          <SocialProviderIcon provider={provider.id} className="h-5 w-5" />
+          {socialLoading === provider.id ? '連線中...' : provider.label}
+        </button>
+      ))}
+    </div>
+  )
 
   return (
     <div className="theme-background min-h-screen text-white" style={getBackgroundStyle('auth')}>
@@ -220,19 +238,7 @@ export default function Member() {
                   required
                 />
               </label>
-              <div className="grid gap-2 sm:grid-cols-3">
-                {socialProviders.map((provider) => (
-                  <button
-                    key={provider.id}
-                    type="button"
-                    onClick={() => handleSocialLogin(provider)}
-                    disabled={Boolean(socialLoading)}
-                    className={`rounded border px-3 py-3 text-sm font-black transition hover:brightness-125 ${provider.accentClass}`}
-                  >
-                    {socialLoading === provider.id ? '連線中...' : provider.label}
-                  </button>
-                ))}
-              </div>
+              {socialActions}
               {memberNotice && (
                 <p className="rounded border border-yellow-200/25 bg-yellow-200/10 px-4 py-3 text-sm font-bold text-yellow-100">
                   {memberNotice}
@@ -253,6 +259,15 @@ export default function Member() {
             </form>
           ) : (
             <form onSubmit={handleRegisterSubmit} className="mt-6 grid gap-4">
+              <p className="text-sm font-bold text-yellow-100/70">
+                使用第三方快速註冊，驗證完成後只需設定遊戲帳號。
+              </p>
+              {socialActions}
+              <div className="flex items-center gap-3 text-xs font-bold text-yellow-100/45">
+                <span className="h-px flex-1 bg-yellow-200/15" />
+                或使用帳號密碼註冊
+                <span className="h-px flex-1 bg-yellow-200/15" />
+              </div>
               <label className="grid gap-2 text-sm font-bold text-yellow-100/78">
                 帳號
                 <input

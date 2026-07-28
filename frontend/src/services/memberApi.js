@@ -133,6 +133,32 @@ export const memberApi = {
     }
   },
 
+  async getSocialRegistrationPreview(ticket) {
+    if (useMockApi) {
+      return mockApi.getSocialRegistrationPreview(ticket)
+    }
+    const res = await api.post('/api/v1/auth/social/registration/preview', { ticket })
+    return res.data.data
+  },
+
+  async registerSocial(payload) {
+    if (useMockApi) {
+      return mockApi.registerSocial(payload)
+    }
+    const res = await api.post('/api/v1/auth/social/registration', payload)
+    const { accessToken, refreshToken, expiresIn } = res.data.data
+    const profileRes = await api.get('/api/v1/player/profile', {
+      skipAuthRedirect: true,
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    return {
+      accessToken,
+      refreshToken,
+      expiresIn,
+      player: mapProfile(profileRes.data.data),
+    }
+  },
+
   async register({ username, email, password, nickname }) {
     if (useMockApi) {
       return mockApi.register({ username, email, password, nickname })

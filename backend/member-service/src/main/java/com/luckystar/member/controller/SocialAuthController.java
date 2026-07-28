@@ -4,6 +4,8 @@ import com.luckystar.member.dto.ApiResponse;
 import com.luckystar.member.dto.LoginResponse;
 import com.luckystar.member.dto.SocialLoginExchangeRequest;
 import com.luckystar.member.dto.SocialLoginStartResponse;
+import com.luckystar.member.dto.SocialRegistrationPreviewResponse;
+import com.luckystar.member.dto.SocialRegistrationRequest;
 import com.luckystar.member.service.SocialAuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -62,5 +64,24 @@ public class SocialAuthController {
         return ResponseEntity.ok(ApiResponse.success(
                 socialAuthService.exchangeLoginTicket(request.getTicket()),
                 "Social login successful"));
+    }
+
+    @Operation(summary = "Preview the verified provider profile before social registration")
+    @PostMapping("/registration/preview")
+    public ResponseEntity<ApiResponse<SocialRegistrationPreviewResponse>> previewRegistration(
+            @Valid @RequestBody SocialLoginExchangeRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(
+                socialAuthService.previewRegistration(request.getTicket()),
+                "Social registration is ready"));
+    }
+
+    @Operation(summary = "Create a member from a verified social identity")
+    @PostMapping("/registration")
+    public ResponseEntity<ApiResponse<LoginResponse>> register(
+            @Valid @RequestBody SocialRegistrationRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(
+                        socialAuthService.registerSocialAccount(request),
+                        "Social registration successful"));
     }
 }
