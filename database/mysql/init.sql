@@ -31,13 +31,13 @@ CREATE TABLE IF NOT EXISTS system_health_check (
 --   · role   — PLAYER（一般玩家）/ ADMIN（後台管理員）
 --   · status — ACTIVE（正常）/ DISABLED（停權）
 --   · avatar — 可為 https:// URL 或 data:image/xxx;base64,... 格式
---   · password_hash — BCrypt 雜湊值，不儲存明文
+--   · password_hash — BCrypt 雜湊值；純第三方會員可為 NULL
 -- ============================================================
 CREATE TABLE IF NOT EXISTS members (
     id            BIGINT        AUTO_INCREMENT PRIMARY KEY,
     username      VARCHAR(50)   NOT NULL COMMENT '登入帳號，唯一',
     email         VARCHAR(100)  NOT NULL COMMENT '電子信箱，唯一',
-    password_hash VARCHAR(255)  NOT NULL COMMENT 'BCrypt 雜湊密碼',
+    password_hash VARCHAR(255)  NULL     COMMENT 'BCrypt 雜湊密碼；純第三方會員可為 NULL',
     nickname      VARCHAR(50)   NOT NULL COMMENT '顯示暱稱',
     avatar        TEXT          NULL     COMMENT '頭像：URL 或 Base64 data URI',
     role          VARCHAR(20) NOT NULL DEFAULT 'PLAYER',

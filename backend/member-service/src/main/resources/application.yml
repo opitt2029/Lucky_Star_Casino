@@ -144,6 +144,7 @@ social-oauth:
   frontend-base-url: ${OAUTH_FRONTEND_BASE_URL:http://localhost:5173}
   binding-ticket-ttl: 5m
   login-ticket-ttl: 2m
+  registration-ticket-ttl: 10m
   providers:
     google:
       enabled: ${GOOGLE_OAUTH_ENABLED:false}

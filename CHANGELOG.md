@@ -1,3 +1,32 @@
+## [feat] -- 2026-07-27 -- Add passwordless Google and LINE registration
+
+### Added
+- `member-service`: unbound OAuth identities now receive a ten-minute Redis registration ticket instead of an error.
+- `member-service`: add social registration preview and completion APIs; completion creates the member, `(provider, provider_subject)` binding, `member.registered` outbox event, and platform JWT session.
+- `frontend`: add `/auth/social/register` completion page with provider profile preview, account details, verified Email locking, and server-backed age validation.
+- `frontend mock`: mirror unbound-provider registration, one-time ticket consumption, wallet initialization, and social binding behavior.
+- `database/mysql/migration/V13__allow_passwordless_social_members.sql`: allow `members.password_hash` to be `NULL` for social-only members.
+
+### Changed
+- Social-only members cannot use password login until a password-setting flow is introduced.
+- Existing member Emails are never auto-merged from OAuth claims; users must sign in to the existing account and bind the provider.
+- The login and registration tabs both expose Google, LINE, and Apple entry buttons; disabled providers still return the existing configuration error.
+
+### Why
+- New players should be able to create a Lucky Star account directly from a verified provider identity without first creating an unrelated password account.
+- Provider `sub`, not Email, remains the external identity key, preventing an OAuth Email match from silently taking over an existing member.
+
+### Verified
+- `mvn -pl backend/member-service test` (107 tests)
+- `npm.cmd run lint`
+- `npm.cmd run test` (70 tests)
+- `npm.cmd run build`
+- Browser QA at desktop and 390px mobile widths with the mock Google registration flow.
+
+### Deployment
+- Existing MySQL volumes do not auto-run migrations in this project; apply `database/mysql/migration/V13__allow_passwordless_social_members.sql` before deploying the updated member-service.
+
+---
 ## [changed] -- 2026-07-27 -- Make rank seed player names less robotic
 
 ### Changed

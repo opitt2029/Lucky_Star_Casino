@@ -9,6 +9,7 @@ import shopCatalogContract from '../../../contracts/shop-catalog.json'
 
 const DB_KEY = 'lucky-star-mock-db-v1'
 const SESSION_KEY = 'lucky-star-session-v1'
+const SOCIAL_REGISTRATION_KEY = 'lucky-star-social-registration-v1'
 
 // 老虎機賠付表（contracts/slot-paytable.json ↔ 後端 SlotSymbol：權重 + 兩階倍率，權重總和 103）。
 // 中線由左到右兩階賠付：三連（三格同符號）派 tripleMultiplier 大獎；
@@ -752,7 +753,21 @@ export const mockApi = {
     const db = getDb()
     const binding = Object.entries(db.socialBindings || {}).find(([, providers]) => providers?.[id])
     if (!binding) {
-      throw new Error(`${id === 'line' ? 'LINE' : id === 'google' ? 'Google' : 'Apple'} 帳戶尚未綁定`)
+      const ticket = `mock-social-register-${id}-${Date.now()}`
+      const pending = readJson(SOCIAL_REGISTRATION_KEY, {})
+      pending[ticket] = {
+        provider: id,
+        providerLabel: id === 'line' ? 'LINE' : id === 'google' ? 'Google' : 'Apple',
+        email: id === 'google' ? 'google.player@example.com' : '',
+        displayName: id === 'line' ? 'LINE 玩家' : id === 'google' ? 'Google 玩家' : 'Apple 玩家',
+        avatarUrl: '',
+        emailLocked: id === 'google',
+      }
+      writeJson(SOCIAL_REGISTRATION_KEY, pending)
+      return {
+        provider: id,
+        authorizationUrl: `/auth/social/register?ticket=${encodeURIComponent(ticket)}`,
+      }
     }
     const [playerId] = binding
     return {
@@ -772,6 +787,76 @@ export const mockApi = {
       throw new Error('第三方帳戶尚未綁定')
     }
     return createSession(user.player)
+  },
+
+  async getSocialRegistrationPreview(ticket) {
+    await wait(180)
+    const pending = readJson(SOCIAL_REGISTRATION_KEY, {})
+    const preview = pending[String(ticket)]
+    if (!preview) throw new Error('第三方註冊票據無效或已過期')
+    return preview
+  },
+
+  async registerSocial({
+    ticket,
+    username,
+    nickname,
+    email,
+    birthDate,
+    adultConfirmed,
+  }) {
+    await wait(520)
+    const pending = readJson(SOCIAL_REGISTRATION_KEY, {})
+    const social = pending[String(ticket)]
+    if (!social) throw new Error('第三方註冊票據無效或已過期')
+    const birthday = new Date(`${birthDate}T00:00:00`)
+    const adultAt = new Date(birthday)
+    adultAt.setFullYear(adultAt.getFullYear() + 18)
+    if (
+      !adultConfirmed ||
+      Number.isNaN(birthday.getTime()) ||
+      adultAt > new Date()
+    ) {
+      throw new Error('註冊需完成年齡驗證，且必須年滿 18 歲')
+    }
+    if (social.emailLocked && social.email.toLowerCase() !== String(email).toLowerCase()) {
+      throw new Error('Email 必須與第三方帳戶驗證的 Email 相同')
+    }
+
+    const db = getDb()
+    if (db.users.some((item) => item.player.username === username)) {
+      throw new Error('此帳號已被註冊')
+    }
+    if (db.users.some((item) => item.player.email === email)) {
+      throw new Error('此 Email 已被註冊，請登入原帳號後綁定')
+    }
+
+    const player = {
+      id: `social-player-${Date.now()}`,
+      username,
+      email,
+      nickname,
+      avatarUrl: social.avatarUrl || '',
+      consecutiveCheckInDays: 0,
+      lastCheckInDate: null,
+    }
+    db.users.push({ password: null, player })
+    db.wallets[player.id] = { balance: MOCK_TEST_STAR_COIN_BALANCE, frozenAmount: 0 }
+    db.transactions[player.id] = [makeTransaction('task', 30000, '第三方註冊啟動金')]
+    db.friends[player.id] = []
+    db.friendRequests[player.id] = []
+    db.checkinDates[player.id] = []
+    db.monthlyRewardClaims[player.id] = []
+    db.socialBindings[player.id] = {
+      [social.provider]: `${social.provider.toUpperCase()}-${player.id}`,
+    }
+    db.topupOrders[player.id] = []
+    db.ranks.push({ id: player.id, name: nickname, nickname, score: 30000, trend: '+0%' })
+    saveDb(db)
+
+    delete pending[String(ticket)]
+    writeJson(SOCIAL_REGISTRATION_KEY, pending)
+    return createSession(player)
   },
 
   async register({ username, password, nickname, email }) {
