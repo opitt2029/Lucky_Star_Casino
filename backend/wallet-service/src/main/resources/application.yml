@@ -91,10 +91,14 @@ internal:
 #   把投遞上限從舊版 ~100 events/s 拉高到 ~batch/interval（500/0.2s ≈ 2,500 events/s）。
 # batch-size：單輪最多撈幾筆待送事件（舊版寫死 100，是壓測下的吞吐瓶頸）。拉大增吞吐但單輪
 #   交易變大、持列較久，需與 DB 負載權衡。
+# retention-days / purge-cron：WalletOutboxPurgeJob 保留期清理（poller 只標 SENT 不刪，表會單向
+#   成長）。7 天與 rank 消費端去重標記 TTL 一致；只刪 SENT，PENDING 無論多舊都保留。
 wallet:
   outbox:
     poll-interval-ms: ${WALLET_OUTBOX_POLL_INTERVAL_MS:200}
     batch-size: ${WALLET_OUTBOX_BATCH_SIZE:500}
+    retention-days: ${WALLET_OUTBOX_RETENTION_DAYS:7}
+    purge-cron: ${WALLET_OUTBOX_PURGE_CRON:0 0 4 * * *}
 
 # 鑽石測試帳號：列入清單者視為「無限鑽石」，鑽石換星幣不檢查餘額也不實際扣款（僅供測試/展示）
 # 1172=tadge003、1175=weiyu10366。可由 DIAMOND_UNLIMITED_PLAYER_IDS 逗號分隔覆寫
