@@ -94,7 +94,7 @@ export default function Member() {
     } catch (socialError) {
       setMemberNotice(
         extractError(socialError) ||
-          `${provider.label} 登入目前無法啟動，請確認帳戶已綁定。`,
+          `${provider.label} 登入或註冊目前無法啟動，請稍後再試。`,
       )
       setSocialLoading('')
     }
@@ -197,6 +197,9 @@ export default function Member() {
               notice={memberNotice}
               birthDateMax={birthDateMax}
               ageError={registerAgeError}
+              providers={socialProviders}
+              socialLoading={socialLoading}
+              onSocialLogin={handleSocialLogin}
             />
           )}
 

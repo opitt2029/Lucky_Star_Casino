@@ -1,3 +1,24 @@
+import SocialProviderIcon from '../../components/SocialProviderIcon'
+
+function SocialActions({ providers, socialLoading, onSocialLogin }) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-3">
+      {providers.map((provider) => (
+        <button
+          key={provider.id}
+          type="button"
+          onClick={() => onSocialLogin(provider)}
+          disabled={Boolean(socialLoading)}
+          className={`flex items-center justify-center gap-2 rounded border px-3 py-3 text-sm font-black transition hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-55 ${provider.accentClass}`}
+        >
+          <SocialProviderIcon provider={provider.id} className="h-5 w-5" />
+          {socialLoading === provider.id ? '連線中...' : provider.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export function LoginForm({
   form,
   onChange,
@@ -34,19 +55,7 @@ export function LoginForm({
           required
         />
       </label>
-      <div className="grid gap-2 sm:grid-cols-3">
-        {providers.map((provider) => (
-          <button
-            key={provider.id}
-            type="button"
-            onClick={() => onSocialLogin(provider)}
-            disabled={Boolean(socialLoading)}
-            className={`rounded border px-3 py-3 text-sm font-black transition hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-55 ${provider.accentClass}`}
-          >
-            {socialLoading === provider.id ? '連線中...' : provider.label}
-          </button>
-        ))}
-      </div>
+      <SocialActions providers={providers} socialLoading={socialLoading} onSocialLogin={onSocialLogin} />
       <AuthMessages notice={notice} error={error} />
       <button
         type="submit"
@@ -68,9 +77,21 @@ export function RegisterForm({
   notice,
   birthDateMax,
   ageError,
+  providers,
+  socialLoading,
+  onSocialLogin,
 }) {
   return (
     <form onSubmit={onSubmit} className="mt-6 grid gap-4">
+      <p className="text-sm font-bold text-yellow-100/70">
+        使用第三方快速註冊，驗證完成後只需設定遊戲帳號。
+      </p>
+      <SocialActions providers={providers} socialLoading={socialLoading} onSocialLogin={onSocialLogin} />
+      <div className="flex items-center gap-3 text-xs font-bold text-yellow-100/45">
+        <span className="h-px flex-1 bg-yellow-200/15" />
+        或使用帳號密碼註冊
+        <span className="h-px flex-1 bg-yellow-200/15" />
+      </div>
       <label className="grid gap-2 text-sm font-bold text-yellow-100/78">
         帳號
         <input

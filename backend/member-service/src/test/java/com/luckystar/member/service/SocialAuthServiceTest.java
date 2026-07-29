@@ -3,8 +3,10 @@ package com.luckystar.member.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.luckystar.member.config.SocialOAuthProperties;
 import com.luckystar.member.dto.LoginResponse;
+import com.luckystar.member.dto.SocialRegistrationRequest;
 import com.luckystar.member.entity.Member;
 import com.luckystar.member.entity.MemberSocialAccount;
+import com.luckystar.member.exception.MemberAlreadyExistsException;
 import com.luckystar.member.exception.SocialOAuthException;
 import com.luckystar.member.repository.MemberRepository;
 import com.luckystar.member.repository.MemberSocialAccountRepository;
@@ -20,6 +22,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 
+import java.time.LocalDate;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +45,8 @@ class SocialAuthServiceTest {
     @Mock
     private AuthService authService;
     @Mock
+    private OutboxService outboxService;
+    @Mock
     private StringRedisTemplate redisTemplate;
     @Mock
     private ValueOperations<String, String> valueOperations;
@@ -57,6 +62,7 @@ class SocialAuthServiceTest {
         properties.setFrontendBaseUrl("http://localhost:5173");
         properties.setBindingTicketTtl(Duration.ofMinutes(5));
         properties.setLoginTicketTtl(Duration.ofMinutes(2));
+        properties.setRegistrationTicketTtl(Duration.ofMinutes(10));
         SocialOAuthProperties.Provider google = new SocialOAuthProperties.Provider();
         google.setEnabled(true);
         properties.setProviders(Map.of("google", google));
@@ -67,6 +73,7 @@ class SocialAuthServiceTest {
                 memberRepository,
                 socialAccountRepository,
                 authService,
+                outboxService,
                 redisTemplate,
                 new ObjectMapper(),
                 properties);
@@ -140,6 +147,107 @@ class SocialAuthServiceTest {
     }
 
     @Test
+    void completeOAuthLogin_unboundIdentityCreatesRegistrationTicket() {
+        when(session.getAttribute("socialOAuthFlow")).thenReturn("LOGIN");
+        when(socialAccountRepository.findByProviderAndProviderSubject("google", "google-sub"))
+                .thenReturn(Optional.empty());
+
+        String redirect = socialAuthService.completeOAuthLogin(oauthToken(), session);
+
+        assertThat(redirect)
+                .startsWith("http://localhost:5173/auth/social/register?ticket=");
+        verify(valueOperations).set(
+                org.mockito.ArgumentMatchers.startsWith("oauth:registration-ticket:"),
+                org.mockito.ArgumentMatchers.contains("\"subject\":\"google-sub\""),
+                eq(Duration.ofMinutes(10)));
+        verify(session).invalidate();
+    }
+
+    @Test
+    void previewRegistration_returnsVerifiedProviderProfile() throws Exception {
+        String payload = new ObjectMapper().writeValueAsString(Map.of(
+                "provider", "google",
+                "subject", "google-sub",
+                "email", "player@example.com",
+                "displayName", "Lucky Player",
+                "avatarUrl", "https://example.com/avatar.png"));
+        when(valueOperations.get("oauth:registration-ticket:register-1"))
+                .thenReturn(payload);
+
+        var result = socialAuthService.previewRegistration("register-1");
+
+        assertThat(result.getProvider()).isEqualTo("google");
+        assertThat(result.getEmail()).isEqualTo("player@example.com");
+        assertThat(result.getDisplayName()).isEqualTo("Lucky Player");
+        assertThat(result.isEmailLocked()).isTrue();
+    }
+
+    @Test
+    void registerSocialAccount_createsMemberBindingOutboxAndSession() throws Exception {
+        String payload = new ObjectMapper().writeValueAsString(Map.of(
+                "provider", "google",
+                "subject", "google-sub",
+                "email", "player@example.com",
+                "displayName", "Lucky Player",
+                "avatarUrl", "https://example.com/avatar.png"));
+        when(valueOperations.get("oauth:registration-ticket:register-1"))
+                .thenReturn(payload);
+        when(socialAccountRepository.findByProviderAndProviderSubject("google", "google-sub"))
+                .thenReturn(Optional.empty());
+        when(memberRepository.existsByUsername("lucky-player")).thenReturn(false);
+        when(memberRepository.existsByEmail("player@example.com")).thenReturn(false);
+        when(memberRepository.save(org.mockito.ArgumentMatchers.any(Member.class)))
+                .thenAnswer(invocation -> {
+                    Member member = invocation.getArgument(0);
+                    member.setId(9L);
+                    return member;
+                });
+        when(authService.loginMember(org.mockito.ArgumentMatchers.any(Member.class)))
+                .thenReturn(new LoginResponse("access-token", "refresh-token"));
+
+        LoginResponse result = socialAuthService.registerSocialAccount(registrationRequest());
+
+        assertThat(result.getAccessToken()).isEqualTo("access-token");
+        verify(memberRepository).save(org.mockito.ArgumentMatchers.argThat(member ->
+                "lucky-player".equals(member.getUsername())
+                        && member.getPasswordHash() == null));
+        verify(socialAccountRepository).save(org.mockito.ArgumentMatchers.argThat(account ->
+                account.getMember().getId().equals(9L)
+                        && "google".equals(account.getProvider())
+                        && "google-sub".equals(account.getProviderSubject())));
+        verify(outboxService).save(
+                eq("member.registered"),
+                eq("9"),
+                org.mockito.ArgumentMatchers.any());
+        verify(redisTemplate).delete("oauth:registration-ticket:register-1");
+    }
+
+    @Test
+    void registerSocialAccount_existingEmailDoesNotAutoMergeAccounts() throws Exception {
+        stubRegistrationTicket();
+        when(socialAccountRepository.findByProviderAndProviderSubject("google", "google-sub"))
+                .thenReturn(Optional.empty());
+        when(memberRepository.existsByUsername("lucky-player")).thenReturn(false);
+        when(memberRepository.existsByEmail("player@example.com")).thenReturn(true);
+
+        assertThatThrownBy(() ->
+                socialAuthService.registerSocialAccount(registrationRequest()))
+                .isInstanceOf(MemberAlreadyExistsException.class)
+                .hasMessageContaining("sign in with your password and bind");
+    }
+
+    @Test
+    void registerSocialAccount_underagePlayerIsRejected() throws Exception {
+        stubRegistrationTicket();
+        SocialRegistrationRequest request = registrationRequest();
+        request.setBirthDate(LocalDate.now().minusYears(17));
+
+        assertThatThrownBy(() -> socialAuthService.registerSocialAccount(request))
+                .isInstanceOf(SocialOAuthException.class)
+                .hasMessageContaining("at least 18 years old");
+    }
+
+    @Test
     void completeOAuthBinding_persistsVerifiedProviderSubject() {
         Member member = member(7L);
         when(session.getAttribute("socialOAuthFlow")).thenReturn("BIND");
@@ -172,6 +280,28 @@ class SocialAuthServiceTest {
                 principal,
                 principal.getAuthorities(),
                 "google");
+    }
+
+    private SocialRegistrationRequest registrationRequest() {
+        SocialRegistrationRequest request = new SocialRegistrationRequest();
+        request.setTicket("register-1");
+        request.setUsername("lucky-player");
+        request.setNickname("Lucky Player");
+        request.setEmail("player@example.com");
+        request.setBirthDate(LocalDate.now().minusYears(20));
+        request.setAdultConfirmed(true);
+        return request;
+    }
+
+    private void stubRegistrationTicket() throws Exception {
+        String payload = new ObjectMapper().writeValueAsString(Map.of(
+                "provider", "google",
+                "subject", "google-sub",
+                "email", "player@example.com",
+                "displayName", "Lucky Player",
+                "avatarUrl", "https://example.com/avatar.png"));
+        when(valueOperations.get("oauth:registration-ticket:register-1"))
+                .thenReturn(payload);
     }
 
     private Member member(Long id) {

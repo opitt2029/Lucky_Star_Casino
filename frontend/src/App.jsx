@@ -21,6 +21,7 @@ const Rank = lazy(() => import('./pages/Rank'))
 const Profile = lazy(() => import('./pages/Profile'))
 const SocialBinding = lazy(() => import('./pages/SocialBinding'))
 const OAuthCallback = lazy(() => import('./pages/OAuthCallback'))
+const SocialRegister = lazy(() => import('./pages/SocialRegister'))
 const Records = lazy(() => import('./pages/Records'))
 const CasinoShop = lazy(() => import('./pages/CasinoShop'))
 const Inventory = lazy(() => import('./pages/Inventory'))
@@ -127,6 +128,14 @@ export default function App() {
             element={
               <LazyPage>
                 <OAuthCallback />
+              </LazyPage>
+            }
+          />
+          <Route
+            path="/auth/social/register"
+            element={
+              <LazyPage>
+                <SocialRegister />
               </LazyPage>
             }
           />
