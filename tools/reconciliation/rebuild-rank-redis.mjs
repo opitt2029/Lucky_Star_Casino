@@ -3,8 +3,10 @@
  * rank Redis 可重建性（DR 重算腳本，藍圖 04 P4）。
  *
  * 設計原則：**Redis 裡的東西必須能從 DB 重建。** 目前不成立——
- *   - `rank:daily:winnings`（今日贏幣王，T-045）只存在 Redis，容器重啟（本專案未設 AOF/RDB）
- *     或 FLUSHDB 就永久消失，沒有任何重算路徑。
+ *   - `rank:daily:winnings`（今日贏幣王，T-045）只存在 Redis，`FLUSHDB` 或
+ *     `docker compose down -v`（刪 volume）就永久消失，沒有任何重算路徑。
+ *     註（2026-07-29）：redis 服務已加 AOF + named volume，單純容器重啟不再掉資料，
+ *     但刪 volume / FLUSHDB 仍會清空，本腳本的必要性不變。
  *   - `rank:global:coins`（全服星幣）好一點（下一筆 wallet 事件的 ZADD 會修正該玩家），
  *     但只修正「有活動的玩家」——沒在玩的人會從排行榜消失。
  *
