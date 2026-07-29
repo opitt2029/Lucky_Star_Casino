@@ -25,14 +25,16 @@ export default function MobileBottomNav() {
 
   return (
     <nav
+      data-testid="mobile-bottom-nav"
       className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-yellow-200/20 bg-red-950/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-14px_40px_rgba(0,0,0,0.42)] backdrop-blur md:hidden"
-      aria-label="手機版主要導覽"
+      aria-label="Mobile navigation"
     >
       {items.map((item) => (
         <NavLink
           key={item.to}
           to={item.to}
           onClick={(event) => handleNavigate(item.to, event)}
+          data-testid={`mobile-nav-${item.to.slice(1)}`}
           className={({ isActive }) =>
             [
               'grid min-h-12 place-items-center rounded px-1 text-xs font-black transition focus:outline-none focus:ring-2 focus:ring-yellow-200/70',

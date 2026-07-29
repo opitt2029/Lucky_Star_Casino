@@ -115,5 +115,12 @@ export default function FishingCanvas({
     engineRef.current?.setPerfMode(perfMode)
   }, [perfMode])
 
-  return <div ref={hostRef} className="fishing-arena fishing-arena--canvas" style={{ touchAction: 'none', userSelect: 'none' }} />
+  return (
+    <div
+      ref={hostRef}
+      className="fishing-arena fishing-arena--canvas"
+      data-testid="fishing-canvas"
+      style={{ touchAction: 'none', userSelect: 'none' }}
+    />
+  )
 }

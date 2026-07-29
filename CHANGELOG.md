@@ -1,4 +1,21 @@
-## [added] -- 2026-07-28 -- 簡報新增 Kafka 事件架構、ER 精簡版與 AI 協作段落的產生器
+﻿## [changed] -- 2026-07-30 -- Tighten frontend E2E coverage and dependency posture
+
+### Added
+- `frontend`: add Pixi fishing canvas E2E coverage for start, fire, shot accounting, settlement, and settlement panel rendering.
+- `frontend`: add mobile navigation E2E coverage for the bottom nav and game full-screen nav hiding behavior.
+
+### Changed
+- `frontend` and `frontend-admin`: refresh Vite/Vitest/React plugin/router/axios/PostCSS dependencies and pin vulnerable transitive packages through npm overrides.
+- `frontend`: add stable test ids to fishing and mobile navigation controls used by browser E2E tests.
+
+### Verified
+- `frontend`: `npm.cmd run build`, `npm.cmd run lint`, `npm.cmd run test`, `npm.cmd run e2e`, `npm.cmd run e2e:realws`.
+- `frontend-admin`: `npm.cmd run build`, `npm.cmd run lint`, `npm.cmd run test`.
+
+### Deployment
+- Existing local DB volumes may need migrations applied manually before real-backend E2E; this run applied `V12__create_member_social_accounts.sql`, `V13__allow_passwordless_social_members.sql`, and `V17__add_wallet_outbox.sql` to the local Docker volumes.
+
+---## [added] -- 2026-07-28 -- 簡報新增 Kafka 事件架構、ER 精簡版與 AI 協作段落的產生器
 
 ### Added
 - `tools/pptx/build_kafka_er_ai_slides.py`：在既有簡報上新增 12 頁**原生 PPT 版面**（純 shape，不插圖片），

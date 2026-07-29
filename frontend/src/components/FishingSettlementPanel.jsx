@@ -1,21 +1,24 @@
 import MetricCard from './MetricCard'
 
-export default function FishingSettlementPanel({
-  settleResult,
-  sessionBuyIn,
-  onNewRound,
-}) {
-  const profit = sessionBuyIn === null ? settleResult.credited - settleResult.buyIn : settleResult.credited - sessionBuyIn
+export default function FishingSettlementPanel({ settleResult, sessionBuyIn, onNewRound }) {
+  const profit =
+    sessionBuyIn === null
+      ? settleResult.credited - settleResult.buyIn
+      : settleResult.credited - sessionBuyIn
   const caughtCount = settleResult.caughtCount ?? 0
 
   return (
-    <div className="fishing-settlement-panel grid gap-4">
+    <div className="fishing-settlement-panel grid gap-4" data-testid="fishing-settlement-panel">
       <p className="gold-muted text-xs font-black uppercase tracking-[0.3em]">已結算</p>
       <h3 className="brand-title text-3xl font-black text-yellow-100">本局收網完成</h3>
       <div className="grid grid-cols-2 gap-3 text-left">
         <MetricCard label="本局消耗" value={settleResult.totalBet.toLocaleString()} />
         <MetricCard label="捕獲數量" value={`${caughtCount.toLocaleString()} 尾`} />
-        <MetricCard label="獲得獎金" value={settleResult.totalPayout.toLocaleString()} tone="light" />
+        <MetricCard
+          label="獲得獎金"
+          value={settleResult.totalPayout.toLocaleString()}
+          tone="light"
+        />
         <MetricCard label="回到錢包" value={settleResult.credited.toLocaleString()} tone="light" />
         <MetricCard label="發射次數" value={settleResult.totalShots.toLocaleString()} />
         <MetricCard
@@ -35,7 +38,11 @@ export default function FishingSettlementPanel({
           </div>
         )}
       </div>
-      <button type="button" onClick={onNewRound} className="gold-button rounded px-5 py-3 text-sm font-black">
+      <button
+        type="button"
+        onClick={onNewRound}
+        className="gold-button rounded px-5 py-3 text-sm font-black"
+      >
         開始新一局
       </button>
     </div>

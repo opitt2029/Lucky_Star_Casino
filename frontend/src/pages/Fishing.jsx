@@ -17,10 +17,7 @@ import { useBgm } from '../casino-fx/sound/useBgm'
 import { announcePlayerWin } from '../casino-fx/announce/announceBus'
 import { useGameLeaveGuard } from '../hooks/useGameLeaveGuard'
 import '../components/Fishing.css'
-import {
-  FISHING_DISPLAY_SPECIES,
-  FISHING_JACKPOT,
-} from '../data/fishingGameData'
+import { FISHING_DISPLAY_SPECIES, FISHING_JACKPOT } from '../data/fishingGameData'
 import { FISHING_AMMO_OPTIONS, getFishingAmmoByLevel } from '../data/fishingConfig'
 import { decorateFishingFishTable } from '../data/fishingFishConfig'
 
@@ -41,7 +38,6 @@ const fishingPayouts = [
   { label: '高價魚', value: '黃金魚 25x - 60x' },
   { label: '稀有與 Boss', value: '水晶魟魚 80x - 120x, 彩金鯨王 200x+' },
 ]
-
 
 const SPECIAL_EFFECT_TIMER_CONFIG = {
   CAISHEN: {
@@ -84,7 +80,6 @@ function FishingSpecialEffectTimers({ timers }) {
     </div>
   )
 }
-
 
 function FishingCatchStatsDrawer({ items, total }) {
   return (
@@ -183,7 +178,10 @@ export default function Fishing() {
     },
   })
 
-  const decoratedFishTable = useMemo(() => decorateFishingFishTable(session.fishTable), [session.fishTable])
+  const decoratedFishTable = useMemo(
+    () => decorateFishingFishTable(session.fishTable),
+    [session.fishTable]
+  )
 
   const fishNameByCode = useMemo(() => {
     const names = {}
@@ -195,7 +193,9 @@ export default function Fishing() {
 
   const caughtFishStatsItems = useMemo(
     () =>
-      Object.values(caughtFishStats).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
+      Object.values(caughtFishStats).sort(
+        (a, b) => b.count - a.count || a.name.localeCompare(b.name)
+      ),
     [caughtFishStats]
   )
   const caughtFishTotal = caughtFishStatsItems.reduce((sum, item) => sum + item.count, 0)
@@ -204,7 +204,6 @@ export default function Fishing() {
   const fishingBgmTheme = session.phase === 'playing' && bossActive ? 'boss' : 'fishing'
   const fishingBgmIntensity = session.phase === 'idle' ? 0 : 1
   useBgm(fishingBgmTheme, isFishingBgmActive, { intensity: fishingBgmIntensity })
-
 
   const activeSpecialEffectTimers = useMemo(
     () =>
@@ -370,11 +369,9 @@ export default function Fishing() {
     topUpValid &&
     balance >= selectedTopUp &&
     !session.topUpLoading
-  useGameLeaveGuard(
-    phase === 'playing',
-    '本局捕魚尚未結算，離開會放棄局內餘額與本局派彩。',
-    { onLeave: abandonFishingRound },
-  )
+  useGameLeaveGuard(phase === 'playing', '本局捕魚尚未結算，離開會放棄局內餘額與本局派彩。', {
+    onLeave: abandonFishingRound,
+  })
   useEffect(() => {
     if (phase === 'playing' && session.session?.buyIn && sessionBuyIn === null) {
       setSessionBuyIn(session.session.buyIn)
@@ -396,7 +393,10 @@ export default function Fishing() {
   return (
     <AppShell>
       <main className="fishing-redgold-shell" data-style="red-gold-deep-sea">
-        <InteractiveGameBackdrop theme="fishing" active={phase === 'playing' || phase === 'settling' || bossActive} />
+        <InteractiveGameBackdrop
+          theme="fishing"
+          active={phase === 'playing' || phase === 'settling' || bossActive}
+        />
         <div className="fishing-hero-shell">
           <div className="fishing-hero-copy">
             <p className="fishing-hero-kicker">Lucky Fishing</p>
@@ -432,7 +432,9 @@ export default function Fishing() {
             <div className="fishing-flowbar">
               <div>
                 <p className="fishing-flowbar__eyebrow">Lucky Fishing</p>
-                <strong>{phase === 'playing' || phase === 'settling' ? '漁場作戰中' : '進場準備'}</strong>
+                <strong>
+                  {phase === 'playing' || phase === 'settling' ? '漁場作戰中' : '進場準備'}
+                </strong>
               </div>
               <div className="fishing-flowbar__actions">
                 <FishingFullscreenButton
@@ -442,7 +444,6 @@ export default function Fishing() {
                   onToggle={handleToggleFullscreen}
                 />
               </div>
-
             </div>
             {fullscreenMessage && (
               <div className="fishing-api-alert fishing-api-alert--info" role="status">
@@ -454,7 +455,10 @@ export default function Fishing() {
                 <div className="fishing-hud">
                   <div className="fishing-hud__metric">
                     <span className="fishing-hud__label">本局餘額</span>
-                    <span className="fishing-hud__value tabular-nums">
+                    <span
+                      className="fishing-hud__value tabular-nums"
+                      data-testid="fishing-session-balance"
+                    >
                       {sessionBalance.toLocaleString()}
                     </span>
                   </div>
@@ -466,13 +470,19 @@ export default function Fishing() {
                   </div>
                   <div className="fishing-hud__metric">
                     <span className="fishing-hud__label">已發射</span>
-                    <span className="fishing-hud__value tabular-nums">
+                    <span
+                      className="fishing-hud__value tabular-nums"
+                      data-testid="fishing-total-shots"
+                    >
                       {stats.totalShots.toLocaleString()} 發
                     </span>
                   </div>
                   <div className="fishing-hud__metric">
                     <span className="fishing-hud__label">捕獲數</span>
-                    <span className="fishing-hud__value tabular-nums">
+                    <span
+                      className="fishing-hud__value tabular-nums"
+                      data-testid="fishing-caught-count"
+                    >
                       {stats.caughtCount.toLocaleString()} 尾
                     </span>
                   </div>
@@ -482,7 +492,9 @@ export default function Fishing() {
                       <span
                         className={`fishing-hud__value tabular-nums ${roundProfit > 0 ? 'text-emerald-300' : roundProfit < 0 ? 'text-red-300' : ''}`}
                       >
-                        {roundProfit > 0 ? `+${roundProfit.toLocaleString()}` : roundProfit.toLocaleString()}
+                        {roundProfit > 0
+                          ? `+${roundProfit.toLocaleString()}`
+                          : roundProfit.toLocaleString()}
                       </span>
                     </div>
                   )}
@@ -750,6 +762,7 @@ export default function Fishing() {
 
                     <button
                       type="button"
+                      data-testid="fishing-start"
                       onClick={handleStart}
                       disabled={!canStart}
                       className="red-gold-button rounded px-5 py-3 text-base font-black transition disabled:cursor-not-allowed disabled:opacity-50"
