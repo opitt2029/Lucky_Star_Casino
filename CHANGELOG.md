@@ -1,3 +1,28 @@
+## [added] -- 2026-07-28 -- 簡報新增 Kafka 事件架構、ER 精簡版與 AI 協作段落的產生器
+
+### Added
+- `tools/pptx/build_kafka_er_ai_slides.py`：在既有簡報上新增 12 頁**原生 PPT 版面**（純 shape，不插圖片），
+  並重排簡報結構。內容分四組：
+  - 資料模型精簡版 ×2（PostgreSQL 寫庫 16 表 / MySQL 讀庫 13 表，依責任區分塊，不畫關聯線）
+  - Kafka 事件驅動架構 ×5（8 業務 topic + 5 DLT 全景、熱路徑取捨、指令/事件分離 ADR-002、
+    Transactional Outbox 與冪等消費、DLT 與人工重送），並附講稿備忘稿
+  - CQRS 合併版 ×1（取代原本內容重疊的「資料層設計」與「資料層架構」兩頁）
+  - AI 協作 ×4（工具與分工、如何讓 AI 照專案規範產出、三道機械把關、三個真實踩雷案例）
+
+### Changed
+- 簡報結構：刪除重複的 CQRS 兩頁、原完整版 ER 三頁移至最後附錄區、精簡版 ER 補到前段。
+
+### 為什麼
+期末簡報的流量段落缺少事件驅動架構的說明，而 CQRS 佔了兩頁重複內容；
+ER 圖用完整關聯版當正片太細，不利現場口述。把這些改動寫成腳本而非手改 pptx，
+是為了讓版面規格（配色、字級、邊界）與原簡報一致且可重跑。
+
+### 如何驗證
+- `python tools/pptx/build_kafka_er_ai_slides.py <來源.pptx> <輸出.pptx>` → 68 頁
+- python-pptx 掃描：12 頁新版面全部落在畫布範圍內，備忘稿僅掛在 Kafka 5 頁
+- PowerPoint COM 匯出 PNG 逐頁目視確認版面無重疊、無溢出
+
+---
 ## [feat] -- 2026-07-27 -- Add passwordless Google and LINE registration
 
 ### Added
