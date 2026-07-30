@@ -15,6 +15,8 @@ async function suppressAutoCheckIn(page) {
       'lucky-star-checkin-auto-open-v1',
       JSON.stringify({ 'test-player': todayKey })
     )
+    localStorage.setItem('lucky-star-diamond-guide-dismissed-v1', '1')
+    localStorage.setItem('lucky-star-topup-terms-dismissed-v1', '1')
     ;['slot', 'baccarat', 'fishing'].forEach((game) => {
       localStorage.setItem(`lucky-star-game-rule-dismissed:${game}`, '1')
     })
