@@ -75,8 +75,11 @@ test.describe('player site smoke', () => {
     await expect(page.getByText('已設定').first()).toBeVisible()
     await page.getByRole('link', { name: '鑽石錢包' }).click()
     await expect(page).toHaveURL(/\/diamond$/)
-    await expect(page.getByRole('heading', { name: '鑽石錢包' })).toBeVisible()
-
+    await expect(page.getByRole('heading', { name: '鑽石錢包', exact: true })).toBeVisible()
+    await expect(page.getByTestId('diamond-guide-dialog')).toBeVisible()
+    await page.getByTestId('diamond-guide-dismiss-checkbox').check()
+    await page.getByTestId('diamond-guide-close').click()
+    await expect(page.getByTestId('diamond-guide-dialog')).toBeHidden()
     await page.getByRole('link', { name: '交易/遊戲紀錄' }).click()
     await expect(page).toHaveURL(/\/records$/)
     await expect(page.getByRole('heading', { name: /\u4ea4\u6613\s*\/\s*\u904a\u6232\u7d00\u9304/ })).toBeVisible()
