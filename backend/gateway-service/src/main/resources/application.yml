@@ -235,6 +235,10 @@ rate-limit:
   game:
     replenish-rate: ${GAME_RATE_LIMIT_REPLENISH:5}
     burst-capacity: ${GAME_RATE_LIMIT_BURST:10}
+  # 可信反向代理 CIDR 清單：只有當「直接 socket 對端」落在其中時，ipKeyResolver 才採信
+  # X-Forwarded-For；空清單（預設）＝完全不信任 XFF、一律以 socket 對端為限流金鑰。
+  # gateway 直接暴露 8080（無反代）時保持空即為安全預設；若部署在 nginx/LB 之後，把它的 CIDR 加進來。
+  trusted-proxies: ${RATE_LIMIT_TRUSTED_PROXIES:}
 
 # Resilience4j Circuit Breaker instances — one per downstream service
 resilience4j:
