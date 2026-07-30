@@ -287,6 +287,7 @@ class SocialAuthServiceTest {
         request.setTicket("register-1");
         request.setUsername("lucky-player");
         request.setNickname("Lucky Player");
+        request.setRealName("Wang Lucky");
         request.setEmail("player@example.com");
         request.setBirthDate(LocalDate.now().minusYears(20));
         request.setAdultConfirmed(true);

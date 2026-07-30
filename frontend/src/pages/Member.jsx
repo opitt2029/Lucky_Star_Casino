@@ -14,13 +14,14 @@ import { memberApi, extractError } from '../services/memberApi'
 const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
 const demoMode = import.meta.env.VITE_DEMO_MODE === 'true'
 const demoUsername = import.meta.env.VITE_DEMO_USERNAME || (useMockApi ? 'test' : '')
-const demoPassword = import.meta.env.VITE_DEMO_PASSWORD || (useMockApi ? 'test1234' : '')
+const demoPassword = import.meta.env.VITE_DEMO_PASSWORD || (useMockApi ? '123' : '')
 const defaultLogin = demoMode
   ? { username: demoUsername, password: demoPassword }
   : { username: '', password: '' }
 const defaultRegister = {
   username: '',
   nickname: '',
+  realName: '',
   email: '',
   password: '',
   birthDate: '',

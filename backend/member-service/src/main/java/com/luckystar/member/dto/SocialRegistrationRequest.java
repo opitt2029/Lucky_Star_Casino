@@ -31,6 +31,10 @@ public class SocialRegistrationRequest {
     @Size(min = 2, max = 50)
     private String nickname;
 
+    @NotBlank
+    @Size(min = 2, max = 80)
+    private String realName;
+
     @NotNull
     @Past
     private LocalDate birthDate;

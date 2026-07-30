@@ -11,6 +11,12 @@ public class ProfileResponse {
     private String username;
     private String nickname;
     private String avatar;
+    private String realName;
+    private String birthDate;
+    private String gender;
+    private String address;
+    private String walletPaymentMethod;
+    private Boolean paymentConfirmationEnabled;
     private String role;
     private String createdAt;
 }

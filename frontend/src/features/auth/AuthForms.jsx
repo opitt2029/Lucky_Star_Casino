@@ -117,6 +117,21 @@ export function RegisterForm({
         />
       </label>
       <label className="grid gap-2 text-sm font-bold text-yellow-100/78">
+        姓名
+        <input
+          name="realName"
+          className="rounded border border-yellow-200/15 bg-red-950/70 px-4 py-3 text-white outline-none focus:border-yellow-200"
+          placeholder="王小明"
+          value={form.realName}
+          onChange={onChange}
+          minLength={2}
+          maxLength={80}
+          autoComplete="name"
+          required
+        />
+        <span className="text-xs text-yellow-100/55">姓名註冊後不可自行更改，請確認與身分資料一致。</span>
+      </label>
+      <label className="grid gap-2 text-sm font-bold text-yellow-100/78">
         Email
         <input
           name="email"
@@ -153,6 +168,7 @@ export function RegisterForm({
           max={birthDateMax}
           required
         />
+        <span className="text-xs text-yellow-100/55">生日只能在註冊時設定，日後如需修正請聯繫客服。</span>
       </label>
       <label className="flex items-start gap-3 rounded border border-yellow-200/15 bg-red-950/50 px-4 py-3 text-sm font-bold text-yellow-100/78">
         <input

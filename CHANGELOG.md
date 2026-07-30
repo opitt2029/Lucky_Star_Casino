@@ -1,4 +1,45 @@
-﻿## [changed] -- 2026-07-30 -- Tighten frontend E2E coverage and dependency posture
+## [feat] -- 2026-07-30 -- Expand profile privacy and settings
+
+### Added
+- `member-service`: add profile real name, birthday, gender, address, wallet payment method, and payment confirmation fields with password-gated settings unlock.
+- `frontend`: expand `/profile` with masked private information, account summary, and wallet/security hints; basic-info settings now open from a dedicated button into a password-gated modal.
+- `frontend`: require real name and birthday during registration and show that both are registration-time-only fields.
+- `database/mysql/migration/V14__add_member_profile_settings.sql`: add the member profile settings columns for existing MySQL databases.
+
+### Changed
+- `frontend`: replace native profile gender/payment selects with themeable button/listbox dropdowns and a custom gold chevron icon.
+- `frontend`: close profile custom dropdowns on outside click or Escape, and calculate profile completeness from the five basic-info fields only.
+- `frontend`: remove the visible test-password hint from the profile settings password gate.
+- `frontend`: move profile password verification to the `/profile` entry gate and let basic-info settings open directly after the page is unlocked.
+- `frontend`: add a `/profile` game journey block showing per-game play duration, rounds, wins, best profit, and achievements from game history.
+- `frontend`: refine `/profile` private-info summary to show birthday as `19**-**-**`, gender as a visible choice, and address/wallet settings as configured status.
+- `frontend`: align read-only name and birthday fields in the profile settings modal, restyle gender/payment selects with the red-gold theme, and remove the payment confirmation field from the profile UI.
+- `frontend`: limit profile gender choices to `男`, `女`, and `不公開`, matching the backend update whitelist.
+- `frontend mock`: set the test account password to `123` and mirror the new profile/settings API behavior.
+
+### Verified
+- `mvn -B -ntp -pl backend/member-service test`
+- `npm.cmd run lint`
+- `npm.cmd run test`
+- `npm.cmd run build`
+- `npm.cmd run e2e`
+
+---
+## [fix] -- 2026-07-30 -- Fix profile route loading loop
+
+### Fixed
+- `frontend`: keep authenticated routes mounted while refreshing an existing profile so `/profile` no longer falls back into the route loading screen repeatedly.
+- `frontend`: add unit and Playwright smoke regression coverage for authenticated profile refresh.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run test`
+- `npm.cmd run build`
+- `npm.cmd run e2e`
+
+---
+
+## [changed] -- 2026-07-30 -- Tighten frontend E2E coverage and dependency posture
 
 ### Added
 - `frontend`: add Pixi fishing canvas E2E coverage for start, fire, shot accounting, settlement, and settlement panel rendering.

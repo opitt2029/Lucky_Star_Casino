@@ -16,6 +16,7 @@ export default function Register() {
   const [form, setForm] = useState({
     username: '',
     nickname: '',
+    realName: '',
     email: '',
     password: '',
     birthDate: '',
@@ -79,6 +80,21 @@ export default function Register() {
             />
           </label>
           <label className="grid gap-2 text-sm font-bold text-zinc-300">
+            姓名
+            <input
+              name="realName"
+              className="rounded border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-white"
+              placeholder="王小明"
+              value={form.realName}
+              onChange={handleChange}
+              minLength={2}
+              maxLength={80}
+              autoComplete="name"
+              required
+            />
+            <span className="text-xs text-zinc-500">姓名註冊後不可自行更改，請確認與身分資料一致。</span>
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-zinc-300">
             Email
             <input
               name="email"
@@ -115,6 +131,7 @@ export default function Register() {
               max={birthDateMax}
               required
             />
+            <span className="text-xs text-yellow-100/55">生日只能在註冊時設定，日後如需修正請聯繫客服。</span>
           </label>
           <label className="flex items-start gap-3 rounded border border-white/10 bg-black px-4 py-3 text-sm font-bold text-zinc-300">
             <input

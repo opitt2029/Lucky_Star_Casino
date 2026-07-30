@@ -42,6 +42,8 @@ public class AuthService {
         member.setEmail(request.getEmail());
         member.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         member.setNickname(request.getNickname());
+        member.setRealName(request.getRealName());
+        member.setBirthDate(request.getBirthDate());
 
         Member saved = memberRepository.save(member);
 

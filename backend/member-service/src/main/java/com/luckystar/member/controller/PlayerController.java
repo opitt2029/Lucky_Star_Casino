@@ -2,6 +2,7 @@ package com.luckystar.member.controller;
 
 import com.luckystar.member.dto.ApiResponse;
 import com.luckystar.member.dto.ProfileResponse;
+import com.luckystar.member.dto.ProfileSettingsUnlockRequest;
 import com.luckystar.member.dto.SocialBindingResponse;
 import com.luckystar.member.dto.SocialBindingStartResponse;
 import com.luckystar.member.dto.UpdateProfileRequest;
@@ -39,6 +40,13 @@ public class PlayerController {
             @Valid @RequestBody UpdateProfileRequest request) {
         ProfileResponse profile = playerService.updateProfile(currentPlayerId(), request);
         return ResponseEntity.ok(ApiResponse.success(profile, "Profile updated"));
+    }
+
+    @PostMapping("/profile/settings/unlock")
+    public ResponseEntity<ApiResponse<Void>> unlockProfileSettings(
+            @Valid @RequestBody ProfileSettingsUnlockRequest request) {
+        playerService.verifyProfileSettingsPassword(currentPlayerId(), request.getPassword());
+        return ResponseEntity.ok(ApiResponse.success(null, "Profile settings unlocked"));
     }
 
     @GetMapping("/social-bindings")

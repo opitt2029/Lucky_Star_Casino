@@ -14,7 +14,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -36,6 +38,9 @@ class PlayerServiceTest {
     @Mock
     private SocialAuthService socialAuthService;
 
+    @Mock
+    private PasswordEncoder passwordEncoder;
+
     @InjectMocks
     private PlayerService playerService;
 
@@ -49,6 +54,12 @@ class PlayerServiceTest {
         sampleMember.setEmail("alice@example.com");
         sampleMember.setPasswordHash("$2a$10$hashedpassword");
         sampleMember.setNickname("Alice");
+        sampleMember.setRealName("Wang Alice");
+        sampleMember.setBirthDate(LocalDate.of(1992, 2, 3));
+        sampleMember.setGender("FEMALE");
+        sampleMember.setAddress("Taipei");
+        sampleMember.setWalletPaymentMethod("STAR_COIN");
+        sampleMember.setPaymentConfirmationEnabled(true);
         sampleMember.setAvatar(null);
         sampleMember.setRole("PLAYER");
         sampleMember.setStatus("ACTIVE");
@@ -71,6 +82,9 @@ class PlayerServiceTest {
         assertThat(result.getNickname()).isEqualTo("Alice");
         assertThat(result.getPlayerId()).isEqualTo(1L);
         assertThat(result.getUsername()).isEqualTo("alice");
+        assertThat(result.getRealName()).isEqualTo("Wang Alice");
+        assertThat(result.getBirthDate()).isEqualTo("1992-02-03");
+        assertThat(result.getWalletPaymentMethod()).isEqualTo("STAR_COIN");
     }
 
     @Test
@@ -127,6 +141,49 @@ class PlayerServiceTest {
     }
 
     @Test
+    void updateProfile_sensitiveFields_requirePasswordAndPersist() {
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+        when(passwordEncoder.matches("secret", "$2a$10$hashedpassword")).thenReturn(true);
+        when(memberRepository.save(any(Member.class))).thenReturn(sampleMember);
+
+        UpdateProfileRequest request = new UpdateProfileRequest();
+        request.setGender("MALE");
+        request.setAddress("Kaohsiung");
+        request.setWalletPaymentMethod("ASK_EVERY_TIME");
+        request.setPaymentConfirmationEnabled(false);
+        request.setCurrentPassword("secret");
+
+        ProfileResponse result = playerService.updateProfile(1L, request);
+
+        assertThat(result.getGender()).isEqualTo("MALE");
+        assertThat(result.getAddress()).isEqualTo("Kaohsiung");
+        assertThat(result.getWalletPaymentMethod()).isEqualTo("ASK_EVERY_TIME");
+        assertThat(result.getPaymentConfirmationEnabled()).isFalse();
+    }
+
+    @Test
+    void updateProfile_sensitiveFields_wrongPasswordThrows() {
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+        when(passwordEncoder.matches("bad", "$2a$10$hashedpassword")).thenReturn(false);
+
+        UpdateProfileRequest request = new UpdateProfileRequest();
+        request.setAddress("Kaohsiung");
+        request.setCurrentPassword("bad");
+
+        assertThatThrownBy(() -> playerService.updateProfile(1L, request))
+                .isInstanceOf(com.luckystar.member.exception.InvalidCredentialsException.class);
+        verify(memberRepository, never()).save(any(Member.class));
+    }
+
+    @Test
+    void verifyProfileSettingsPassword_acceptsCurrentPassword() {
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+        when(passwordEncoder.matches("secret", "$2a$10$hashedpassword")).thenReturn(true);
+
+        playerService.verifyProfileSettingsPassword(1L, "secret");
+    }
+
+    @Test
     void updateProfile_noFields_throwsException() {
         UpdateProfileRequest request = new UpdateProfileRequest();
         request.setNickname(null);
@@ -134,7 +191,7 @@ class PlayerServiceTest {
 
         assertThatThrownBy(() -> playerService.updateProfile(1L, request))
                 .isInstanceOf(NoUpdateFieldException.class)
-                .hasMessageContaining("At least one field");
+                .hasMessageContaining("At least one profile field");
     }
 
     @Test

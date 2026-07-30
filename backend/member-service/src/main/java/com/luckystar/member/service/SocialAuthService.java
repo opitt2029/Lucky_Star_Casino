@@ -235,6 +235,7 @@ public class SocialAuthService {
         String username = request.getUsername().trim();
         String email = request.getEmail().trim();
         String nickname = request.getNickname().trim();
+        String realName = request.getRealName().trim();
         if (memberRepository.existsByUsername(username)) {
             throw new MemberAlreadyExistsException("Username already exists");
         }
@@ -247,6 +248,8 @@ public class SocialAuthService {
         member.setUsername(username);
         member.setEmail(email);
         member.setNickname(nickname);
+        member.setRealName(realName);
+        member.setBirthDate(request.getBirthDate());
         member.setPasswordHash(null);
         if (StringUtils.hasText(payload.avatarUrl())) {
             member.setAvatar(payload.avatarUrl());

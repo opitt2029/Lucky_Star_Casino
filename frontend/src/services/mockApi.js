@@ -150,12 +150,18 @@ const SHOP_CATALOG = shopCatalogContract.items
 const MOCK_TEST_STAR_COIN_BALANCE = 999999999999
 
 const TEST_ACCOUNT = {
-  password: 'test1234',
+  password: '123',
   player: {
     id: 'test-player',
     username: 'test',
     email: 'test@example.com',
     nickname: '測試玩家',
+    realName: '王小明',
+    birthDate: '1990-01-01',
+    gender: 'PREFER_NOT_TO_SAY',
+    address: '台北市信義區幸運路 7 號',
+    walletPaymentMethod: 'STAR_COIN',
+    paymentConfirmationEnabled: true,
     avatarUrl: '',
     consecutiveCheckInDays: 0,
     lastCheckInDate: null,
@@ -209,7 +215,13 @@ function createInitialDb() {
     id: 'demo-player',
     username: 'frontend-owner',
     email: 'player@example.com',
-    nickname: '前端負責人',
+    nickname: '幸運星玩家',
+    realName: '王小明',
+    birthDate: '1990-01-01',
+    gender: 'PREFER_NOT_TO_SAY',
+    address: '台北市信義區星河路 88 號',
+    walletPaymentMethod: 'STAR_COIN',
+    paymentConfirmationEnabled: true,
     avatarUrl: '',
     consecutiveCheckInDays: 4,
     lastCheckInDate: null,
@@ -294,6 +306,18 @@ function createInitialDb() {
   }
 }
 
+function withProfileDefaults(player = {}) {
+  return {
+    realName: player.nickname || player.username || '王小明',
+    birthDate: '1990-01-01',
+    gender: '',
+    address: '',
+    walletPaymentMethod: 'STAR_COIN',
+    paymentConfirmationEnabled: true,
+    ...player,
+  }
+}
+
 function ensureTestAccount(db) {
   let changed = false
   db.users = db.users || []
@@ -322,12 +346,12 @@ function ensureTestAccount(db) {
     changed = true
   }
 
-  user.player = {
+  user.player = withProfileDefaults({
     ...TEST_ACCOUNT.player,
     ...user.player,
     username: TEST_ACCOUNT.player.username,
     id: TEST_ACCOUNT.player.id,
-  }
+  })
   if (!db.wallets[TEST_ACCOUNT.player.id]) {
     db.wallets[TEST_ACCOUNT.player.id] = { balance: MOCK_TEST_STAR_COIN_BALANCE, frozenAmount: 0 }
     changed = true
@@ -801,6 +825,7 @@ export const mockApi = {
     ticket,
     username,
     nickname,
+    realName,
     email,
     birthDate,
     adultConfirmed,
@@ -836,6 +861,12 @@ export const mockApi = {
       username,
       email,
       nickname,
+      realName,
+      birthDate,
+      gender: '',
+      address: '',
+      walletPaymentMethod: 'STAR_COIN',
+      paymentConfirmationEnabled: true,
       avatarUrl: social.avatarUrl || '',
       consecutiveCheckInDays: 0,
       lastCheckInDate: null,
@@ -859,7 +890,7 @@ export const mockApi = {
     return createSession(player)
   },
 
-  async register({ username, password, nickname, email }) {
+  async register({ username, password, nickname, realName, birthDate, email }) {
     await wait(520)
     const db = getDb()
     if (db.users.some((item) => item.player.username === username)) {
@@ -871,6 +902,12 @@ export const mockApi = {
       username,
       email,
       nickname,
+      realName,
+      birthDate,
+      gender: '',
+      address: '',
+      walletPaymentMethod: 'STAR_COIN',
+      paymentConfirmationEnabled: true,
       avatarUrl: '',
       consecutiveCheckInDays: 0,
       lastCheckInDate: null,
@@ -899,15 +936,32 @@ export const mockApi = {
   async getProfile() {
     await wait(260)
     const db = getDb()
-    return db.users.find((item) => item.player.id === currentPlayerId())?.player || null
+    const user = db.users.find((item) => item.player.id === currentPlayerId())
+    if (!user) return null
+    user.player = withProfileDefaults(user.player)
+    saveDb(db)
+    return user.player
+  },
+
+  async verifyProfilePassword(password) {
+    await wait(180)
+    const db = getDb()
+    const user = db.users.find((item) => item.player.id === currentPlayerId())
+    if (!user || user.password !== password) throw new Error('密碼錯誤，無法進入設定')
+    return true
   },
 
   async updateProfile(profile) {
     await wait()
     const db = getDb()
     const user = db.users.find((item) => item.player.id === currentPlayerId())
-    if (!user) throw new Error('找不到玩家資料')
-    user.player = { ...user.player, ...profile }
+    if (!user) throw new Error('找不到會員資料')
+    const sensitiveKeys = ['gender', 'address', 'walletPaymentMethod', 'paymentConfirmationEnabled']
+    if (sensitiveKeys.some((key) => Object.prototype.hasOwnProperty.call(profile, key))) {
+      if (user.password !== profile.currentPassword) throw new Error('密碼錯誤，無法更新設定')
+    }
+    const { currentPassword: _currentPassword, realName: _realName, birthDate: _birthDate, ...editableProfile } = profile
+    user.player = withProfileDefaults({ ...user.player, ...editableProfile })
     saveDb(db)
     const session = readStoredSession()
     if (session) writeJson(SESSION_KEY, { ...session, player: user.player })

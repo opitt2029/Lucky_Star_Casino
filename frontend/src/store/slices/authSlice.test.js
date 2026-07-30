@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+﻿import { beforeEach, describe, expect, it } from 'vitest'
 import reducer, { fetchProfile, loginSuccess, logoutMember } from './authSlice'
 
 describe('authSlice bootstrap state', () => {
@@ -23,6 +23,19 @@ describe('authSlice bootstrap state', () => {
     expect(authenticated.player.nickname).toBe('Player')
   })
 
+  it('keeps authenticated pages mounted while refreshing an existing profile', () => {
+    const authenticated = reducer(
+      reducer(undefined, { type: '@@init' }),
+      loginSuccess({ accessToken: 'access', refreshToken: 'refresh', player: { id: '1', nickname: 'Player' } }),
+    )
+
+    const refreshing = reducer(authenticated, fetchProfile.pending('request-id'))
+
+    expect(refreshing.authStatus).toBe('authenticated')
+    expect(refreshing.isAuthenticated).toBe(true)
+    expect(refreshing.profileLoading).toBe(true)
+    expect(refreshing.player.nickname).toBe('Player')
+  })
   it('clears tokens when restored profile validation fails', () => {
     localStorage.setItem('accessToken', 'expired')
     localStorage.setItem('refreshToken', 'expired-refresh')

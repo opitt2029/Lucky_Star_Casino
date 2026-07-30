@@ -1,4 +1,4 @@
-import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
+﻿import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import { memberApi, extractError } from '../../services/memberApi'
 
 const initialAccessToken = localStorage.getItem('accessToken') || null
@@ -209,7 +209,10 @@ const authSlice = createSlice({
       })
       .addCase(fetchProfile.pending, (state) => {
         state.profileLoading = true
-        state.authStatus = 'checking'
+        if (!state.player) {
+          state.authStatus = 'checking'
+          state.isAuthenticated = false
+        }
         state.sessionError = null
       })
       .addCase(fetchProfile.fulfilled, (state, action) => {
