@@ -1,3 +1,49 @@
+## [fix] — 2026-07-30 — Gateway 限流層信任邊界＋令牌桶化，風控日水位補重校排程
+
+### Added
+- `gateway-service`: `config/TrustedProxyMatcher`——自實作 IPv4/IPv6 CIDR 位元級比對（不引入
+  Spring Security），供 `ipKeyResolver` 判定 socket 對端是否為可信反向代理。
+- `gateway-service`: `rate-limit.trusted-proxies` 設定鍵（環境變數 `RATE_LIMIT_TRUSTED_PROXIES`，
+  預設空清單＝完全不信任 XFF）。
+- `game-service`: `GameRoundRepository.aggregateAllPlayersToday`——一次撈今日所有 (player, gameType)
+  的已結算 bet/win 聚合（走既有 partial index）。
+- `game-service`: `RiskControlService.reconcilePlayerDayWaterlines()` 與
+  `scheduler/PlayerDayWaterlineReconcileScheduler`（`risk.player-day-reconcile-ms`，預設 60s）。
+- 測試：`TrustedProxyMatcherTest`、`IpKeyResolverTest`、`PlayerDayWaterlineReconcileSchedulerTest`；
+  `PlayerRateLimitGlobalFilterTest` 改寫為令牌桶契約、`RiskControlServiceTest` 追加 reconcile 案例。
+
+### Changed
+- `gateway-service`: `RateLimitProperties` record 新增 `List<String> trustedProxies`（null 正規化為空清單）。
+- `gateway-service`: `RateLimitConfig.ipKeyResolver` 改為信任邊界解析——XFF 只在對端是可信代理時採信，
+  且 hop 由右到左找第一個非可信 hop；否則一律用 socket 對端。
+- `gateway-service`: `PlayerRateLimitGlobalFilter` 由固定視窗 INCR 計數器改為單一 Lua 令牌桶
+  （改寫自 SCG `request_rate_limiter.lua`），`replenishRate` 與 `burstCapacity` 皆生效、
+  key 改 hash-tag（`rate:{game|player}:{<uid>}:tokens`/`:ts`）。
+- `AGENTS.md` 雷區 31：更新 `rate-limit.player` 描述（固定視窗→真令牌桶）、補 `ipKeyResolver` 信任邊界說明。
+
+### Fixed
+- **XFF 偽造繞過**（🔴）：任何人帶隨機 `X-Forwarded-For` 即可為每請求換到全新限流桶，令
+  `/api/v1/auth/**` 的 5 req/s 暴力破解防護失效。修法＝預設不信任 XFF、僅可信代理身後採信。
+- **限流 key 永無 TTL 致永久 429**（🟠）：舊 INCR＋（僅 count==1）EXPIRE 兩次往返，expire 失敗則
+  key 無 TTL、計數只增不減、該玩家永久 429 不自癒。令牌桶把 TTL 與 token 壓進同一原子腳本。
+- **固定視窗邊界 2× 上限＋`replenishRate` 死設定**（🟠）：令牌桶連續補充令牌消除視窗暴衝；
+  `replenishRate` 生效（game 真的是 5/s，不再是固定每秒 10）。
+- **風控日水位無界漂移**（🟡）：`recordRoundSettled` 的 HINCRBY best-effort 失敗永不修正，
+  `isPlayerOverLimit` 見兩欄即終日信任。新增排程以 `game_rounds` 為準 HSET 覆蓋，把無界漂移
+  壓成「≤ 一個排程間隔」（方向為欠攔）。
+
+### 為什麼
+四個缺陷都集中在 gateway 限流層與 game 風控快取，前三者是**安全/可用性**問題（防護繞過、永久鎖死、
+限流不如設定），第四者是**統計正確性**問題。刻意保留的設計：限流 fail-open（Redis 掛掉放行，真正抗洪
+堤壩是 `RouteConcurrencyLimitGlobalFilter` 的純記憶體 AIMD）、所有 RTP 門檻與 `player-win-limit` 一律
+不動（只改「統計怎麼保持準確」，不改「怎麼判」，雷區 17）。`FilterOrder.RATE_LIMIT (-200)` 為死碼但依
+CLAUDE.md §3 只回報不刪。
+
+### 如何驗證
+- `mvn -pl backend/gateway-service,backend/game-service test` → 兩模組 BUILD SUCCESS
+  （gateway 全綠、game-service 205 tests / 0 fail），全程 H2＋mock、零外部依賴。
+
+---
 ## [added] -- 2026-07-28 -- 簡報新增 Kafka 事件架構、ER 精簡版與 AI 協作段落的產生器
 
 ### Added

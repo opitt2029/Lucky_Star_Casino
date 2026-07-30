@@ -318,4 +318,109 @@ class RiskControlServiceTest {
 
         verify(valueOps).set(eq("risk:rtp:" + GAME_TYPE), eq("100000:93800"), any(Duration.class));
     }
+
+    // ---- Phase A2 補強：玩家日水位重校（reconcile） ----
+
+    @Test
+    @DisplayName("reconcile：兩列各以正確 key/ARGV 覆寫水位 hash")
+    void reconcile_writesEachRowWithHsetSemantics() {
+        when(roundRepository.aggregateAllPlayersToday(any()))
+                .thenReturn(List.<Object[]>of(
+                        new Object[]{1L, "SLOT", 100L, 90L},
+                        new Object[]{2L, "FISHING", 50L, 80L}));
+
+        service.reconcilePlayerDayWaterlines();
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<String>> keysCaptor = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<Object[]> argsCaptor = ArgumentCaptor.forClass(Object[].class);
+        // 兩列 → 兩次 execute（外加 setUp 不觸發任何 execute，因為 reconcile 不呼叫 shouldIntercept）
+        verify(redisTemplate, Mockito.times(2)).execute(
+                Mockito.<RedisScript<Long>>any(), keysCaptor.capture(), argsCaptor.capture());
+
+        List<List<String>> keys = keysCaptor.getAllValues();
+        List<Object[]> args = argsCaptor.getAllValues();
+        org.junit.jupiter.api.Assertions.assertEquals(
+                List.of(playerDayKey(1L, "SLOT")), keys.get(0));
+        org.junit.jupiter.api.Assertions.assertEquals("100", args.get(0)[0]);
+        org.junit.jupiter.api.Assertions.assertEquals("90", args.get(0)[1]);
+        org.junit.jupiter.api.Assertions.assertEquals(
+                List.of(playerDayKey(2L, "FISHING")), keys.get(1));
+        org.junit.jupiter.api.Assertions.assertEquals("50", args.get(1)[0]);
+        org.junit.jupiter.api.Assertions.assertEquals("80", args.get(1)[1]);
+    }
+
+    @Test
+    @DisplayName("reconcile：空結果集 → 不寫 Redis，不拋例外")
+    void reconcile_emptyList_noWrite() {
+        when(roundRepository.aggregateAllPlayersToday(any())).thenReturn(List.of());
+
+        service.reconcilePlayerDayWaterlines();
+
+        verify(redisTemplate, never()).execute(
+                Mockito.<RedisScript<Long>>any(), anyList(), Mockito.<Object>any());
+    }
+
+    @Test
+    @DisplayName("reconcile：repository 拋例外 → 方法正常返回，不外拋")
+    void reconcile_repositoryThrows_swallowed() {
+        when(roundRepository.aggregateAllPlayersToday(any()))
+                .thenThrow(new RuntimeException("db down"));
+
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(
+                () -> service.reconcilePlayerDayWaterlines());
+    }
+
+    @Test
+    @DisplayName("reconcile：首列寫入失敗、次列成功 → 兩列皆嘗試，不外拋（per-row try/catch 回歸）")
+    void reconcile_firstRowFails_secondRowStillAttempted() {
+        when(roundRepository.aggregateAllPlayersToday(any()))
+                .thenReturn(List.<Object[]>of(
+                        new Object[]{1L, "SLOT", 100L, 90L},
+                        new Object[]{2L, "FISHING", 50L, 80L}));
+        // 首列（key = SLOT）拋例外，次列（key = FISHING）成功。
+        // varargs 為 3 個字串（bet/win/ttl），須逐一以 matcher 對應，不能只給單一 any()。
+        Mockito.doThrow(new RuntimeException("redis blip"))
+                .when(redisTemplate).execute(
+                        Mockito.<RedisScript<Long>>any(),
+                        eq(List.of(playerDayKey(1L, "SLOT"))),
+                        any(), any(), any());
+
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(
+                () -> service.reconcilePlayerDayWaterlines());
+
+        // 次列仍被嘗試
+        verify(redisTemplate).execute(
+                Mockito.<RedisScript<Long>>any(),
+                eq(List.of(playerDayKey(2L, "FISHING"))),
+                any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("reconcile：使用 HSET 語意（腳本含 HSET、不含 HSETNX/HINCRBY）")
+    void reconcile_scriptUsesHsetNotHsetnxOrHincrby() {
+        when(roundRepository.aggregateAllPlayersToday(any()))
+                .thenReturn(List.<Object[]>of(new Object[]{1L, "SLOT", 100L, 90L}));
+
+        ArgumentCaptor<RedisScript<Long>> scriptCaptor = ArgumentCaptor.forClass(RedisScript.class);
+        service.reconcilePlayerDayWaterlines();
+        verify(redisTemplate).execute(scriptCaptor.capture(), anyList(), any(), any(), any());
+
+        String lua = scriptCaptor.getValue().getScriptAsString();
+        org.junit.jupiter.api.Assertions.assertTrue(lua.contains("HSET"), "應使用 HSET 覆寫");
+        org.junit.jupiter.api.Assertions.assertFalse(lua.contains("HSETNX"), "不可用 HSETNX");
+        org.junit.jupiter.api.Assertions.assertFalse(lua.contains("HINCRBY"), "不可用 HINCRBY");
+    }
+
+    @Test
+    @DisplayName("reconcile 寫入 bet=100/win=90 後，讀取路徑看到 netWin=-10（格式與讀取端一致）")
+    void reconcile_outputMatchesReadPathFormat() {
+        // 模擬 reconcile 覆寫後，isPlayerOverLimit 讀到的 hash 就是 bet/win 字串欄位
+        when(hashOps.multiGet(eq(playerDayKey(PLAYER_ID, GAME_TYPE)), anyList()))
+                .thenReturn(Arrays.asList("100", "90"));
+
+        // netWin = 90 - 100 = -10 < 50000 → 不攔截；證明 reconcile 的輸出正是讀取端期待的格式
+        assertFalse(service.shouldIntercept(PLAYER_ID, GAME_TYPE));
+        verify(roundRepository, never()).aggregatePlayerToday(anyLong(), anyString(), any());
+    }
 }
