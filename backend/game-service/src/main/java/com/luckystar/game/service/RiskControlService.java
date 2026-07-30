@@ -96,6 +96,16 @@ public class RiskControlService {
             return 1
             """, Long.class);
 
+    /**
+     * 玩家日水位重校（Phase A2 補強）：以 game_rounds 聚合值<b>覆蓋</b>寫入 bet/win＋刷新 TTL。
+     * 用 HSET（絕對覆寫）而非 HSETNX（永遠修不了錯值）或 HINCRBY（會重複累加）——DB 是單一真相。
+     */
+    private static final RedisScript<Long> PLAYER_DAY_RECONCILE_SCRIPT = new DefaultRedisScript<>("""
+            redis.call('HSET', KEYS[1], 'bet', ARGV[1], 'win', ARGV[2])
+            redis.call('PEXPIRE', KEYS[1], ARGV[3])
+            return 1
+            """, Long.class);
+
     private final GameRoundRepository roundRepository;
     private final StringRedisTemplate redisTemplate;
     private final RiskProperties riskProperties;
@@ -170,6 +180,52 @@ public class RiskControlService {
         } catch (Exception e) {
             log.warn("[風控] 玩家日水位累加失敗（best-effort，待 DB 回填）playerId={} gameType={}: {}",
                     playerId, gameType, e.toString());
+        }
+    }
+
+    /**
+     * 以 game_rounds 為準，重校今日所有玩家的日水位 hash（Phase A2 補強）。
+     *
+     * <p><b>為什麼需要</b>：{@link #recordRoundSettled} 是 best-effort，Redis 寫失敗那局的
+     * bet/win 就永久遺失；而 {@link #isPlayerOverLimit} 只要看到 hash 兩欄都在就終日信任、
+     * 不再對 DB 重驗——漂移因此是<b>無界</b>的。本方法把無界壓成「≤ 一個排程間隔」。
+     *
+     * <p><b>覆蓋而非累加</b>：用 HSET（非 HSETNX、非 HINCRBY），DB 是單一真相。
+     *
+     * <p><b>已知競態</b>：DB 聚合與 HSET 之間若有並發 HINCRBY，該局會被覆蓋掉，
+     * 下一輪重校修正。窗口為毫秒級、方向為短暫欠計，對統計性風控可接受。
+     */
+    public void reconcilePlayerDayWaterlines() {
+        try {
+            LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
+            List<Object[]> rows = roundRepository.aggregateAllPlayersToday(startOfDay);
+            if (rows == null || rows.isEmpty()) {
+                return;
+            }
+            int ok = 0;
+            int failed = 0;
+            for (Object[] row : rows) {
+                long playerId = toLong(row[0]);
+                String gameType = String.valueOf(row[1]);
+                long totalBet = toLong(row[2]);
+                long totalWin = toLong(row[3]);
+                // 每列各自 try/catch：單一玩家寫入失敗不可中斷整批（其餘玩家仍需被重校）。
+                try {
+                    redisTemplate.execute(PLAYER_DAY_RECONCILE_SCRIPT,
+                            List.of(playerDayKey(playerId, gameType)),
+                            String.valueOf(totalBet), String.valueOf(totalWin),
+                            String.valueOf(PLAYER_DAY_TTL.toMillis()));
+                    ok++;
+                } catch (Exception e) {
+                    failed++;
+                    log.warn("[風控] 玩家日水位重校單列失敗 playerId={} gameType={}: {}",
+                            playerId, gameType, e.toString());
+                }
+            }
+            log.info("[風控] 玩家日水位重校完成：成功 {} 列、失敗 {} 列", ok, failed);
+        } catch (Exception e) {
+            // 整體降級：重校失敗只是風控守門暫時弱化，絕不可讓它變成服務中斷。
+            log.warn("[風控] 玩家日水位重校整體失敗（降級，不影響結算）: {}", e.toString());
         }
     }
 
