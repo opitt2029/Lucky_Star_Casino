@@ -44,6 +44,56 @@ CLAUDE.md §3 只回報不刪。
   （gateway 全綠、game-service 205 tests / 0 fail），全程 H2＋mock、零外部依賴。
 
 ---
+## [fix] -- 2026-07-29 -- Redis 補上持久化、outbox 補上保留期清理、修正限流機制的名詞
+
+### Fixed
+- `docker-compose.yml`：redis 服務補上 `command: ["redis-server","--appendonly","yes"]` 與
+  named volume `lucky_redis_data:/data`。原本**是六個有狀態服務中唯一沒掛 volume 的**
+  （mysql / postgres / kafka / prometheus / grafana 都有），`redis:7` 預設 RDB 只寫容器內部
+  `/data`，容器一重建資料就全歸零。
+- `AGENTS.md` 雷區 31：`rate-limit.player` 的機制名稱由「token bucket」更正為
+  **固定視窗計數器**（實作是 `INCR` + 首次請求設 1 秒 TTL）。前端 `useFishingSession`
+  才是真的 token bucket（有 tokens 與 refill 速率），該處敘述無誤未動。
+- `tools/reconciliation/rebuild-rank-redis.mjs`、`docs/plans/04-事件可靠性與消費冪等強化藍圖.md`：
+  「本專案未設 AOF/RDB 策略」已隨上述修正過期，補記現況（結論不變：`down -v`／`FLUSHDB` 仍會清空）。
+
+### Added
+- `wallet-service`：`WalletOutboxPurgeJob` + `WalletOutboxRepository.deleteSentBefore`，
+  每日 04:00 刪除 `sentAt` 早於保留期的 **SENT** 列（`wallet.outbox.retention-days`，預設 7 天）。
+- `member-service`：同構的 `OutboxPurgeJob` + `OutboxEventRepository.deleteSentBefore`
+  （`outbox.retention-days`，預設 7 天）。
+- `AGENTS.md` 雷區 32（新增）：Redis 有兩類資料禁不起清空、`down -v` 的後果、
+  `rebuild-rank-redis.mjs` 的覆蓋範圍限制、`disabled:player:` 無開機回填。
+- 測試：`WalletOutboxPurgeJobTest`、`OutboxPurgeJobTest`（各 2 個案例，鎖住
+  「只刪 SENT」與「例外不外拋」兩個不變量）。
+
+### 為什麼
+- **Redis 持久化**：本專案只有 `risk:rtp:` 是純快取，其餘是 Redis 當主儲存或跨服務共用狀態。
+  清空的後果分兩級：① `rank:*` 排行榜歸零（重建腳本只涵蓋 2 個 ZSET，`rank:game:*` /
+  `rank:player:*` / `rank:friend:*` 無重建路徑）；② `disabled:player:*` 無 TTL，
+  清空等於所有被停用玩家自動解封——這是安全問題（T-051）。
+- **Outbox 清理**：poller 投遞成功只把 status 標 SENT、從不刪除，而每筆下注/派彩/贈禮都寫一列，
+  這張表單向成長。投遞查詢走 `idx_wallet_outbox_status_created`（status 在複合索引第一欄），
+  撈 PENDING 掃不到 SENT，所以膨脹**不會**讓 poller 變慢——是維運問題（磁碟、備份時間、
+  autovacuum 負擔）而非效能問題，也因此一直沒被發現。
+- **只刪 SENT、保留 7 天**：PENDING 代表尚未確認送達，刪掉就是無聲丟失事件（正是 Outbox 要防的）。
+  保留期取 7 天與 rank 消費端去重標記 TTL 一致——兩者都對應「最大重送窗口」，保留期短於去重 TTL
+  會出現「事件已刪、去重標記還在」的無法對照狀態。排在 04:00 離峰：bulk DELETE 產生大量 WAL
+  並持列鎖，不該與帳務熱路徑爭搶同一個 PostgreSQL。
+- **限流名詞**：固定視窗允許「視窗尾＋下個視窗頭」瞬間吃 2 倍配額，token bucket 沒這破口。
+  1 秒視窗下實務影響小，但會誤導後續讀者對邊界行為的判斷。
+
+### 如何驗證
+- `mvn -pl backend/wallet-service,backend/member-service test` → **BUILD SUCCESS**
+  （wallet 176 tests / 0 failures，含新增 2 筆；member 全綠）。
+  JPQL bulk DELETE 的正確性另由 `contextLoads` 覆蓋——Spring Data 在 repository bean
+  建立時就會解析 `@Query`，語法錯誤會讓 `@SpringBootTest` 直接啟動失敗。
+- `docker compose config` 確認 redis 的 command / volume 已生效（需重建容器：
+  `docker compose up -d --force-recreate redis`）。
+- ⚠️ 既有環境套用時 redis 會以空資料啟動（原本就沒持久化），排行榜請跑
+  `node tools/reconciliation/rebuild-rank-redis.mjs --dry-run` 確認差異後再重建。
+
+---
 ## [added] -- 2026-07-28 -- 簡報新增 Kafka 事件架構、ER 精簡版與 AI 協作段落的產生器
 
 ### Added

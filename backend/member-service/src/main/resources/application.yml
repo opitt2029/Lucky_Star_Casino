@@ -139,6 +139,10 @@ internal:
 
 outbox:
   poll-interval-ms: ${OUTBOX_POLL_INTERVAL_MS:5000}   # OutboxPoller 輪詢間隔（毫秒）
+  # OutboxPurgeJob 保留期清理：poller 只把投遞成功的列標 SENT 不刪，表會單向成長。
+  # 只刪 SENT（PENDING 無論多舊都保留，刪掉＝無聲丟失事件）；保留 7 天供事故排查。
+  retention-days: ${OUTBOX_RETENTION_DAYS:7}
+  purge-cron: ${OUTBOX_PURGE_CRON:0 0 4 * * *}
 
 social-oauth:
   frontend-base-url: ${OAUTH_FRONTEND_BASE_URL:http://localhost:5173}
