@@ -4036,66 +4036,137 @@ body.slot-fullscreen-active .page-transition-stage {
   min-height: 190px;
 }
 
-.topup-coin {
-  position: absolute;
-  border-radius: 999px;
-  border: 2px solid rgba(255, 246, 188, 0.84);
-  background:
-    radial-gradient(circle at 32% 24%, rgba(255, 255, 238, 0.92), transparent 16%),
-    radial-gradient(circle, #fff1aa 0 34%, #f8d56a 55%, #a56408 100%);
-  box-shadow:
-    inset 0 0 0 6px rgba(122, 66, 0, 0.2),
-    0 18px 42px rgba(14, 0, 2, 0.32),
-    0 0 30px rgba(255, 218, 94, 0.22);
-}
-
-.topup-coin::after {
-  content: '$';
-  position: absolute;
-  inset: 24%;
+.topup-hero-art {
   display: grid;
+  min-height: 214px;
   place-items: center;
-  border-radius: 999px;
-  border: 1px solid rgba(86, 45, 0, 0.32);
-  color: rgba(55, 22, 0, 0.74);
-  font-family: var(--font-display);
-  font-size: 2rem;
-  font-weight: 900;
 }
 
-.topup-coin--one {
-  right: 110px;
-  top: 18px;
-  width: 112px;
-  height: 112px;
-  transform: rotate(-12deg);
-}
-
-.topup-coin--two {
-  right: 36px;
-  top: 68px;
-  width: 96px;
-  height: 96px;
-  transform: rotate(10deg);
-}
-
-.topup-receipt {
-  position: absolute;
-  right: 24px;
-  bottom: 4px;
-  width: 170px;
-  min-height: 128px;
-  border: 1px solid rgba(255, 234, 160, 0.4);
+.topup-hero-card {
+  position: relative;
+  width: min(100%, 304px);
+  aspect-ratio: 1.34;
+  overflow: hidden;
+  border: 1px solid rgba(255, 234, 160, 0.38);
   border-radius: 8px;
   background:
-    linear-gradient(90deg, rgba(255, 234, 160, 0.28), transparent 34%) 24px 38px / 118px 8px
-      no-repeat,
-    linear-gradient(90deg, rgba(255, 234, 160, 0.18), transparent 42%) 24px 62px / 104px 8px
-      no-repeat,
-    linear-gradient(90deg, rgba(255, 234, 160, 0.14), transparent 48%) 24px 86px / 128px 8px
-      no-repeat,
-    linear-gradient(160deg, rgba(68, 4, 8, 0.94), rgba(18, 1, 3, 0.96));
-  box-shadow: 0 24px 48px rgba(8, 0, 1, 0.36);
+    linear-gradient(180deg, rgba(255, 234, 160, 0.14), rgba(34, 2, 5, 0.16)),
+    rgba(28, 2, 5, 0.9);
+  box-shadow:
+    0 26px 62px rgba(8, 0, 2, 0.44),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.topup-hero-card__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  filter: saturate(1.12) contrast(1.05) brightness(0.86);
+}
+
+.topup-hero-card__curtain {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(20, 1, 4, 0.86), rgba(96, 5, 12, 0.22) 48%, rgba(8, 0, 2, 0.74)),
+    radial-gradient(circle at 72% 28%, rgba(255, 234, 160, 0.2), transparent 28%),
+    linear-gradient(180deg, transparent 42%, rgba(8, 0, 2, 0.74));
+}
+
+.topup-hero-card__coin {
+  position: absolute;
+  z-index: 3;
+  display: block;
+  filter: drop-shadow(0 16px 22px rgba(6, 0, 1, 0.42));
+}
+
+.topup-hero-card__coin--large {
+  right: 28px;
+  bottom: 20px;
+  width: 116px;
+  transform: rotate(-11deg);
+}
+
+.topup-hero-card__coin--small {
+  right: 94px;
+  bottom: 48px;
+  width: 72px;
+  opacity: 0.76;
+  transform: rotate(13deg);
+}
+
+.topup-hero-card__receipt {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  z-index: 4;
+  display: grid;
+  gap: 5px;
+  min-width: 126px;
+  border: 1px solid rgba(255, 234, 160, 0.38);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(255, 234, 160, 0.22), transparent 64%),
+    rgba(43, 3, 7, 0.86);
+  padding: 12px;
+  box-shadow: 0 18px 34px rgba(8, 0, 1, 0.34);
+}
+
+.topup-hero-card__receipt span {
+  color: rgba(255, 232, 150, 0.72);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+}
+
+.topup-hero-card__receipt strong {
+  color: var(--casino-gold-bright);
+  font-family: var(--font-display);
+  font-size: 1.16rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.topup-hero-card__spark {
+  position: absolute;
+  inset: -34% auto auto -34%;
+  z-index: 5;
+  width: 72%;
+  height: 184%;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 0 28%, rgba(255, 255, 255, 0.2) 42%, transparent 56% 100%);
+  transform: rotate(18deg);
+  animation: topup-showcase-shine 5.2s ease-in-out infinite;
+}
+
+@keyframes topup-showcase-shine {
+  0%,
+  48% {
+    transform: translateX(0) rotate(18deg);
+    opacity: 0;
+  }
+
+  60% {
+    opacity: 1;
+  }
+
+  76%,
+  100% {
+    transform: translateX(270%) rotate(18deg);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topup-hero-card__spark {
+    animation: none;
+    opacity: 0.28;
+  }
 }
 
 .topup-package-card,
@@ -4240,45 +4311,6 @@ body.slot-fullscreen-active .page-transition-stage {
   box-shadow: 0 0 18px rgba(248, 213, 106, 0.34);
 }
 
-.diamond-hero-gem__coin {
-  position: absolute;
-  z-index: 3;
-  display: block;
-  filter: drop-shadow(0 16px 22px rgba(6, 0, 1, 0.42));
-}
-
-.diamond-hero-gem__coin--back {
-  right: 42px;
-  bottom: 32px;
-  width: 82px;
-  opacity: 0.78;
-  transform: rotate(14deg);
-}
-
-.diamond-hero-gem__coin--front {
-  right: 76px;
-  bottom: 18px;
-  width: 108px;
-  transform: rotate(-10deg);
-}
-
-.diamond-hero-gem__crystal {
-  position: absolute;
-  right: 34px;
-  top: 28px;
-  z-index: 4;
-  width: 94px;
-  height: 108px;
-  clip-path: polygon(50% 0, 92% 28%, 76% 100%, 24% 100%, 8% 28%);
-  border: 1px solid rgba(220, 252, 255, 0.66);
-  background:
-    linear-gradient(115deg, rgba(255, 255, 255, 0.72) 0 12%, transparent 13% 34%, rgba(255, 234, 160, 0.24) 35% 52%, transparent 53%),
-    linear-gradient(135deg, rgba(207, 250, 254, 0.96), rgba(103, 232, 249, 0.44) 48%, rgba(248, 213, 106, 0.24));
-  box-shadow:
-    inset 0 0 28px rgba(255, 255, 255, 0.24),
-    0 0 28px rgba(103, 232, 249, 0.2),
-    0 18px 28px rgba(4, 0, 1, 0.34);
-}
 
 .diamond-hero-gem__label {
   position: absolute;
@@ -4361,47 +4393,36 @@ body.slot-fullscreen-active .page-transition-stage {
     width: min(100%, 280px);
   }
 
-  .diamond-hero-gem__coin--back {
-    right: 32px;
-    width: 68px;
-  }
-
-  .diamond-hero-gem__coin--front {
-    right: 62px;
-    width: 90px;
-  }
-
-  .diamond-hero-gem__crystal {
-    right: 26px;
-    top: 24px;
-    width: 76px;
-    height: 88px;
-  }
-
   .diamond-hero-gem__label {
     left: 16px;
     bottom: 18px;
     font-size: 1.08rem;
   }
-
-  .topup-coin--one {
-    right: 88px;
-    width: 92px;
-    height: 92px;
+  .topup-hero-card {
+    width: min(100%, 270px);
   }
 
-  .topup-coin--two {
+  .topup-hero-card__coin--large {
     right: 22px;
-    width: 78px;
-    height: 78px;
+    width: 94px;
   }
 
-  .topup-receipt {
-    right: 12px;
-    width: 140px;
-    min-height: 104px;
+  .topup-hero-card__coin--small {
+    right: 76px;
+    bottom: 42px;
+    width: 58px;
   }
 
+  .topup-hero-card__receipt {
+    left: 14px;
+    bottom: 14px;
+    min-width: 112px;
+    padding: 10px;
+  }
+
+  .topup-hero-card__receipt strong {
+    font-size: 1rem;
+  }
   .topup-mini-ledger {
     position: static;
   }
