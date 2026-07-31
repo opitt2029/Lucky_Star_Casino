@@ -10,8 +10,8 @@ import { getBackgroundStyle } from '../theme/backgroundTheme'
 
 const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
 const defaultLogin = useMockApi
-  ? { username: 'test', password: 'test1234' }
-  : { username: 'tester01', password: 'Password1' }
+  ? { username: 'test', password: '123' }
+  : { username: 'tester01', password: '123' }
 
 export default function Login() {
   const dispatch = useDispatch()

@@ -431,7 +431,7 @@ sequenceDiagram
 |---|---|---|
 | ①② | 登入／註冊分頁 | 切換並更新 URL query `?mode=` |
 | ③ | 帳號 | 預填測試帳號 `test` |
-| ④ | 密碼 | 預填 `test1234` |
+| ④ | 密碼 | 預填 `123` |
 | ⑤ | 社群登入 | LINE / Google / Apple — **未實裝**，僅顯示提示 |
 | ⑥ | 登入送出 | `POST /api/v1/auth/login`；成功後同步錢包/鑽石/排行 → `/games` |
 

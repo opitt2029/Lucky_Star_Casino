@@ -6,13 +6,16 @@ import com.luckystar.member.dto.SocialBindingStartResponse;
 import com.luckystar.member.dto.UpdateProfileRequest;
 import com.luckystar.member.entity.Member;
 import com.luckystar.member.entity.MemberSocialAccount;
+import com.luckystar.member.exception.InvalidCredentialsException;
 import com.luckystar.member.exception.MemberNotFoundException;
 import com.luckystar.member.exception.NoUpdateFieldException;
 import com.luckystar.member.repository.MemberRepository;
 import com.luckystar.member.repository.MemberSocialAccountRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
@@ -30,6 +33,7 @@ public class PlayerService {
     private final MemberRepository memberRepository;
     private final MemberSocialAccountRepository socialAccountRepository;
     private final SocialAuthService socialAuthService;
+    private final PasswordEncoder passwordEncoder;
 
     @Transactional(readOnly = true)
     public ProfileResponse getProfile(Long playerId) {
@@ -37,20 +41,43 @@ public class PlayerService {
         return mapToResponse(member);
     }
 
+    @Transactional(readOnly = true)
+    public void verifyProfileSettingsPassword(Long playerId, String password) {
+        Member member = findMember(playerId);
+        verifyPassword(member, password);
+    }
+
     @Transactional
     public ProfileResponse updateProfile(Long playerId, UpdateProfileRequest request) {
-        if (request.getNickname() == null && request.getAvatar() == null) {
+        if (!hasAnyUpdateField(request)) {
             throw new NoUpdateFieldException(
-                    "At least one field (nickname or avatar) must be provided");
+                    "At least one profile field must be provided");
         }
 
         Member member = findMember(playerId);
+        if (hasSensitiveUpdateField(request)) {
+            verifyPassword(member, request.getCurrentPassword());
+        }
 
         if (request.getNickname() != null) {
             member.setNickname(request.getNickname());
         }
         if (request.getAvatar() != null) {
             member.setAvatar(request.getAvatar());
+        }
+        if (request.getGender() != null) {
+            member.setGender(blankToNull(request.getGender()));
+        }
+        if (request.getAddress() != null) {
+            member.setAddress(blankToNull(request.getAddress()));
+        }
+        if (request.getWalletPaymentMethod() != null) {
+            member.setWalletPaymentMethod(StringUtils.hasText(request.getWalletPaymentMethod())
+                    ? request.getWalletPaymentMethod()
+                    : "STAR_COIN");
+        }
+        if (request.getPaymentConfirmationEnabled() != null) {
+            member.setPaymentConfirmationEnabled(request.getPaymentConfirmationEnabled());
         }
 
         memberRepository.save(member);
@@ -84,11 +111,6 @@ public class PlayerService {
         return socialBinding(provider, null);
     }
 
-    /**
-     * 更新帳號狀態（內部 API 用，T-051 補完）：enabled=false → DISABLED、true → ACTIVE。
-     * DB status 是停用狀態的持久化真相來源（Redis 封鎖標記只負責「即時生效」，
-     * 資料清空後靠這裡的 status 讓登入檢查仍能擋住停用玩家）。回傳更新後的狀態字串。
-     */
     @Transactional
     public String updateStatus(Long memberId, boolean enabled) {
         Member member = findMember(memberId);
@@ -102,12 +124,43 @@ public class PlayerService {
                 .orElseThrow(() -> new MemberNotFoundException("Member not found: " + playerId));
     }
 
+    private void verifyPassword(Member member, String password) {
+        if (!StringUtils.hasText(password)
+                || !StringUtils.hasText(member.getPasswordHash())
+                || !passwordEncoder.matches(password, member.getPasswordHash())) {
+            throw new InvalidCredentialsException("Invalid profile settings password");
+        }
+    }
+
+    private boolean hasAnyUpdateField(UpdateProfileRequest request) {
+        return request.getNickname() != null
+                || request.getAvatar() != null
+                || hasSensitiveUpdateField(request);
+    }
+
+    private boolean hasSensitiveUpdateField(UpdateProfileRequest request) {
+        return request.getGender() != null
+                || request.getAddress() != null
+                || request.getWalletPaymentMethod() != null
+                || request.getPaymentConfirmationEnabled() != null;
+    }
+
+    private String blankToNull(String value) {
+        return StringUtils.hasText(value) ? value : null;
+    }
+
     private ProfileResponse mapToResponse(Member member) {
         return new ProfileResponse(
                 member.getId(),
                 member.getUsername(),
                 member.getNickname(),
                 member.getAvatar(),
+                member.getRealName(),
+                member.getBirthDate() != null ? member.getBirthDate().toString() : null,
+                member.getGender(),
+                member.getAddress(),
+                member.getWalletPaymentMethod(),
+                member.getPaymentConfirmationEnabled(),
                 member.getRole(),
                 member.getCreatedAt() != null ? member.getCreatedAt().format(FORMATTER) : null
         );

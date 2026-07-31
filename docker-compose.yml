@@ -51,6 +51,16 @@ services:
     image: redis:7
     container_name: lucky-star-redis
     restart: always
+    # AOF 持久化 + named volume：redis:7 預設只做 RDB 快照且寫在容器內部 /data，
+    # 沒掛 volume 時容器一重建資料就全歸零。本專案有兩類資料禁不起這件事：
+    #   ① rank:* 排行榜 ZSET —— Redis 是「主儲存」不是快取，DB 只有每日快照
+    #      （RankDailySnapshot）且無回填程式，清空後只能靠新事件慢慢重建；
+    #   ② disabled:player:* 後台停用標記 —— 無 TTL、只靠 key 存在與否判定，
+    #      清空等於所有被停用的玩家自動解封（安全問題，T-051）。
+    # appendonly 每秒 fsync（預設 everysec），最差損失 1 秒寫入，可接受。
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - lucky_redis_data:/data
     ports:
       - "${REDIS_PORT}:6379"
     healthcheck:
@@ -482,6 +492,7 @@ services:
 volumes:
   lucky_mysql80_data:
   lucky_postgres_data:
+  lucky_redis_data:
   lucky_kafka_data:
   lucky_prometheus_data:
   lucky_grafana_data:

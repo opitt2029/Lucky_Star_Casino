@@ -57,6 +57,22 @@ public interface GameRoundRepository extends JpaRepository<GameRound, Long> {
             @Param("startOfDay") LocalDateTime startOfDay);
 
     /**
+     * 今日所有玩家、所有遊戲的已結算 bet/win 聚合（每 (playerId, gameType) 一列）。
+     * 供日水位重校排程一次撈完，避免對每個玩家各發一次查詢。
+     * 走既有 partial index idx_game_rounds_player_type_settled。
+     *
+     * @return 每列為 {playerId, gameType, totalBet, totalWin}
+     */
+    @Query(value = """
+            SELECT player_id, game_type,
+                   COALESCE(SUM(bet_amount), 0), COALESCE(SUM(win_amount), 0)
+            FROM game_rounds
+            WHERE status = 'SETTLED' AND settled_at >= :startOfDay
+            GROUP BY player_id, game_type
+            """, nativeQuery = true)
+    List<Object[]> aggregateAllPlayersToday(@Param("startOfDay") LocalDateTime startOfDay);
+
+    /**
      * 彙整指定期間內所有玩家的已結算對局，回傳「淨虧損 > 0」的玩家清單。
      * 回傳欄位：[player_id(Long), total_bet(Number), total_win(Number)]。
      * HAVING 直接篩掉不虧損的玩家，減少後端計算量。

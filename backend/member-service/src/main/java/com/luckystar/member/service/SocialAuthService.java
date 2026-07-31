@@ -4,10 +4,14 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.luckystar.member.config.SocialOAuthProperties;
 import com.luckystar.member.dto.LoginResponse;
+import com.luckystar.member.dto.MemberRegisteredEvent;
 import com.luckystar.member.dto.SocialBindingStartResponse;
 import com.luckystar.member.dto.SocialLoginStartResponse;
+import com.luckystar.member.dto.SocialRegistrationPreviewResponse;
+import com.luckystar.member.dto.SocialRegistrationRequest;
 import com.luckystar.member.entity.Member;
 import com.luckystar.member.entity.MemberSocialAccount;
+import com.luckystar.member.exception.MemberAlreadyExistsException;
 import com.luckystar.member.exception.MemberNotFoundException;
 import com.luckystar.member.exception.SocialOAuthException;
 import com.luckystar.member.repository.MemberRepository;
@@ -22,7 +26,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.time.LocalDate;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -31,6 +37,7 @@ public class SocialAuthService {
 
     private static final String BINDING_TICKET_PREFIX = "oauth:binding-ticket:";
     private static final String LOGIN_TICKET_PREFIX = "oauth:login-ticket:";
+    private static final String REGISTRATION_TICKET_PREFIX = "oauth:registration-ticket:";
     private static final String SESSION_FLOW = "socialOAuthFlow";
     private static final String SESSION_MEMBER_ID = "socialOAuthMemberId";
     private static final String FLOW_LOGIN = "LOGIN";
@@ -39,6 +46,7 @@ public class SocialAuthService {
     private final MemberRepository memberRepository;
     private final MemberSocialAccountRepository socialAccountRepository;
     private final AuthService authService;
+    private final OutboxService outboxService;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
     private final SocialOAuthProperties properties;
@@ -136,11 +144,26 @@ public class SocialAuthService {
                     "success");
         }
 
-        MemberSocialAccount account = socialAccountRepository
-                .findByProviderAndProviderSubject(provider.id(), subject)
-                .orElseThrow(() -> new SocialOAuthException(
-                        HttpStatus.UNAUTHORIZED,
-                        provider.label() + " 帳戶尚未綁定，請先使用帳號密碼登入後完成綁定"));
+        Optional<MemberSocialAccount> existingAccount = socialAccountRepository
+                .findByProviderAndProviderSubject(provider.id(), subject);
+        if (existingAccount.isEmpty()) {
+            String registrationTicket = UUID.randomUUID().toString();
+            SocialRegistrationTicketPayload payload = registrationPayload(
+                    provider,
+                    subject,
+                    attributes);
+            redisTemplate.opsForValue().set(
+                    REGISTRATION_TICKET_PREFIX + registrationTicket,
+                    serializeRegistration(payload),
+                    properties.getRegistrationTicketTtl());
+            invalidateQuietly(session);
+            return frontendUrl(
+                    "/auth/social/register",
+                    "ticket",
+                    registrationTicket);
+        }
+
+        MemberSocialAccount account = existingAccount.get();
         updateProviderProfile(account, attributes);
         socialAccountRepository.save(account);
 
@@ -170,6 +193,87 @@ public class SocialAuthService {
                     HttpStatus.UNAUTHORIZED,
                     "Social login ticket is invalid");
         }
+    }
+
+    public SocialRegistrationPreviewResponse previewRegistration(String ticket) {
+        SocialRegistrationTicketPayload payload = readRegistrationTicket(ticket);
+        SocialProvider provider = SocialProvider.fromId(payload.provider());
+        return new SocialRegistrationPreviewResponse(
+                provider.id(),
+                provider.label(),
+                payload.email(),
+                payload.displayName(),
+                payload.avatarUrl(),
+                StringUtils.hasText(payload.email()));
+    }
+
+    @Transactional
+    public LoginResponse registerSocialAccount(SocialRegistrationRequest request) {
+        SocialRegistrationTicketPayload payload = readRegistrationTicket(request.getTicket());
+        SocialProvider provider = SocialProvider.fromId(payload.provider());
+
+        if (!request.isAdultConfirmed()
+                || request.getBirthDate().isAfter(LocalDate.now().minusYears(18))) {
+            throw new SocialOAuthException(
+                    HttpStatus.BAD_REQUEST,
+                    "You must be at least 18 years old to register");
+        }
+        if (StringUtils.hasText(payload.email())
+                && !payload.email().equalsIgnoreCase(request.getEmail().trim())) {
+            throw new SocialOAuthException(
+                    HttpStatus.BAD_REQUEST,
+                    "Email must match the verified social account email");
+        }
+        if (socialAccountRepository
+                .findByProviderAndProviderSubject(provider.id(), payload.subject())
+                .isPresent()) {
+            throw new SocialOAuthException(
+                    HttpStatus.CONFLICT,
+                    "This social account is already registered; please sign in again");
+        }
+
+        String username = request.getUsername().trim();
+        String email = request.getEmail().trim();
+        String nickname = request.getNickname().trim();
+        String realName = request.getRealName().trim();
+        if (memberRepository.existsByUsername(username)) {
+            throw new MemberAlreadyExistsException("Username already exists");
+        }
+        if (memberRepository.existsByEmail(email)) {
+            throw new MemberAlreadyExistsException(
+                    "Email already exists; sign in with your password and bind this social account");
+        }
+
+        Member member = new Member();
+        member.setUsername(username);
+        member.setEmail(email);
+        member.setNickname(nickname);
+        member.setRealName(realName);
+        member.setBirthDate(request.getBirthDate());
+        member.setPasswordHash(null);
+        if (StringUtils.hasText(payload.avatarUrl())) {
+            member.setAvatar(payload.avatarUrl());
+        }
+        Member saved = memberRepository.save(member);
+
+        MemberSocialAccount account = new MemberSocialAccount();
+        account.setMember(saved);
+        account.setProvider(provider.id());
+        account.setProviderSubject(payload.subject());
+        account.setEmail(payload.email());
+        account.setDisplayName(payload.displayName());
+        account.setAvatarUrl(payload.avatarUrl());
+        socialAccountRepository.save(account);
+
+        MemberRegisteredEvent event = new MemberRegisteredEvent(
+                saved.getId(),
+                saved.getUsername(),
+                saved.getEmail());
+        outboxService.save("member.registered", String.valueOf(saved.getId()), event);
+
+        LoginResponse login = authService.loginMember(saved);
+        redisTemplate.delete(REGISTRATION_TICKET_PREFIX + request.getTicket());
+        return login;
     }
 
     public String failureRedirect(String message) {
@@ -256,6 +360,52 @@ public class SocialAuthService {
         }
     }
 
+    private SocialRegistrationTicketPayload registrationPayload(
+            SocialProvider provider,
+            String subject,
+            Map<String, Object> attributes) {
+        String avatar = stringAttribute(attributes, "picture");
+        if (!StringUtils.hasText(avatar)) {
+            avatar = stringAttribute(attributes, "pictureUrl");
+        }
+        return new SocialRegistrationTicketPayload(
+                provider.id(),
+                subject,
+                stringAttribute(attributes, "email"),
+                stringAttribute(attributes, "name"),
+                avatar);
+    }
+
+    private String serializeRegistration(SocialRegistrationTicketPayload payload) {
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("Unable to create social registration ticket", ex);
+        }
+    }
+
+    private SocialRegistrationTicketPayload readRegistrationTicket(String ticket) {
+        if (!StringUtils.hasText(ticket)) {
+            throw new SocialOAuthException(
+                    HttpStatus.UNAUTHORIZED,
+                    "Social registration ticket is invalid or expired");
+        }
+        String payload = redisTemplate.opsForValue()
+                .get(REGISTRATION_TICKET_PREFIX + ticket);
+        if (!StringUtils.hasText(payload)) {
+            throw new SocialOAuthException(
+                    HttpStatus.UNAUTHORIZED,
+                    "Social registration ticket is invalid or expired");
+        }
+        try {
+            return objectMapper.readValue(payload, SocialRegistrationTicketPayload.class);
+        } catch (JsonProcessingException | IllegalArgumentException ex) {
+            throw new SocialOAuthException(
+                    HttpStatus.UNAUTHORIZED,
+                    "Social registration ticket is invalid");
+        }
+    }
+
     private String stringAttribute(Map<String, Object> attributes, String name) {
         Object value = attributes.get(name);
         return value != null ? String.valueOf(value) : null;
@@ -270,5 +420,13 @@ public class SocialAuthService {
     }
 
     private record SocialLoginTicketPayload(String accessToken, String refreshToken) {
+    }
+
+    private record SocialRegistrationTicketPayload(
+            String provider,
+            String subject,
+            String email,
+            String displayName,
+            String avatarUrl) {
     }
 }

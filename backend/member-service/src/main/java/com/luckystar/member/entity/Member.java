@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -29,11 +30,29 @@ public class Member {
 
     // ?惜?脩戌嚗ackson 摨?????+ Lombok toString ?
     @JsonIgnore
-    @Column(name = "password_hash", nullable = false, length = 255)
+    @Column(name = "password_hash", length = 255)
     private String passwordHash;
 
     @Column(nullable = false, length = 50)
     private String nickname;
+
+    @Column(name = "real_name", length = 80)
+    private String realName;
+
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
+
+    @Column(length = 20)
+    private String gender;
+
+    @Column(length = 255)
+    private String address;
+
+    @Column(name = "wallet_payment_method", nullable = false, length = 30)
+    private String walletPaymentMethod = "STAR_COIN";
+
+    @Column(name = "payment_confirmation_enabled", nullable = false)
+    private Boolean paymentConfirmationEnabled = true;
 
     @Column(columnDefinition = "TEXT")
     private String avatar;

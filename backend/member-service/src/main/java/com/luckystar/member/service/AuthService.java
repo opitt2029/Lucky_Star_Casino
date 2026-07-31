@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.format.DateTimeFormatter;
 
@@ -41,6 +42,8 @@ public class AuthService {
         member.setEmail(request.getEmail());
         member.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         member.setNickname(request.getNickname());
+        member.setRealName(request.getRealName());
+        member.setBirthDate(request.getBirthDate());
 
         Member saved = memberRepository.save(member);
 
@@ -63,7 +66,8 @@ public class AuthService {
         Member member = memberRepository.findByUsername(request.getUsername())
                 .orElseThrow(() -> new InvalidCredentialsException("Invalid username or password"));
 
-        if (!passwordEncoder.matches(request.getPassword(), member.getPasswordHash())) {
+        if (!StringUtils.hasText(member.getPasswordHash())
+                || !passwordEncoder.matches(request.getPassword(), member.getPasswordHash())) {
             throw new InvalidCredentialsException("Invalid username or password");
         }
 

@@ -1,3 +1,212 @@
+## [feat] -- 2026-07-30 -- Expand profile privacy and settings
+
+### Added
+- `member-service`: add profile real name, birthday, gender, address, wallet payment method, and payment confirmation fields with password-gated settings unlock.
+- `frontend`: expand `/profile` with masked private information, account summary, and wallet/security hints; basic-info settings now open from a dedicated button into a password-gated modal.
+- `frontend`: require real name and birthday during registration and show that both are registration-time-only fields.
+- `database/mysql/migration/V14__add_member_profile_settings.sql`: add the member profile settings columns for existing MySQL databases.
+
+### Changed
+- `frontend`: replace native profile gender/payment selects with themeable button/listbox dropdowns and a custom gold chevron icon.
+- `frontend`: close profile custom dropdowns on outside click or Escape, and calculate profile completeness from the five basic-info fields only.
+- `frontend`: remove the visible test-password hint from the profile settings password gate.
+- `frontend`: move profile password verification to the `/profile` entry gate and let basic-info settings open directly after the page is unlocked.
+- `frontend`: add a `/profile` game journey block showing per-game play duration, rounds, wins, best profit, and achievements from game history.
+- `frontend`: refine `/profile` private-info summary to show birthday as `19**-**-**`, gender as a visible choice, and address/wallet settings as configured status.
+- `frontend`: align read-only name and birthday fields in the profile settings modal, restyle gender/payment selects with the red-gold theme, and remove the payment confirmation field from the profile UI.
+- `frontend`: limit profile gender choices to `男`, `女`, and `不公開`, matching the backend update whitelist.
+- `frontend mock`: set the test account password to `123` and mirror the new profile/settings API behavior.
+
+### Verified
+- `mvn -B -ntp -pl backend/member-service test`
+- `npm.cmd run lint`
+- `npm.cmd run test`
+- `npm.cmd run build`
+- `npm.cmd run e2e`
+
+---
+## [fix] -- 2026-07-30 -- Fix profile route loading loop
+
+### Fixed
+- `frontend`: keep authenticated routes mounted while refreshing an existing profile so `/profile` no longer falls back into the route loading screen repeatedly.
+- `frontend`: add unit and Playwright smoke regression coverage for authenticated profile refresh.
+
+### Verified
+- `npm.cmd run lint`
+- `npm.cmd run test`
+- `npm.cmd run build`
+- `npm.cmd run e2e`
+
+---
+
+## [changed] -- 2026-07-30 -- Tighten frontend E2E coverage and dependency posture
+
+### Added
+- `frontend`: add Pixi fishing canvas E2E coverage for start, fire, shot accounting, settlement, and settlement panel rendering.
+- `frontend`: add mobile navigation E2E coverage for the bottom nav and game full-screen nav hiding behavior.
+
+### Changed
+- `frontend` and `frontend-admin`: refresh Vite/Vitest/React plugin/router/axios/PostCSS dependencies and pin vulnerable transitive packages through npm overrides.
+- `frontend`: add stable test ids to fishing and mobile navigation controls used by browser E2E tests.
+
+### Verified
+- `frontend`: `npm.cmd run build`, `npm.cmd run lint`, `npm.cmd run test`, `npm.cmd run e2e`, `npm.cmd run e2e:realws`.
+- `frontend-admin`: `npm.cmd run build`, `npm.cmd run lint`, `npm.cmd run test`.
+
+### Deployment
+- Existing local DB volumes may need migrations applied manually before real-backend E2E; this run applied `V12__create_member_social_accounts.sql`, `V13__allow_passwordless_social_members.sql`, and `V17__add_wallet_outbox.sql` to the local Docker volumes.
+
+---
+## [fix] — 2026-07-30 — Gateway 限流層信任邊界＋令牌桶化，風控日水位補重校排程
+
+### Added
+- `gateway-service`: `config/TrustedProxyMatcher`——自實作 IPv4/IPv6 CIDR 位元級比對（不引入
+  Spring Security），供 `ipKeyResolver` 判定 socket 對端是否為可信反向代理。
+- `gateway-service`: `rate-limit.trusted-proxies` 設定鍵（環境變數 `RATE_LIMIT_TRUSTED_PROXIES`，
+  預設空清單＝完全不信任 XFF）。
+- `game-service`: `GameRoundRepository.aggregateAllPlayersToday`——一次撈今日所有 (player, gameType)
+  的已結算 bet/win 聚合（走既有 partial index）。
+- `game-service`: `RiskControlService.reconcilePlayerDayWaterlines()` 與
+  `scheduler/PlayerDayWaterlineReconcileScheduler`（`risk.player-day-reconcile-ms`，預設 60s）。
+- 測試：`TrustedProxyMatcherTest`、`IpKeyResolverTest`、`PlayerDayWaterlineReconcileSchedulerTest`；
+  `PlayerRateLimitGlobalFilterTest` 改寫為令牌桶契約、`RiskControlServiceTest` 追加 reconcile 案例。
+
+### Changed
+- `gateway-service`: `RateLimitProperties` record 新增 `List<String> trustedProxies`（null 正規化為空清單）。
+- `gateway-service`: `RateLimitConfig.ipKeyResolver` 改為信任邊界解析——XFF 只在對端是可信代理時採信，
+  且 hop 由右到左找第一個非可信 hop；否則一律用 socket 對端。
+- `gateway-service`: `PlayerRateLimitGlobalFilter` 由固定視窗 INCR 計數器改為單一 Lua 令牌桶
+  （改寫自 SCG `request_rate_limiter.lua`），`replenishRate` 與 `burstCapacity` 皆生效、
+  key 改 hash-tag（`rate:{game|player}:{<uid>}:tokens`/`:ts`）。
+- `AGENTS.md` 雷區 31：更新 `rate-limit.player` 描述（固定視窗→真令牌桶）、補 `ipKeyResolver` 信任邊界說明。
+
+### Fixed
+- **XFF 偽造繞過**（🔴）：任何人帶隨機 `X-Forwarded-For` 即可為每請求換到全新限流桶，令
+  `/api/v1/auth/**` 的 5 req/s 暴力破解防護失效。修法＝預設不信任 XFF、僅可信代理身後採信。
+- **限流 key 永無 TTL 致永久 429**（🟠）：舊 INCR＋（僅 count==1）EXPIRE 兩次往返，expire 失敗則
+  key 無 TTL、計數只增不減、該玩家永久 429 不自癒。令牌桶把 TTL 與 token 壓進同一原子腳本。
+- **固定視窗邊界 2× 上限＋`replenishRate` 死設定**（🟠）：令牌桶連續補充令牌消除視窗暴衝；
+  `replenishRate` 生效（game 真的是 5/s，不再是固定每秒 10）。
+- **風控日水位無界漂移**（🟡）：`recordRoundSettled` 的 HINCRBY best-effort 失敗永不修正，
+  `isPlayerOverLimit` 見兩欄即終日信任。新增排程以 `game_rounds` 為準 HSET 覆蓋，把無界漂移
+  壓成「≤ 一個排程間隔」（方向為欠攔）。
+
+### 為什麼
+四個缺陷都集中在 gateway 限流層與 game 風控快取，前三者是**安全/可用性**問題（防護繞過、永久鎖死、
+限流不如設定），第四者是**統計正確性**問題。刻意保留的設計：限流 fail-open（Redis 掛掉放行，真正抗洪
+堤壩是 `RouteConcurrencyLimitGlobalFilter` 的純記憶體 AIMD）、所有 RTP 門檻與 `player-win-limit` 一律
+不動（只改「統計怎麼保持準確」，不改「怎麼判」，雷區 17）。`FilterOrder.RATE_LIMIT (-200)` 為死碼但依
+CLAUDE.md §3 只回報不刪。
+
+### 如何驗證
+- `mvn -pl backend/gateway-service,backend/game-service test` → 兩模組 BUILD SUCCESS
+  （gateway 全綠、game-service 205 tests / 0 fail），全程 H2＋mock、零外部依賴。
+
+---
+## [fix] -- 2026-07-29 -- Redis 補上持久化、outbox 補上保留期清理、修正限流機制的名詞
+
+### Fixed
+- `docker-compose.yml`：redis 服務補上 `command: ["redis-server","--appendonly","yes"]` 與
+  named volume `lucky_redis_data:/data`。原本**是六個有狀態服務中唯一沒掛 volume 的**
+  （mysql / postgres / kafka / prometheus / grafana 都有），`redis:7` 預設 RDB 只寫容器內部
+  `/data`，容器一重建資料就全歸零。
+- `AGENTS.md` 雷區 31：`rate-limit.player` 的機制名稱由「token bucket」更正為
+  **固定視窗計數器**（實作是 `INCR` + 首次請求設 1 秒 TTL）。前端 `useFishingSession`
+  才是真的 token bucket（有 tokens 與 refill 速率），該處敘述無誤未動。
+- `tools/reconciliation/rebuild-rank-redis.mjs`、`docs/plans/04-事件可靠性與消費冪等強化藍圖.md`：
+  「本專案未設 AOF/RDB 策略」已隨上述修正過期，補記現況（結論不變：`down -v`／`FLUSHDB` 仍會清空）。
+
+### Added
+- `wallet-service`：`WalletOutboxPurgeJob` + `WalletOutboxRepository.deleteSentBefore`，
+  每日 04:00 刪除 `sentAt` 早於保留期的 **SENT** 列（`wallet.outbox.retention-days`，預設 7 天）。
+- `member-service`：同構的 `OutboxPurgeJob` + `OutboxEventRepository.deleteSentBefore`
+  （`outbox.retention-days`，預設 7 天）。
+- `AGENTS.md` 雷區 32（新增）：Redis 有兩類資料禁不起清空、`down -v` 的後果、
+  `rebuild-rank-redis.mjs` 的覆蓋範圍限制、`disabled:player:` 無開機回填。
+- 測試：`WalletOutboxPurgeJobTest`、`OutboxPurgeJobTest`（各 2 個案例，鎖住
+  「只刪 SENT」與「例外不外拋」兩個不變量）。
+
+### 為什麼
+- **Redis 持久化**：本專案只有 `risk:rtp:` 是純快取，其餘是 Redis 當主儲存或跨服務共用狀態。
+  清空的後果分兩級：① `rank:*` 排行榜歸零（重建腳本只涵蓋 2 個 ZSET，`rank:game:*` /
+  `rank:player:*` / `rank:friend:*` 無重建路徑）；② `disabled:player:*` 無 TTL，
+  清空等於所有被停用玩家自動解封——這是安全問題（T-051）。
+- **Outbox 清理**：poller 投遞成功只把 status 標 SENT、從不刪除，而每筆下注/派彩/贈禮都寫一列，
+  這張表單向成長。投遞查詢走 `idx_wallet_outbox_status_created`（status 在複合索引第一欄），
+  撈 PENDING 掃不到 SENT，所以膨脹**不會**讓 poller 變慢——是維運問題（磁碟、備份時間、
+  autovacuum 負擔）而非效能問題，也因此一直沒被發現。
+- **只刪 SENT、保留 7 天**：PENDING 代表尚未確認送達，刪掉就是無聲丟失事件（正是 Outbox 要防的）。
+  保留期取 7 天與 rank 消費端去重標記 TTL 一致——兩者都對應「最大重送窗口」，保留期短於去重 TTL
+  會出現「事件已刪、去重標記還在」的無法對照狀態。排在 04:00 離峰：bulk DELETE 產生大量 WAL
+  並持列鎖，不該與帳務熱路徑爭搶同一個 PostgreSQL。
+- **限流名詞**：固定視窗允許「視窗尾＋下個視窗頭」瞬間吃 2 倍配額，token bucket 沒這破口。
+  1 秒視窗下實務影響小，但會誤導後續讀者對邊界行為的判斷。
+
+### 如何驗證
+- `mvn -pl backend/wallet-service,backend/member-service test` → **BUILD SUCCESS**
+  （wallet 176 tests / 0 failures，含新增 2 筆；member 全綠）。
+  JPQL bulk DELETE 的正確性另由 `contextLoads` 覆蓋——Spring Data 在 repository bean
+  建立時就會解析 `@Query`，語法錯誤會讓 `@SpringBootTest` 直接啟動失敗。
+- `docker compose config` 確認 redis 的 command / volume 已生效（需重建容器：
+  `docker compose up -d --force-recreate redis`）。
+- ⚠️ 既有環境套用時 redis 會以空資料啟動（原本就沒持久化），排行榜請跑
+  `node tools/reconciliation/rebuild-rank-redis.mjs --dry-run` 確認差異後再重建。
+
+---
+## [added] -- 2026-07-28 -- 簡報新增 Kafka 事件架構、ER 精簡版與 AI 協作段落的產生器
+
+### Added
+- `tools/pptx/build_kafka_er_ai_slides.py`：在既有簡報上新增 12 頁**原生 PPT 版面**（純 shape，不插圖片），
+  並重排簡報結構。內容分四組：
+  - 資料模型精簡版 ×2（PostgreSQL 寫庫 16 表 / MySQL 讀庫 13 表，依責任區分塊，不畫關聯線）
+  - Kafka 事件驅動架構 ×5（8 業務 topic + 5 DLT 全景、熱路徑取捨、指令/事件分離 ADR-002、
+    Transactional Outbox 與冪等消費、DLT 與人工重送），並附講稿備忘稿
+  - CQRS 合併版 ×1（取代原本內容重疊的「資料層設計」與「資料層架構」兩頁）
+  - AI 協作 ×4（工具與分工、如何讓 AI 照專案規範產出、三道機械把關、三個真實踩雷案例）
+
+### Changed
+- 簡報結構：刪除重複的 CQRS 兩頁、原完整版 ER 三頁移至最後附錄區、精簡版 ER 補到前段。
+
+### 為什麼
+期末簡報的流量段落缺少事件驅動架構的說明，而 CQRS 佔了兩頁重複內容；
+ER 圖用完整關聯版當正片太細，不利現場口述。把這些改動寫成腳本而非手改 pptx，
+是為了讓版面規格（配色、字級、邊界）與原簡報一致且可重跑。
+
+### 如何驗證
+- `python tools/pptx/build_kafka_er_ai_slides.py <來源.pptx> <輸出.pptx>` → 68 頁
+- python-pptx 掃描：12 頁新版面全部落在畫布範圍內，備忘稿僅掛在 Kafka 5 頁
+- PowerPoint COM 匯出 PNG 逐頁目視確認版面無重疊、無溢出
+
+---
+## [feat] -- 2026-07-27 -- Add passwordless Google and LINE registration
+
+### Added
+- `member-service`: unbound OAuth identities now receive a ten-minute Redis registration ticket instead of an error.
+- `member-service`: add social registration preview and completion APIs; completion creates the member, `(provider, provider_subject)` binding, `member.registered` outbox event, and platform JWT session.
+- `frontend`: add `/auth/social/register` completion page with provider profile preview, account details, verified Email locking, and server-backed age validation.
+- `frontend mock`: mirror unbound-provider registration, one-time ticket consumption, wallet initialization, and social binding behavior.
+- `database/mysql/migration/V13__allow_passwordless_social_members.sql`: allow `members.password_hash` to be `NULL` for social-only members.
+
+### Changed
+- Social-only members cannot use password login until a password-setting flow is introduced.
+- Existing member Emails are never auto-merged from OAuth claims; users must sign in to the existing account and bind the provider.
+- The login and registration tabs both expose Google, LINE, and Apple entry buttons; disabled providers still return the existing configuration error.
+
+### Why
+- New players should be able to create a Lucky Star account directly from a verified provider identity without first creating an unrelated password account.
+- Provider `sub`, not Email, remains the external identity key, preventing an OAuth Email match from silently taking over an existing member.
+
+### Verified
+- `mvn -pl backend/member-service test` (107 tests)
+- `npm.cmd run lint`
+- `npm.cmd run test` (70 tests)
+- `npm.cmd run build`
+- Browser QA at desktop and 390px mobile widths with the mock Google registration flow.
+
+### Deployment
+- Existing MySQL volumes do not auto-run migrations in this project; apply `database/mysql/migration/V13__allow_passwordless_social_members.sql` before deploying the updated member-service.
+
+---
 ## [changed] -- 2026-07-27 -- Make rank seed player names less robotic
 
 ### Changed

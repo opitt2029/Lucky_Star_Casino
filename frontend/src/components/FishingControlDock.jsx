@@ -24,7 +24,9 @@ export default function FishingControlDock({
 
       <div className="fishing-dock-ammo-group" aria-label="本局彈藥">
         {ammoOptions.map((option) => {
-          const hasActiveAmmo = Boolean(activeAmmo?.key || activeAmmo?.costPerShot || activeAmmo?.level)
+          const hasActiveAmmo = Boolean(
+            activeAmmo?.key || activeAmmo?.costPerShot || activeAmmo?.level
+          )
           const isActive = hasActiveAmmo
             ? option.key === activeAmmo?.key ||
               option.costPerShot === activeAmmo?.costPerShot ||
@@ -42,7 +44,9 @@ export default function FishingControlDock({
                 'fishing-dock-ammo',
                 `fishing-dock-ammo--${option.tone}`,
                 isActive ? 'is-active' : '',
-              ].filter(Boolean).join(' ')}
+              ]
+                .filter(Boolean)
+                .join(' ')}
               title={
                 ammoDisabled
                   ? '本局彈藥已鎖定，完成收網結算後可重新選擇'
@@ -68,6 +72,7 @@ export default function FishingControlDock({
 
       <button
         type="button"
+        data-testid="fishing-settle"
         onClick={onSettle}
         disabled={!canSettle || isSettling}
         className="fishing-stage-settle fishing-stage-settle--dock"

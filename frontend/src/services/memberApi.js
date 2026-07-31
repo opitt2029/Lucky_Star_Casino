@@ -23,7 +23,13 @@ function mapProfile(data) {
     id: String(data.playerId),
     username: data.username,
     nickname: data.nickname,
-    avatarUrl: data.avatar || '',
+    avatarUrl: data.avatar || data.avatarUrl || '',
+    realName: data.realName || '',
+    birthDate: data.birthDate || '',
+    gender: data.gender || '',
+    address: data.address || '',
+    walletPaymentMethod: data.walletPaymentMethod || 'STAR_COIN',
+    paymentConfirmationEnabled: data.paymentConfirmationEnabled !== false,
     role: data.role,
     createdAt: data.createdAt,
     consecutiveCheckInDays: 0,
@@ -133,12 +139,48 @@ export const memberApi = {
     }
   },
 
-  async register({ username, email, password, nickname }) {
+  async getSocialRegistrationPreview(ticket) {
     if (useMockApi) {
-      return mockApi.register({ username, email, password, nickname })
+      return mockApi.getSocialRegistrationPreview(ticket)
+    }
+    const res = await api.post('/api/v1/auth/social/registration/preview', { ticket })
+    return res.data.data
+  },
+
+  async registerSocial(payload) {
+    if (useMockApi) {
+      return mockApi.registerSocial(payload)
+    }
+    const res = await api.post('/api/v1/auth/social/registration', payload)
+    const { accessToken, refreshToken, expiresIn } = res.data.data
+    const profileRes = await api.get('/api/v1/player/profile', {
+      skipAuthRedirect: true,
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    return {
+      accessToken,
+      refreshToken,
+      expiresIn,
+      player: mapProfile(profileRes.data.data),
+    }
+  },
+
+  async register({ username, email, password, nickname, realName, birthDate, adultConfirmed }) {
+    const payload = {
+      username,
+      email,
+      password,
+      nickname,
+      realName,
+      birthDate,
+      adultConfirmed: Boolean(adultConfirmed),
     }
 
-    await api.post('/api/v1/auth/register', { username, email, password, nickname })
+    if (useMockApi) {
+      return mockApi.register(payload)
+    }
+
+    await api.post('/api/v1/auth/register', payload)
     return memberApi.login({ username, password })
   },
 
@@ -165,16 +207,45 @@ export const memberApi = {
     return mapProfile(res.data.data)
   },
 
-  async updateProfile({ nickname, avatarUrl }) {
+  async updateProfile({
+    nickname,
+    avatarUrl,
+    gender,
+    address,
+    walletPaymentMethod,
+    paymentConfirmationEnabled,
+    currentPassword,
+  }) {
     if (useMockApi) {
-      return mockApi.updateProfile({ nickname, avatarUrl })
+      return mockApi.updateProfile({
+        nickname,
+        avatarUrl,
+        gender,
+        address,
+        walletPaymentMethod,
+        paymentConfirmationEnabled,
+        currentPassword,
+      })
     }
 
     const body = {}
     if (nickname !== undefined) body.nickname = nickname
     if (avatarUrl !== undefined) body.avatar = avatarUrl
+    if (gender !== undefined) body.gender = gender
+    if (address !== undefined) body.address = address
+    if (walletPaymentMethod !== undefined) body.walletPaymentMethod = walletPaymentMethod
+    if (paymentConfirmationEnabled !== undefined) body.paymentConfirmationEnabled = paymentConfirmationEnabled
+    if (currentPassword !== undefined) body.currentPassword = currentPassword
     const res = await api.put('/api/v1/player/profile', body)
     return mapProfile(res.data.data)
+  },
+
+  async verifyProfilePassword(password) {
+    if (useMockApi) {
+      return mockApi.verifyProfilePassword(password)
+    }
+    await api.post('/api/v1/player/profile/settings/unlock', { password })
+    return true
   },
 
   async getSocialBindings() {

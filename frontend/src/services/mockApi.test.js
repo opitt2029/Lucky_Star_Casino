@@ -35,8 +35,25 @@ describe('mockApi 第三方登入', () => {
     expect(session.player.id).toBe('demo-player')
   })
 
-  test('未綁定的 provider 不允許登入', async () => {
-    await expect(mockApi.startSocialLogin('apple')).rejects.toThrow('尚未綁定')
+  test('未綁定的 provider 會導向第三方註冊並建立會員', async () => {
+    const start = await mockApi.startSocialLogin('apple')
+    const ticket = new window.URL(start.authorizationUrl, 'http://localhost').searchParams.get('ticket')
+    const preview = await mockApi.getSocialRegistrationPreview(ticket)
+
+    expect(preview.provider).toBe('apple')
+
+    const session = await mockApi.registerSocial({
+      ticket,
+      username: 'apple-player',
+      nickname: 'Apple Player',
+      email: 'apple-player@example.com',
+      birthDate: '2000-01-01',
+      adultConfirmed: true,
+    })
+
+    expect(session.player.username).toBe('apple-player')
+    expect(session.accessToken).toContain('mock-access-social-player')
+    await expect(mockApi.getSocialRegistrationPreview(ticket)).rejects.toThrow('無效或已過期')
   })
 })
 

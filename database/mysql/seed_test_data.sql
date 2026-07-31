@@ -6,7 +6,7 @@
 -- 載入時機：由 docker-compose 掛載到 /docker-entrypoint-initdb.d/，
 --           僅在「資料 Volume 首次建立」時自動執行（在 init.sql 之後）。
 --           想重載：docker compose down -v && docker compose up -d
--- 密碼：三個帳號密碼皆為 Password1（BCrypt 雜湊，符合 register 規則：≥8 碼含英數）。
+-- 密碼：三個帳號密碼皆為 123（BCrypt 雜湊，符合 register 規則：≥8 碼含英數）。
 -- 對應 PostgreSQL 的初始星幣餘額：見 database/postgres/seed_test_data.sql（player_id 對齊）。
 -- 冪等：ON DUPLICATE KEY UPDATE，可重複執行不報錯。
 -- ============================================================
@@ -20,11 +20,11 @@ INSERT INTO members
     (id,   username,   email,                   password_hash,
      nickname,   role,     status,   is_new_gift_claimed)
 VALUES
-    (1001, 'tester01', 'tester01@example.com', '$2b$10$6gbb.Gbe.iotaGfb9wxqSu8glcV280XdY8tlazY9wAzkRTcWeOoDW',
+    (1001, 'tester01', 'tester01@example.com', '$2a$10$c7LS3bpjDkF5.nyAO66rpeSF/Wq0.2PZCIKhCtg9wZqWIYwFvbJMK',
      '測試員一', 'PLAYER', 'ACTIVE', 1),
-    (1002, 'tester02', 'tester02@example.com', '$2b$10$6gbb.Gbe.iotaGfb9wxqSu8glcV280XdY8tlazY9wAzkRTcWeOoDW',
+    (1002, 'tester02', 'tester02@example.com', '$2a$10$c7LS3bpjDkF5.nyAO66rpeSF/Wq0.2PZCIKhCtg9wZqWIYwFvbJMK',
      '測試員二', 'PLAYER', 'ACTIVE', 1),
-    (1003, 'tester03', 'tester03@example.com', '$2b$10$6gbb.Gbe.iotaGfb9wxqSu8glcV280XdY8tlazY9wAzkRTcWeOoDW',
+    (1003, 'tester03', 'tester03@example.com', '$2a$10$c7LS3bpjDkF5.nyAO66rpeSF/Wq0.2PZCIKhCtg9wZqWIYwFvbJMK',
      '測試員三', 'PLAYER', 'ACTIVE', 1)
 ON DUPLICATE KEY UPDATE
     email               = VALUES(email),

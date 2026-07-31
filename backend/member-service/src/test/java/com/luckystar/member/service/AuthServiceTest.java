@@ -16,6 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -49,6 +50,9 @@ class AuthServiceTest {
         req.setUsername("testuser");
         req.setEmail("test@example.com");
         req.setPassword("Password1");
+        req.setNickname("Tester");
+        req.setRealName("Wang Test");
+        req.setBirthDate(LocalDate.of(1990, 1, 1));
         return req;
     }
 

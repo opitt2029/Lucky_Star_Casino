@@ -1,23 +1,27 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import DecorativeAsset from '../components/DecorativeAsset'
 import CoinRain from '../components/CoinRain'
+import { LoginForm, RegisterForm } from '../features/auth/AuthForms'
+import usePostAuthSync from '../hooks/usePostAuthSync'
 import { loginMember, registerMember } from '../store/slices/authSlice'
-import { fetchRanks } from '../store/slices/rankSlice'
-import { fetchDiamondBalance } from '../store/slices/diamondSlice'
-import { fetchWallet } from '../store/slices/walletSlice'
 import { getBackgroundStyle } from '../theme/backgroundTheme'
 import { getBirthDateMax, isAdultBirthDate, socialProviders } from '../utils/memberPreferences'
+import { pathFromLocationState, saveOAuthReturnTo } from '../utils/authNavigation'
 import { memberApi, extractError } from '../services/memberApi'
 
 const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
-const defaultLogin = useMockApi
-  ? { username: 'test', password: 'test1234' }
-  : { username: 'tester01', password: 'Password1' }
+const demoMode = import.meta.env.VITE_DEMO_MODE === 'true'
+const demoUsername = import.meta.env.VITE_DEMO_USERNAME || (useMockApi ? 'test' : '')
+const demoPassword = import.meta.env.VITE_DEMO_PASSWORD || (useMockApi ? '123' : '')
+const defaultLogin = demoMode
+  ? { username: demoUsername, password: demoPassword }
+  : { username: '', password: '' }
 const defaultRegister = {
   username: '',
   nickname: '',
+  realName: '',
   email: '',
   password: '',
   birthDate: '',
@@ -28,38 +32,24 @@ export default function Member() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const location = useLocation()
+  const syncAfterAuth = usePostAuthSync()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { loading, error, isAuthenticated } = useSelector((state) => state.auth)
+  const { loading, error, sessionError, isAuthenticated } = useSelector((state) => state.auth)
   const initialMode = searchParams.get('mode') === 'register' ? 'register' : 'login'
   const [mode, setMode] = useState(initialMode)
   const [loginForm, setLoginForm] = useState(defaultLogin)
   const [registerForm, setRegisterForm] = useState(defaultRegister)
   const [memberNotice, setMemberNotice] = useState('')
   const [socialLoading, setSocialLoading] = useState('')
-  const from = location.state?.from?.pathname || '/games'
+  const from = pathFromLocationState(location.state?.from)
   const birthDateMax = getBirthDateMax()
   const registerAgeError = registerForm.birthDate && !isAdultBirthDate(registerForm.birthDate)
-
-  const pageCopy = useMemo(
-    () =>
-      mode === 'register'
-        ? {
-            eyebrow: 'Create Account',
-            title: '建立會員帳號',
-            submit: '建立帳號',
-            switchText: '已有帳號，前往登入',
-          }
-        : {
-            eyebrow: 'Member Login',
-            title: '登入會員',
-            submit: '登入',
-            switchText: '尚未註冊，建立帳號',
-          },
-    [mode]
-  )
+  const displayError = error || sessionError
+  const hasDemoCredentials = demoMode && Boolean(demoUsername && demoPassword)
 
   useEffect(() => {
     setMode(initialMode)
+    setMemberNotice('')
   }, [initialMode])
 
   useEffect(() => {
@@ -84,12 +74,6 @@ export default function Member() {
     setRegisterForm((current) => ({ ...current, [name]: type === 'checkbox' ? checked : value }))
   }
 
-  const syncAfterAuth = () => {
-    dispatch(fetchWallet())
-    dispatch(fetchDiamondBalance())
-    dispatch(fetchRanks())
-  }
-
   const handleLoginSubmit = async (event) => {
     event.preventDefault()
     try {
@@ -104,13 +88,14 @@ export default function Member() {
   const handleSocialLogin = async (provider) => {
     setSocialLoading(provider.id)
     setMemberNotice('')
+    saveOAuthReturnTo(from)
     try {
       const start = await memberApi.startSocialLogin(provider.id)
       window.location.assign(start.authorizationUrl)
     } catch (socialError) {
       setMemberNotice(
         extractError(socialError) ||
-          `${provider.label} 登入目前無法啟動，請確認帳戶已綁定。`,
+          `${provider.label} 登入或註冊目前無法啟動，請稍後再試。`,
       )
       setSocialLoading('')
     }
@@ -131,6 +116,11 @@ export default function Member() {
     }
   }
 
+  const pageCopy =
+    mode === 'register'
+      ? { eyebrow: 'Create Account', title: '建立會員帳號', switchText: '已有帳號，前往登入' }
+      : { eyebrow: 'Member Login', title: '登入會員', switchText: '尚未註冊，建立帳號' }
+
   return (
     <div className="theme-background min-h-screen text-white" style={getBackgroundStyle('auth')}>
       <CoinRain />
@@ -146,15 +136,15 @@ export default function Member() {
       <main className="mx-auto grid max-w-7xl items-center gap-8 px-4 pb-12 pt-4 sm:px-6 lg:grid-cols-[1fr_520px] lg:px-8">
         <section className="grid gap-6">
           <div>
-            <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">
-              Member Access
-            </p>
+            <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Member Access</p>
             <h1 className="brand-title mt-4 max-w-3xl text-4xl font-black tracking-tight sm:text-6xl">
               登入後開始遊玩
             </h1>
             <p className="mt-5 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
-              登入或建立帳號後，就能進入遊戲大廳、鑽石錢包與會員中心。測試帳號{' '}
-              {defaultLogin.username} / {defaultLogin.password} 已預填，可直接體驗目前流程。
+              登入或建立帳號後，就能進入遊戲大廳、鑽石錢包與會員中心。
+              {hasDemoCredentials && (
+                <span className="block">展示模式帳號 {demoUsername} / {demoPassword} 已預填。</span>
+              )}
             </p>
           </div>
           <DecorativeAsset assetKey="memberHero" className="min-h-[340px]" />
@@ -162,32 +152,23 @@ export default function Member() {
 
         <section className="luxury-panel rounded p-6">
           <div className="grid grid-cols-2 gap-2 rounded bg-red-950/70 p-1">
-            <button
-              type="button"
-              onClick={() => {
-                setSearchParams({ mode: 'login' })
-                setMode('login')
-              }}
-              className={[
-                'rounded px-4 py-3 text-sm font-black transition',
-                mode === 'login' ? 'gold-button' : 'text-yellow-100/62 hover:text-yellow-100',
-              ].join(' ')}
-            >
-              登入
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSearchParams({ mode: 'register' })
-                setMode('register')
-              }}
-              className={[
-                'rounded px-4 py-3 text-sm font-black transition',
-                mode === 'register' ? 'gold-button' : 'text-yellow-100/62 hover:text-yellow-100',
-              ].join(' ')}
-            >
-              註冊
-            </button>
+            {['login', 'register'].map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => {
+                  setSearchParams({ mode: item })
+                  setMode(item)
+                  setMemberNotice('')
+                }}
+                className={[
+                  'rounded px-4 py-3 text-sm font-black transition',
+                  mode === item ? 'gold-button' : 'text-yellow-100/62 hover:text-yellow-100',
+                ].join(' ')}
+              >
+                {item === 'login' ? '登入' : '註冊'}
+              </button>
+            ))}
           </div>
 
           <p className="gold-muted mt-6 text-xs font-black uppercase tracking-[0.3em]">
@@ -196,159 +177,31 @@ export default function Member() {
           <h2 className="brand-title mt-3 text-2xl font-black">{pageCopy.title}</h2>
 
           {mode === 'login' ? (
-            <form onSubmit={handleLoginSubmit} className="mt-6 grid gap-4">
-              <label className="grid gap-2 text-sm font-bold text-yellow-100/78">
-                帳號
-                <input
-                  name="username"
-                  className="rounded border border-yellow-200/15 bg-red-950/70 px-4 py-3 text-white outline-none focus:border-yellow-200"
-                  value={loginForm.username}
-                  onChange={handleLoginChange}
-                  autoComplete="username"
-                  required
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-bold text-yellow-100/78">
-                密碼
-                <input
-                  name="password"
-                  className="rounded border border-yellow-200/15 bg-red-950/70 px-4 py-3 text-white outline-none focus:border-yellow-200"
-                  value={loginForm.password}
-                  onChange={handleLoginChange}
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                />
-              </label>
-              <div className="grid gap-2 sm:grid-cols-3">
-                {socialProviders.map((provider) => (
-                  <button
-                    key={provider.id}
-                    type="button"
-                    onClick={() => handleSocialLogin(provider)}
-                    disabled={Boolean(socialLoading)}
-                    className={`rounded border px-3 py-3 text-sm font-black transition hover:brightness-125 ${provider.accentClass}`}
-                  >
-                    {socialLoading === provider.id ? '連線中...' : provider.label}
-                  </button>
-                ))}
-              </div>
-              {memberNotice && (
-                <p className="rounded border border-yellow-200/25 bg-yellow-200/10 px-4 py-3 text-sm font-bold text-yellow-100">
-                  {memberNotice}
-                </p>
-              )}
-              {error && (
-                <p className="rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">
-                  {error}
-                </p>
-              )}
-              <button
-                type="submit"
-                disabled={loading}
-                className="gold-button mt-2 rounded px-5 py-3 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {loading ? '登入中...' : pageCopy.submit}
-              </button>
-            </form>
+            <LoginForm
+              form={loginForm}
+              onChange={handleLoginChange}
+              onSubmit={handleLoginSubmit}
+              loading={loading}
+              error={displayError}
+              notice={memberNotice}
+              providers={socialProviders}
+              socialLoading={socialLoading}
+              onSocialLogin={handleSocialLogin}
+            />
           ) : (
-            <form onSubmit={handleRegisterSubmit} className="mt-6 grid gap-4">
-              <label className="grid gap-2 text-sm font-bold text-yellow-100/78">
-                帳號
-                <input
-                  name="username"
-                  className="rounded border border-yellow-200/15 bg-red-950/70 px-4 py-3 text-white outline-none focus:border-yellow-200"
-                  placeholder="lucky-player"
-                  value={registerForm.username}
-                  onChange={handleRegisterChange}
-                  minLength={3}
-                  required
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-bold text-yellow-100/78">
-                暱稱
-                <input
-                  name="nickname"
-                  className="rounded border border-yellow-200/15 bg-red-950/70 px-4 py-3 text-white outline-none focus:border-yellow-200"
-                  placeholder="Lucky Player"
-                  value={registerForm.nickname}
-                  onChange={handleRegisterChange}
-                  minLength={2}
-                  required
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-bold text-yellow-100/78">
-                Email
-                <input
-                  name="email"
-                  className="rounded border border-yellow-200/15 bg-red-950/70 px-4 py-3 text-white outline-none focus:border-yellow-200"
-                  placeholder="player@example.com"
-                  value={registerForm.email}
-                  onChange={handleRegisterChange}
-                  type="email"
-                  required
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-bold text-yellow-100/78">
-                密碼
-                <input
-                  name="password"
-                  className="rounded border border-yellow-200/15 bg-red-950/70 px-4 py-3 text-white outline-none focus:border-yellow-200"
-                  value={registerForm.password}
-                  onChange={handleRegisterChange}
-                  type="password"
-                  minLength={8}
-                  pattern="(?=.*[A-Za-z])(?=.*\d).{8,}"
-                  title="至少 8 碼，並包含英文與數字"
-                  required
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-bold text-yellow-100/78">
-                出生日期
-                <input
-                  name="birthDate"
-                  className="rounded border border-yellow-200/15 bg-red-950/70 px-4 py-3 text-white outline-none focus:border-yellow-200"
-                  value={registerForm.birthDate}
-                  onChange={handleRegisterChange}
-                  type="date"
-                  max={birthDateMax}
-                  required
-                />
-              </label>
-              <label className="flex items-start gap-3 rounded border border-yellow-200/15 bg-red-950/50 px-4 py-3 text-sm font-bold text-yellow-100/78">
-                <input
-                  name="adultConfirmed"
-                  className="mt-1 h-4 w-4 accent-yellow-200"
-                  checked={registerForm.adultConfirmed}
-                  onChange={handleRegisterChange}
-                  type="checkbox"
-                  required
-                />
-                <span>我確認已年滿 18 歲，並同意建立會員帳號。</span>
-              </label>
-              {memberNotice && (
-                <p className="rounded border border-yellow-200/25 bg-yellow-200/10 px-4 py-3 text-sm font-bold text-yellow-100">
-                  {memberNotice}
-                </p>
-              )}
-              {registerAgeError && (
-                <p className="rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">
-                  出生日期未滿 18 歲，無法完成註冊。
-                </p>
-              )}
-              {error && (
-                <p className="rounded border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">
-                  {error}
-                </p>
-              )}
-              <button
-                type="submit"
-                disabled={loading}
-                className="gold-button mt-2 rounded px-5 py-3 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {loading ? '建立中...' : pageCopy.submit}
-              </button>
-            </form>
+            <RegisterForm
+              form={registerForm}
+              onChange={handleRegisterChange}
+              onSubmit={handleRegisterSubmit}
+              loading={loading}
+              error={displayError}
+              notice={memberNotice}
+              birthDateMax={birthDateMax}
+              ageError={registerAgeError}
+              providers={socialProviders}
+              socialLoading={socialLoading}
+              onSocialLogin={handleSocialLogin}
+            />
           )}
 
           <button
