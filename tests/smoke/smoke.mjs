@@ -42,6 +42,16 @@ async function http(method, path, { token, body, headers = {} } = {}) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+async function httpRetry429(method, path, options, attempts = 3) {
+  let last;
+  for (let i = 0; i < attempts; i++) {
+    last = await http(method, path, options);
+    if (last.status !== 429) return last;
+    await sleep(1200 * (i + 1));
+  }
+  return last;
+}
+
 // ApiResponse<T> = { success, data, message }；RankController 回裸物件，故 data 兩種都吃。
 const dataOf = (j) => (j && typeof j === 'object' && 'data' in j ? j.data : j);
 
@@ -66,7 +76,14 @@ async function main() {
   console.log('\n[1] member-service');
   const stamp = Date.now();
   const username = `smoke_${stamp}`;
-  const cred = { username, email: `${username}@smoke.test`, password: 'smoke1234', nickname: 'SmokeBot' };
+  const cred = {
+    username,
+    email: `${username}@smoke.test`,
+    password: 'Password1',
+    nickname: 'SmokeBot',
+    realName: 'Smoke Tester',
+    birthDate: '1990-01-01',
+  };
   let token, refreshToken, playerId;
 
   try {
@@ -237,7 +254,7 @@ async function main() {
         `status=${re.status} credited=${de?.credited}`);
 
       // 結算後逐發公平性驗證（用第一發）
-      const rv = await http('GET',
+      const rv = await httpRetry429('GET',
         `/api/v1/game/fishing/${sessionId}/verify-shot?shotSeq=1&fishType=${encodeURIComponent(fishType)}&betPerShot=10`,
         { token });
       record('GET /api/v1/game/fishing/{id}/verify-shot', rv.status === 200 ? 'PASS' : 'FAIL', `status=${rv.status}`);
@@ -246,7 +263,7 @@ async function main() {
 
   // 3e. RTP 統計
   try {
-    const r = await http('GET', '/api/v1/game/rtp', { token });
+    const r = await httpRetry429('GET', '/api/v1/game/rtp', { token });
     record('GET /api/v1/game/rtp', r.status === 200 ? 'PASS' : 'FAIL', `status=${r.status}`);
   } catch (e) { record('GET /api/v1/game/rtp', 'FAIL', e.message); }
 

@@ -1,0 +1,57 @@
+# Closed Beta compose overlay.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.beta.yml --env-file .env up -d --build
+#
+# This overlay removes host-published ports from databases, Kafka, Kafka UI, and
+# individual backend services. Only gateway-service remains published, ideally
+# bound to 127.0.0.1 for a same-host reverse proxy.
+
+services:
+  mysql:
+    ports: !reset []
+
+  postgres:
+    ports: !reset []
+
+  redis:
+    ports: !reset []
+
+  kafka:
+    ports: !reset []
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://lucky-star-kafka:29092
+
+  kafka-ui:
+    ports: !reset []
+    profiles: ["internal-tools"]
+
+  member-service:
+    ports: !reset []
+
+  wallet-service:
+    ports: !reset []
+
+  game-service:
+    ports: !reset []
+
+  rank-service:
+    ports: !reset []
+
+  admin-service:
+    ports: !reset []
+
+  notification-service:
+    ports: !reset []
+
+  gateway-service:
+    ports: !override
+      - "${GATEWAY_BIND_ADDRESS:-127.0.0.1}:${GATEWAY_PORT}:8080"
+
+  prometheus:
+    ports: !reset []
+
+  grafana:
+    ports: !reset []
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
