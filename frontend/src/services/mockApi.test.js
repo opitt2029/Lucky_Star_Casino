@@ -22,6 +22,44 @@ beforeEach(async () => {
   await mockApi.getWallet()
 })
 
+describe('mockApi regular registration experience', () => {
+  test('creates a playable account with initialized per-player data', async () => {
+    const session = await mockApi.register({
+      username: 'new-web-player',
+      password: 'Password123',
+      nickname: 'New Web Player',
+      realName: 'Web Player',
+      birthDate: '2000-01-01',
+      email: 'new-web-player@example.com',
+    })
+
+    expect(session.player.username).toBe('new-web-player')
+    expect(session.player.isNewGiftClaimed).toBe(false)
+
+    const walletBeforeClaim = await mockApi.getWallet()
+    expect(walletBeforeClaim.balance).toBe(0)
+
+    const claim = await mockApi.claimNewGift()
+    expect(claim).toMatchObject({ amount: 1000000, claimed: true, alreadyClaimed: false })
+
+    const wallet = await mockApi.getWallet()
+    expect(wallet.balance).toBeGreaterThanOrEqual(1000000)
+    expect((await mockApi.getProfile()).isNewGiftClaimed).toBe(true)
+
+    const duplicateClaim = await mockApi.claimNewGift()
+    expect(duplicateClaim.alreadyClaimed).toBe(true)
+
+    const db = loadDb()
+    const playerId = session.player.id
+    expect(db.friendRequests[playerId]).toEqual([])
+    expect(db.checkinDates[playerId]).toEqual([])
+    expect(db.monthlyRewardClaims[playerId]).toEqual([])
+    expect(db.topupOrders[playerId]).toEqual([])
+    expect(db.inventory[playerId]).toEqual([])
+    expect(db.gameRounds[playerId]).toEqual([])
+  })
+})
+
 describe('mockApi 第三方登入', () => {
   test('綁定後可使用一次第三方登入流程建立 session', async () => {
     await mockApi.startSocialBinding('google')

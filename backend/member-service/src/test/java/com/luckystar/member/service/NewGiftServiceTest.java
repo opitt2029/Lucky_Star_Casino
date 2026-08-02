@@ -88,6 +88,7 @@ class NewGiftServiceTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> capturedPayload = (Map<String, Object>) payloadCaptor.getValue();
         assertThat(capturedPayload.get("idempotencyKey")).isEqualTo("new-gift-" + PLAYER_ID);
+        assertThat(capturedPayload.get("amount")).isEqualTo(NewGiftService.NEW_PLAYER_GIFT_AMOUNT);
     }
 
     // ── Test 5 ───────────────────────────────────────────────────────────

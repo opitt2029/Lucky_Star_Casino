@@ -15,6 +15,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import com.luckystar.wallet.dto.ShopUseResponse;
+import com.luckystar.wallet.exception.ShopInventoryItemAlreadyUsedException;
 
 import java.util.Optional;
 
@@ -134,5 +136,57 @@ class ShopRedemptionServiceTest {
         assertThat(resp.isIdempotent()).isTrue();
         assertThat(resp.getBalanceAfter()).isEqualTo(38000L);
         verify(shopRedemptionRepository, never()).save(any());
+    }
+
+    @Test
+    void useInventoryItem_consumable_marksUsed() {
+        ShopRedemption redemption = ShopRedemption.builder()
+                .id(77L).playerId(42L).itemCode("bonus-box").itemName("Bonus Box")
+                .starSpent(20000L).status("COMPLETED").build();
+        when(shopRedemptionRepository.findByIdAndPlayerId(77L, 42L)).thenReturn(Optional.of(redemption));
+        when(shopRedemptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        ShopUseResponse response = shopRedemptionService.useInventoryItem(42L, 77L);
+
+        assertThat(response.getAction()).isEqualTo("USED");
+        assertThat(response.getStatus()).isEqualTo("USED");
+        assertThat(response.getUsedAt()).isNotNull();
+    }
+
+    @Test
+    void useInventoryItem_equippable_marksEquipped() {
+        ShopRedemption redemption = ShopRedemption.builder()
+                .id(78L).playerId(42L).itemCode("avatar-frame").itemName("Avatar Frame")
+                .starSpent(8000L).status("COMPLETED").build();
+        when(shopRedemptionRepository.findByIdAndPlayerId(78L, 42L)).thenReturn(Optional.of(redemption));
+        when(shopRedemptionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        ShopUseResponse response = shopRedemptionService.useInventoryItem(42L, 78L);
+
+        assertThat(response.getAction()).isEqualTo("EQUIPPED");
+        assertThat(response.getStatus()).isEqualTo("EQUIPPED");
+        assertThat(response.getEquippedAt()).isNotNull();
+    }
+
+    @Test
+    void useInventoryItem_usedItem_throwsConflictDomainError() {
+        ShopRedemption redemption = ShopRedemption.builder()
+                .id(79L).playerId(42L).itemCode("bonus-box").itemName("Bonus Box")
+                .starSpent(20000L).status("USED").build();
+        when(shopRedemptionRepository.findByIdAndPlayerId(79L, 42L)).thenReturn(Optional.of(redemption));
+
+        assertThatThrownBy(() -> shopRedemptionService.useInventoryItem(42L, 79L))
+                .isInstanceOf(ShopInventoryItemAlreadyUsedException.class);
+    }
+
+    @Test
+    void inventoryUseLookup_isProtectedByPessimisticWriteLock() throws Exception {
+        org.springframework.data.jpa.repository.Lock lock =
+                ShopRedemptionRepository.class
+                        .getMethod("findByIdAndPlayerId", Long.class, Long.class)
+                        .getAnnotation(org.springframework.data.jpa.repository.Lock.class);
+
+        assertThat(lock).isNotNull();
+        assertThat(lock.value()).isEqualTo(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
     }
 }

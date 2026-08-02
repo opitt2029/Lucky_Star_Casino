@@ -871,9 +871,10 @@ export const mockApi = {
       consecutiveCheckInDays: 0,
       lastCheckInDate: null,
     }
+    player.isNewGiftClaimed = false
     db.users.push({ password: null, player })
-    db.wallets[player.id] = { balance: MOCK_TEST_STAR_COIN_BALANCE, frozenAmount: 0 }
-    db.transactions[player.id] = [makeTransaction('task', 30000, '第三方註冊啟動金')]
+    db.wallets[player.id] = { balance: 0, frozenAmount: 0 }
+    db.transactions[player.id] = []
     db.friends[player.id] = []
     db.friendRequests[player.id] = []
     db.checkinDates[player.id] = []
@@ -882,6 +883,10 @@ export const mockApi = {
       [social.provider]: `${social.provider.toUpperCase()}-${player.id}`,
     }
     db.topupOrders[player.id] = []
+    db.inventory = db.inventory || {}
+    db.inventory[player.id] = []
+    db.gameRounds = db.gameRounds || {}
+    db.gameRounds[player.id] = []
     db.ranks.push({ id: player.id, name: nickname, nickname, score: 30000, trend: '+0%' })
     saveDb(db)
 
@@ -913,18 +918,51 @@ export const mockApi = {
       lastCheckInDate: null,
     }
 
+    player.isNewGiftClaimed = false
     db.users.push({ password, player })
-    db.wallets[player.id] = { balance: MOCK_TEST_STAR_COIN_BALANCE, frozenAmount: 0 }
-    db.transactions[player.id] = [makeTransaction('task', 30000, '新手啟動金')]
-    db.friends[player.id] = []
+    db.wallets = db.wallets || {}
+    db.transactions = db.transactions || {}
+    db.friends = db.friends || {}
+    db.friendRequests = db.friendRequests || {}
+    db.checkinDates = db.checkinDates || {}
+    db.monthlyRewardClaims = db.monthlyRewardClaims || {}
     db.socialBindings = db.socialBindings || {}
-  db.topupOrders = db.topupOrders || {}
+    db.topupOrders = db.topupOrders || {}
+    db.inventory = db.inventory || {}
+    db.gameRounds = db.gameRounds || {}
+    db.wallets[player.id] = { balance: 0, frozenAmount: 0 }
+    db.transactions[player.id] = []
+    db.friends[player.id] = []
+    db.friendRequests[player.id] = []
+    db.checkinDates[player.id] = []
+    db.monthlyRewardClaims[player.id] = []
     db.socialBindings[player.id] = {}
+    db.topupOrders[player.id] = []
+    db.inventory[player.id] = []
+    db.gameRounds[player.id] = []
     db.ranks.push({ id: player.id, name: nickname, nickname, score: 30000, trend: '+0%' })
     saveDb(db)
     return createSession(player)
   },
 
+
+  async claimNewGift() {
+    await wait(420)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const user = db.users.find((item) => item.player.id === playerId)
+    if (!user) throw new Error('找不到玩家')
+    user.player = withProfileDefaults(user.player)
+    const alreadyClaimed = user.player.isNewGiftClaimed === true
+    if (!alreadyClaimed) {
+      user.player.isNewGiftClaimed = true
+      applyWalletChange(db, playerId, 1000000, 'task', '新手禮包')
+      const session = readStoredSession()
+      if (session) writeJson(SESSION_KEY, { ...session, player: user.player })
+      saveDb(db)
+    }
+    return { amount: 1000000, claimed: true, alreadyClaimed }
+  },
   async logout() {
     await wait(180)
     localStorage.removeItem(SESSION_KEY)
@@ -1789,7 +1827,10 @@ export const mockApi = {
       itemCode: item.itemCode,
       title: item.name,
       cost: item.cost,
+      status: 'COMPLETED',
       redeemedAt: new Date().toISOString(),
+      usedAt: null,
+      equippedAt: null,
     }
     db.inventory[playerId] = [record, ...(db.inventory[playerId] || [])]
     saveDb(db)
@@ -1801,6 +1842,28 @@ export const mockApi = {
     await wait(220)
     const db = getDb()
     return (db.inventory || {})[currentPlayerId()] || []
+  },
+
+  async useInventoryItem({ inventoryItemId }) {
+    await wait(180)
+    const db = getDb()
+    const playerId = currentPlayerId()
+    const list = (db.inventory || {})[playerId] || []
+    const item = list.find((entry) => String(entry.id) === String(inventoryItemId))
+    if (!item) throw new Error('背包道具不存在')
+    if (item.status === 'USED') throw new Error('道具已使用')
+    if (item.status === 'EQUIPPED') return { ...item, action: 'EQUIPPED' }
+    const equippable = new Set(['avatar-frame', 'royal-nameplate', 'star-title-badge', 'profile-backdrop', 'coin-rain-entry'])
+    if (equippable.has(item.itemCode)) {
+      item.status = 'EQUIPPED'
+      item.equippedAt = new Date().toISOString()
+      saveDb(db)
+      return { ...item, action: 'EQUIPPED' }
+    }
+    item.status = 'USED'
+    item.usedAt = new Date().toISOString()
+    saveDb(db)
+    return { ...item, action: 'USED' }
   },
 
   // ---- 捕魚機（buy-in 制 + 局內餘額 + 批次結算；對齊 game-service fishing 模組） ----

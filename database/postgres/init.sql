@@ -63,9 +63,11 @@ CREATE TABLE IF NOT EXISTS shop_redemptions (
     idempotency_key  VARCHAR(100) UNIQUE,
     status           VARCHAR(20)  NOT NULL DEFAULT 'COMPLETED',
     created_at       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    used_at          TIMESTAMP,
+    equipped_at      TIMESTAMP,
     CONSTRAINT pk_shop_redemptions    PRIMARY KEY (id),
     CONSTRAINT chk_shop_star_positive CHECK (star_spent > 0),
-    CONSTRAINT chk_shop_status        CHECK (status IN ('COMPLETED', 'PENDING', 'FAILED'))
+    CONSTRAINT chk_shop_status        CHECK (status IN ('COMPLETED', 'PENDING', 'FAILED', 'USED', 'EQUIPPED'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_shop_redemptions_player_time ON shop_redemptions (player_id, created_at DESC);

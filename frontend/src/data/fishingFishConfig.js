@@ -1,4 +1,4 @@
-// TODO: replace this frontend display config with a backend fishing settings endpoint when available.
+import fishingSpeciesContract from '../../../contracts/fishing-species.json'
 export const JACKPOT_FISH_KING_ASSET =
   '/images/fishing/jackpot-fish-king-reference.png?v=20260707-reference-transparent'
 export const JACKPOT_FISH_KING_DISPLAY_MULTIPLIER = 500
@@ -6,68 +6,66 @@ export const JACKPOT_FISH_KING_DISPLAY_HP = 5000
 export const JACKPOT_FISH_KING_VISUAL_SCALE = 1.36
 export const SPECIAL_FISH_CODES = new Set(['CAISHEN', 'MONEY_TREE'])
 
+const FISH_ASSET_BY_CODE = {
+  KOI: '/images/game/fishing/fish-clown-3d.svg',
+  GOLDFISH: '/images/game/fishing/fish-gold-3d.svg',
+  LANTERN: '/images/game/fishing/fish-lantern-3d.svg',
+  PUFFER: '/images/game/fishing/fish-sapphire-3d.svg',
+  ANGELFISH: '/images/game/fishing/fish-angel-3d.svg',
+  DEVIL_RAY: '/images/game/fishing/fish-ray-crystal.svg',
+  GOLD_DRAGON: '/images/game/fishing/fish-gold-dragon.svg',
+  PIXIU: '/images/game/fishing/fish-pixiu.svg',
+  CAISHEN: '/images/game/fishing/fish-caishen.svg',
+  DRAGON_KING: '/images/fishing/gold-star-fish-king-reference.png?v=20260707-reference-transparent',
+  MONEY_TREE: '/images/game/fishing/fish-money-tree.svg',
+}
+
+const RARITY_BY_TIER = {
+  SMALL: 'Common',
+  MEDIUM: 'Rare',
+  HIGH: 'Epic',
+  BOSS: 'Boss',
+  SPECIAL: 'Special',
+}
+
+const TIER_DISPLAY = {
+  SMALL: 'small',
+  MEDIUM: 'medium',
+  HIGH: 'high',
+  BOSS: 'boss',
+  SPECIAL: 'special',
+}
+
+function fishInfoFromContract(fish) {
+  const hpPerMultiplier = fishingSpeciesContract.hpPerMultiplier || 10
+  return {
+    id: String(fish.code).toLowerCase().replaceAll('_', '-'),
+    code: fish.code,
+    name: fish.displayName,
+    reward: fish.multiplier * 10,
+    multiplier: `${fish.multiplier}x`,
+    rarity: RARITY_BY_TIER[fish.tier] || fish.tier,
+    tier: TIER_DISPLAY[fish.tier] || String(fish.tier).toLowerCase(),
+    spawnRate: fish.spawnWeight,
+    hp: fish.multiplier * hpPerMultiplier,
+    asset: FISH_ASSET_BY_CODE[fish.code] || `/images/game/fishing/${fish.assetId}.svg`,
+    assetId: fish.assetId,
+    description: `${fish.displayName} uses the shared fishing species contract values.`,
+  }
+}
+
+const CONTRACT_FISHING_FISH_INFO = fishingSpeciesContract.species.map(fishInfoFromContract)
 export const FISHING_FISH_INFO = [
-  {
-    id: 'clownfish',
-    code: 'KOI',
-    name: '錦鯉',
-    reward: 20,
-    multiplier: '2x',
-    rarity: '常見',
-    tier: 'small',
-    spawnRate: 0.25,
-    hp: 20,
-    asset: '/images/game/fishing/fish-clown-3d.svg',
-    description: '小型魚種，血量低、出現頻率高，適合用低倍率砲彈穩定累積回饋。',
-  },
-  {
-    id: 'puffer',
-    code: 'PUFFER',
-    name: '河豚',
-    reward: 80,
-    multiplier: '8x',
-    rarity: '稀有',
-    tier: 'medium',
-    spawnRate: 0.12,
-    hp: 80,
-    asset: '/images/game/fishing/fish-sapphire-3d.svg',
-    description: '中型魚種，耐打度與回饋都比小魚更高，適合用中階砲台追擊。',
-  },
-  {
-    id: 'devil-ray',
-    code: 'DEVIL_RAY',
-    name: '魔鬼魟',
-    reward: 250,
-    multiplier: '25x',
-    rarity: '高價',
-    tier: 'medium',
-    spawnRate: 0.06,
-    hp: 250,
-    asset: '/images/game/fishing/fish-ray-crystal.svg',
-    description: '高價魚種，血量較厚、游速較快，命中後有機會帶來更高倍率回饋。',
-  },
-  {
-    id: 'dragon-king',
-    code: 'DRAGON_KING',
-    name: '金星魚王',
-    reward: 2000,
-    multiplier: '200x',
-    rarity: 'Boss',
-    tier: 'boss',
-    spawnRate: 0.02,
-    hp: 2000,
-    asset: '/images/fishing/gold-star-fish-king-reference.png?v=20260707-reference-transparent',
-    description: 'Boss 級魚王，後端仍沿用 DRAGON_KING 合約結算，適合高階砲台集中輸出。',
-  },
+  ...CONTRACT_FISHING_FISH_INFO,
   {
     id: 'jackpot-fish-king',
     code: 'DRAGON_KING',
-    name: '彩金魚王',
+    name: '敶拚?擳?',
     reward: 5000,
-    multiplier: '500x 彩金外觀 / 200x 合約',
-    rarity: '傳奇',
+    multiplier: '500x 敶拚?憭? / 200x ??',
+    rarity: '?喳?',
     tier: 'legendary',
-    spawnRate: 0.01,
+    spawnRate: 1,
     hp: JACKPOT_FISH_KING_DISPLAY_HP,
     displayMultiplier: JACKPOT_FISH_KING_DISPLAY_MULTIPLIER,
     displayHp: JACKPOT_FISH_KING_DISPLAY_HP,
@@ -75,50 +73,49 @@ export const FISHING_FISH_INFO = [
     visualTier: 'LEGENDARY',
     catchDifficulty: 'boss',
     asset: JACKPOT_FISH_KING_ASSET,
-    description: '傳奇魚王，彩金外觀與最大體型；實際捕獲派彩以後端 DRAGON_KING 回傳 payout 為準。',
+    description: 'Jackpot visual variant for the Dragon King contract entry.',
   },
   {
     id: 'blocker-octopus',
     code: 'BLOCKER_OCTOPUS',
-    name: '障礙章魚',
+    name: '??蝡?',
     reward: 0,
-    rewardLabel: '擊破觸發噴墨',
-    multiplier: '大型 / 5發',
-    rarity: '障礙',
+    rewardLabel: '?閫貊?游◢',
+    multiplier: '憭批? / 5??',
+    rarity: '??',
     tier: 'blocker',
     spawnRate: 0.04,
     hp: 5,
     asset: '/images/fishing/blocker-octopus-reference.png?v=20260707-paeth-fix',
-    description: '大型章魚障礙物，5 發擊破後會噴墨遮蔽漁場視野 2 秒。',
+    description: 'Frontend-only blocker display entry.',
   },
   {
     id: 'blocker-starfish',
     code: 'BLOCKER_STARFISH',
-    name: '障礙海星',
+    name: '??瘚瑟?',
     reward: 0,
-    rewardLabel: '擊破觸發加速',
-    multiplier: '大型 / 5發',
-    rarity: '障礙',
+    rewardLabel: '?閫貊?',
+    multiplier: '憭批? / 5??',
+    rarity: '??',
     tier: 'blocker',
     spawnRate: 0.04,
     hp: 5,
     asset: '/images/fishing/blocker-starfish-reference.png?v=20260707-paeth-fix',
-    description: '大型海星障礙物，5 發擊破後會讓目前魚群加速 2 秒。',
+    description: 'Frontend-only blocker display entry.',
   },
   {
     id: 'blocker-turtle',
     code: 'BLOCKER_TURTLE',
-    name: '障礙海龜',
+    name: '??瘚琿?',
     reward: 0,
-    rewardLabel: '大型阻擋物',
-    multiplier: '小5 / 中10 / 大17發',
-    rarity: '障礙',
+    rewardLabel: '憭批??餅???',
+    multiplier: '撠? / 銝?0 / 憭?7??',
+    rarity: '??',
     tier: 'blocker',
     spawnRate: 0.04,
     hp: 10,
     asset: '/images/fishing/blocker-turtle-reference.png?v=20260707-paeth-fix',
-    description:
-      '海龜保留小 / 中 / 大尺寸與 5 / 10 / 17 發擊破次數，但整體體型更大、遮擋範圍更明顯。',
+    description: 'Frontend-only blocker display entry.',
   },
 ]
 

@@ -10,6 +10,7 @@ import { getBackgroundStyle } from '../theme/backgroundTheme'
 import { getBirthDateMax, isAdultBirthDate, socialProviders } from '../utils/memberPreferences'
 import { pathFromLocationState, saveOAuthReturnTo } from '../utils/authNavigation'
 import { memberApi, extractError } from '../services/memberApi'
+import './Member.css'
 
 const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
 const demoMode = import.meta.env.VITE_DEMO_MODE === 'true'
@@ -94,8 +95,7 @@ export default function Member() {
       window.location.assign(start.authorizationUrl)
     } catch (socialError) {
       setMemberNotice(
-        extractError(socialError) ||
-          `${provider.label} 登入或註冊目前無法啟動，請稍後再試。`,
+        extractError(socialError) || `${provider.label} 登入或註冊目前無法啟動，請稍後再試。`
       )
       setSocialLoading('')
     }
@@ -133,17 +133,21 @@ export default function Member() {
         </Link>
       </header>
 
-      <main className="mx-auto grid max-w-7xl items-center gap-8 px-4 pb-12 pt-4 sm:px-6 lg:grid-cols-[1fr_520px] lg:px-8">
+      <main className="mx-auto grid max-w-7xl items-start gap-8 px-4 pb-12 pt-4 sm:px-6 lg:grid-cols-[1fr_520px] lg:px-8">
         <section className="grid gap-6">
           <div>
-            <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">Member Access</p>
+            <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">
+              Member Access
+            </p>
             <h1 className="brand-title mt-4 max-w-3xl text-4xl font-black tracking-tight sm:text-6xl">
               登入後開始遊玩
             </h1>
             <p className="mt-5 max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
               登入或建立帳號後，就能進入遊戲大廳、鑽石錢包與會員中心。
               {hasDemoCredentials && (
-                <span className="block">展示模式帳號 {demoUsername} / {demoPassword} 已預填。</span>
+                <span className="block">
+                  展示模式帳號 {demoUsername} / {demoPassword} 已預填。
+                </span>
               )}
             </p>
           </div>
@@ -171,46 +175,48 @@ export default function Member() {
             ))}
           </div>
 
-          <p className="gold-muted mt-6 text-xs font-black uppercase tracking-[0.3em]">
-            {pageCopy.eyebrow}
-          </p>
-          <h2 className="brand-title mt-3 text-2xl font-black">{pageCopy.title}</h2>
+          <div key={mode} className={`member-mode-transition member-mode-transition--${mode}`}>
+            <p className="gold-muted mt-6 text-xs font-black uppercase tracking-[0.3em]">
+              {pageCopy.eyebrow}
+            </p>
+            <h2 className="brand-title mt-3 text-2xl font-black">{pageCopy.title}</h2>
 
-          {mode === 'login' ? (
-            <LoginForm
-              form={loginForm}
-              onChange={handleLoginChange}
-              onSubmit={handleLoginSubmit}
-              loading={loading}
-              error={displayError}
-              notice={memberNotice}
-              providers={socialProviders}
-              socialLoading={socialLoading}
-              onSocialLogin={handleSocialLogin}
-            />
-          ) : (
-            <RegisterForm
-              form={registerForm}
-              onChange={handleRegisterChange}
-              onSubmit={handleRegisterSubmit}
-              loading={loading}
-              error={displayError}
-              notice={memberNotice}
-              birthDateMax={birthDateMax}
-              ageError={registerAgeError}
-              providers={socialProviders}
-              socialLoading={socialLoading}
-              onSocialLogin={handleSocialLogin}
-            />
-          )}
+            {mode === 'login' ? (
+              <LoginForm
+                form={loginForm}
+                onChange={handleLoginChange}
+                onSubmit={handleLoginSubmit}
+                loading={loading}
+                error={displayError}
+                notice={memberNotice}
+                providers={socialProviders}
+                socialLoading={socialLoading}
+                onSocialLogin={handleSocialLogin}
+              />
+            ) : (
+              <RegisterForm
+                form={registerForm}
+                onChange={handleRegisterChange}
+                onSubmit={handleRegisterSubmit}
+                loading={loading}
+                error={displayError}
+                notice={memberNotice}
+                birthDateMax={birthDateMax}
+                ageError={registerAgeError}
+                providers={socialProviders}
+                socialLoading={socialLoading}
+                onSocialLogin={handleSocialLogin}
+              />
+            )}
 
-          <button
-            type="button"
-            onClick={switchMode}
-            className="gold-muted mt-5 w-full text-center text-sm font-bold transition hover:text-yellow-100"
-          >
-            {pageCopy.switchText}
-          </button>
+            <button
+              type="button"
+              onClick={switchMode}
+              className="gold-muted mt-5 w-full text-center text-sm font-bold transition hover:text-yellow-100"
+            >
+              {pageCopy.switchText}
+            </button>
+          </div>
         </section>
       </main>
     </div>

@@ -1,3 +1,66 @@
+## [feat] -- 2026-08-02 -- Add sticky new-player gift claim shortcut
+
+### Added
+- `member-service`: add `POST /api/v1/player/new-gift/claim` so the 1,000,000 star-coin new-player gift is claimed manually instead of automatically on registration.
+- `member-service`: expose `newGiftClaimed` in player profile responses so the frontend can hide the shortcut after the gift is claimed.
+- `frontend`: add a sticky right-side new-player gift shortcut and a right-side claim dialog; game routes use a compact edge button so the shortcut does not cover the play area.
+- `frontend mock`: mirror manual new-player gift claiming, wallet crediting, and claimed-state persistence.
+
+### Changed
+- `frontend`: avoid auto-opening the daily check-in dialog on game routes so global reward prompts do not block the game screen.
+
+### Verified
+- `mvn -pl backend/member-service test`
+- `npm.cmd run lint`
+- `npm.cmd run test`
+- `npm.cmd run build`
+- Gateway smoke: register -> `newGiftClaimed=false` -> claim 1,000,000 -> wallet balance 1,000,000 -> `newGiftClaimed=true` -> second claim `alreadyClaimed=true`
+- Playwright visual measurement on `/game/slot`: desktop shortcut 51x51 pinned right, mobile shortcut 48x48 pinned right, claim dialog opens as a right-side panel
+
+---## [fix] -- 2026-08-02 -- Close gameplay accounting and provisioning gaps
+
+### Fixed
+- `game-service`: make slot and baccarat abandon requests settle already-debited STARTED rounds instead of deleting sessions and leaving orphan wallet debits.
+- `game-service`: refund slot/baccarat bets if session creation fails after wallet debit, falling back to pending wallet compensation when refund credit fails.
+- `wallet-service`: when a `new-gift-{playerId}` credit request races ahead of wallet provisioning, create the star-coin and diamond wallets idempotently and retry the gift credit once.
+- `wallet-service`: protect shop inventory use/equip with a pessimistic row lock so concurrent use requests cannot both consume the same redemption.
+- `frontend`: derive fishing guide fish data from `contracts/fishing-species.json`, keeping display metadata aligned with the shared game contract.
+
+### Verified
+- `mvn -pl backend/game-service,backend/wallet-service test`
+- `npm.cmd run lint`
+- `npm.cmd run test`
+- `npm.cmd run build`
+
+---
+## [fix] -- 2026-08-02 -- Improve newly registered player experience
+
+### Changed
+- `member-service`: increase the new-player gift to 1,000,000 simulated star coins so web-registered players can try games, shop, top-up flows, and wallet features immediately.
+- `frontend`: retry wallet and diamond wallet balance fetches briefly after registration while Kafka-driven wallet provisioning catches up.
+- `frontend mock`: initialize newly registered players with complete per-player data buckets for check-in, friends, inventory, top-up orders, and game records.
+
+### Verified
+- `mvn -pl backend/member-service test`
+- `npm.cmd run lint`
+- `npm.cmd run test`
+- `npm.cmd run build`
+
+---
+## [feat] -- 2026-08-02 -- Integrate shop inventory use flow
+
+### Added
+- `wallet-service`: add player inventory use/equip state for shop redemptions, including `POST /api/v1/wallet/shop/inventory/{id}/use`.
+- `frontend`: wire `/inventory` to the new use/equip API and mirror the behavior in mock mode.
+- `database/postgres/migration/V18__add_shop_inventory_usage.sql`: add `used_at` / `equipped_at` and extend shop redemption status values.
+
+### Verified
+- `mvn -pl backend/wallet-service test`
+- `npm.cmd run lint`
+- `npm.cmd run test`
+- `npm.cmd run build`
+
+---
 ## [feat] -- 2026-07-30 -- Expand profile privacy and settings
 
 ### Added

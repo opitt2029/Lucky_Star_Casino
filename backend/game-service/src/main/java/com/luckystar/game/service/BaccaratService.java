@@ -104,33 +104,38 @@ public class BaccaratService {
         // 扣下注總額（冪等）。餘額不足會丟 InsufficientBalanceException，於此中止、不建 Session。
         WalletDebitResponse debit = walletClient.debit(playerId, total, "bac-bet-" + roundId, roundId);
 
-        GameSession session = GameSession.builder()
-                .roundId(roundId)
-                .playerId(playerId)
-                .gameType(GAME_TYPE)
-                .betAmount(total)
-                .balanceBefore(debit.balanceBefore())
-                .betPlayer(bp)
-                .betBanker(bb)
-                .betTie(bt)
-                .serverSeed(serverSeed)
-                .serverSeedHash(serverSeedHash)
-                .clientSeed(clientSeed)
-                .nonce(NONCE)
-                .build();
-        sessionService.start(session);
+        try {
+            GameSession session = GameSession.builder()
+                    .roundId(roundId)
+                    .playerId(playerId)
+                    .gameType(GAME_TYPE)
+                    .betAmount(total)
+                    .balanceBefore(debit.balanceBefore())
+                    .betPlayer(bp)
+                    .betBanker(bb)
+                    .betTie(bt)
+                    .serverSeed(serverSeed)
+                    .serverSeedHash(serverSeedHash)
+                    .clientSeed(clientSeed)
+                    .nonce(NONCE)
+                    .build();
+            sessionService.start(session);
 
-        log.info("baccarat bet placed roundId={} playerId={} total={} (P={},B={},T={})",
-                roundId, playerId, total, bp, bb, bt);
+            log.info("baccarat bet placed roundId={} playerId={} total={} (P={},B={},T={})",
+                    roundId, playerId, total, bp, bb, bt);
 
-        return BaccaratBetResponse.builder()
-                .roundId(roundId)
-                .game("baccarat")
-                .bets(betsMap(bp, bb, bt))
-                .totalBet(total)
-                .serverSeedHash(serverSeedHash)
-                .clientSeed(clientSeed)
-                .build();
+            return BaccaratBetResponse.builder()
+                    .roundId(roundId)
+                    .game("baccarat")
+                    .bets(betsMap(bp, bb, bt))
+                    .totalBet(total)
+                    .serverSeedHash(serverSeedHash)
+                    .clientSeed(clientSeed)
+                    .build();
+        } catch (RuntimeException ex) {
+            refundPlacedBet(playerId, roundId, total, "bac-bet-refund-" + roundId, ex);
+            throw ex;
+        }
     }
 
     /**
@@ -324,12 +329,24 @@ public class BaccaratService {
         return m;
     }
 
-    public boolean abandon(long playerId, String roundId) {
-        boolean deleted = sessionService.delete(playerId, roundId);
-        if (deleted) {
-            log.info("baccarat round abandoned roundId={} playerId={}", roundId, playerId);
+    private void refundPlacedBet(long playerId, String roundId, long amount,
+                                 String idempotencyKey, RuntimeException cause) {
+        try {
+            walletClient.credit(playerId, amount, "REFUND", idempotencyKey, roundId);
+            log.info("baccarat placed bet refunded roundId={} playerId={} amount={}", roundId, playerId, amount);
+        } catch (RuntimeException refundEx) {
+            cause.addSuppressed(refundEx);
+            compensationService.recordPending(GAME_TYPE, roundId, playerId, amount,
+                    "REFUND", idempotencyKey, refundEx);
         }
-        return deleted;
+    }
+    public boolean abandon(long playerId, String roundId) {
+        if (sessionService.find(playerId, roundId).isEmpty()) {
+            return false;
+        }
+        settle(playerId, roundId);
+        log.info("baccarat round abandon settled roundId={} playerId={}", roundId, playerId);
+        return true;
     }
     private static long nz(Long v) {
         return v == null ? 0L : v;

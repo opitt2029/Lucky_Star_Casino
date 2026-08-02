@@ -16,23 +16,25 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class NewGiftService {
 
+    public static final long NEW_PLAYER_GIFT_AMOUNT = 1_000_000L;
+
     private final MemberRepository memberRepository;
     private final OutboxService outboxService;
 
     @Transactional
-    public void processNewGift(Long playerId) {
+    public boolean processNewGift(Long playerId) {
         // Step 1: load member
         Optional<Member> opt = memberRepository.findById(playerId);
         if (opt.isEmpty()) {
             log.warn("Member not found for playerId={}, skipping new gift", playerId);
-            return;
+            return false;
         }
         Member member = opt.get();
 
         // Step 2: idempotency guard
         if (Boolean.TRUE.equals(member.getIsNewGiftClaimed())) {
             log.info("New gift already claimed for playerId={}, skipping", playerId);
-            return;
+            return false;
         }
 
         // Step 3: 設旗標
@@ -44,12 +46,13 @@ public class NewGiftService {
         // wallet-service 消費此指令後才真正加餘額，並另發 wallet.credit「事件」給 rank 等下游
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("playerId", playerId);
-        payload.put("amount", 100L);
+        payload.put("amount", NEW_PLAYER_GIFT_AMOUNT);
         payload.put("subType", "GM_REWARD");
         payload.put("idempotencyKey", "new-gift-" + playerId);
         payload.put("reason", "new player gift");
         outboxService.save("wallet.credit.request", String.valueOf(playerId), payload);
 
         log.info("New gift queued to outbox for playerId={}", playerId);
+        return true;
     }
 }

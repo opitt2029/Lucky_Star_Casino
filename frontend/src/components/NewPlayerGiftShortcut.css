@@ -1,0 +1,10 @@
+.new-player-gift-shortcut {
+  bottom: 7rem;
+}
+
+@media (min-width: 768px) {
+  .new-player-gift-shortcut {
+    top: calc(50% - 176px);
+    bottom: auto;
+  }
+}

@@ -1,11 +1,13 @@
 package com.luckystar.member.controller;
 
 import com.luckystar.member.dto.ApiResponse;
+import com.luckystar.member.dto.NewGiftClaimResponse;
 import com.luckystar.member.dto.ProfileResponse;
 import com.luckystar.member.dto.ProfileSettingsUnlockRequest;
 import com.luckystar.member.dto.SocialBindingResponse;
 import com.luckystar.member.dto.SocialBindingStartResponse;
 import com.luckystar.member.dto.UpdateProfileRequest;
+import com.luckystar.member.service.NewGiftService;
 import com.luckystar.member.service.PlayerService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +30,7 @@ import java.util.List;
 public class PlayerController {
 
     private final PlayerService playerService;
+    private final NewGiftService newGiftService;
 
     @GetMapping("/profile")
     public ResponseEntity<ApiResponse<ProfileResponse>> getProfile() {
@@ -47,6 +50,17 @@ public class PlayerController {
             @Valid @RequestBody ProfileSettingsUnlockRequest request) {
         playerService.verifyProfileSettingsPassword(currentPlayerId(), request.getPassword());
         return ResponseEntity.ok(ApiResponse.success(null, "Profile settings unlocked"));
+    }
+
+
+    @PostMapping("/new-gift/claim")
+    public ResponseEntity<ApiResponse<NewGiftClaimResponse>> claimNewGift() {
+        boolean claimedNow = newGiftService.processNewGift(currentPlayerId());
+        NewGiftClaimResponse response = new NewGiftClaimResponse(
+                NewGiftService.NEW_PLAYER_GIFT_AMOUNT,
+                true,
+                !claimedNow);
+        return ResponseEntity.ok(ApiResponse.success(response, claimedNow ? "New gift claimed" : "New gift already claimed"));
     }
 
     @GetMapping("/social-bindings")

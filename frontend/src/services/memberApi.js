@@ -30,6 +30,7 @@ function mapProfile(data) {
     address: data.address || '',
     walletPaymentMethod: data.walletPaymentMethod || 'STAR_COIN',
     paymentConfirmationEnabled: data.paymentConfirmationEnabled !== false,
+    isNewGiftClaimed: data.isNewGiftClaimed === true || data.newGiftClaimed === true,
     role: data.role,
     createdAt: data.createdAt,
     consecutiveCheckInDays: 0,
@@ -184,6 +185,14 @@ export const memberApi = {
     return memberApi.login({ username, password })
   },
 
+
+  async claimNewGift() {
+    if (useMockApi) {
+      return mockApi.claimNewGift()
+    }
+    const res = await api.post('/api/v1/player/new-gift/claim')
+    return res.data.data
+  },
   async logout() {
     if (useMockApi) {
       await mockApi.logout()

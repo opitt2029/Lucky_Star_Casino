@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import ErrorBoundary from './ErrorBoundary'
@@ -15,6 +15,7 @@ import CoinRain from './CoinRain'
 import LeaveGameModal from './LeaveGameModal'
 import { GAME_LEAVE_CONFIRMED_EVENT } from '../hooks/useGameLeaveGuard'
 import SiteSettings from './SiteSettings'
+import NewPlayerGiftShortcut from './NewPlayerGiftShortcut'
 
 const navItems = [
   { to: '/', label: '首頁' },
@@ -60,6 +61,7 @@ function markAutoOpenedCheckIn(playerId, dateKey) {
 export default function AppShell({ children }) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const location = useLocation()
   const [noticeOpen, setNoticeOpen] = useState(false)
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
@@ -75,6 +77,7 @@ export default function AppShell({ children }) {
   const playerName =
     player?.nickname || player?.username || (isAuthenticated ? 'Demo Player' : '訪客')
   const canShowAvatar = player?.avatarUrl && !avatarFailed
+  const isGamePage = location.pathname.startsWith('/game/')
 
   // 簽到（後端權威）：月曆/累計天數/連續天數/月度里程碑領取皆來自 hook
   const checkin = useDailyCheckIn()
@@ -110,6 +113,7 @@ export default function AppShell({ children }) {
   useEffect(() => {
     if (
       !player?.id ||
+      isGamePage ||
       statusLoading ||
       !statusLoaded ||
       hasCheckedInToday ||
@@ -119,7 +123,7 @@ export default function AppShell({ children }) {
     }
     setCheckInModalOpen(true)
     markAutoOpenedCheckIn(player.id, todayKey)
-  }, [statusLoading, statusLoaded, hasCheckedInToday, player?.id, todayKey])
+  }, [statusLoading, statusLoaded, hasCheckedInToday, player?.id, todayKey, isGamePage])
 
   useEffect(() => {
     const handleScroll = () => {
@@ -493,6 +497,8 @@ export default function AppShell({ children }) {
           </div>
         </section>
       )}
+
+      <NewPlayerGiftShortcut />
 
       <LeaveGameModal
         open={leaveGuard.active && leaveGuard.pendingPath !== null}

@@ -2,6 +2,31 @@ import api from './api'
 import { mockApi } from './mockApi'
 
 const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
+const WALLET_PROVISIONING_RETRY_DELAYS_MS = [300, 500, 800, 1200, 1600]
+
+function waitForProvisioning(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isWalletProvisioningPending(error) {
+  if (error.response?.status !== 404) return false
+  const message = String(error.response?.data?.message || error.response?.data?.error || error.message || '')
+  return message.toLowerCase().includes('wallet not found')
+}
+
+async function withWalletProvisioningRetry(fn) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await fn()
+    } catch (error) {
+      if (attempt >= WALLET_PROVISIONING_RETRY_DELAYS_MS.length || !isWalletProvisioningPending(error)) {
+        throw error
+      }
+      await waitForProvisioning(WALLET_PROVISIONING_RETRY_DELAYS_MS[attempt])
+    }
+  }
+}
+
 
 // 後端 wallet_transactions 只記 type(DEBIT/CREDIT/BONUS) + subType。
 // 前端 UI 篩選器沿用 mock 的細分類型，這裡盡量映回後端可篩的 type；
@@ -56,13 +81,15 @@ export const walletApi = {
       }
     }
 
-    const res = await api.get('/api/v1/wallet/balance')
-    const data = res.data.data
-    return {
-      balance: data.balance,
-      frozenAmount: data.frozenAmount,
-      availableBalance: data.availableBalance,
-    }
+    return withWalletProvisioningRetry(async () => {
+      const res = await api.get('/api/v1/wallet/balance')
+      const data = res.data.data
+      return {
+        balance: data.balance,
+        frozenAmount: data.frozenAmount,
+        availableBalance: data.availableBalance,
+      }
+    })
   },
 
   // POST /api/v1/wallet/daily-checkin（端點實作在 member-service）
