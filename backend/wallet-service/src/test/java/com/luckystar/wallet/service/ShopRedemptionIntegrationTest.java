@@ -18,6 +18,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.kafka.core.KafkaTemplate;
+import com.luckystar.wallet.dto.ShopUseResponse;
+import com.luckystar.wallet.postgres.entity.ShopRedemption;
 
 import java.util.List;
 
@@ -149,4 +151,19 @@ class ShopRedemptionIntegrationTest {
                 .extracting(v -> v.getItemCode())
                 .containsExactly("vip-ticket");
     }
+
+    @Test
+    void useInventoryItem_afterRedeem_updatesInventoryState() {
+        shopRedemptionService.redeem(PLAYER, "vip-ticket", "use-k1");
+        ShopInventoryItem inventoryItem = shopRedemptionService.getInventory(PLAYER).get(0);
+
+        ShopUseResponse response = shopRedemptionService.useInventoryItem(PLAYER, inventoryItem.getId());
+
+        assertThat(response.getAction()).isEqualTo("USED");
+        assertThat(response.getStatus()).isEqualTo("USED");
+        assertThat(response.getUsedAt()).isNotNull();
+        assertThat(shopRedemptionRepository.findById(inventoryItem.getId())).get()
+                .extracting(ShopRedemption::getStatus).isEqualTo("USED");
+    }
+
 }

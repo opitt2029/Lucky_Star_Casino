@@ -3,6 +3,8 @@ package com.luckystar.wallet.kafka;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.luckystar.wallet.dto.CreditRequest;
+import com.luckystar.wallet.exception.WalletNotFoundException;
+import com.luckystar.wallet.service.DiamondWalletService;
 import com.luckystar.wallet.service.WalletService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,6 +30,9 @@ class WalletCreditRequestListenerTest {
 
     @Mock
     WalletService walletService;
+
+    @Mock
+    DiamondWalletService diamondWalletService;
 
     @Mock
     ObjectMapper objectMapper;
@@ -86,6 +91,40 @@ class WalletCreditRequestListenerTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("DB down");
 
+        verify(ack, never()).acknowledge();
+    }
+    @Test
+    void handleCreditRequest_newGiftWalletMissing_provisionsWalletsAndRetries() throws Exception {
+        Acknowledgment ack = mock(Acknowledgment.class);
+        WalletCreditRequestEvent event =
+                new WalletCreditRequestEvent(99L, 1_000_000L, "GM_REWARD", "new-gift-99", null);
+        when(objectMapper.readValue(VALID_JSON, WalletCreditRequestEvent.class)).thenReturn(event);
+        when(walletService.credit(any()))
+                .thenThrow(new WalletNotFoundException("Wallet not found for player: 99"))
+                .thenReturn(null);
+
+        listener.handleCreditRequest(VALID_JSON, ack);
+
+        verify(walletService).createWallet(99L);
+        verify(diamondWalletService).createDiamondWallet(99L);
+        verify(walletService, times(2)).credit(any());
+        verify(ack, times(1)).acknowledge();
+    }
+
+    @Test
+    void handleCreditRequest_nonNewGiftWalletMissing_doesNotAutoProvision() throws Exception {
+        Acknowledgment ack = mock(Acknowledgment.class);
+        WalletCreditRequestEvent event =
+                new WalletCreditRequestEvent(99L, 100L, "CHECKIN", "checkin-99-2026-08-02", null);
+        when(objectMapper.readValue(VALID_JSON, WalletCreditRequestEvent.class)).thenReturn(event);
+        when(walletService.credit(any()))
+                .thenThrow(new WalletNotFoundException("Wallet not found for player: 99"));
+
+        assertThatThrownBy(() -> listener.handleCreditRequest(VALID_JSON, ack))
+                .isInstanceOf(WalletNotFoundException.class);
+
+        verify(walletService, never()).createWallet(any());
+        verify(diamondWalletService, never()).createDiamondWallet(any());
         verify(ack, never()).acknowledge();
     }
 }

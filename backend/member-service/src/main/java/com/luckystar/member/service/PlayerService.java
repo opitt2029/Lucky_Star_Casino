@@ -161,6 +161,7 @@ public class PlayerService {
                 member.getAddress(),
                 member.getWalletPaymentMethod(),
                 member.getPaymentConfirmationEnabled(),
+                member.getIsNewGiftClaimed(),
                 member.getRole(),
                 member.getCreatedAt() != null ? member.getCreatedAt().format(FORMATTER) : null
         );

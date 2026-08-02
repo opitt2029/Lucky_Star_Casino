@@ -17,6 +17,7 @@ public class ProfileResponse {
     private String address;
     private String walletPaymentMethod;
     private Boolean paymentConfirmationEnabled;
+    private Boolean newGiftClaimed;
     private String role;
     private String createdAt;
 }

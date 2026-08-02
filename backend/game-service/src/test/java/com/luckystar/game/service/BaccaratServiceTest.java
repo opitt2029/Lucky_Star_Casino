@@ -154,6 +154,20 @@ class BaccaratServiceTest {
         verify(sessionService, never()).start(any());
     }
 
+    @Test
+    @DisplayName("placeBet：扣款後若 Session 建立失敗，會以 REFUND 退款避免孤兒扣款")
+    void placeBet_sessionStartFails_refundsDebitedStake() {
+        when(walletClient.debit(eq(PLAYER_ID), eq(300L), anyString(), anyString()))
+                .thenReturn(new WalletDebitResponse(1L, PLAYER_ID, 300L, 10000L, 9700L, false));
+        when(sessionService.start(any())).thenThrow(new RuntimeException("redis down"));
+
+        assertThrows(RuntimeException.class,
+                () -> service.placeBet(PLAYER_ID, 100L, 200L, 0L, "my-seed"));
+
+        verify(walletClient).debit(eq(PLAYER_ID), eq(300L), anyString(), anyString());
+        verify(walletClient).credit(eq(PLAYER_ID), eq(300L), eq("REFUND"), anyString(), anyString());
+        verify(roundRepository, never()).save(any());
+    }
     // ------------------------- settle -------------------------
 
     @Test
@@ -291,4 +305,39 @@ class BaccaratServiceTest {
         verify(roundRepository, never()).save(any());
         verify(publisher, never()).publishBaccaratResult(any(), any());
     }
+    @Test
+    @DisplayName("abandon：已扣款 STARTED 局改為代為結算，不留下孤兒扣款")
+    void abandon_startedSession_settlesRoundInsteadOfDeletingSession() {
+        when(sessionService.find(PLAYER_ID, ROUND_ID))
+                .thenReturn(Optional.of(startedSession(0L, 100L, 0L)));
+        BaccaratOutcome outcome = bankerWinOutcome();
+        when(baccaratGame.deal(any())).thenReturn(outcome);
+        Map<BaccaratResult, Long> payouts = new EnumMap<>(BaccaratResult.class);
+        payouts.put(BaccaratResult.BANKER, 195L);
+        when(baccaratGame.settle(eq(outcome), anyMap()))
+                .thenReturn(new BaccaratSettlement(BaccaratResult.BANKER, 100L, 195L, payouts));
+        when(walletClient.credit(eq(PLAYER_ID), eq(196L), anyString(), anyString()))
+                .thenReturn(new WalletCreditResponse(2L, PLAYER_ID, 196L, 9700L, 9896L, 0L, false));
+
+        assertEquals(true, service.abandon(PLAYER_ID, ROUND_ID));
+
+        verify(walletClient).credit(eq(PLAYER_ID), eq(196L), eq("bac-win-" + ROUND_ID), eq(ROUND_ID));
+        verify(roundRepository).save(any());
+        verify(publisher).publishBaccaratResult(any(), eq(outcome));
+        verify(sessionService).markSettled(PLAYER_ID, ROUND_ID, "srv", 0L);
+        verify(sessionService, never()).delete(anyLong(), anyString());
+    }
+
+    @Test
+    @DisplayName("abandon：Session 不存在時回 false 且不觸發帳務")
+    void abandon_missingSession_returnsFalseWithoutWalletCalls() {
+        when(sessionService.find(PLAYER_ID, ROUND_ID)).thenReturn(Optional.empty());
+
+        assertEquals(false, service.abandon(PLAYER_ID, ROUND_ID));
+
+        verify(walletClient, never()).debit(anyLong(), anyLong(), anyString(), anyString());
+        verify(walletClient, never()).credit(anyLong(), anyLong(), anyString(), anyString());
+        verify(sessionService, never()).delete(anyLong(), anyString());
+    }
+
 }

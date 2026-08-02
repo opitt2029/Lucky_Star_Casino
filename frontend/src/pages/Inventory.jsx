@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import AppShell from '../components/AppShell'
@@ -20,10 +20,20 @@ function getItemMeta(item) {
   const meta = catalogByCode[item.itemCode]
   return {
     title: meta?.name || item.title || item.itemCode,
-    caption: meta?.caption || '這件收藏品已放入你的背包，後續會開放正式使用功能。',
+    caption: meta?.caption || '已兌換的商城道具，可在背包中使用或裝備。',
     cost: meta?.cost ?? item.cost ?? 0,
     assetKey: meta?.assetKey || 'shopPrizeA',
   }
+}
+
+function isAvailable(item) {
+  return !item.status || item.status === 'COMPLETED'
+}
+
+function statusLabel(item) {
+  if (item.status === 'USED') return '已使用'
+  if (item.status === 'EQUIPPED') return '已裝備'
+  return '可使用'
 }
 
 function InventoryDialog({ title, children, actions, labelledBy }) {
@@ -50,11 +60,12 @@ function InventoryDialog({ title, children, actions, labelledBy }) {
 export default function Inventory() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
+  const [usingItem, setUsingItem] = useState(false)
   const [error, setError] = useState('')
   const [pendingUse, setPendingUse] = useState(null)
-  const [devNotice, setDevNotice] = useState(null)
+  const [notice, setNotice] = useState(null)
 
-  useEffect(() => {
+  const loadInventory = useCallback(() => {
     let alive = true
     setLoading(true)
     setError('')
@@ -64,7 +75,7 @@ export default function Inventory() {
         if (alive) setItems(Array.isArray(list) ? list : [])
       })
       .catch((err) => {
-        if (alive) setError(err?.message || '背包暫時讀取失敗，請稍後再試。')
+        if (alive) setError(err?.response?.data?.message || err?.message || '背包讀取失敗，請稍後再試。')
       })
       .finally(() => {
         if (alive) setLoading(false)
@@ -74,31 +85,59 @@ export default function Inventory() {
     }
   }, [])
 
+  useEffect(() => loadInventory(), [loadInventory])
+
   const grouped = useMemo(() => {
     const map = new Map()
-    for (const it of items) {
-      const prev = map.get(it.itemCode)
+    for (const item of items) {
+      const prev = map.get(item.itemCode)
       if (prev) {
+        prev.entries.push(item)
         prev.count += 1
-        if (it.redeemedAt > prev.redeemedAt) prev.redeemedAt = it.redeemedAt
+        if (isAvailable(item)) prev.availableCount += 1
+        if (item.status === 'USED') prev.usedCount += 1
+        if (item.status === 'EQUIPPED') prev.equippedCount += 1
+        if (item.redeemedAt > prev.redeemedAt) prev.redeemedAt = item.redeemedAt
       } else {
-        map.set(it.itemCode, { ...it, count: 1 })
+        map.set(item.itemCode, {
+          ...item,
+          entries: [item],
+          count: 1,
+          availableCount: isAvailable(item) ? 1 : 0,
+          usedCount: item.status === 'USED' ? 1 : 0,
+          equippedCount: item.status === 'EQUIPPED' ? 1 : 0,
+        })
       }
     }
     return Array.from(map.values())
   }, [items])
 
   const pendingMeta = pendingUse ? getItemMeta(pendingUse) : null
-  const noticeMeta = devNotice ? getItemMeta(devNotice) : null
+  const noticeMeta = notice ? getItemMeta(notice) : null
 
-  const handleUseClick = (item) => {
-    setPendingUse(item)
+  const handleUseClick = (group) => {
+    const target = group.entries.find(isAvailable)
+    if (target) setPendingUse(target)
   }
 
-  const handleConfirmUse = () => {
+  const handleConfirmUse = async () => {
     if (!pendingUse) return
-    setDevNotice(pendingUse)
-    setPendingUse(null)
+    setUsingItem(true)
+    setError('')
+    try {
+      const result = await shopApi.useInventoryItem({ inventoryItemId: pendingUse.id })
+      setItems((prev) => prev.map((item) => (
+        String(item.id) === String(result.id)
+          ? { ...item, ...result, title: item.title, cost: item.cost, redeemedAt: item.redeemedAt }
+          : item
+      )))
+      setNotice({ ...pendingUse, ...result })
+      setPendingUse(null)
+    } catch (err) {
+      setError(err?.response?.data?.message || err?.message || '道具使用失敗，請稍後再試。')
+    } finally {
+      setUsingItem(false)
+    }
   }
 
   return (
@@ -107,10 +146,10 @@ export default function Inventory() {
         <p className="gold-muted text-xs font-black uppercase tracking-[0.35em]">My Inventory</p>
         <h2 className="brand-title text-4xl font-black tracking-tight sm:text-5xl">我的背包</h2>
         <p className="max-w-2xl text-base font-bold leading-8 text-yellow-100/70">
-          你兌換的收藏品會保存在這裡。按下「使用兌換券」後會先確認，確認後會提示目前功能狀態。
+          商城兌換後的道具會收在這裡。可使用道具會被消耗，外觀類道具會標記為已裝備。
         </p>
         <Link to="/shop" className="gold-button mt-2 inline-flex w-fit rounded px-5 py-3 text-sm font-black transition">
-          回到禮品商城
+          前往商城
         </Link>
       </section>
 
@@ -124,7 +163,7 @@ export default function Inventory() {
         </p>
       ) : grouped.length === 0 ? (
         <p className="mt-6 rounded border border-dashed border-yellow-200/24 bg-red-950/50 px-4 py-10 text-center text-base font-black text-yellow-100/62">
-          目前背包還沒有商品。先到商城兌換一件獎勵，就能在這裡查看兌換券。
+          背包目前是空的，去商城兌換第一個道具吧。
         </p>
       ) : (
         <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -141,19 +180,21 @@ export default function Inventory() {
                   <span className="gold-text whitespace-nowrap text-lg font-black">x{item.count}</span>
                 </div>
                 <p className="text-sm font-bold leading-6 text-yellow-100/64">{meta.caption}</p>
-                <p className="text-sm font-bold text-yellow-100/64">
-                  最近兌換：{formatDateTime(item.redeemedAt)}
-                </p>
+                <div className="grid gap-1 text-sm font-bold text-yellow-100/64">
+                  <span>最近兌換：{formatDateTime(item.redeemedAt)}</span>
+                  <span>可使用：{item.availableCount} / 已使用：{item.usedCount} / 已裝備：{item.equippedCount}</span>
+                </div>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <span className="gold-muted text-xs font-black uppercase tracking-[0.2em]">
-                    兌換券
+                    {item.availableCount > 0 ? 'Ready' : statusLabel(item.entries[0])}
                   </span>
                   <button
                     type="button"
                     onClick={() => handleUseClick(item)}
-                    className="gold-button rounded px-4 py-2 text-xs font-black transition"
+                    disabled={item.availableCount <= 0 || usingItem}
+                    className="gold-button rounded px-4 py-2 text-xs font-black transition disabled:cursor-not-allowed disabled:opacity-45"
                   >
-                    使用兌換券
+                    使用道具
                   </button>
                 </div>
               </article>
@@ -164,7 +205,7 @@ export default function Inventory() {
 
       {pendingUse && pendingMeta ? (
         <InventoryDialog
-          title="確定要使用嗎？"
+          title="確認使用道具"
           labelledBy="inventory-use-confirm-title"
           actions={(
             <>
@@ -178,34 +219,35 @@ export default function Inventory() {
               <button
                 type="button"
                 onClick={handleConfirmUse}
-                className="gold-button rounded px-4 py-2 text-xs font-black"
+                disabled={usingItem}
+                className="gold-button rounded px-4 py-2 text-xs font-black disabled:cursor-not-allowed disabled:opacity-45"
               >
-                確認使用
+                {usingItem ? '處理中...' : '確認使用'}
               </button>
             </>
           )}
         >
-          <p>你即將使用「{pendingMeta.title}」。</p>
-          <p className="mt-2 text-yellow-100/62">目前不會扣除背包數量，確認後只會顯示功能狀態提示。</p>
+          <p>要使用「{pendingMeta.title}」嗎？</p>
+          <p className="mt-2 text-yellow-100/62">確認後會同步後端背包狀態；外觀類道具會標記為已裝備。</p>
         </InventoryDialog>
       ) : null}
 
-      {devNotice && noticeMeta ? (
+      {notice && noticeMeta ? (
         <InventoryDialog
-          title="功能正在開發"
-          labelledBy="inventory-dev-notice-title"
+          title={notice.action === 'EQUIPPED' ? '已裝備' : '已使用'}
+          labelledBy="inventory-use-done-title"
           actions={(
             <button
               type="button"
-              onClick={() => setDevNotice(null)}
+              onClick={() => setNotice(null)}
               className="gold-button rounded px-4 py-2 text-xs font-black"
             >
-              我知道了
+              知道了
             </button>
           )}
         >
-          <p>「{noticeMeta.title}」的使用功能正在開發中。</p>
-          <p className="mt-2 text-yellow-100/62">正式開放後，這張兌換券會套用對應的帳戶或頁面效果。</p>
+          <p>「{noticeMeta.title}」狀態已更新。</p>
+          <p className="mt-2 text-yellow-100/62">目前狀態：{notice.status === 'EQUIPPED' ? '已裝備' : '已使用'}</p>
         </InventoryDialog>
       ) : null}
     </AppShell>

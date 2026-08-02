@@ -3,6 +3,31 @@ import api from './api'
 const useMockApi = import.meta.env.VITE_USE_MOCK_API !== 'false'
 const MOCK_DIAMOND_KEY = 'lucky-star-diamond-wallet-v1'
 const DIAMOND_EXCHANGE_RATE = 20
+const DIAMOND_PROVISIONING_RETRY_DELAYS_MS = [300, 500, 800, 1200, 1600]
+
+function waitForProvisioning(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isDiamondProvisioningPending(error) {
+  if (error.response?.status !== 404) return false
+  const message = String(error.response?.data?.message || error.response?.data?.error || error.message || '')
+  return message.toLowerCase().includes('diamond wallet not found')
+}
+
+async function withDiamondProvisioningRetry(fn) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await fn()
+    } catch (error) {
+      if (attempt >= DIAMOND_PROVISIONING_RETRY_DELAYS_MS.length || !isDiamondProvisioningPending(error)) {
+        throw error
+      }
+      await waitForProvisioning(DIAMOND_PROVISIONING_RETRY_DELAYS_MS[attempt])
+    }
+  }
+}
+
 
 function readMockDiamondBalance() {
   const stored = Number(localStorage.getItem(MOCK_DIAMOND_KEY))
@@ -29,12 +54,14 @@ export const diamondApi = {
       }
     }
 
-    const res = await api.get('/api/v1/wallet/diamond/balance')
-    const data = res.data.data
-    return {
-      balance: data.balance,
-      exchangeRate: data.exchangeRate ?? DIAMOND_EXCHANGE_RATE,
-    }
+    return withDiamondProvisioningRetry(async () => {
+      const res = await api.get('/api/v1/wallet/diamond/balance')
+      const data = res.data.data
+      return {
+        balance: data.balance,
+        exchangeRate: data.exchangeRate ?? DIAMOND_EXCHANGE_RATE,
+      }
+    })
   },
 
   async redeemDiamondCard(card_code) {

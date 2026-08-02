@@ -124,6 +124,20 @@ public class GlobalExceptionHandler {
         return ApiResponse.error(ex.getMessage());
     }
 
+    /** Shop inventory item does not exist or does not belong to the current player -> 404. */
+    @ExceptionHandler(ShopInventoryItemNotFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ApiResponse<Void> handleShopInventoryItemNotFound(ShopInventoryItemNotFoundException ex) {
+        return ApiResponse.error(ex.getMessage());
+    }
+
+    /** Shop inventory item has already been consumed and cannot be used again -> 409. */
+    @ExceptionHandler(ShopInventoryItemAlreadyUsedException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ApiResponse<Void> handleShopInventoryItemAlreadyUsed(ShopInventoryItemAlreadyUsedException ex) {
+        return ApiResponse.error(ex.getMessage());
+    }
+
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public ApiResponse<Void> handleOptimisticLock(ObjectOptimisticLockingFailureException ex) {

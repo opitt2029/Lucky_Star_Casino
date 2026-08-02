@@ -102,47 +102,52 @@ public class SlotService {
         WalletDebitResponse debit = walletClient.debit(
                 playerId, bet, "slot-bet-" + roundId, roundId);
 
-        boolean riskIntercept = riskControlService.shouldIntercept(playerId, GAME_TYPE);
-        SlotOutcome outcome;
         try {
-            outcome = outcomeFor(serverSeed, clientSeed, bet, riskIntercept);
-        } finally {
-            riskControlService.releaseRiskSlot(playerId);
+            boolean riskIntercept = riskControlService.shouldIntercept(playerId, GAME_TYPE);
+            SlotOutcome outcome;
+            try {
+                outcome = outcomeFor(serverSeed, clientSeed, bet, riskIntercept);
+            } finally {
+                riskControlService.releaseRiskSlot(playerId);
+            }
+
+            GameSession session = GameSession.builder()
+                    .roundId(roundId)
+                    .playerId(playerId)
+                    .gameType(GAME_TYPE)
+                    .betAmount(bet)
+                    .balanceBefore(debit.balanceBefore())
+                    .balanceAfterBet(debit.balanceAfter())
+                    .riskIntercept(riskIntercept)
+                    .serverSeed(serverSeed)
+                    .serverSeedHash(serverSeedHash)
+                    .clientSeed(clientSeed)
+                    .nonce(NONCE)
+                    .build();
+            sessionService.start(session);
+
+            log.info("slot round prepared roundId={} playerId={} bet={} payoutPreview={}",
+                    roundId, playerId, bet, outcome.payout());
+
+            return PrepareRoundResponse.builder()
+                    .roundId(roundId)
+                    .game("slot")
+                    .bet(bet)
+                    .serverSeedHash(serverSeedHash)
+                    .clientSeed(clientSeed)
+                    .grid(outcome.grid())
+                    .multiplier(outcome.multiplier())
+                    .payout(outcome.payout())
+                    .winningCells(outcome.winningCells())
+                    .wallet(WalletView.builder()
+                            .balance(debit.balanceAfter())
+                            .frozenAmount(0L)
+                            .build())
+                    .build();
+        } catch (RuntimeException ex) {
+            refundPreparedDebit(playerId, roundId, bet, "slot-prepare-refund-" + roundId, ex);
+            throw ex;
         }
-
-        GameSession session = GameSession.builder()
-                .roundId(roundId)
-                .playerId(playerId)
-                .gameType(GAME_TYPE)
-                .betAmount(bet)
-                .balanceBefore(debit.balanceBefore())
-                .balanceAfterBet(debit.balanceAfter())
-                .riskIntercept(riskIntercept)
-                .serverSeed(serverSeed)
-                .serverSeedHash(serverSeedHash)
-                .clientSeed(clientSeed)
-                .nonce(NONCE)
-                .build();
-        sessionService.start(session);
-
-        log.info("slot round prepared roundId={} playerId={} bet={} payoutPreview={}",
-                roundId, playerId, bet, outcome.payout());
-
-        return PrepareRoundResponse.builder()
-                .roundId(roundId)
-                .game("slot")
-                .bet(bet)
-                .serverSeedHash(serverSeedHash)
-                .clientSeed(clientSeed)
-                .grid(outcome.grid())
-                .multiplier(outcome.multiplier())
-                .payout(outcome.payout())
-                .winningCells(outcome.winningCells())
-                .wallet(WalletView.builder()
-                        .balance(debit.balanceAfter())
-                        .frozenAmount(0L)
-                        .build())
-                .build();
     }
     /**
      * commit-ahead 第二階段「結算」：以開局暫存的 Session 種子扣款、轉動、派彩、寫對局，
@@ -279,11 +284,23 @@ public class SlotService {
     }
 
     public boolean abandon(long playerId, String roundId) {
-        boolean deleted = sessionService.delete(playerId, roundId);
-        if (deleted) {
-            log.info("slot round abandoned roundId={} playerId={}", roundId, playerId);
+        if (sessionService.find(playerId, roundId).isEmpty()) {
+            return false;
         }
-        return deleted;
+        settle(playerId, roundId);
+        log.info("slot round abandon settled roundId={} playerId={}", roundId, playerId);
+        return true;
+    }
+    private void refundPreparedDebit(long playerId, String roundId, long amount,
+                                     String idempotencyKey, RuntimeException cause) {
+        try {
+            walletClient.credit(playerId, amount, "REFUND", idempotencyKey, roundId);
+            log.info("slot prepared debit refunded roundId={} playerId={} amount={}", roundId, playerId, amount);
+        } catch (RuntimeException refundEx) {
+            cause.addSuppressed(refundEx);
+            compensationService.recordPending(GAME_TYPE, roundId, playerId, amount,
+                    "REFUND", idempotencyKey, refundEx);
+        }
     }
     private String resolveClientSeed(String requestedClientSeed) {
         return StringUtils.hasText(requestedClientSeed) ? requestedClientSeed : rng.generateClientSeed();

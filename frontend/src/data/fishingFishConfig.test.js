@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'vitest'
+import fishingSpeciesContract from '../../../contracts/fishing-species.json'
 import {
   JACKPOT_FISH_KING_DISPLAY_HP,
   JACKPOT_FISH_KING_DISPLAY_MULTIPLIER,
   JACKPOT_FISH_KING_VISUAL_SCALE,
+  FISHING_FISH_INFO,
   decorateFishingFishTable,
 } from './fishingFishConfig'
 
@@ -100,5 +102,20 @@ describe('decorateFishingFishTable', () => {
     const koi = { code: 'KOI', name: 'Koi', multiplier: 2, hp: 20, tier: 'SMALL' }
 
     expect(decorateFishingFishTable([koi])).toEqual([koi])
+  })
+  test('builds the guide fish from the shared fishing species contract', () => {
+    const guideCodes = new Set(FISHING_FISH_INFO.map((fish) => fish.code))
+
+    for (const fish of fishingSpeciesContract.species) {
+      expect(guideCodes.has(fish.code)).toBe(true)
+    }
+
+    const koi = FISHING_FISH_INFO.find((fish) => fish.code === 'KOI')
+    expect(koi).toMatchObject({
+      reward: 20,
+      multiplier: '2x',
+      hp: 20,
+      assetId: 'fish-koi',
+    })
   })
 })

@@ -269,6 +269,18 @@ class SlotServiceTest {
         verify(roundRepository, never()).save(any());
     }
     @Test
+    @DisplayName("prepareRound：扣款後若 Session 建立失敗，會以 REFUND 退款避免孤兒扣款")
+    void prepareRound_sessionStartFails_refundsDebitedStake() {
+        when(slotMachine.spin(any(), eq(BET))).thenReturn(loseOutcome());
+        when(sessionService.start(any())).thenThrow(new RuntimeException("redis down"));
+
+        assertThrows(RuntimeException.class, () -> service.prepareRound(PLAYER_ID, BET, "my-seed"));
+
+        verify(walletClient).debit(eq(PLAYER_ID), eq(BET), anyString(), anyString());
+        verify(walletClient).credit(eq(PLAYER_ID), eq(BET), eq("REFUND"), anyString(), anyString());
+        verify(roundRepository, never()).save(any());
+    }
+    @Test
     @DisplayName("prepareRound：未提供 clientSeed 時使用伺服器產生值")
     void prepareRound_generatesClientSeedWhenAbsent() {
         when(slotMachine.spin(any(), eq(BET))).thenReturn(loseOutcome());
@@ -333,4 +345,33 @@ class SlotServiceTest {
         verify(roundRepository, never()).save(any());
         verify(publisher, never()).publishSlotResult(any(), any());
     }
+    @Test
+    @DisplayName("abandon：已扣款 STARTED 局改為代為結算，不留下孤兒扣款")
+    void abandon_startedSession_settlesRoundInsteadOfDeletingSession() {
+        when(sessionService.find(PLAYER_ID, ROUND_ID)).thenReturn(Optional.of(startedSession()));
+        when(slotMachine.spin(any(), eq(BET))).thenReturn(winOutcome());
+        when(walletClient.credit(eq(PLAYER_ID), eq(500L), anyString(), anyString()))
+                .thenReturn(new WalletCreditResponse(2L, PLAYER_ID, 500L, 9900L, 10400L, 0L, false));
+
+        assertTrue(service.abandon(PLAYER_ID, ROUND_ID));
+
+        verify(walletClient).credit(eq(PLAYER_ID), eq(500L), eq("slot-win-" + ROUND_ID), eq(ROUND_ID));
+        verify(roundRepository).save(any());
+        verify(publisher).publishSlotResult(any(), any());
+        verify(sessionService).markSettled(PLAYER_ID, ROUND_ID, "srv", 0L);
+        verify(sessionService, never()).delete(anyLong(), anyString());
+    }
+
+    @Test
+    @DisplayName("abandon：Session 不存在時回 false 且不觸發帳務")
+    void abandon_missingSession_returnsFalseWithoutWalletCalls() {
+        when(sessionService.find(PLAYER_ID, ROUND_ID)).thenReturn(Optional.empty());
+
+        assertEquals(false, service.abandon(PLAYER_ID, ROUND_ID));
+
+        verify(walletClient, never()).debit(anyLong(), anyLong(), anyString(), anyString());
+        verify(walletClient, never()).credit(anyLong(), anyLong(), anyString(), anyString());
+        verify(sessionService, never()).delete(anyLong(), anyString());
+    }
+
 }

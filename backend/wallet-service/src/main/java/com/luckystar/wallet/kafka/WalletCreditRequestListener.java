@@ -2,6 +2,8 @@ package com.luckystar.wallet.kafka;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.luckystar.wallet.dto.CreditRequest;
+import com.luckystar.wallet.exception.WalletNotFoundException;
+import com.luckystar.wallet.service.DiamondWalletService;
 import com.luckystar.wallet.service.WalletService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +32,7 @@ import org.springframework.stereotype.Component;
 public class WalletCreditRequestListener {
 
     private final WalletService walletService;
+    private final DiamondWalletService diamondWalletService;
     private final ObjectMapper objectMapper;
 
     @KafkaListener(topics = "wallet.credit.request", groupId = "wallet-service-group")
@@ -48,9 +51,30 @@ public class WalletCreditRequestListener {
 
         // 冪等由 credit() 內的 idempotencyKey 保證：Kafka 重送同一指令不會重複加錢。
         // 暫時性失敗讓例外往外拋、不 ack；重試後仍失敗才送 DLT，避免入帳指令遺失。
-        walletService.credit(request);
+        creditWithNewGiftProvisioningFallback(event, request);
 
         // 僅在成功入帳後 ack
         ack.acknowledge();
+    }
+    private void creditWithNewGiftProvisioningFallback(WalletCreditRequestEvent event, CreditRequest request) {
+        try {
+            walletService.credit(request);
+        } catch (WalletNotFoundException ex) {
+            if (!isNewPlayerGift(event)) {
+                throw ex;
+            }
+            log.warn("Wallet missing while applying new player gift, provisioning and retrying playerId={}", event.playerId());
+            walletService.createWallet(event.playerId());
+            diamondWalletService.createDiamondWallet(event.playerId());
+            walletService.credit(request);
+        }
+    }
+
+    private boolean isNewPlayerGift(WalletCreditRequestEvent event) {
+        return event != null
+                && event.playerId() != null
+                && "GM_REWARD".equals(event.subType())
+                && event.idempotencyKey() != null
+                && event.idempotencyKey().equals("new-gift-" + event.playerId());
     }
 }
