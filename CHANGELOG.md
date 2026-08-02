@@ -1,3 +1,26 @@
+## [chore] -- 2026-08-03 -- Prepare closed beta release controls
+
+### Added
+- `.env.beta.example`: add a closed-beta environment template with real API mode, disabled admin seeding, explicit secret placeholders, and beta CORS/OAuth defaults.
+- `docker-compose.beta.yml`: add a compose overlay that removes host-published internal service ports and keeps only the gateway published behind a configurable bind address.
+- `docs/beta/closed-beta-runbook.md`: document version tagging, beta env setup, network exposure checks, smoke testing, monitoring, player notices, and rollback steps.
+
+### Changed
+- `.github/workflows/ci.yml`: add the `frontend-admin` lint/test/build quality gate so the admin UI is checked in CI before beta release.
+- `tests/smoke/smoke.mjs`: align registration payload with current member API required fields and retry read-only verification calls after gateway 429 responses.
+
+### Verified
+- `git diff --check` → passed.
+- `docker compose -f docker-compose.yml -f docker-compose.beta.yml --env-file .env.beta.example config` → passed; beta overlay publishes only gateway on `127.0.0.1:${GATEWAY_PORT}`.
+- `npm.cmd run test` (repo root) → 155 tests passed.
+- `mvn -B -ntp -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/admin-service,backend/game-service,backend/rank-service,backend/notification-service clean test` → BUILD SUCCESS.
+- `mvn -B -ntp -pl backend/wallet-service test -Pcontainers-test` → BUILD SUCCESS, 17 tests passed.
+- `npm.cmd run lint` / `npm.cmd run test` / `npm.cmd run build` / `npm.cmd run e2e` (frontend) → passed; Playwright: 11 passed, 1 skipped.
+- `npm.cmd run lint` / `npm.cmd run test` / `npm.cmd run build` (frontend-admin) → passed.
+- `node tests/smoke/smoke.mjs` against local healthy services → 29 PASS / 0 WARN / 0 FAIL.
+- `powershell.exe -ExecutionPolicy Bypass -File tests\performance\run-accounting-reconciliation.ps1` → PASS; all 9 accounting violation checks returned 0.
+
+---
 ## [feat] -- 2026-08-02 -- Add sticky new-player gift claim shortcut
 
 ### Added

@@ -128,3 +128,35 @@ jobs:
 
       - name: Run Playwright smoke
         run: npm run e2e
+
+  # ---------------------------------------------------------------------------
+  # Job 4: admin frontend quality gate (lint / unit / build)
+  # ---------------------------------------------------------------------------
+  admin-frontend-test:
+    name: Admin frontend quality gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend-admin
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend-admin/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run Vitest
+        run: npm test
+
+      - name: Build admin frontend
+        run: npm run build
