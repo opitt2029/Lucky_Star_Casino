@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080" font-family="'Microsoft JhengHei','PingFang TC','Noto Sans TC','Heiti TC',sans-serif">
+  <!-- 讀寫分離（CQRS）概念圖：淺色簡潔版，給 PPT 首頁用。只放名稱，不放說明文字。 -->
+
+  <defs>
+    <!-- 箭頭：寫入路徑（藍）、讀取路徑（橘）、同步路徑（灰） -->
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#ea7317"/>
+    </marker>
+    <marker id="arrowGray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#94a3b8"/>
+    </marker>
+    <!-- 卡片陰影：淺色風格用很淡的一層就好，避免投影時髒 -->
+    <filter id="cardShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+
+  <!-- 底色 -->
+  <rect width="1920" height="1080" fill="#ffffff"/>
+
+  <!-- 標題 -->
+  <text x="960" y="150" text-anchor="middle" font-size="76" font-weight="700" fill="#0f172a" letter-spacing="4">讀寫分離</text>
+  <line x1="810" y1="196" x2="1110" y2="196" stroke="#2563eb" stroke-width="6" stroke-linecap="round"/>
+
+  <!-- 應用服務（上方） -->
+  <g filter="url(#cardShadow)">
+    <rect x="710" y="290" width="500" height="150" rx="24" fill="#f8fafc" stroke="#cbd5e1" stroke-width="3"/>
+  </g>
+  <text x="960" y="384" text-anchor="middle" font-size="48" font-weight="600" fill="#0f172a">應用服務</text>
+
+  <!-- 寫入路徑：應用服務 → 寫入資料庫 -->
+  <path d="M810,440 L560,650" fill="none" stroke="#2563eb" stroke-width="6" stroke-linecap="round" marker-end="url(#arrowBlue)"/>
+  <text x="620" y="520" text-anchor="middle" font-size="38" font-weight="600" fill="#2563eb">寫入</text>
+
+  <!-- 讀取路徑：應用服務 → 查詢資料庫 -->
+  <path d="M1110,440 L1360,650" fill="none" stroke="#ea7317" stroke-width="6" stroke-linecap="round" marker-end="url(#arrowOrange)"/>
+  <text x="1300" y="520" text-anchor="middle" font-size="38" font-weight="600" fill="#ea7317">讀取</text>
+
+  <!-- 寫入資料庫（左下） -->
+  <g filter="url(#cardShadow)">
+    <rect x="250" y="690" width="460" height="190" rx="24" fill="#eff6ff" stroke="#2563eb" stroke-width="3"/>
+  </g>
+  <text x="480" y="775" text-anchor="middle" font-size="46" font-weight="600" fill="#0f172a">寫入資料庫</text>
+  <text x="480" y="833" text-anchor="middle" font-size="34" fill="#2563eb">PostgreSQL</text>
+
+  <!-- 查詢資料庫（右下） -->
+  <g filter="url(#cardShadow)">
+    <rect x="1210" y="690" width="460" height="190" rx="24" fill="#fff7ed" stroke="#ea7317" stroke-width="3"/>
+  </g>
+  <text x="1440" y="775" text-anchor="middle" font-size="46" font-weight="600" fill="#0f172a">查詢資料庫</text>
+  <text x="1440" y="833" text-anchor="middle" font-size="34" fill="#ea7317">MySQL</text>
+
+  <!-- 同步路徑：寫入資料庫 → 查詢資料庫（虛線代表非同步） -->
+  <path d="M710,785 L1195,785" fill="none" stroke="#94a3b8" stroke-width="6" stroke-linecap="round" stroke-dasharray="18 16" marker-end="url(#arrowGray)"/>
+  <text x="952" y="752" text-anchor="middle" font-size="38" font-weight="600" fill="#64748b">資料同步</text>
+</svg>
