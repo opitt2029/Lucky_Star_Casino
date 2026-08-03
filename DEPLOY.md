@@ -250,24 +250,38 @@ npm run dev
 | Port 被占用（3307 / 5433 / 8080…） | 本機已有程式佔用 | 改 `.env` 對應 Port，或關掉佔用程式 |
 | 啟動報 schema `validate` 失敗 | `JPA_DDL_AUTO=validate` 但表結構對不上 | 確認 init.sql 有正確執行；或見下方「重置資料庫」 |
 | 改了 init.sql 但沒生效 | init.sql 只在 Volume 首次建立時跑 | 重置資料庫（見下） |
-| `pull` 後服務啟動報 `Schema-validation: missing column/table` | `database/mysql\|postgres/migration/` 新增了檔案，但你的 Volume 是舊的，且**專案沒有 Flyway 自動套用機制**，新 migration 不會自動跑進既有資料庫 | 若不想清資料：手動把新增的 migration 檔案依編號順序跑進對應容器（見下方「手動套用新 migration」）；若不在乎本機資料：直接重置資料庫（見下） |
+| `pull` 後服務啟動報 `Schema-validation: missing column/table` | `database/mysql\|postgres/migration/` 新增了檔案，但你的 Volume 是舊的，且**專案沒有 Flyway 自動套用機制**，新 migration 不會自動跑進既有資料庫 | 跑 `node tools/db/apply-migrations.mjs`（見下方「補跑 migration」），**不用清資料**；真的不在乎本機資料才重置資料庫（見下） |
 | `Could not resolve placeholder 'XXX_SECRET'` | 本機 `.env` 落後於 `.env.example`（新服務/新功能加了新的必填變數） | 對照 `.env.example` 補齊 `.env` 缺的變數（`ADMIN_JWT_SECRET` 等），別整份覆蓋掉自己原有設定 |
 | 改了後端程式碼，`docker compose up -d` 沒套用 | 沒加 `--build`，容器仍用舊 image | `docker compose up -d --build <service>`（或全部服務都重建：`docker compose up -d --build`） |
 | `depends_on ... condition: service_completed_successfully` 報錯/不支援 | Docker Compose 版本太舊（需 v2.20+） | 更新 Docker Desktop |
 
-### 手動套用新 migration（不清資料）
+### 補跑 migration（不清資料）
 
-`pull` 後如果某服務啟動失敗，先看 `git log` 有沒有新增 `database/mysql/migration/V*.sql` 或 `database/postgres/migration/V*.sql`，有就手動套：
+**症狀**：`git pull` 之後某個服務不斷重啟，`docker logs <service>` 出現
+`Schema-validation: missing table [xxx]` 或 `missing column [xxx]`，
+連帶 `depends_on: service_healthy` 的下游服務永遠停在 `Created`。
+
+**原因**：`database/*/init.sql` **只在 Docker volume 全新時**跑一次；你的 volume 是舊的，
+所以新的 `V*.sql` 從來沒進到資料庫。
+
+**解法**（資料庫容器起著就好，後端服務起不來沒關係）：
 
 ```bash
-# MySQL（容器名稱以 docker compose ps 為準，預設 lucky-star-mysql）
-docker exec -i lucky-star-mysql mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" < database/mysql/migration/V<N>__xxx.sql
-
-# PostgreSQL（預設 lucky-star-postgres）
-docker exec -i lucky-star-postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" < database/postgres/migration/V<N>__xxx.sql
+node tools/db/apply-migrations.mjs --dry-run   # 先看它打算做什麼
+node tools/db/apply-migrations.mjs             # 實際補跑
+docker compose up -d                           # 讓卡住的服務重新啟動
 ```
 
-依版本編號**由小到大依序**跑完所有你本機還沒套過的檔案。跑錯順序或漏跑，之後的 migration 可能因為前置欄位/表不存在而失敗。
+工具做的事：在兩個資料庫各建一張 `schema_migrations` ledger 表記錄套過哪些檔案，
+依版本號由小到大逐**語句**套用，把「已經存在」類的錯誤（duplicate column、table exists…）
+記為 skipped 並印出來，其他錯誤直接中止。第二次執行是 no-op，可以放心重跑。
+不需要 `npm install`，也不必自己判斷哪幾支還沒跑。
+
+> ⚠️ 若執行**中途中止**，訊息會提示 CHECK 約束可能停在「已 DROP、尚未重建」的狀態。
+> 修掉它印出的根因後重跑即可補上；不要放著不管。細節見腳本檔頭「約束重播」。
+
+只想處理其中一個資料庫：`--only=mysql` 或 `--only=postgres`。
+容器名稱非預設時用環境變數 `MYSQL_CONTAINER` / `POSTGRES_CONTAINER` 覆寫。
 
 ### 重置資料庫（清空所有資料，重跑 init.sql）
 
