@@ -1,3 +1,22 @@
+## [tooling] -- 2026-08-03 -- Add automatic migration backfill for stale local volumes
+
+### Added
+- `tools/db/apply-migrations.mjs`: backfill `database/{postgres,mysql}/migration/V*.sql` into already-running containers. Keeps a `schema_migrations` ledger per database, applies files in numeric version order statement by statement, skips "already applied" error classes (duplicate column/table/index, dropped constraint absent, seed unique violation, replayed narrower CHECK), and aborts on anything else. Zero npm dependencies and reads credentials from container env, so it works when the environment is broken. Supports `--dry-run` and `--only=mysql|postgres`.
+- `tests/infra/db-migrations.test.js`: 12 tests covering statement splitting (semicolons inside line/block comments and quoted strings, doubled quotes, trailing statement without semicolon), numeric version ordering, duplicate version numbers, and a guard that no migration uses dollar-quoted blocks or `DELIMITER` (the splitter does not support them).
+
+### Changed
+- `DEPLOY.md` §6: replace the manual "run each new migration yourself in the right order" instructions with the tool, including the abort caveat about CHECK constraints.
+- `AGENTS.md` 雷區 26: point at the tool and record the constraint-replay invariant — new migrations must not narrow an existing CHECK list, or the self-healing replay assumption breaks.
+
+### Why
+`database/*/init.sql` only runs when a Docker volume is created, so after `git pull` an existing volume never receives new migrations. The service then fails with `Schema-validation: missing table/column` and every service with `depends_on: service_healthy` stalls in `Created`. The previous guidance required each developer to work out which files they had already applied; guessing wrong meant skipped or double-applied migrations. This happened again on two machines this week.
+
+### How verified
+- `node tools/db/apply-migrations.mjs --dry-run` → lists 18 postgres + 14 mysql migrations in numeric order, no writes.
+- `node tools/db/apply-migrations.mjs` against a fully-migrated local database → applied 66 statements, skipped 21 as already-present, exit 0; `chk_wt_sub_type` verified present in both databases with the full 13 sub-type list; `schema_migrations` holds 18 postgres rows.
+- Second consecutive run → full no-op (0 statements executed).
+- `npm test` (repo root) → 167 tests passed (155 previously + 12 new).
+
 ## [chore] -- 2026-08-03 -- Prepare closed beta release controls
 
 ### Added
