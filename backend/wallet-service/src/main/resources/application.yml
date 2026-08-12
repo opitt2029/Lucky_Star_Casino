@@ -12,6 +12,16 @@ spring:
   application:
     name: wallet-service
 
+  # 排程執行緒池：Spring Boot 預設只有 1 條，本服務 3 個 @Scheduled 全擠在上面序列跑。
+  # 最痛的是 WalletOutboxPurgeJob（每日 04:00 批次刪保留期外的 SENT 列）會整段卡住
+  # WalletOutboxPoller（每 200ms 撈 PENDING 送 Kafka）——purge 跑多久，wallet.credit/debit
+  # 事件就停發多久，下游 MySQL 讀視圖／rank 排行／admin 報表三方同時延遲（雷區 23）。
+  # purge 只刪 SENT、poller 只讀 PENDING，資料集不相交，可安全並行。
+  task:
+    scheduling:
+      pool:
+        size: 3
+
   # ================================================================
   # 雙資料庫設定（ADR-001：CQRS 讀寫分離）
   # 注意：雙 DataSource 需要自訂 DataSourceConfig.java

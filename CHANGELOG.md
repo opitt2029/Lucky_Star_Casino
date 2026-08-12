@@ -1,3 +1,29 @@
+## [fix] -- 2026-08-13 -- Give each service a real scheduler thread pool so slow jobs stop blocking fast ones
+
+### Changed
+- `game-service` `application.yml`: `spring.task.scheduling.pool.size: 4`. Seven `@Scheduled` jobs shared one thread.
+- `wallet-service` `application.yml`: `spring.task.scheduling.pool.size: 3`. Three jobs shared one thread.
+- `rank-service` `application.yml`: `spring.task.scheduling.pool.size: 3`. Three jobs shared one thread.
+- `member-service` `application.yml`: `spring.task.scheduling.pool.size: 2`. Two jobs shared one thread.
+- `gateway-service` (1 job), `admin-service` and `notification-service` (0 jobs) are deliberately untouched — a pool of 1 is correct there.
+
+### Added
+- `docs/interview-prep/14-執行緒與快取架構深講.md` + index rows in `00-index.md`: virtual threads (why the project deliberately does not enable them), Java 21 vs 25, Spring Boot vs JPA (the question's premise is wrong — the real trade-off is Spring Data JPA vs raw JDBC, and this repo splits them by hot path), Redis connection model and persistence, and multi-level caching (why there is no L1).
+
+### Why
+Spring Boot's `spring.task.scheduling.pool.size` defaults to **1**, so every `@Scheduled` method in a service serialises onto a single thread. Two cases where that is a real defect, not a theoretical one:
+
+- **game-service**: `GlobalRtpCacheScheduler` refreshes `risk:rtp:{gameType}` every 2 seconds and that cache has a 10-second TTL. It shares its thread with `PlayerDayWaterlineReconcileScheduler`, which aggregates every player from `game_rounds` and then writes Redis row by row. If the reconcile run exceeds 10 seconds, the RTP cache expires and `RiskControlService` falls back to a per-round 500-round DB aggregation — exactly the P99 driver that T-090 Phase A1 was built to remove. The regression would be silent.
+- **wallet-service**: `WalletOutboxPoller` (every 200 ms) is the only exit for `wallet.credit` / `wallet.debit`. It shares its thread with `WalletOutboxPurgeJob`, a daily 04:00 batch delete. Events stop flowing for as long as the purge runs, and the MySQL read view, rank leaderboards and admin reports all drift together (雷區 23). Same shape in member-service.
+
+Widening the pool is safe here for two separate reasons, and both had to hold: `ScheduledThreadPoolExecutor` already guarantees a single task never overlaps itself, so this only stops *different* jobs blocking each other; and each service's jobs were checked to touch disjoint data. rank-service was the one worth verifying — its three jobs all fire at 00:00 (all three on Mondays) — but `DailyRankSnapshotService` reads DB balances and writes `rank_daily_snapshots`, `resetDailyWinnings` only DELs `rank:daily:winnings`, and `WeeklyRankResetService` only touches `rank:global:coins` and `rank_history`. No overlap and no ordering dependency, so serial execution was never load-bearing. Had one existed, widening the pool would have converted an accidental ordering guarantee into a race — trading a latency bug for a data bug.
+
+Pool sizes are set to each service's job count (4 for game, giving headroom over its realistic concurrent peak of GlobalRtp + PlayerDayWaterline + FishingSweep + Compensation). Extra idle scheduler threads are negligible against `-Xmx1g` / `mem_limit: 1280m` (雷區 30). Note this setting becomes inert if `spring.threads.virtual.enabled` is ever turned on, because Spring Boot then switches scheduling to `SimpleAsyncTaskScheduler`.
+
+### How verified
+- `mvn -pl backend/gateway-service,backend/member-service,backend/wallet-service,backend/admin-service,backend/game-service,backend/rank-service,backend/notification-service test` → exit 0; gateway 79, member 118, wallet 196, admin 101, game 211, rank 72, notification 19 = **796 tests, 0 failures, 0 errors**.
+- Disjointness of each service's scheduled jobs walked through by reading every `@Scheduled` method and its downstream service (table above for rank-service, the one with simultaneous triggers).
+
 ## [tooling] -- 2026-08-03 -- Add automatic migration backfill for stale local volumes
 
 ### Added
