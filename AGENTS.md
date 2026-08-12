@@ -96,6 +96,7 @@
     - **已修**：`docker-compose.yml` 的 redis 原本**沒掛 volume**（其他五個有狀態服務都有），`redis:7` 預設 RDB 只寫容器內 `/data`，容器一重建即全歸零。現為 `command: ["redis-server","--appendonly","yes"]` + `lucky_redis_data:/data`。**勿把這兩行移除**，也別以為 `restart: always` 就等於資料安全（那只重啟容器，不保資料）。
     - **仍要小心 `docker compose down -v`**：它會刪 volume，排行榜（`rank:*`）與停用標記照樣歸零。重建腳本 `tools/reconciliation/rebuild-rank-redis.mjs`（藍圖 04 P4，含 `--dry-run`）**只涵蓋 `rank:daily:winnings` 與 `rank:global:coins` 兩個 ZSET**——`rank:game:*`（各遊戲淨利/局數/勝場）、`rank:player:*`（暱稱/頭像展示資料）、`rank:friend:*` **沒有重建路徑**，清掉只能靠新事件慢慢補。
     - **`disabled:player:{id}` 無 TTL、只靠 key 存在與否判定**（雷區 21 的停用玩家即時封鎖）：Redis 被清空 ＝ 所有被停用玩家自動解封。真相已持久化在 `members.status`（T-051），但**目前沒有開機回填程式**——手動清過 Redis 後要自己確認停用名單。
+33. **新增 `@Scheduled` 前先看該服務的 `spring.task.scheduling.pool.size`**：Spring Boot 這個值**預設是 1**，同一服務所有排程序列擠在單一執行緒上，慢的會卡死快的且完全無聲。已設定：game 4（7 支）、wallet 3、rank 3、member 2；gateway（1 支）與 admin／notification（0 支）維持預設。**新增排程時要把數字一起調高**，尤其這兩條熱路徑不能被卡：① game 的 `GlobalRtpCacheScheduler` 每 2 秒刷 `risk:rtp:{gameType}`、快取 TTL 只有 10 秒，被卡超過 10 秒 → 風控退回「每局直查 DB 做 500 局聚合」，等於靜默回退 T-090 Phase A1 的調校；② wallet／member 的 Outbox poller（200ms／5s）是事件唯一出口，被每日 04:00 的 purge job 卡多久、事件就停發多久（雷區 23）。**調大前必須逐支確認不同排程動的資料不相交**——`ScheduledThreadPoolExecutor` 只保證「同一支」不重疊，若排程之間有順序依賴（例如快照必須在重置前讀同一個 key），放大池會把「靠序列執行僥倖正確」變成競態，用延遲 bug 換到資料 bug。另注意此設定在 `spring.threads.virtual.enabled: true` 時會失效（Spring Boot 改用 `SimpleAsyncTaskScheduler`，每任務一條虛擬執行緒）。
 
 ---
 

@@ -12,6 +12,17 @@ spring:
   application:
     name: game-service
 
+  # 排程執行緒池：Spring Boot 預設只有 1 條，本服務 7 個 @Scheduled 全擠在上面序列跑。
+  # 最怕的是 GlobalRtpCacheScheduler（每 2 秒刷 risk:rtp:{gameType}，TTL 10 秒）被
+  # PlayerDayWaterlineReconcileScheduler（掃全部玩家 DB 聚合＋逐列 Redis 寫）卡住——快取一過期，
+  # 風控熱路徑就退回「每局直查 DB 做 500 局聚合」，正是 T-090 Phase A1 花力氣消滅的 P99 主因。
+  # 放大池只讓「不同」排程彼此不互卡：同一支 @Scheduled 方法仍不會並行
+  # （ScheduledThreadPoolExecutor 對同一 task 保證不重疊執行），本服務 7 支動的資料互不相交。
+  task:
+    scheduling:
+      pool:
+        size: 4
+
   # PostgreSQL（ADR-001：game_rounds、game_rtp_stats）
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5433}/${POSTGRES_DB:lucky_star_casino}

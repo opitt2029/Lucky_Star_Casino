@@ -12,6 +12,16 @@ spring:
   application:
     name: rank-service
 
+  # 排程執行緒池：Spring Boot 預設只有 1 條，本服務 3 個 @Scheduled 都在 00:00 觸發
+  # （週一三支同時），只能序列跑：DailyRankSnapshot 掃全部錢包餘額若慢，玩家立刻看得到的
+  # resetDailyWinnings 就跟著延後。三支動的資料互不相交、無順序依賴，可安全並行：
+  # snapshot 只讀 DB 餘額→寫 rank_daily_snapshots；daily reset 只 DEL rank:daily:winnings；
+  # weekly reset 只碰 rank:global:coins 與 rank_history。
+  task:
+    scheduling:
+      pool:
+        size: 3
+
   # PostgreSQL（ADR-001：rank_history、rank_daily_snapshots）
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5433}/${POSTGRES_DB:lucky_star_casino}
