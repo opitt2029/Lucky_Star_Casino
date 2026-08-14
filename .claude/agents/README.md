@@ -12,7 +12,7 @@ the main thread, only conclusions are reported back.
 |------|----------------|----------------|
 | `dev-coder` | Java/Spring Boot backend implementation | No test writing, no commits |
 | `frontend-dev` | React frontend implementation | Follows the three betting-game iron rules; no commits |
-| `qa-tester` | Write and run tests | Test files only; reports product bugs, never fixes them |
+| `qa-tester` | Write/run tests; judge & run perf regressions | Test files only; no new load scenarios; reports product bugs, never fixes them |
 | `code-reviewer` | Review diffs/files | **Read-only** (no Edit/Write — reviewer must not be the author) |
 | `ui-ux` | Design specs | Read-only; hands specs to frontend-dev |
 | `devops` | Environment / infra / scripts | Secrets red line; never touches main branch |

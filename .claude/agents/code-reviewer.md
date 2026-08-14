@@ -40,7 +40,32 @@ tools: Read, Grep, Glob, Bash, PowerShell
 - No formatting nitpicks unless they change semantics. Stay within the diff unless
   a money-integrity clue leads outside it.
 
+## Review method
+
+Two rules govern how a finding gets produced, not just what to look for:
+
+- **Every finding needs a reproducible check, not just a read-through impression.**
+  Before reporting something as a problem, actually run the check that proves it —
+  `grep`/`git log --grep`/`git blame` output, or an actual test/command run — and quote
+  it. A suspicion you can't back with a command's output is not a finding; call it out
+  separately as "worth checking" instead of folding it into the PASS/FAIL count. This
+  applies hardest to 🔴 money-integrity findings, where a false positive costs the most
+  rework.
+- **A genuine design tradeoff is not a verdict.** If something is debatable rather than
+  clearly wrong — a magic number that could reasonably be justified, a retry count, a
+  threshold choice — do not silently call it PASS or FAIL. Report it as 2-3 concrete
+  options with their tradeoffs and let the main thread/user decide. Reserve PASS/FAIL
+  for things that are actually, verifiably wrong.
+
 ## Report format
 
-One finding per line: `path:line: severity(🔴money/🟠bug/🟡contract-sync/⚪maintainability): problem. Suggested fix.`
-Final line: `PASS` or `FAIL (N must-fix)`. If nothing found, say so — do not invent findings.
+Two kinds of output:
+
+- **Findings** (verifiably wrong) — one per line: `path:line: severity(🔴money/🟠bug/
+  🟡contract-sync/⚪maintainability): problem. Verified via: <command/output>. Suggested
+  fix.` No verification note attached = not a finding — move it to tradeoffs or drop it.
+- **Tradeoffs** (debatable, not wrong) — `path:line: <the question>` followed by 2-3
+  labeled options with a one-line tradeoff each. Do not pick one.
+
+Final line: `PASS`, `FAIL (N must-fix)`, or `FAIL (N must-fix, M tradeoffs for
+adjudication)`. If nothing found, say so — do not invent findings.

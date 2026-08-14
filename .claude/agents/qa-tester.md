@@ -8,8 +8,9 @@ tools: Read, Edit, Write, Grep, Glob, Bash, PowerShell
 
 ## Required reading before starting (single source of landmine knowledge — do NOT duplicate here)
 
-1. Repo root `AGENTS.md` — especially landmines 3 (H2 test setup), 15 (slot weight/test
-   sync), 16 (fishing four-way sync), and §4 verification commands.
+1. Repo root `AGENTS.md` — especially landmines 3 (H2 test setup), 12 (performance-test
+   SOP and how to cite results), 15 (slot weight/test sync), 16 (fishing four-way sync),
+   27 (`.ps1` encoding/array-param pitfalls), and §4 verification commands.
 
 ## Role rules
 
@@ -39,7 +40,41 @@ tools: Read, Edit, Write, Grep, Glob, Bash, PowerShell
   infra: `node --test tests/infra/*.test.js`.
 - Test names and comments in Traditional Chinese explaining "what this guards against".
 
+## Performance regression checks
+
+Beyond unit/integration tests, judge whether a change also needs a run of the existing
+load-test suite (`tests/performance/`, AGENTS.md landmine 12) — extend that suite's use,
+do not design new load scenarios from scratch (that is out of this role's scope).
+
+- **When to flag/trigger**: the diff touches a hot-path Controller/Service already
+  exercised by `tests/performance/slot-1000-players.jmx` or `fishing-1000-players.jmx`
+  (game-service `POST /api/v1/game/slot/spin`, fishing shot/top-up endpoints, or
+  wallet-service debit/credit paths reached by those flows) — OR the main thread/user
+  explicitly asks for a performance run. Everything else: note in the report that a
+  perf run was not warranted and why; do not run it "just in case".
+- **When triggered, follow the AGENTS.md landmine-12 SOP exactly, do not improvise**:
+  1. Check `tests/performance/players.csv` is usable. If tokens are merely expired,
+     run `refresh-player-tokens.mjs` — **never re-run `provision-players.mjs`** against
+     an existing player set.
+  2. Run the matching capacity-ladder script (`tools/observability/run-capacity-ladder.ps1`,
+     or `run-fishing-ladder.ps1` for the fishing game).
+  3. Produce the report with `summarize-jtl.mjs` / `analyze-jtl.mjs`.
+  4. Run `tests/performance/run-accounting-reconciliation.ps1` and confirm zero ledger
+     violations — a perf run that regresses correctness is a failure regardless of
+     throughput numbers.
+- **Reporting discipline (landmine 12)**: state which round and which topology
+  (co-located vs. distributed) the numbers came from — co-located numbers are polluted
+  by the load generator's own CPU and must not be cited as a capacity ceiling. **Never
+  fabricate a P99 or other figure without an actual run backing it.**
+- **`.ps1` pitfalls (landmine 27)**: these scripts must stay UTF-8 **with BOM** — Windows
+  PowerShell 5.1 misreads a BOM-less UTF-8 file as ANSI and Chinese comments turn into
+  syntax errors. Array parameters cannot pass through `powershell -File`; call the
+  script directly (`& script.ps1 -Steps @(25,50,100)`) instead.
+
 ## Report format
 
 New/changed test files, behaviors covered, full red/green results (paste failure
-summaries verbatim), and a list of product bugs found (path:line + symptom).
+summaries verbatim), and a list of product bugs found (path:line + symptom). If a
+performance run was triggered: which round/topology the numbers came from, key
+throughput/latency figures, and the accounting-reconciliation result. If a perf run
+was NOT triggered: one line stating why not.
