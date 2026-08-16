@@ -119,6 +119,19 @@ public class PlayerService {
         return member.getStatus();
     }
 
+    /**
+     * 更新會員等級（NORMAL / VIP）。值域已由 {@code UpdateMemberVipLevelRequest} 的 @Pattern 擋過，
+     * 這裡不重複校驗。等級只影響 gateway 限流寬鬆度，不涉及任何權限。
+     * 生效時機：等級簽在 JWT 的 tier claim 裡，玩家需重新登入或換發 token 才會帶上新等級。
+     */
+    @Transactional
+    public String updateVipLevel(Long memberId, String vipLevel) {
+        Member member = findMember(memberId);
+        member.setVipLevel(vipLevel);
+        memberRepository.save(member);
+        return member.getVipLevel();
+    }
+
     private Member findMember(Long playerId) {
         return memberRepository.findById(playerId)
                 .orElseThrow(() -> new MemberNotFoundException("Member not found: " + playerId));

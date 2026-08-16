@@ -63,6 +63,10 @@ public class Member {
     @Column(nullable = false, length = 20)
     private String status = "ACTIVE";
 
+    /** 會員等級：NORMAL / VIP。只影響 gateway 限流寬鬆度，不是授權依據。 */
+    @Column(name = "vip_level", nullable = false, length = 20)
+    private String vipLevel = "NORMAL";
+
     @Column(name = "is_new_gift_claimed", nullable = false)
     private Boolean isNewGiftClaimed = false;
 

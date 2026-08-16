@@ -235,6 +235,15 @@ rate-limit:
   game:
     replenish-rate: ${GAME_RATE_LIMIT_REPLENISH:5}
     burst-capacity: ${GAME_RATE_LIMIT_BURST:10}
+  # VIP（members.vip_level=VIP，經 JWT tier claim 傳到 gateway）專用桶：一般玩家的 5 倍。
+  # 仍是有限的桶——令牌桶擋的是「單一帳號打爆單一下游」，無上限等於讓這個帳號（或它電腦上
+  # 任何一支跑掉的腳本／被盜用的 token）獨力把 game-service 推進 AIMD 收緊甚至熔斷，屆時全體
+  # 玩家含 VIP 自己一起受害。5 倍已遠超任何真人手速。整段缺席時回退成一般玩家參數（RateLimitProperties）。
+  vip:
+    replenish-rate: ${VIP_RATE_LIMIT_REPLENISH:50}
+    burst-capacity: ${VIP_RATE_LIMIT_BURST:100}
+    game-replenish-rate: ${VIP_GAME_RATE_LIMIT_REPLENISH:25}
+    game-burst-capacity: ${VIP_GAME_RATE_LIMIT_BURST:50}
   # 可信反向代理 CIDR 清單：只有當「直接 socket 對端」落在其中時，ipKeyResolver 才採信
   # X-Forwarded-For；空清單（預設）＝完全不信任 XFF、一律以 socket 對端為限流金鑰。
   # gateway 直接暴露 8080（無反代）時保持空即為安全預設；若部署在 nginx/LB 之後，把它的 CIDR 加進來。

@@ -40,4 +40,23 @@ public class MemberClient {
             throw new MemberServiceException("無法連線 member-service", ex);
         }
     }
+
+    /**
+     * 更新會員等級（NORMAL / VIP）：決定 gateway 每玩家限流桶的寬鬆度。失敗丟 {@link MemberServiceException}。
+     * member 端 @Pattern 已擋掉未知等級值，400 會在此轉成 MemberServiceException。
+     */
+    public void updateVipLevel(long playerId, String vipLevel) {
+        try {
+            memberRestClient.patch()
+                    .uri("/internal/members/{id}/vip-level", playerId)
+                    .body(Map.of("vipLevel", vipLevel))
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientResponseException ex) {
+            throw new MemberServiceException(
+                    "member-service 回應異常（HTTP " + ex.getStatusCode().value() + "）");
+        } catch (ResourceAccessException ex) {
+            throw new MemberServiceException("無法連線 member-service", ex);
+        }
+    }
 }

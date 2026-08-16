@@ -81,8 +81,8 @@ public class AuthService {
             throw new AccountDisabledException("Account is disabled");
         }
 
-        String accessToken = jwtTokenProvider.generateAccessToken(member.getId(), member.getUsername(), member.getRole());
-        String refreshToken = jwtTokenProvider.generateRefreshToken(member.getId(), member.getUsername(), member.getRole());
+        String accessToken = jwtTokenProvider.generateAccessToken(member.getId(), member.getUsername(), member.getRole(), member.getVipLevel());
+        String refreshToken = jwtTokenProvider.generateRefreshToken(member.getId(), member.getUsername(), member.getRole(), member.getVipLevel());
 
         long refreshTtl = jwtTokenProvider.getRemainingTtlMs(refreshToken);
         try {
@@ -131,14 +131,14 @@ public class AuthService {
             throw new InvalidTokenException("Refresh token mismatch");
         }
 
-        // 重新查 DB 取最新 role（避免 token 內 role 過時，例如使用者被降權）
+        // 重新查 DB 取最新 role 與 vipLevel（避免 token 內容過時，例如使用者被降權或 VIP 被撤銷）
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new InvalidTokenException("Member not found"));
 
         tokenRedisService.deleteRefreshToken(memberId);
 
-        String newAccess = jwtTokenProvider.generateAccessToken(memberId, username, member.getRole());
-        String newRefresh = jwtTokenProvider.generateRefreshToken(memberId, username, member.getRole());
+        String newAccess = jwtTokenProvider.generateAccessToken(memberId, username, member.getRole(), member.getVipLevel());
+        String newRefresh = jwtTokenProvider.generateRefreshToken(memberId, username, member.getRole(), member.getVipLevel());
         long refreshTtl = jwtTokenProvider.getRemainingTtlMs(newRefresh);
         tokenRedisService.saveRefreshToken(memberId, newRefresh, refreshTtl);
 

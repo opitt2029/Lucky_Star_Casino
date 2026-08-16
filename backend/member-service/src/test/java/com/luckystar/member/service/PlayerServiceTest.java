@@ -242,6 +242,46 @@ class PlayerServiceTest {
     }
 
     @Test
+    void updateVipLevel_grant_persistsVip() {
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+        when(memberRepository.save(any(Member.class))).thenReturn(sampleMember);
+
+        String result = playerService.updateVipLevel(1L, "VIP");
+
+        assertThat(result).isEqualTo("VIP");
+        assertThat(sampleMember.getVipLevel()).isEqualTo("VIP");
+        verify(memberRepository, times(1)).save(sampleMember);
+    }
+
+    @Test
+    void updateVipLevel_revoke_persistsNormal() {
+        sampleMember.setVipLevel("VIP");
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+        when(memberRepository.save(any(Member.class))).thenReturn(sampleMember);
+
+        String result = playerService.updateVipLevel(1L, "NORMAL");
+
+        assertThat(result).isEqualTo("NORMAL");
+        assertThat(sampleMember.getVipLevel()).isEqualTo("NORMAL");
+    }
+
+    @Test
+    void updateVipLevel_memberNotFound() {
+        when(memberRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> playerService.updateVipLevel(99L, "VIP"))
+                .isInstanceOf(MemberNotFoundException.class)
+                .hasMessageContaining("99");
+        verify(memberRepository, never()).save(any(Member.class));
+    }
+
+    /** 新會員預設為 NORMAL——預設值錯掉會讓所有人一上線就是 VIP。 */
+    @Test
+    void newMember_defaultsToNormalTier() {
+        assertThat(new Member().getVipLevel()).isEqualTo("NORMAL");
+    }
+
+    @Test
     void getSocialBindings_returnsAllProviders() {
         when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
         when(socialAccountRepository.findAllByMemberId(1L)).thenReturn(List.of());

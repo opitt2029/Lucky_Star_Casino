@@ -17,6 +17,7 @@ import com.luckystar.admin.client.MemberServiceException;
 import com.luckystar.admin.dto.PlayerDetail;
 import com.luckystar.admin.dto.PlayerStatusResponse;
 import com.luckystar.admin.dto.PlayerSummary;
+import com.luckystar.admin.dto.PlayerVipLevelResponse;
 import com.luckystar.admin.mysql.entity.MemberRead;
 import com.luckystar.admin.mysql.repository.MemberReadRepository;
 import com.luckystar.admin.mysql.repository.WalletTransactionReadRepository;
@@ -29,6 +30,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
@@ -142,6 +144,54 @@ class AdminPlayerServiceTest {
         verify(memberClient).updateStatus(1L, true);
         verify(playerBanService).unban(1L);
         verify(actionLogRepository).save(any(AdminActionLog.class));
+    }
+
+    // ── VIP 等級（gateway 限流分級）────────────────────────────────────────────
+
+    @Test
+    void setVipLevel_grant_writesAuditThenPersists() {
+        when(memberRepository.existsById(1L)).thenReturn(true);
+
+        Optional<PlayerVipLevelResponse> result = service.setVipLevel("admin1", 1L, "VIP");
+
+        assertThat(result).contains(new PlayerVipLevelResponse(1L, "VIP"));
+        verify(memberClient).updateVipLevel(1L, "VIP");
+        ArgumentCaptor<AdminActionLog> logCaptor = ArgumentCaptor.forClass(AdminActionLog.class);
+        verify(actionLogRepository).save(logCaptor.capture());
+        assertThat(logCaptor.getValue().getActionType()).isEqualTo("PLAYER_VIP_GRANT");
+    }
+
+    @Test
+    void setVipLevel_revoke_auditRecordsRevoke() {
+        when(memberRepository.existsById(1L)).thenReturn(true);
+
+        Optional<PlayerVipLevelResponse> result = service.setVipLevel("admin1", 1L, "NORMAL");
+
+        assertThat(result).contains(new PlayerVipLevelResponse(1L, "NORMAL"));
+        verify(memberClient).updateVipLevel(1L, "NORMAL");
+        ArgumentCaptor<AdminActionLog> logCaptor = ArgumentCaptor.forClass(AdminActionLog.class);
+        verify(actionLogRepository).save(logCaptor.capture());
+        assertThat(logCaptor.getValue().getActionType()).isEqualTo("PLAYER_VIP_REVOKE");
+    }
+
+    @Test
+    void setVipLevel_unknownPlayer_returnsEmpty() {
+        when(memberRepository.existsById(99L)).thenReturn(false);
+
+        assertThat(service.setVipLevel("admin1", 99L, "VIP")).isEmpty();
+        verify(memberClient, never()).updateVipLevel(anyLong(), any());
+        verify(actionLogRepository, never()).save(any());
+    }
+
+    /** 稽核是這個功能唯一的風險控制點：寫不進去就不准升級（同交易，audit-first）。 */
+    @Test
+    void setVipLevel_auditWriteFails_throwsAndSkipsPersist() {
+        when(memberRepository.existsById(1L)).thenReturn(true);
+        when(actionLogRepository.save(any())).thenThrow(new RuntimeException("db down"));
+
+        assertThatThrownBy(() -> service.setVipLevel("admin1", 1L, "VIP"))
+                .isInstanceOf(RuntimeException.class);
+        verify(memberClient, never()).updateVipLevel(anyLong(), any());
     }
 
     @Test

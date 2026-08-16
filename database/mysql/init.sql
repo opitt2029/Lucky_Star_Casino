@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS members (
     payment_confirmation_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Require confirmation before wallet payment',
     role          VARCHAR(20) NOT NULL DEFAULT 'PLAYER',
     status        VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    vip_level     VARCHAR(20) NOT NULL DEFAULT 'NORMAL' COMMENT '會員等級：NORMAL / VIP，決定 gateway 每玩家限流桶參數',
     is_new_gift_claimed TINYINT(1) NOT NULL DEFAULT 0 COMMENT '新手贈幣是否已領取',
     created_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP

@@ -24,6 +24,7 @@ class IpKeyResolverTest {
         RateLimitProperties props = new RateLimitProperties(
                 new RateLimitProperties.Player(10, 20),
                 new RateLimitProperties.Game(5, 10),
+                null,   // vip 未設定 → compact constructor 回退成一般玩家參數；IP 限流與等級無關
                 List.of(trustedCidrs));
         return new RateLimitConfig().ipKeyResolver(props);
     }

@@ -45,6 +45,15 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
     private static final String TOKEN_MIN_IAT_KEY_PREFIX = "token:min-iat:";
     private static final String USER_ID_HEADER = "X-User-Id";
     private static final String USER_ROLE_HEADER = "X-User-Role";
+    /**
+     * 會員等級（JWT {@code tier} claim）在 gateway 內部的傳遞通道，供
+     * {@link PlayerRateLimitGlobalFilter} 選擇令牌桶參數。
+     *
+     * <p>刻意用 exchange attribute 而非新增 {@code X-User-Tier} header：兩個 filter 跑在同一個
+     * {@code ServerWebExchange} 上，attribute 是最輕的通道；而且沒有任何下游服務需要知道 tier，
+     * 多送一個 header 只會給下游機會誤把它當授權依據。</p>
+     */
+    public static final String USER_TIER_ATTRIBUTE = "luckystar.userTier";
     private static final String ADMIN_PATH_PREFIX = "/admin/";
     private static final String ADMIN_ROLE = "ADMIN";
     // Redis 撤銷檢查的瞬時錯誤重試：1 次、退避 50ms 起（T-090 C2）。只吸收尖峰抖動，
@@ -98,6 +107,9 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
         String jti = claims.getId();
         String userId = claims.getSubject();
         Object role = claims.get("role");
+        // 會員等級：VIP 分級限流用。claim 缺席（分級上線前簽發的舊 token）時為空字串，
+        // 限流端比對不相等即回退一般玩家參數。
+        Object tier = claims.get("tier");
         // token 簽發時間（epoch 秒）；用於比對 token:min-iat 封鎖門檻
         long iatSeconds = claims.getIssuedAt() == null ? 0L : claims.getIssuedAt().toInstant().getEpochSecond();
 
@@ -146,6 +158,8 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
                     if (path.startsWith(ADMIN_PATH_PREFIX) && !ADMIN_ROLE.equals(roleValue)) {
                         return forbidden(exchange, "admin role required");
                     }
+                    // exchange.mutate() 產生的裝飾者共用同一份 attributes，下游 filter 讀得到
+                    exchange.getAttributes().put(USER_TIER_ATTRIBUTE, tier == null ? "" : tier.toString());
                     // 先 remove 再 set：避免用戶端偽造的同名 header 以重複值殘留，導致下游 getFirst() 讀到偽造值
                     ServerHttpRequest mutated = exchange.getRequest().mutate()
                             .headers(h -> {

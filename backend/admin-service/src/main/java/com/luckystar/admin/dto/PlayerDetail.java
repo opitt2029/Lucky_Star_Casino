@@ -11,6 +11,7 @@ public record PlayerDetail(
         String email,
         String role,
         String status,
+        String vipLevel,
         boolean disabled,
         LocalDateTime createdAt,
         long balance,

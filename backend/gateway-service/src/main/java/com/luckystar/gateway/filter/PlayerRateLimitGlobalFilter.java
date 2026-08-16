@@ -47,6 +47,8 @@ public class PlayerRateLimitGlobalFilter implements GlobalFilter, Ordered {
     private static final String BODY_429 =
             "{\"success\":false,\"data\":null,\"message\":\"Too many requests\"}";
     private static final String GAME_PATH_PREFIX = "/api/v1/game/";
+    /** 唯一享有寬鬆桶的等級值；其餘（含 null、空字串、未知字串）一律走一般玩家參數。 */
+    private static final String VIP_TIER = "VIP";
 
     /**
      * 令牌桶 Lua（改寫自 Spring Cloud Gateway 內建 request_rate_limiter.lua）。
@@ -120,12 +122,24 @@ public class PlayerRateLimitGlobalFilter implements GlobalFilter, Ordered {
             return chain.filter(exchange);
         }
 
-        // 遊戲路徑套用更嚴格的限流設定；replenishRate 與 burstCapacity 都要讀
+        // 遊戲路徑套用更嚴格的限流設定；replenishRate 與 burstCapacity 都要讀。
+        // VIP（JWT tier claim，由 JwtAuthenticationGlobalFilter 放進 attribute）改用寬鬆桶：
+        // 用 VIP_TIER.equals(...) 而非反向比對，null／空字串／未知等級全部自然落回一般參數，不需額外判空。
         boolean isGamePath = path.startsWith(GAME_PATH_PREFIX);
-        int rate = isGamePath ? props.game().replenishRate() : props.player().replenishRate();
-        int capacity = isGamePath ? props.game().burstCapacity() : props.player().burstCapacity();
+        boolean isVip = VIP_TIER.equals(exchange.getAttribute(JwtAuthenticationGlobalFilter.USER_TIER_ATTRIBUTE));
+        int rate;
+        int capacity;
+        if (isVip) {
+            rate = isGamePath ? props.vip().gameReplenishRate() : props.vip().replenishRate();
+            capacity = isGamePath ? props.vip().gameBurstCapacity() : props.vip().burstCapacity();
+        } else {
+            rate = isGamePath ? props.game().replenishRate() : props.player().replenishRate();
+            capacity = isGamePath ? props.game().burstCapacity() : props.player().burstCapacity();
+        }
 
-        // hash tag（大括號為 Redis 語法字面量）確保 tokens/ts 兩 key 落同一 slot，未來遷 Cluster 也不拆組
+        // hash tag（大括號為 Redis 語法字面量）確保 tokens/ts 兩 key 落同一 slot，未來遷 Cluster 也不拆組。
+        // key 刻意不含 tier：升降級時沿用同一個桶，只是短暫多／少幾個 token；
+        // 若把 tier 編進 key，降級的玩家會立刻拿到一個全新的滿桶，等於降級當下反而不受限。
         String keyPrefix = isGamePath ? "rate:game:{" + userId + "}" : "rate:player:{" + userId + "}";
         String tokensKey = keyPrefix + ":tokens";
         String tsKey = keyPrefix + ":ts";
