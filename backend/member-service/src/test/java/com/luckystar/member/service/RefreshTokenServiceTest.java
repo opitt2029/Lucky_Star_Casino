@@ -72,8 +72,8 @@ class RefreshTokenServiceTest {
         when(jwtTokenProvider.getClaims(OLD_REFRESH_TOKEN)).thenReturn(claims);
         when(tokenRedisService.getRefreshToken(MEMBER_ID)).thenReturn(OLD_REFRESH_TOKEN);
         when(memberRepository.findById(MEMBER_ID)).thenReturn(Optional.of(buildMember()));
-        when(jwtTokenProvider.generateAccessToken(MEMBER_ID, "testuser", "PLAYER")).thenReturn(NEW_ACCESS_TOKEN);
-        when(jwtTokenProvider.generateRefreshToken(MEMBER_ID, "testuser", "PLAYER")).thenReturn(NEW_REFRESH_TOKEN);
+        when(jwtTokenProvider.generateAccessToken(MEMBER_ID, "testuser", "PLAYER", "NORMAL")).thenReturn(NEW_ACCESS_TOKEN);
+        when(jwtTokenProvider.generateRefreshToken(MEMBER_ID, "testuser", "PLAYER", "NORMAL")).thenReturn(NEW_REFRESH_TOKEN);
         when(jwtTokenProvider.getRemainingTtlMs(NEW_REFRESH_TOKEN)).thenReturn(604800000L);
     }
 

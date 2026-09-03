@@ -24,6 +24,9 @@ public class MemberRead {
     private String role;
     private String status;
 
+    @Column(name = "vip_level")
+    private String vipLevel;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
@@ -52,6 +55,10 @@ public class MemberRead {
 
     public String getStatus() {
         return status;
+    }
+
+    public String getVipLevel() {
+        return vipLevel;
     }
 
     public LocalDateTime getCreatedAt() {

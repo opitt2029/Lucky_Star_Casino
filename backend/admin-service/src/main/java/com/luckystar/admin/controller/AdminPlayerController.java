@@ -4,6 +4,8 @@ import com.luckystar.admin.dto.PlayerDetail;
 import com.luckystar.admin.dto.PlayerStatusRequest;
 import com.luckystar.admin.dto.PlayerStatusResponse;
 import com.luckystar.admin.dto.PlayerSummary;
+import com.luckystar.admin.dto.PlayerVipLevelRequest;
+import com.luckystar.admin.dto.PlayerVipLevelResponse;
 import com.luckystar.admin.service.AdminPlayerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -63,6 +65,19 @@ public class AdminPlayerController {
             @Valid @RequestBody PlayerStatusRequest request,
             Authentication authentication) {
         return adminPlayerService.setStatus(authentication.getName(), playerId, request.enabled())
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @Operation(summary = "設定/撤銷玩家 VIP",
+            description = "變更玩家會員等級（NORMAL / VIP），決定 gateway 每玩家限流桶的寬鬆度。"
+                    + "等級簽在 JWT 的 tier claim 裡，玩家需重新登入或換發 token 才會生效。")
+    @PatchMapping("/{playerId}/vip-level")
+    public ResponseEntity<PlayerVipLevelResponse> setVipLevel(
+            @PathVariable Long playerId,
+            @Valid @RequestBody PlayerVipLevelRequest request,
+            Authentication authentication) {
+        return adminPlayerService.setVipLevel(authentication.getName(), playerId, request.vipLevel())
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }

@@ -2,6 +2,7 @@ package com.luckystar.member.controller;
 
 import com.luckystar.member.dto.ApiResponse;
 import com.luckystar.member.dto.UpdateMemberStatusRequest;
+import com.luckystar.member.dto.UpdateMemberVipLevelRequest;
 import com.luckystar.member.service.PlayerService;
 import jakarta.validation.Valid;
 import java.util.Map;
@@ -40,5 +41,18 @@ public class InternalMemberController {
         // 回傳內容只有兩個欄位且僅內部使用，用 Map 即可、不另開 DTO
         return ResponseEntity.ok(ApiResponse.success(
                 Map.of("memberId", memberId, "status", status), "Status updated"));
+    }
+
+    /**
+     * 更新會員等級（NORMAL / VIP），供 admin-service 設定/撤銷 VIP。
+     * 等級只決定 gateway 每玩家限流桶的寬鬆度，不是授權依據。
+     */
+    @PatchMapping("/{memberId}/vip-level")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> updateVipLevel(
+            @PathVariable Long memberId,
+            @Valid @RequestBody UpdateMemberVipLevelRequest request) {
+        String vipLevel = playerService.updateVipLevel(memberId, request.getVipLevel());
+        return ResponseEntity.ok(ApiResponse.success(
+                Map.of("memberId", memberId, "vipLevel", vipLevel), "VIP level updated"));
     }
 }

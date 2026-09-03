@@ -98,6 +98,67 @@ class JwtAuthenticationGlobalFilterTest {
         assertThat(forwarded.getHeaders().get("X-User-Id")).containsExactly("42");
     }
 
+    /** tier claim 要放進 exchange attribute 給 PlayerRateLimitGlobalFilter 選桶。 */
+    @Test
+    void tierClaim_isExposedAsExchangeAttribute() {
+        when(redis.hasKey(anyString())).thenReturn(Mono.just(false));
+        AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+        String vipToken = Jwts.builder()
+                .subject("42")
+                .claim("role", "PLAYER")
+                .claim("tier", "VIP")
+                .id("jti-tier-1")
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + 60_000))
+                .signWith(key)
+                .compact();
+        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest
+                .get("/api/v1/game/slot/spin")
+                .header("Authorization", "Bearer " + vipToken)
+                .build());
+
+        filter.filter(exchange, capturingChain(captured)).block();
+
+        assertThat(captured.get().<String>getAttribute(
+                JwtAuthenticationGlobalFilter.USER_TIER_ATTRIBUTE)).isEqualTo("VIP");
+    }
+
+    /** 分級上線前簽發的舊 token 沒有 tier claim：attribute 為空字串，限流端自然落回一般參數。 */
+    @Test
+    void missingTierClaim_yieldsEmptyAttribute() {
+        when(redis.hasKey(anyString())).thenReturn(Mono.just(false));
+        AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest
+                .get("/api/v1/wallet/balance")
+                .header("Authorization", "Bearer " + token("42", "PLAYER", "jti-tier-2", 60_000))
+                .build());
+
+        filter.filter(exchange, capturingChain(captured)).block();
+
+        assertThat(captured.get().<String>getAttribute(
+                JwtAuthenticationGlobalFilter.USER_TIER_ATTRIBUTE)).isEmpty();
+    }
+
+    /** tier 是簽在 token 裡的：用戶端偽造的 header 不會變成 attribute。 */
+    @Test
+    void forgedTierHeader_doesNotBecomeAttribute() {
+        when(redis.hasKey(anyString())).thenReturn(Mono.just(false));
+        AtomicReference<ServerWebExchange> captured = new AtomicReference<>();
+
+        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest
+                .get("/api/v1/game/slot/spin")
+                .header("Authorization", "Bearer " + token("42", "PLAYER", "jti-tier-3", 60_000))
+                .header("X-User-Tier", "VIP")   // 偽造，應完全無效
+                .build());
+
+        filter.filter(exchange, capturingChain(captured)).block();
+
+        assertThat(captured.get().<String>getAttribute(
+                JwtAuthenticationGlobalFilter.USER_TIER_ATTRIBUTE)).isEmpty();
+    }
+
     @Test
     void authenticatedPath_forgedRole_isOverwrittenByClaim() {
         when(redis.hasKey(anyString())).thenReturn(Mono.just(false));

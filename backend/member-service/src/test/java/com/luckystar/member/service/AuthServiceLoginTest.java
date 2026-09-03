@@ -73,8 +73,8 @@ class AuthServiceLoginTest {
 
         when(memberRepository.findByUsername("testuser")).thenReturn(Optional.of(member));
         when(passwordEncoder.matches("Password1", "$2a$hashed")).thenReturn(true);
-        when(jwtTokenProvider.generateAccessToken(1L, "testuser", "PLAYER")).thenReturn("access.token.here");
-        when(jwtTokenProvider.generateRefreshToken(1L, "testuser", "PLAYER")).thenReturn("refresh.token.here");
+        when(jwtTokenProvider.generateAccessToken(1L, "testuser", "PLAYER", "NORMAL")).thenReturn("access.token.here");
+        when(jwtTokenProvider.generateRefreshToken(1L, "testuser", "PLAYER", "NORMAL")).thenReturn("refresh.token.here");
         when(jwtTokenProvider.getRemainingTtlMs("refresh.token.here")).thenReturn(604800000L);
 
         LoginResponse response = authService.login(request);

@@ -138,8 +138,8 @@ class AuthServiceTest {
         when(memberRepository.findByUsername("testuser")).thenReturn(Optional.of(member));
         when(passwordEncoder.matches("Password1", "$2a$hashed")).thenReturn(true);
         when(tokenRedisService.isPlayerDisabled(1L)).thenReturn(false);
-        when(jwtTokenProvider.generateAccessToken(1L, "testuser", "PLAYER")).thenReturn("access-token");
-        when(jwtTokenProvider.generateRefreshToken(1L, "testuser", "PLAYER")).thenReturn("refresh-token");
+        when(jwtTokenProvider.generateAccessToken(1L, "testuser", "PLAYER", "NORMAL")).thenReturn("access-token");
+        when(jwtTokenProvider.generateRefreshToken(1L, "testuser", "PLAYER", "NORMAL")).thenReturn("refresh-token");
         when(jwtTokenProvider.getRemainingTtlMs("refresh-token")).thenReturn(86400000L);
         doThrow(new RedisConnectionFailureException("Redis down"))
                 .when(tokenRedisService).saveRefreshToken(anyLong(), anyString(), anyLong());

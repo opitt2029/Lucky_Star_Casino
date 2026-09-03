@@ -4,6 +4,7 @@ import com.luckystar.admin.client.MemberClient;
 import com.luckystar.admin.dto.PlayerDetail;
 import com.luckystar.admin.dto.PlayerStatusResponse;
 import com.luckystar.admin.dto.PlayerSummary;
+import com.luckystar.admin.dto.PlayerVipLevelResponse;
 import com.luckystar.admin.mysql.entity.MemberRead;
 import com.luckystar.admin.mysql.entity.WalletTransactionRead;
 import com.luckystar.admin.mysql.repository.MemberReadRepository;
@@ -92,6 +93,7 @@ public class AdminPlayerService {
                     member.getEmail(),
                     member.getRole(),
                     member.getStatus(),
+                    member.getVipLevel(),
                     playerBanService.isBanned(member.getId()),
                     member.getCreatedAt(),
                     balance,
@@ -120,7 +122,7 @@ public class AdminPlayerService {
             return Optional.empty();
         }
         // 1) 先落稽核（交易內；後續任一步失敗則連同稽核 rollback）
-        writeAudit(operator, enabled ? "PLAYER_UNBAN" : "PLAYER_BAN", playerId);
+        writeAudit(operator, enabled ? "PLAYER_UNBAN" : "PLAYER_BAN", playerId, "player-status");
         // 2) member 內部 API 持久化 status（真相來源）；失敗直接拋 → rollback 稽核、Redis 不動
         memberClient.updateStatus(playerId, enabled);
         // 3) Redis 即時封鎖/解封：best-effort。此時稽核＋member 已成立（狀態確實變更），
@@ -139,9 +141,33 @@ public class AdminPlayerService {
         return Optional.of(new PlayerStatusResponse(playerId, !enabled));
     }
 
-    /** 稽核：寫一筆 admin_action_logs（PostgreSQL）。與狀態變更同交易，寫入失敗直接拋（rollback），不再 best-effort。 */
-    private void writeAudit(String operator, String actionType, Long playerId) {
-        String idempotencyKey = "player-status-" + actionType + "-" + UUID.randomUUID();
+    /**
+     * 設定/撤銷玩家 VIP 等級。比照 {@link #setStatus} 的 audit-first：稽核與 member 狀態變更放進
+     * <b>同一個 postgres 交易</b>，稽核先寫，member 內部 API 失敗會連同稽核一起 rollback——
+     * 「誰在什麼時候把誰升成 VIP」是這個功能唯一的風險控制點，絕不可留下沒有稽核的升級。
+     *
+     * <p>與 setStatus 的差異：等級不涉及 Redis（沒有「即時生效」的需求，也沒有安全含意），
+     * 故沒有第三步 best-effort。生效時機由 JWT 效期決定：等級簽在 token 的 tier claim 裡，
+     * 玩家需重新登入或換發 token 才會帶上新等級（降級同理，最長延遲一個 access token 效期）。
+     * 玩家不存在回 {@link Optional#empty()}（→ 404）。</p>
+     */
+    @Transactional("postgresTransactionManager")
+    public Optional<PlayerVipLevelResponse> setVipLevel(String operator, Long playerId, String vipLevel) {
+        if (!memberRepository.existsById(playerId)) {
+            return Optional.empty();
+        }
+        writeAudit(operator, "VIP".equals(vipLevel) ? "PLAYER_VIP_GRANT" : "PLAYER_VIP_REVOKE",
+                playerId, "player-vip");
+        memberClient.updateVipLevel(playerId, vipLevel);
+        return Optional.of(new PlayerVipLevelResponse(playerId, vipLevel));
+    }
+
+    /**
+     * 稽核：寫一筆 admin_action_logs（PostgreSQL）。與狀態變更同交易，寫入失敗直接拋（rollback），不再 best-effort。
+     * {@code keyPrefix} 只影響冪等鍵的可讀前綴（後接 actionType 與 UUID，唯一性來自 UUID）。
+     */
+    private void writeAudit(String operator, String actionType, Long playerId, String keyPrefix) {
+        String idempotencyKey = keyPrefix + "-" + actionType + "-" + UUID.randomUUID();
         actionLogRepository.save(new AdminActionLog(
                 operator, actionType, playerId, null, null, idempotencyKey));
     }

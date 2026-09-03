@@ -28,21 +28,28 @@ public class JwtTokenProvider {
         this.refreshTokenExpiryMs = refreshTokenExpiryMs;
     }
 
-    public String generateAccessToken(Long memberId, String username, String role) {
-        return buildToken(memberId, username, role, accessTokenExpiryMs, "access");
+    public String generateAccessToken(Long memberId, String username, String role, String tier) {
+        return buildToken(memberId, username, role, tier, accessTokenExpiryMs, "access");
     }
 
-    public String generateRefreshToken(Long memberId, String username, String role) {
-        return buildToken(memberId, username, role, refreshTokenExpiryMs, "refresh");
+    public String generateRefreshToken(Long memberId, String username, String role, String tier) {
+        return buildToken(memberId, username, role, tier, refreshTokenExpiryMs, "refresh");
     }
 
-    private String buildToken(Long memberId, String username, String role, long expiryMs, String type) {
+    /**
+     * tier（會員等級，members.vip_level）與 role 一樣是簽在 token 裡的身分屬性，
+     * gateway 只拿它決定每玩家限流桶要用哪組參數——不是授權依據，也不影響任何權限判定。
+     * 因為是簽發時快照，降級最長會有一個 access token 效期的延遲（同 role 的既有性質）。
+     */
+    private String buildToken(Long memberId, String username, String role, String tier,
+                              long expiryMs, String type) {
         Date now = new Date();
         return Jwts.builder()
                 .id(UUID.randomUUID().toString())
                 .subject(String.valueOf(memberId))
                 .claim("username", username)
                 .claim("role", role)
+                .claim("tier", tier)
                 .claim("type", type)
                 .issuedAt(now)
                 .expiration(new Date(now.getTime() + expiryMs))

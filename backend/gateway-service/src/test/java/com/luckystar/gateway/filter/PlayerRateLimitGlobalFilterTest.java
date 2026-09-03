@@ -49,6 +49,7 @@ class PlayerRateLimitGlobalFilterTest {
         RateLimitProperties props = new RateLimitProperties(
                 new RateLimitProperties.Player(10, 20),
                 new RateLimitProperties.Game(5, 10),
+                new RateLimitProperties.Vip(50, 100, 25, 50),
                 List.of());
         JwtProperties jwtProps = new JwtProperties("dummy-secret",
                 List.of("/api/v1/auth/", "/actuator/health"));
@@ -63,6 +64,21 @@ class PlayerRateLimitGlobalFilterTest {
     private MockServerWebExchange authed(String path, String userId) {
         return MockServerWebExchange.from(
                 MockServerHttpRequest.get(path).header("X-User-Id", userId).build());
+    }
+
+    /** 模擬 JwtAuthenticationGlobalFilter 依 JWT tier claim 放進 exchange 的等級。 */
+    private MockServerWebExchange authed(String path, String userId, String tier) {
+        MockServerWebExchange exchange = authed(path, userId);
+        exchange.getAttributes().put(JwtAuthenticationGlobalFilter.USER_TIER_ATTRIBUTE, tier);
+        return exchange;
+    }
+
+    /** 取出這次呼叫傳給 Lua 的 ARGV[1]=replenishRate、ARGV[2]=burstCapacity。 */
+    @SuppressWarnings("unchecked")
+    private List<String> capturedScriptArgs() {
+        ArgumentCaptor<List<String>> argsCaptor = ArgumentCaptor.forClass(List.class);
+        verify(redis).execute(any(RedisScript.class), anyList(), argsCaptor.capture());
+        return argsCaptor.getValue();
     }
 
     @Test
@@ -194,6 +210,97 @@ class PlayerRateLimitGlobalFilterTest {
 
         verify(chain).filter(any());
         assertThat(exchange.getResponse().getStatusCode()).isNotEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+    }
+
+    // ── VIP 分級（tier claim → 寬鬆桶）────────────────────────────────────────
+
+    @Test
+    void vipTier_nonGamePath_scriptReceivesVipRateAndCapacity() {
+        stubScript(1L);
+
+        filter.filter(authed("/api/v1/wallet/balance", "42", "VIP"), chain).block();
+
+        assertThat(capturedScriptArgs()).element(0).isEqualTo("50");
+        assertThat(capturedScriptArgs()).element(1).isEqualTo("100");
+    }
+
+    @Test
+    void vipTier_gamePath_scriptReceivesVipGameRateAndCapacity() {
+        stubScript(1L);
+
+        filter.filter(authed("/api/v1/game/slot/spin", "42", "VIP"), chain).block();
+
+        assertThat(capturedScriptArgs()).element(0).isEqualTo("25");
+        assertThat(capturedScriptArgs()).element(1).isEqualTo("50");
+    }
+
+    /**
+     * 安全預設回歸：tier attribute 缺席（分級上線前簽發的舊 token）必須落回一般玩家參數，
+     * 不可 NPE、更不可誤放寬。
+     */
+    @Test
+    void missingTierAttribute_fallsBackToPlayerParams() {
+        stubScript(1L);
+
+        filter.filter(authed("/api/v1/game/slot/spin", "42"), chain).block();
+
+        assertThat(capturedScriptArgs()).element(0).isEqualTo("5");
+        assertThat(capturedScriptArgs()).element(1).isEqualTo("10");
+    }
+
+    /** 未知等級字串（例如有人手改 DB 成 GOLD）同樣落回一般參數，而非拋例外或放寬。 */
+    @Test
+    void unknownTier_fallsBackToPlayerParams() {
+        stubScript(1L);
+
+        filter.filter(authed("/api/v1/wallet/balance", "42", "GOLD"), chain).block();
+
+        assertThat(capturedScriptArgs()).element(0).isEqualTo("10");
+        assertThat(capturedScriptArgs()).element(1).isEqualTo("20");
+    }
+
+    /** VIP 不另立 Redis key：升降級沿用同一個桶，避免降級當下拿到全新滿桶。 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void vipTier_reusesSamePlayerKeys() {
+        stubScript(1L);
+
+        filter.filter(authed("/api/v1/game/slot/spin", "42", "VIP"), chain).block();
+
+        ArgumentCaptor<List<String>> keysCaptor = ArgumentCaptor.forClass(List.class);
+        verify(redis).execute(any(RedisScript.class), keysCaptor.capture(), anyList());
+        assertThat(keysCaptor.getValue())
+                .containsExactly("rate:game:{42}:tokens", "rate:game:{42}:ts");
+    }
+
+    /** VIP 只是桶更大，桶空了照樣 429——刻意不是無限放行。 */
+    @Test
+    void vipTier_stillRejectedWhenBucketEmpty() {
+        stubScript(0L);
+        MockServerWebExchange exchange = authed("/api/v1/game/slot/spin", "42", "VIP");
+
+        filter.filter(exchange, chain).block();
+
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        verify(chain, never()).filter(any());
+    }
+
+    /** vip 區塊未設定時，compact constructor 應回退成一般玩家參數（設定漏掉≠限流被放寬）。 */
+    @Test
+    void vipPropertiesAbsent_vipGetsPlayerParams() {
+        RateLimitProperties props = new RateLimitProperties(
+                new RateLimitProperties.Player(10, 20),
+                new RateLimitProperties.Game(5, 10),
+                null,
+                List.of());
+        PlayerRateLimitGlobalFilter noVipFilter = new PlayerRateLimitGlobalFilter(
+                redis, props, new JwtProperties("dummy-secret", List.of("/api/v1/auth/")));
+        stubScript(1L);
+
+        noVipFilter.filter(authed("/api/v1/game/slot/spin", "42", "VIP"), chain).block();
+
+        assertThat(capturedScriptArgs()).element(0).isEqualTo("5");
+        assertThat(capturedScriptArgs()).element(1).isEqualTo("10");
     }
 
     @Test

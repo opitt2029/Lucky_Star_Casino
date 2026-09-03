@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.luckystar.admin.dto.PlayerStatusResponse;
 import com.luckystar.admin.dto.PlayerSummary;
+import com.luckystar.admin.dto.PlayerVipLevelResponse;
 import com.luckystar.admin.service.AdminPlayerService;
 import java.util.List;
 import java.util.Optional;
@@ -91,6 +92,42 @@ class AdminPlayerControllerTest {
         mockMvc.perform(patch("/admin/players/1/status")
                         .contentType("application/json")
                         .content("{}")
+                        .principal(authAs("admin1")))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void setVipLevel_grant_returnsVip() throws Exception {
+        when(adminPlayerService.setVipLevel(eq("admin1"), eq(1L), eq("VIP")))
+                .thenReturn(Optional.of(new PlayerVipLevelResponse(1L, "VIP")));
+
+        mockMvc.perform(patch("/admin/players/1/vip-level")
+                        .contentType("application/json")
+                        .content("{\"vipLevel\":\"VIP\"}")
+                        .principal(authAs("admin1")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.playerId").value(1))
+                .andExpect(jsonPath("$.vipLevel").value("VIP"));
+    }
+
+    @Test
+    void setVipLevel_unknownPlayer_returns404() throws Exception {
+        when(adminPlayerService.setVipLevel(eq("admin1"), eq(99L), eq("VIP")))
+                .thenReturn(Optional.empty());
+
+        mockMvc.perform(patch("/admin/players/99/vip-level")
+                        .contentType("application/json")
+                        .content("{\"vipLevel\":\"VIP\"}")
+                        .principal(authAs("admin1")))
+                .andExpect(status().isNotFound());
+    }
+
+    /** 未知等級值必須在 DTO 就被擋下，不可傳到 member 庫寫進 vip_level。 */
+    @Test
+    void setVipLevel_unknownLevel_returns400() throws Exception {
+        mockMvc.perform(patch("/admin/players/1/vip-level")
+                        .contentType("application/json")
+                        .content("{\"vipLevel\":\"SVIP\"}")
                         .principal(authAs("admin1")))
                 .andExpect(status().isBadRequest());
     }
